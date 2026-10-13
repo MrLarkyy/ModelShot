@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+.turbo/
+*.log
+.env
+*.env
+.idea/
+.vscode/
+test-results/
+AGENTS.md
+CLAUDE.md

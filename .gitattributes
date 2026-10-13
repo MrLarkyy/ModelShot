@@ -1,0 +1,10 @@
+* text=auto eol=lf
+*.png binary
+*.gif binary
+*.webp binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.glb binary
+*.bbmodel text eol=lf
