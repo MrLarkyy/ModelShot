@@ -24,15 +24,15 @@ import type { SceneDocument } from '@modelshot/scene';
 
 ## `SceneDocument`
 
-| field           | type                                                                | meaning                                     |
-| --------------- | ------------------------------------------------------------------- | ------------------------------------------- |
-| `formatVersion` | `1`                                                                 | `SCENE_FORMAT_VERSION`                      |
-| `source`        | `{ format: 'bbmodel', formatVersion: string, modelFormat: string }` | where the scene came from                   |
-| `nodes`         | `SceneNode[]`                                                       | groups / bones, **parents before children** |
-| `rootNodes`     | `number[]`                                                          | nodes without a parent, in source order     |
-| `meshes`        | `SceneMesh[]`                                                       | triangle meshes                             |
-| `materials`     | `SceneMaterial[]`                                                   | see [SceneMaterial](#scenematerial)         |
-| `textures`      | `SceneTexture[]`                                                    | PNG images                                  |
+| field           | type                                                                   | meaning                                     |
+| --------------- | ---------------------------------------------------------------------- | ------------------------------------------- |
+| `formatVersion` | `1`                                                                    | `SCENE_FORMAT_VERSION`                      |
+| `source`        | `{ format: 'bbmodel' \| 'gltf' \| 'obj', formatVersion, modelFormat }` | where the scene came from (below)           |
+| `nodes`         | `SceneNode[]`                                                          | groups / bones, **parents before children** |
+| `rootNodes`     | `number[]`                                                             | nodes without a parent, in source order     |
+| `meshes`        | `SceneMesh[]`                                                          | triangle meshes                             |
+| `materials`     | `SceneMaterial[]`                                                      | see [SceneMaterial](#scenematerial)         |
+| `textures`      | `SceneTexture[]`                                                       | PNG images                                  |
 
 ### `SceneNode`
 
@@ -132,6 +132,10 @@ covers `width / uvWidth` pixels (a 32×32 image on a 16×16 UV space has 2×2 pi
 references but whose image was neither embedded nor supplied has `missing: true`, `bytes: null` and size 0; renderers
 show a placeholder.
 
+`source.formatVersion` is the source file's version: `meta.format_version` of a `.bbmodel` (e.g. `"4.10"`),
+`asset.version` of a glTF (`"2.0"`), `""` for OBJ. `source.modelFormat` is the Blockbench project format (`"free"`,
+`"bedrock"`, …, `"unknown"` when absent), the glTF container (`"gltf"` or `"glb"`), or `"obj"`.
+
 ## Versioning
 
 `formatVersion` is 1. A change that only adds **optional** fields with a defined default keeps version 1 (consumers
@@ -144,6 +148,14 @@ exports `resolveMaterialAlpha`, `texelCoverage`, `DEFAULT_ALPHA_CUTOFF` and `REN
 consumer that ignores them draws every material opaque, every face single-sided and ignores render order, which is
 what a version-1 document meant before.
 
+Added within version 1 (MS-13): `SceneSource.format` values `'gltf'` and `'obj'` (and the type
+`SceneSourceFormat`). Existing documents keep `'bbmodel'`; a consumer that switches over the format must handle the
+two new values (a TypeScript exhaustive `switch` gets a compile error until it does). Loaders of these formats use
+only the fields above: transforms that a node cannot carry are baked into the vertices, and colours without a texture
+are generated 1×1 PNG textures, so no renderer reads anything new.
+
 ## Loaders
 
 - Blockbench `.bbmodel`: [bbmodel.md](bbmodel.md).
+- glTF 2.0 `.gltf` / `.glb` (static meshes): [gltf.md](gltf.md).
+- Wavefront `.obj` with `.mtl`: [obj.md](obj.md).

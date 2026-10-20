@@ -9,11 +9,20 @@ import type { SceneTexture } from './SceneTexture';
  */
 export const SCENE_FORMAT_VERSION = 1;
 
+/** The file format a scene was loaded from; `gltf` covers `.gltf` and `.glb` (added within version 1, MS-13). */
+export type SceneSourceFormat = 'bbmodel' | 'gltf' | 'obj';
+
 export interface SceneSource {
-  readonly format: 'bbmodel';
-  /** Version string of the source file, e.g. `"4.10"`. */
+  readonly format: SceneSourceFormat;
+  /**
+   * Version string of the source file: `bbmodel` `meta.format_version` (e.g. `"4.10"`), `gltf` `asset.version`
+   * (`"2.0"`), `obj` `""` (OBJ has no version).
+   */
   readonly formatVersion: string;
-  /** Blockbench project format, e.g. `"free"` or `"bedrock"`; `"unknown"` when absent. */
+  /**
+   * `bbmodel`: the Blockbench project format, e.g. `"free"` or `"bedrock"`, `"unknown"` when absent; `gltf`: the
+   * container, `"gltf"` or `"glb"`; `obj`: `"obj"`.
+   */
   readonly modelFormat: string;
 }
 
