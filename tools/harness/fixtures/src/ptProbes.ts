@@ -27,6 +27,24 @@ export const ALPHA_PLANE_PROBES: readonly PtProbeRequest[] = [
   { name: 'flat-shadow-of-transparent-texel', mesh: 'flat-plane', uv: [14, 2], groundY: 0, facesLight: true },
 ];
 
+/**
+ * The cut-out checker (cutoutChecker.ts): texels (1, 7) opaque and (2, 7) cut out in the bottom row, whose shadows fall
+ * on the shadow catcher (y 0); texels (5, 3) opaque and (6, 3) cut out, whose shadows fall on the box's top (y 4.5).
+ */
+export const CUTOUT_CHECKER_PROBES: readonly PtProbeRequest[] = [
+  { name: 'catcher-shadow-of-opaque-texel', mesh: 'checker', uv: [1.5, 7.5], groundY: 0 },
+  { name: 'catcher-shadow-of-transparent-texel', mesh: 'checker', uv: [2.5, 7.5], groundY: 0 },
+  { name: 'cube-shadow-of-opaque-texel', mesh: 'checker', uv: [5.5, 3.5], groundY: 4.5 },
+  { name: 'cube-shadow-of-transparent-texel', mesh: 'checker', uv: [6.5, 3.5], groundY: 4.5 },
+];
+
+/** The probes of a scene: alpha-plane's and the cut-out checker's, none for the others. */
+export function sceneProbes(scene: string): readonly PtProbeRequest[] {
+  if (scene === 'alpha-plane') return ALPHA_PLANE_PROBES;
+  if (scene === 'cutout-checker') return CUTOUT_CHECKER_PROBES;
+  return [];
+}
+
 function barycentric(p: readonly number[], a: readonly number[], b: readonly number[], c: readonly number[]) {
   const det =
     ((b[1] ?? 0) - (c[1] ?? 0)) * ((a[0] ?? 0) - (c[0] ?? 0)) +

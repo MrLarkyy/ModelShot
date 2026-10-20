@@ -8,7 +8,7 @@ const vec3 KEY_COLOR = vec3(1.25, 1.22, 1.18);
 // Angular radius (radians) of the key's disc: the path tracer and the light bake sample its visibility in this cone.
 const float KEY_ANGULAR_RADIUS = 0.04;
 // Share of the light a fully shadowed shadow-catcher point loses (shadowCatcher).
-const float CATCHER_STRENGTH = 0.8;
+const float CATCHER_STRENGTH = 1.0;
 
 // Fill a diffuse surface with unit normal n receives, as a multiple of its albedo (the preview's ambient term).
 vec3 hemisphereFill(vec3 n) {

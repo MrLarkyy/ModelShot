@@ -102,3 +102,12 @@ export function installSampleReadout(
   };
   requestAnimationFrame(tick);
 }
+
+/** Times one light bake from the call to its final lighting. */
+export function installBakeBench(api: MsFixture, bake: () => Promise<void>): void {
+  api.timeBake = async () => {
+    const start = performance.now();
+    await bake();
+    return performance.now() - start;
+  };
+}

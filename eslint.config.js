@@ -18,7 +18,7 @@ export default defineConfig(
   },
   {
     files: ['tools/harness/fixtures/**/*.ts'],
-    ignores: ['tools/harness/fixtures/src/bench.ts'],
+    ignores: ['tools/harness/fixtures/src/bench.ts', 'tools/harness/fixtures/src/eventLoopLag.ts'],
     rules: {
       'no-restricted-properties': [
         'error',
@@ -27,14 +27,18 @@ export default defineConfig(
           { object, property: 'Math', message: 'Fixture images are deterministic: no indirect Math.random.' },
           { object, property: 'Date', message: 'Fixture images are deterministic: no clock.' },
           { object, property: 'crypto', message: 'Fixture images are deterministic: no random source.' },
-          { object, property: 'performance', message: 'Timing belongs in fixtures/src/bench.ts only.' },
+          {
+            object,
+            property: 'performance',
+            message: 'Timing belongs in fixtures/src/bench.ts and eventLoopLag.ts only.',
+          },
         ]),
       ],
       'no-restricted-globals': [
         'error',
         { name: 'Date', message: 'Fixture images are deterministic: no clock.' },
         { name: 'crypto', message: 'Fixture images are deterministic: no random source.' },
-        { name: 'performance', message: 'Timing belongs in fixtures/src/bench.ts only.' },
+        { name: 'performance', message: 'Timing belongs in fixtures/src/bench.ts and eventLoopLag.ts only.' },
       ],
     },
   },

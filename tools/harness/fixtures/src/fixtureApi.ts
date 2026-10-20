@@ -10,6 +10,8 @@ export interface MsFixture {
   timeToSamples?: (samples: number) => number;
   /** Load-and-first-frame bench (rt.html): milliseconds until the GPU finished. */
   timeScene?: () => Promise<number>;
+  /** Light-bake bench (rt.html): milliseconds from the call to the final lighting. */
+  timeBake?: () => Promise<number>;
   /** Model-view fixture: pixels to check in the rendered image. */
   probes?: ModelViewProbe[];
   rt?: RtControls;
@@ -22,6 +24,25 @@ export interface ModelViewProbe {
   x: number;
   y: number;
   texel: number[];
+}
+
+/** A light bake of the realtime fixture (LightBaker options). */
+export interface RtBakeRequest {
+  samples: number;
+  seed?: number;
+  tile?: number;
+  catcher?: boolean;
+}
+
+/** How a bake ended: the samples of each progress update, the final lighting's hash, or the error (`code: message`). */
+export interface RtBakeOutcome {
+  applied: boolean;
+  progress: number[];
+  /** Hash of the lighting at each progress update. */
+  progressHashes: string[];
+  warnings: { code: string; texture?: number }[];
+  hash: string;
+  error: string;
 }
 
 /** Extra controls of the realtime renderer fixture (rt.html). */
@@ -54,6 +75,27 @@ export interface RtControls {
   nodePoint: (name: string, x: number, y: number, z: number) => [number, number, number];
   /** Sets the canvas CSS size; resolves after the resize observer resized the backing store and redrew. */
   setCssSize: (width: number, height: number) => Promise<void>;
+  /** Pixels of the scene's shadow probes (ptProbes.ts) under the current camera; empty for other scenes. */
+  readonly probes: readonly PtProbe[];
+  /** Bakes the shown document, drawing each update; a failure comes back as `error`. */
+  bake: (request: RtBakeRequest) => Promise<RtBakeOutcome>;
+  /** Starts two bakes of the shown document back to back: their applied flags and the shown lighting's hash. */
+  bakeTwice: (first: RtBakeRequest, second: RtBakeRequest) => Promise<{ applied: boolean[]; hash: string }>;
+  /** Bakes a named scene without showing it. */
+  bakeScene: (name: string, samples: number) => Promise<RtBakeOutcome>;
+  /** Shows the document in a player pose preset (setScene of the posed document; baked light of the same layout stays). */
+  pose: (preset: string) => Promise<void>;
+  /** Hash of the lighting the renderer shows, '' for none. */
+  readonly lightingHash: string;
+  /** The worker loses its WebGL context and gets it back (LightBaker test hook). */
+  loseBakerContext: () => void;
+  disposeBaker: () => void;
+  readonly bakerTerminated: boolean;
+  /** setLighting with the shown lighting changed in one way: whether the renderer took it. */
+  tryLighting: (change: 'key' | 'size' | 'length') => boolean;
+  /** Longest main-thread event-loop lag in milliseconds since load (lag=1), else -1. */
+  maxLag: () => number;
+  resetLag: () => void;
 }
 
 /** A point of interest in a path-traced image: x right, y down from the top-left, in pixels (not rounded). */

@@ -11,6 +11,7 @@ import flatSource from '../models/rt-flat.bbmodel?raw';
 import alphaRampUri from '../models/rt-alpha-ramp.png?inline';
 import showcaseSource from '../models/rt-showcase.bbmodel?raw';
 import { benchScene } from './benchScene';
+import { cutoutChecker } from './cutoutChecker';
 import { MODEL_VIEW_LOOK, type Point3 } from './modelViewCamera';
 import { holdingCube, playerScene, posedPlayer } from './playerScenes';
 
@@ -60,6 +61,8 @@ export const RT_SCENE_NAMES = [
   'player-wave',
   'coincident-cubes',
   'grass-field',
+  'cutout-checker',
+  'lightmap-overflow',
 ] as const;
 export type RtSceneName = (typeof RT_SCENE_NAMES)[number];
 
@@ -92,6 +95,10 @@ export interface RtView {
   readonly depth: 'framed' | 'inside';
   /** Hides every mesh of this name (it must exist in the scene); null hides nothing. */
   readonly hide: string | null;
+  /** Realtime fixture: bake the light with this many samples before the first frame; 0 draws unbaked. */
+  readonly bake: number;
+  /** The shadow catcher: baked with the light in the realtime fixture, traced by the path tracer. */
+  readonly catcher: boolean;
 }
 
 export type RtLook =
@@ -105,7 +112,8 @@ export type RtLook =
   | 'cube-grazing-5'
   | 'cube-inside'
   | 'ramp'
-  | 'flat-shadow';
+  | 'flat-shadow'
+  | 'checker';
 
 /** Fixed cameras: the model-view fixture's (same image positions as its probes) and two views of a horizontal pair. */
 const LOOKS: Readonly<Record<RtLook, { eye: Point3; target: Point3; near: number; far: number }>> = {
@@ -131,6 +139,8 @@ const LOOKS: Readonly<Record<RtLook, { eye: Point3; target: Point3; near: number
   },
   // From the north, above: the ground north of alpha-plane's flat cube, where the key light casts its shadow.
   'flat-shadow': { eye: [10, 40, -30], target: [10, 0, 6], near: 5, far: 120 },
+  // The cut-out checker from behind its left half, above: no texel hides the ground its shadows fall on.
+  checker: { eye: [-15.5, 25.4, -3], target: [-2, 2, -2.25], near: 5, far: 120 },
 };
 
 export const DEFAULT_RT_VIEW: RtView = {
@@ -147,6 +157,8 @@ export const DEFAULT_RT_VIEW: RtView = {
   look: null,
   depth: 'framed',
   hide: null,
+  bake: 0,
+  catcher: true,
 };
 
 /** Golden presets, selected by the `variant` URL parameter. */
@@ -177,6 +189,12 @@ export const RT_VARIANTS: Readonly<Record<string, Partial<RtView>>> = {
   'player-walk-hold-34': { scene: 'player-walk-hold', yawDeg: 210, pitchDeg: 20 },
   'player-slim-fallback': { scene: 'player-slim', yawDeg: 210, pitchDeg: 20, fallback: true },
   'player-wave-front': { scene: 'player-wave', yawDeg: 180, pitchDeg: 10 },
+  // Baked light (realtime) and the path tracer's shadows of cut-out texels, MS-16.
+  'cutout-checker': { scene: 'cutout-checker', look: 'checker' },
+  'bake-cutout-checker': { scene: 'cutout-checker', look: 'checker', bake: 64 },
+  'bake-cutout-checker-fallback': { scene: 'cutout-checker', look: 'checker', bake: 64, fallback: true },
+  'bake-alpha-plane': { scene: 'alpha-plane', look: 'model-view', bake: 64 },
+  'bake-turntable-y030': { yawDeg: 30, bake: 64 },
 };
 
 function load(source: string): SceneDocument {
@@ -296,6 +314,10 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return coincidentCubes(load(showcaseSource));
     case 'grass-field':
       return grassField(load(alphaPlaneSource));
+    case 'cutout-checker':
+      return cutoutChecker(load(showcaseSource));
+    case 'lightmap-overflow':
+      return lightmapOverflow(load(showcaseSource));
     case 'player-classic':
       return playerScene('classic', 'classic');
     case 'player-slim':
@@ -433,6 +455,12 @@ export function parseRtView(params: URLSearchParams): RtView {
   view.texelAntialias = flag('aa') ?? view.texelAntialias;
   view.reverse = flag('reverse') ?? view.reverse;
   view.isometric = flag('iso') ?? view.isometric;
+  view.catcher = flag('catcher') ?? view.catcher;
+  const bake = params.get('bake');
+  if (bake !== null) {
+    if (!/^\d{1,4}$/.test(bake) || Number(bake) > 1024) throw new Error('query parameter bake must be an integer in 0..1024');
+    view.bake = Number(bake);
+  }
   const look = params.get('look');
   if (look !== null) {
     if (!Object.hasOwn(LOOKS, look)) throw new Error(`unknown look "${look}"`);
@@ -730,6 +758,35 @@ function coincidentCubes(showcase: SceneDocument): SceneDocument {
     uvRects: new Float32Array((positions.length / 3) * 4),
     indices,
     groups: [{ material: -1, start: 0, count: indices.length }],
+  };
+  return { ...showcase, nodes: [], rootNodes: [], meshes: [mesh] };
+}
+
+/**
+ * More double-sided untextured triangles, each with its own corners, than the lightmap has texels for their vertices
+ * (two each, front and back): lightmapLayout must refuse it before allocating a lightmap.
+ */
+function lightmapOverflow(showcase: SceneDocument): SceneDocument {
+  const triangles = 350_000;
+  const positions = new Float32Array(triangles * 9);
+  for (let t = 0; t < triangles; t++) {
+    const x = t % 1000;
+    const z = Math.floor(t / 1000);
+    positions.set([x, 0, z, x + 1, 0, z, x, 0, z + 1], t * 9);
+  }
+  const normals = new Float32Array(triangles * 9);
+  for (let v = 0; v < triangles * 3; v++) normals[v * 3 + 1] = 1;
+  const mesh: SceneMesh = {
+    name: 'overflow',
+    sourceId: '',
+    node: -1,
+    visible: true,
+    positions,
+    normals,
+    uvs: new Float32Array(triangles * 6),
+    uvRects: new Float32Array(triangles * 12),
+    indices: Uint32Array.from({ length: triangles * 3 }, (_, i) => i),
+    groups: [{ material: -1, start: 0, count: triangles * 3, doubleSided: true }],
   };
   return { ...showcase, nodes: [], rootNodes: [], meshes: [mesh] };
 }

@@ -1,17 +1,22 @@
-import { observeCanvasSize, RealtimeRenderer, type RendererWarning } from '@modelshot/renderer-rt';
+import { LightBaker, PathTracerError, type BakeResult } from '@modelshot/pathtracer';
+import { observeCanvasSize, RealtimeRenderer, type BakedLighting, type RendererWarning } from '@modelshot/renderer-rt';
 import {
   cameraProjection,
   cameraView,
   mat4Multiply,
   mat4TransformPoint,
+  playerPosePreset,
+  poseScene,
   worldMatrices,
   type SceneDocument,
 } from '@modelshot/scene';
-import { installFrameBench, installFrameReadout, installSceneBench } from './bench';
+import { installBakeBench, installFrameBench, installFrameReadout, installSceneBench } from './bench';
 import { readDrawingBufferBase64 } from './context';
-import type { MsFixture, RtControls } from './fixtureApi';
+import { startEventLoopLag } from './eventLoopLag';
+import type { MsFixture, RtBakeOutcome, RtBakeRequest, RtControls } from './fixtureApi';
 import { breakFramebuffers } from './breakFramebuffers';
 import { installGlTracker } from './glTracker';
+import { computePtProbes, sceneProbes } from './ptProbes';
 import {
   hideMeshes,
   isRtSceneName,
@@ -24,7 +29,9 @@ import {
 
 // URL parameters: variant (a preset of rtScenes.ts) or scene, yaw, pitch, proj=persp|ortho, fov, zoom, iso=0|1,
 // aa=0|1, fallback=1, reverse=1, look=model-view|above|below with depth=framed|inside, hide=<mesh name>; size (CSS pixels, default 256), maxTextureSide, track=1 (count GL objects),
-// fps=1 (continuous drawing with a frame-time readout, for a manual run on real hardware).
+// fps=1 (continuous drawing with a frame-time readout, for a manual run on real hardware); bake=<samples> (bake the
+// light before the first frame; 0 none), catcher=0|1, bakeSeed (default 1), bakeTile (default 64), pose=<player
+// preset> (the scene re-posed, framed as loaded), lag=1 (main-thread event-loop lag probe).
 const params = new URLSearchParams(location.search);
 
 function intParam(name: string, fallback: number, min: number, max: number): number {
@@ -37,6 +44,22 @@ function intParam(name: string, fallback: number, min: number, max: number): num
 }
 
 const tracker = params.get('track') === '1' ? installGlTracker() : null;
+const lag = params.get('lag') === '1' ? startEventLoopLag() : null;
+
+/** FNV-1a over the lighting's halves: equal for byte-identical lighting. */
+function lightingHash(lighting: BakedLighting | null): string {
+  if (!lighting) return '';
+  let h = 0x811c9dc5;
+  for (const data of [lighting.data, lighting.catcher?.data ?? new Uint16Array(0)]) {
+    for (let i = 0; i < data.length; i++) h = Math.imul(h ^ (data[i] ?? 0), 16777619) >>> 0;
+  }
+  return `${lighting.width}x${lighting.height}:${h.toString(16)}:${lighting.catcher?.width ?? 0}`;
+}
+
+function errorText(error: unknown): string {
+  if (error instanceof PathTracerError) return `${error.code}: ${error.message}`;
+  return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+}
 const canvas = document.createElement('canvas');
 document.body.appendChild(canvas);
 
@@ -60,6 +83,11 @@ window.__msFixture = api;
 async function start(): Promise<void> {
   const size = intParam('size', 256, 16, 4096);
   const maxTextureSide = intParam('maxTextureSide', 4096, 1, 16384);
+  const bakeSeed = intParam('bakeSeed', 1, 0, 99999);
+  const bakeTile = intParam('bakeTile', 64, 16, 512);
+  const poseName = params.get('pose');
+  const pose = poseName === null ? null : playerPosePreset(poseName);
+  if (poseName !== null && !pose) throw new Error(`unknown pose "${poseName}"`);
   const continuous = params.get('fps') === '1';
   const view = parseRtView(params);
   canvas.style.width = `${size}px`;
@@ -85,7 +113,8 @@ async function start(): Promise<void> {
   const sceneOf = (name: RtSceneName): SceneDocument => {
     const loaded = rtScene(name);
     const shown = view.hide === null ? loaded : hideMeshes(loaded, view.hide);
-    const doc = view.reverse ? reverseMeshOrder(shown) : shown;
+    const ordered = view.reverse ? reverseMeshOrder(shown) : shown;
+    const doc = pose ? poseScene(ordered, pose).document : ordered;
     framing.set(doc, loaded);
     return doc;
   };
@@ -100,6 +129,61 @@ async function start(): Promise<void> {
   renderer.resize({ cssWidth: size, cssHeight: size, devicePixelRatio: window.devicePixelRatio });
   warnings = (await renderer.setScene(doc)).warnings;
   frame();
+
+  let baker: LightBaker | null = null;
+  let shown: BakedLighting | null = null;
+  const show = (lighting: BakedLighting): void => {
+    if (!renderer.setLighting(lighting)) return;
+    shown = lighting;
+    frame();
+  };
+  const outcome = (result: BakeResult, progress: number[], progressHashes: string[]): RtBakeOutcome => ({
+    applied: result.applied,
+    progress,
+    progressHashes,
+    warnings: result.warnings.map(({ code, texture }) => ({ code, ...(texture !== undefined ? { texture } : {}) })),
+    hash: lightingHash(result.lighting),
+    error: '',
+  });
+  const failed = (error: unknown, progress: number[]): RtBakeOutcome => ({
+    applied: false,
+    progress,
+    progressHashes: [],
+    warnings: [],
+    hash: '',
+    error: errorText(error),
+  });
+  const runBake = async (target: SceneDocument, request: RtBakeRequest, display: boolean): Promise<RtBakeOutcome> => {
+    baker ??= LightBaker.create({ testHooks: true });
+    const progress: number[] = [];
+    const progressHashes: string[] = [];
+    try {
+      const result = await baker.bake(target, {
+        samples: request.samples,
+        seed: request.seed ?? bakeSeed,
+        tileSize: request.tile ?? bakeTile,
+        shadowCatcher: request.catcher ?? view.catcher,
+        onProgress: ({ samplesDone, samples, lighting }) => {
+          progress.push(samplesDone);
+          progressHashes.push(lightingHash(lighting));
+          console.log(`[bake] ${samplesDone} / ${samples} samples`);
+          if (display) show(lighting);
+        },
+      });
+      if (display && result.lighting) show(result.lighting);
+      return outcome(result, progress, progressHashes);
+    } catch (error) {
+      return failed(error, progress);
+    }
+  };
+  if (view.bake > 0) {
+    const first = await runBake(doc, { samples: view.bake }, true);
+    if (first.error) throw new Error(first.error);
+  }
+  installBakeBench(api, async () => {
+    const result = await runBake(doc, { samples: view.bake || 16 }, true);
+    if (result.error) throw new Error(result.error);
+  });
 
   const resized: (() => void)[] = [];
   observeCanvasSize(canvas, (cssSize) => {
@@ -169,7 +253,10 @@ async function start(): Promise<void> {
         });
         lose.restoreContext();
       }),
-    dispose: () => renderer.dispose(),
+    dispose: () => {
+      renderer.dispose();
+      baker?.dispose();
+    },
     setScenes: async (names) => {
       const docs = names.map((name) => {
         if (!isRtSceneName(name)) throw new Error(`unknown scene "${name}"`);
@@ -211,6 +298,48 @@ async function start(): Promise<void> {
         canvas.style.width = `${width}px`;
         canvas.style.height = `${height}px`;
       }),
+    get probes() {
+      return computePtProbes(doc, sceneProbes(view.scene), (point) => controls.project(...point));
+    },
+    bake: (request) => runBake(doc, request, true),
+    bakeTwice: async (first, second) => {
+      const results = await Promise.all([runBake(doc, first, true), runBake(doc, second, true)]);
+      return { applied: results.map((result) => result.applied), hash: lightingHash(shown) };
+    },
+    bakeScene: (name, samples) => {
+      if (!isRtSceneName(name)) throw new Error(`unknown scene "${name}"`);
+      return runBake(rtScene(name), { samples }, false);
+    },
+    pose: async (preset) => {
+      const posePreset = playerPosePreset(preset);
+      if (!posePreset) throw new Error(`unknown pose "${preset}"`);
+      const posed = poseScene(doc, posePreset).document;
+      framing.set(posed, framing.get(doc) ?? doc);
+      doc = posed;
+      warnings = (await renderer.setScene(doc)).warnings;
+      if (!renderer.lightmapLayout || renderer.lightmapLayout.layoutKey !== shown?.layoutKey) shown = null;
+      frame();
+    },
+    get lightingHash() {
+      return lightingHash(shown);
+    },
+    loseBakerContext: () => baker?.loseContext(),
+    disposeBaker: () => baker?.dispose(),
+    get bakerTerminated() {
+      return baker?.terminated ?? false;
+    },
+    tryLighting: (change) => {
+      if (!shown) throw new Error('no lighting shown');
+      const changed: BakedLighting =
+        change === 'key'
+          ? { ...shown, layoutKey: `${shown.layoutKey}x` }
+          : change === 'size'
+            ? { ...shown, height: shown.height + 1 }
+            : { ...shown, data: shown.data.subarray(4) };
+      return renderer.setLighting(changed);
+    },
+    maxLag: () => lag?.max() ?? -1,
+    resetLag: () => lag?.reset(),
   };
   api.rt = controls;
 }

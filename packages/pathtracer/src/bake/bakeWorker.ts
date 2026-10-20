@@ -215,10 +215,10 @@ async function prepare(current: Job, request: Extract<BakeRequest, { type: 'bake
   const layerSide = Math.min(maxTextureSize, MAX_TEXTURE_SIDE);
   const maxLayers = gl?.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS) as number;
   checkMaterialCount(doc.materials.length);
+  const layout = lightmapLayout(doc);
   const flat = flattenScene(doc, request.maxTriangles);
   const bvh = buildBvh(flat.positions, flat.count);
   const geometry = packGeometry(flat, bvh, maxTextureSize);
-  const layout = lightmapLayout(doc);
   const charts = buildChartTable(layout, flat, bvh.order, maxTextureSize);
   const catcher = request.shadowCatcher
     ? shadowCatcherPlane(sceneBounds(doc), LIGHT_RIG_V0.keyDirection, layout.finestTexel)
