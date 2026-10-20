@@ -2,6 +2,7 @@ import type { Vec3 } from '@modelshot/scene';
 import { BbmodelError } from './BbmodelError';
 import { FACE_DIRECTIONS, faceArea, type FaceDirection } from './CubeFace';
 import type { ConverterContext } from './ElementConverter';
+import { faceDoubleSided, readFaceTexture } from './FaceTexture';
 import { boxUvLayout, toFaceRotation, type FaceRotation, type FaceUv } from './faceUv';
 import {
   childPath,
@@ -17,6 +18,7 @@ import {
   type JsonObject,
 } from './JsonFields';
 import { quoteValue } from './quoteValue';
+import { readRenderOrder } from './RenderOrder';
 
 export interface CubeFaceSpec {
   readonly direction: FaceDirection;
@@ -27,6 +29,8 @@ export interface CubeFaceSpec {
   /** UV size the face's uv is expressed in. */
   readonly uvWidth: number;
   readonly uvHeight: number;
+  /** Shows its back: the texture's render sides, except on a zero-thickness axis (see `readCube`). */
+  readonly doubleSided: boolean;
 }
 
 /** A validated cube: inflated box, rotation, and only the faces that produce triangles. */
@@ -38,12 +42,26 @@ export interface CubeSpec {
   readonly max: Vec3;
   readonly origin: Vec3;
   readonly rotation: Vec3;
+  /** `SceneMesh.renderOrder`. */
+  readonly renderOrder: number;
   readonly faces: readonly CubeFaceSpec[];
 }
 
 const ZERO: Vec3 = [0, 0, 0];
 const ONE: Vec3 = [1, 1, 1];
+const NORMAL_AXIS: Readonly<Record<FaceDirection, 0 | 1 | 2>> = {
+  east: 0,
+  west: 0,
+  up: 1,
+  down: 1,
+  north: 2,
+  south: 2,
+};
 
+/**
+ * A face lying in the plane of a zero-thickness axis stays single-sided whatever its texture says: the opposite face is
+ * coincident, faces the other way and has its own UV, so each side shows exactly one of them, with no depth fight.
+ */
 export function readCube(element: JsonObject, path: string, context: ConverterContext): CubeSpec {
   const from = readVec3(field(element, 'from'), childPath(path, 'from'));
   const to = readVec3(field(element, 'to'), childPath(path, 'to'));
@@ -61,7 +79,9 @@ export function readCube(element: JsonObject, path: string, context: ConverterCo
   const specs: CubeFaceSpec[] = [];
   for (const direction of FACE_DIRECTIONS) {
     const face = readFace(faces, direction, childPath(facesPath, direction), context, layout?.[direction]);
-    if (face && faceArea(direction, min, max) > 0) specs.push(face);
+    if (!face || faceArea(direction, min, max) <= 0) continue;
+    const axis = NORMAL_AXIS[direction];
+    specs.push(max[axis] - min[axis] > 0 ? face : { ...face, doubleSided: false });
   }
   return {
     name: readOptionalString(element, 'name', path, context.maxStringChars, 'cube'),
@@ -71,6 +91,7 @@ export function readCube(element: JsonObject, path: string, context: ConverterCo
     max,
     origin: readOptionalVec3(element, 'origin', path, ZERO),
     rotation: readOptionalVec3(element, 'rotation', path, ZERO),
+    renderOrder: readRenderOrder(element, path, context.warnings),
     faces: specs,
   };
 }
@@ -154,32 +175,6 @@ function readFace(
     material,
     uvWidth: uvSize?.width ?? context.resolution.width,
     uvHeight: uvSize?.height ?? context.resolution.height,
+    doubleSided: faceDoubleSided(material, context),
   };
-}
-
-/**
- * Blockbench's face texture: `null` removes the face (`null` is returned); absent or `false` is a blank face drawn
- * untextured (−1); a number is a texture index, a string a texture uuid.
- */
-function readFaceTexture(face: JsonObject, path: string, context: ConverterContext): number | null {
-  const value = field(face, 'texture');
-  if (value === null) return null;
-  if (value === undefined || value === false) return -1;
-  const texturePath = childPath(path, 'texture');
-  const count = context.textureUvSizes.length;
-  if (typeof value === 'string') {
-    const index = context.textureIds.get(value);
-    if (index === undefined) {
-      throw new BbmodelError('INVALID_FIELD', texturePath, `expected a texture uuid, got ${quoteValue(value)}`);
-    }
-    return index;
-  }
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value >= count) {
-    throw new BbmodelError(
-      'INVALID_FIELD',
-      texturePath,
-      `expected a texture index below ${count}, a texture uuid, null or false, got ${quoteValue(value)}`,
-    );
-  }
-  return value;
 }

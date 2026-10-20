@@ -5,6 +5,10 @@ export interface BbmodelLimits {
   readonly maxElements: number;
   readonly maxGroups: number;
   readonly maxTriangles: number;
+  /** Vertices of the loaded geometry (each face has its own), and keys of one mesh's `vertices`. */
+  readonly maxVertices: number;
+  /** Vertices of one mesh face; larger polygons are triangulated by ear clipping, so this bounds its cost. */
+  readonly maxFaceVertices: number;
   /** Groups nested inside each other. */
   readonly maxNesting: number;
   readonly maxTextures: number;
@@ -22,6 +26,8 @@ export const DEFAULT_BBMODEL_LIMITS: BbmodelLimits = Object.freeze({
   maxElements: 10_000,
   maxGroups: 10_000,
   maxTriangles: 200_000,
+  maxVertices: 400_000,
+  maxFaceVertices: 16,
   maxNesting: 64,
   maxTextures: 64,
   maxTextureSide: 4096,

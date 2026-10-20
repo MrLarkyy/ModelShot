@@ -38,11 +38,13 @@
       "sourceId": "c-base",
       "node": 0,
       "visible": true,
+      "renderOrder": 0,
       "groups": [
         {
           "material": 0,
           "start": 0,
-          "count": 36
+          "count": 36,
+          "doubleSided": true
         }
       ],
       "indices": [0, 3, 2, 0, 2, 1, 4, 7, 6, 4, 6, 5, 8, 11, 10, 8, 10, 9, 12, 15, 14, 12, 14, 13, 16, 19, 18, 16, 18, 17, 20, 23, 22, 20, 22, 21],
@@ -79,11 +81,13 @@
       "sourceId": "c-tip",
       "node": 1,
       "visible": true,
+      "renderOrder": 0,
       "groups": [
         {
           "material": 0,
           "start": 0,
-          "count": 36
+          "count": 36,
+          "doubleSided": true
         }
       ],
       "indices": [0, 3, 2, 0, 2, 1, 4, 7, 6, 4, 6, 5, 8, 11, 10, 8, 10, 9, 12, 15, 14, 12, 14, 13, 16, 19, 18, 16, 18, 17, 20, 23, 22, 20, 22, 21],
@@ -114,12 +118,36 @@
         [0, 8, -1.41421, 0.5, -0.86603, 0, 12, 14, 10, 12, 12, 14],
         [-1.22474, 7.29289, 0, 0.5, -0.86603, 0, 10, 14, 10, 12, 12, 14]
       ]
+    },
+    {
+      "name": "sculpt",
+      "sourceId": "m-sculpt",
+      "node": -1,
+      "visible": true,
+      "renderOrder": 0,
+      "groups": [
+        {
+          "material": 0,
+          "start": 0,
+          "count": 3,
+          "doubleSided": true
+        }
+      ],
+      "indices": [0, 1, 2],
+      "vertexColumns": "x y z nx ny nz u v uMin vMin uMax vMax (uv in texture uv units; untextured: normalised)",
+      "vertices": [
+        [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1],
+        [1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1],
+        [0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1]
+      ]
     }
   ],
   "materials": [
     {
       "name": "tex16.png",
-      "texture": 0
+      "texture": 0,
+      "alphaMode": "blend",
+      "alphaCutoff": 0.01
     }
   ],
   "textures": [
@@ -139,11 +167,6 @@
       "code": "UNSUPPORTED_ELEMENT",
       "path": "$.elements[2]",
       "message": "Unsupported element skipped at $.elements[2]: type \"locator\" is not supported yet"
-    },
-    {
-      "code": "UNSUPPORTED_ELEMENT",
-      "path": "$.elements[3]",
-      "message": "Unsupported element skipped at $.elements[3]: type \"mesh\" is not supported yet"
     }
   ]
 }

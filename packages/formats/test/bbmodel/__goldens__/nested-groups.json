@@ -62,16 +62,19 @@
       "sourceId": "c-hips",
       "node": 0,
       "visible": true,
+      "renderOrder": 0,
       "groups": [
         {
           "material": -1,
           "start": 0,
-          "count": 12
+          "count": 12,
+          "doubleSided": true
         },
         {
           "material": 0,
           "start": 12,
-          "count": 24
+          "count": 24,
+          "doubleSided": true
         }
       ],
       "indices": [0, 3, 2, 0, 2, 1, 4, 7, 6, 4, 6, 5, 8, 11, 10, 8, 10, 9, 12, 15, 14, 12, 14, 13, 16, 19, 18, 16, 18, 17, 20, 23, 22, 20, 22, 21],
@@ -108,11 +111,13 @@
       "sourceId": "c-chest",
       "node": 1,
       "visible": true,
+      "renderOrder": 0,
       "groups": [
         {
           "material": 0,
           "start": 0,
-          "count": 36
+          "count": 36,
+          "doubleSided": true
         }
       ],
       "indices": [0, 3, 2, 0, 2, 1, 4, 7, 6, 4, 6, 5, 8, 11, 10, 8, 10, 9, 12, 15, 14, 12, 14, 13, 16, 19, 18, 16, 18, 17, 20, 23, 22, 20, 22, 21],
@@ -149,11 +154,13 @@
       "sourceId": "c-skull",
       "node": 2,
       "visible": true,
+      "renderOrder": 0,
       "groups": [
         {
           "material": 0,
           "start": 0,
-          "count": 36
+          "count": 36,
+          "doubleSided": true
         }
       ],
       "indices": [0, 3, 2, 0, 2, 1, 4, 7, 6, 4, 6, 5, 8, 11, 10, 8, 10, 9, 12, 15, 14, 12, 14, 13, 16, 19, 18, 16, 18, 17, 20, 23, 22, 20, 22, 21],
@@ -190,11 +197,13 @@
       "sourceId": "c-cloak",
       "node": 3,
       "visible": false,
+      "renderOrder": 0,
       "groups": [
         {
           "material": 0,
           "start": 0,
-          "count": 36
+          "count": 36,
+          "doubleSided": true
         }
       ],
       "indices": [0, 3, 2, 0, 2, 1, 4, 7, 6, 4, 6, 5, 8, 11, 10, 8, 10, 9, 12, 15, 14, 12, 14, 13, 16, 19, 18, 16, 18, 17, 20, 23, 22, 20, 22, 21],
@@ -231,11 +240,13 @@
       "sourceId": "c-loose",
       "node": -1,
       "visible": true,
+      "renderOrder": 0,
       "groups": [
         {
           "material": 0,
           "start": 0,
-          "count": 36
+          "count": 36,
+          "doubleSided": true
         }
       ],
       "indices": [0, 3, 2, 0, 2, 1, 4, 7, 6, 4, 6, 5, 8, 11, 10, 8, 10, 9, 12, 15, 14, 12, 14, 13, 16, 19, 18, 16, 18, 17, 20, 23, 22, 20, 22, 21],
@@ -271,7 +282,9 @@
   "materials": [
     {
       "name": "tex16.png",
-      "texture": 0
+      "texture": 0,
+      "alphaMode": "blend",
+      "alphaCutoff": 0.01
     }
   ],
   "textures": [

@@ -1,6 +1,7 @@
 import { shortenPath } from './quoteValue';
 
-export type BbmodelWarningCode = 'UNSUPPORTED_ELEMENT' | 'MISSING_TEXTURE' | 'UNKNOWN_REFERENCE' | 'SOURCE_NOT_FETCHED';
+export type BbmodelWarningCode =
+  'UNSUPPORTED_ELEMENT' | 'UNSUPPORTED_VALUE' | 'MISSING_TEXTURE' | 'UNKNOWN_REFERENCE' | 'SOURCE_NOT_FETCHED';
 
 /** Something the loader skipped or could not resolve; the model still loads. */
 export interface BbmodelWarning {
@@ -14,6 +15,7 @@ export const MAX_BBMODEL_WARNINGS = 100;
 
 const TITLES: Readonly<Record<BbmodelWarningCode, string>> = {
   UNSUPPORTED_ELEMENT: 'Unsupported element skipped',
+  UNSUPPORTED_VALUE: 'Unsupported value ignored',
   MISSING_TEXTURE: 'Missing texture',
   UNKNOWN_REFERENCE: 'Unknown reference skipped',
   SOURCE_NOT_FETCHED: 'Texture source not fetched',

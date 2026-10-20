@@ -16,6 +16,9 @@ export const FIXTURE_NAMES = [
   'flat-cube',
   'referenced-texture',
   'format5-groups',
+  'mesh-shapes',
+  'mesh-plane',
+  'alpha-plane',
 ] as const;
 
 export type FixtureName = (typeof FIXTURE_NAMES)[number];
@@ -83,4 +86,22 @@ export function cube(extra: Record<string, unknown> = {}): Record<string, unknow
     faces: { north: face, east: face, south: face, west: face, up: face, down: face },
     ...extra,
   };
+}
+
+/** A 1×1 mesh quad in the z = 0 plane facing +Z, one blank face `f`; `extra` replaces keys. */
+export function mesh(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    name: 'mesh',
+    type: 'mesh',
+    uuid: 'c0',
+    origin: [0, 0, 0],
+    vertices: { a: [0, 0, 0], b: [1, 0, 0], c: [1, 1, 0], d: [0, 1, 0] },
+    faces: { f: meshFace(['a', 'b', 'c', 'd']) },
+    ...extra,
+  };
+}
+
+/** A mesh face over `vertices` with uv [0, 0] for each; `extra` replaces keys. */
+export function meshFace(vertices: readonly string[], extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return { vertices, uv: Object.fromEntries(vertices.map((key) => [key, [0, 0]])), ...extra };
 }

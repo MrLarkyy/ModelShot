@@ -8,16 +8,17 @@ import {
 import { faceCornerPositions, faceNormal } from './CubeFace';
 import type { CubeSpec } from './CubeSpec';
 import { faceCornerUvs, faceUvRect } from './faceUv';
+import { compareGroupKey } from './GroupKey';
 
 const NO_TRANSLATION = [0, 0, 0] as const;
 
 /**
  * Four vertices and two triangles per face, the cube's rotation about its origin baked in. Faces are ordered by
- * material so each material is one group. Corners are top-left, top-right, bottom-right, bottom-left seen from
+ * material, then single- before double-sided, so each such pair is one group. Corners are top-left, top-right, bottom-right, bottom-left seen from
  * outside; the triangles (TL, BL, BR) and (TL, BR, TR) are therefore counter-clockwise from outside whatever the UVs.
  */
 export function cubeToMesh(cube: CubeSpec, node: number): SceneMesh {
-  const faces = [...cube.faces].sort((a, b) => a.material - b.material);
+  const faces = [...cube.faces].sort(compareGroupKey);
   const vertexCount = faces.length * 4;
   const positions = new Float32Array(vertexCount * 3);
   const normals = new Float32Array(vertexCount * 3);
@@ -44,8 +45,9 @@ export function cubeToMesh(cube: CubeSpec, node: number): SceneMesh {
     const base = f * 4;
     indices.set([base, base + 3, base + 2, base, base + 2, base + 1], f * 6);
     const last = groups[groups.length - 1];
-    if (last && last.material === face.material) groups[groups.length - 1] = { ...last, count: last.count + 6 };
-    else groups.push({ material: face.material, start: f * 6, count: 6 });
+    if (last && last.material === face.material && last.doubleSided === face.doubleSided) {
+      groups[groups.length - 1] = { ...last, count: last.count + 6 };
+    } else groups.push({ material: face.material, start: f * 6, count: 6, doubleSided: face.doubleSided });
   });
 
   return {
@@ -53,6 +55,7 @@ export function cubeToMesh(cube: CubeSpec, node: number): SceneMesh {
     sourceId: cube.sourceId,
     node,
     visible: cube.visible,
+    renderOrder: cube.renderOrder,
     positions,
     normals,
     uvs,

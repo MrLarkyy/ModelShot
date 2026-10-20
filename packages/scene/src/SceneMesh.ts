@@ -3,6 +3,11 @@ export interface SceneMeshGroup {
   readonly material: number;
   readonly start: number;
   readonly count: number;
+  /**
+   * Absent or `false`: only the front (counter-clockwise) side is seen by camera rays. `true`: the back shows the same
+   * texels, mirrored as seen from behind, with the normal flipped toward the viewer or ray.
+   */
+  readonly doubleSided?: boolean;
 }
 
 /**
@@ -17,6 +22,11 @@ export interface SceneMesh {
   readonly node: number;
   /** `false` hides this mesh. */
   readonly visible: boolean;
+  /**
+   * Integer, absent: 0. Only breaks ties between surfaces at the same depth or hit distance (the higher wins); it never
+   * shows a surface through a nearer opaque one.
+   */
+  readonly renderOrder?: number;
   /** 3 floats per vertex. */
   readonly positions: Float32Array;
   /** 3 floats per vertex, unit length. */

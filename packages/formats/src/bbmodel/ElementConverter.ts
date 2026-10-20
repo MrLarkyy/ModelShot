@@ -1,4 +1,5 @@
 import type { SceneMesh } from '@modelshot/scene';
+import type { BbmodelWarningList } from './BbmodelWarning';
 import type { JsonObject } from './JsonFields';
 import type { UvSize } from './parseTextures';
 
@@ -8,6 +9,10 @@ export interface ConverterContext {
   readonly textureUvSizes: readonly UvSize[];
   /** Texture index by texture uuid, for faces that name their texture by uuid. */
   readonly textureIds: ReadonlyMap<string, number>;
+  /** Whether faces with each texture show their back (texture `render_sides` resolved for the model format). */
+  readonly textureDoubleSided: readonly boolean[];
+  /** Whether untextured faces show their back (the model format's rule). */
+  readonly untexturedDoubleSided: boolean;
   /** Project UV size, used for faces without a texture. */
   readonly resolution: UvSize;
   /** Project-wide box UV (`meta.box_uv`); an element may override it. */
@@ -15,11 +20,17 @@ export interface ConverterContext {
   /** Box-UV sizes are not floored (Blockbench `box_uv_float_size`, only `modded_entity`). */
   readonly boxUvFloatSize: boolean;
   readonly maxStringChars: number;
+  readonly maxVertices: number;
+  readonly maxFaceVertices: number;
+  readonly warnings: BbmodelWarningList;
 }
 
 /** A validated element, ready to become a mesh; holds no buffers yet. */
 export interface PreparedElement {
+  /** Upper bound of the triangles `build` produces. */
   readonly triangleCount: number;
+  /** Upper bound of the vertices `build` produces. */
+  readonly vertexCount: number;
   build(node: number): SceneMesh;
 }
 

@@ -1,13 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cubeToMesh } from '../../src/bbmodel/cubeToMesh';
+import { meshElementToMesh } from '../../src/bbmodel/meshToMesh';
 import { decodeDataUri } from '../../src/dataUri/decodeDataUri';
 import { BbmodelError, loadBbmodel, type BbmodelErrorCode, type BbmodelLoadOptions } from '../../src/index';
-import { cube, model, pngDataUri } from './fixtures';
+import { cube, mesh, meshFace, model, pngDataUri } from './fixtures';
 
 // Spies on the two places that allocate buffers proportional to the input: geometry and texture bytes.
 vi.mock('../../src/bbmodel/cubeToMesh', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../src/bbmodel/cubeToMesh')>();
   return { cubeToMesh: vi.fn(original.cubeToMesh) };
+});
+vi.mock('../../src/bbmodel/meshToMesh', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../src/bbmodel/meshToMesh')>();
+  return { meshElementToMesh: vi.fn(original.meshElementToMesh) };
 });
 vi.mock('../../src/dataUri/decodeDataUri', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../src/dataUri/decodeDataUri')>();
@@ -56,6 +61,7 @@ function nestedGroupsJson(depth: number): string {
 
 beforeEach(() => {
   vi.mocked(cubeToMesh).mockClear();
+  vi.mocked(meshElementToMesh).mockClear();
   vi.mocked(decodeDataUri).mockClear();
 });
 
@@ -360,3 +366,185 @@ function error65Path(): string {
 function atobBytes(dataUri: string): Uint8Array {
   return Uint8Array.from(atob(dataUri.slice(dataUri.indexOf(',') + 1)), (c) => c.charCodeAt(0));
 }
+
+/** A model with one mesh element; `extra` replaces the mesh's keys. */
+function meshModel(extra: Record<string, unknown>, textures: unknown[] = []): string {
+  return json(model({ elements: [mesh(extra)], textures }));
+}
+
+/** `count` vertices on a circle (a convex polygon) as keys v0…, and one face listing all of them. */
+function polygonMesh(count: number): Record<string, unknown> {
+  const keys = Array.from({ length: count }, (_, i) => `v${i}`);
+  const vertices = Object.fromEntries(
+    keys.map((key, i) => [key, [Math.cos((2 * Math.PI * i) / count), Math.sin((2 * Math.PI * i) / count), 0]]),
+  );
+  return { vertices, faces: { f: meshFace(keys) } };
+}
+
+describe('hostile meshes fail fast with a coded error', () => {
+  const tri = ['a', 'b', 'c'];
+  it.each<[string, string, BbmodelErrorCode, string]>([
+    ['vertices not an object', meshModel({ vertices: [[0, 0, 0]] }), 'INVALID_FIELD', '$.elements[0].vertices'],
+    ['vertices missing', meshModel({ vertices: undefined }), 'INVALID_FIELD', '$.elements[0].vertices'],
+    ['faces not an object', meshModel({ faces: 'none' }), 'INVALID_FIELD', '$.elements[0].faces'],
+    ['vertex with 2 components', meshModel({ vertices: { a: [0, 0] } }), 'INVALID_FIELD', '$.elements[0].vertices.a'],
+    [
+      'vertex NaN as a string',
+      meshModel({ vertices: { a: ['NaN', 0, 0] } }),
+      'INVALID_FIELD',
+      '$.elements[0].vertices.a[0]',
+    ],
+    [
+      'vertex 1e400',
+      '{"meta":{"format_version":"4.5"},"elements":[{"type":"mesh","vertices":{"a":[1e400,0,0]},"faces":{}}]}',
+      'INVALID_FIELD',
+      '$.elements[0].vertices.a[0]',
+    ],
+    [
+      'vertex out of range',
+      meshModel({ vertices: { a: [0, 1e8, 0] } }),
+      'INVALID_FIELD',
+      '$.elements[0].vertices.a[1]',
+    ],
+    [
+      'face vertices not an array',
+      meshModel({ faces: { f: { vertices: 'abc', uv: {} } } }),
+      'INVALID_FIELD',
+      '$.elements[0].faces.f.vertices',
+    ],
+    [
+      'unknown vertex key',
+      meshModel({ faces: { f: meshFace(['a', 'b', 'zz']) } }),
+      'INVALID_FIELD',
+      '$.elements[0].faces.f.vertices[2]',
+    ],
+    [
+      'vertex ref not a string',
+      meshModel({ faces: { f: { vertices: ['a', 'b', 3], uv: {} } } }),
+      'INVALID_FIELD',
+      '$.elements[0].faces.f.vertices[2]',
+    ],
+    [
+      'repeated vertex key',
+      meshModel({ faces: { f: meshFace(['a', 'b', 'a', 'c']) } }),
+      'INVALID_FIELD',
+      '$.elements[0].faces.f.vertices[2]',
+    ],
+    ['uv missing', meshModel({ faces: { f: { vertices: tri } } }), 'INVALID_FIELD', '$.elements[0].faces.f.uv'],
+    [
+      'uv entry missing',
+      meshModel({ faces: { f: { vertices: tri, uv: { a: [0, 0], b: [0, 0] } } } }),
+      'INVALID_FIELD',
+      '$.elements[0].faces.f.uv.c',
+    ],
+    [
+      'uv entry not 2 numbers',
+      meshModel({ faces: { f: { vertices: tri, uv: { a: [0, 0, 0], b: [0, 0], c: [0, 0] } } } }),
+      'INVALID_FIELD',
+      '$.elements[0].faces.f.uv.a',
+    ],
+    [
+      'texture index 99',
+      meshModel({ faces: { f: meshFace(tri, { texture: 99 }) } }),
+      'INVALID_FIELD',
+      '$.elements[0].faces.f.texture',
+    ],
+    [
+      'unknown texture uuid',
+      meshModel({ faces: { f: meshFace(tri, { texture: 'nope' }) } }, [{ name: 't', uuid: 't-0' }]),
+      'INVALID_FIELD',
+      '$.elements[0].faces.f.texture',
+    ],
+    ['render_order a number', meshModel({ render_order: 1 }), 'INVALID_FIELD', '$.elements[0].render_order'],
+    [
+      'render_order of a cube an object',
+      json(model({ elements: [cube({ render_order: {} })] })),
+      'INVALID_FIELD',
+      '$.elements[0].render_order',
+    ],
+    [
+      'render_sides a boolean',
+      json(model({ textures: [{ name: 't', render_sides: true }] })),
+      'INVALID_FIELD',
+      '$.textures[0].render_sides',
+    ],
+    [
+      'a vertex key over maxStringChars',
+      meshModel({ vertices: { [LONG.repeat(30)]: [0, 0, 0] } }),
+      'INVALID_FIELD',
+      '$.elements[0].vertices',
+    ],
+  ])('%s', (_name, input, code, path) => {
+    expectFailure(input, code, path);
+    expect(meshElementToMesh).not.toHaveBeenCalled();
+  });
+
+  it('a face of 16 vertices loads, 17 is TOO_MANY_VERTICES before any geometry', () => {
+    expect(loadBbmodel(meshModel(polygonMesh(16))).scene.meshes[0]?.indices).toHaveLength(14 * 3);
+    vi.mocked(meshElementToMesh).mockClear();
+    const error = expectFailure(meshModel(polygonMesh(17)), 'TOO_MANY_VERTICES', '$.elements[0].faces.f.vertices');
+    expect(error.message).toContain('16');
+    expect(meshElementToMesh).not.toHaveBeenCalled();
+  });
+
+  it('more vertex keys than maxVertices fails before the vertex table is built, at the exact limit', () => {
+    const element = polygonMesh(6);
+    expect(() => loadBbmodel(meshModel(element), { limits: { maxVertices: 6 } })).not.toThrow();
+    vi.mocked(meshElementToMesh).mockClear();
+    expectFailure(meshModel(element), 'TOO_MANY_VERTICES', '$.elements[0].vertices', { limits: { maxVertices: 5 } });
+    expect(meshElementToMesh).not.toHaveBeenCalled();
+  });
+
+  it('face vertices (each face has its own) over maxVertices fail at the face that crosses the limit', () => {
+    const vertices = { a: [0, 0, 0], b: [1, 0, 0], c: [0, 1, 0] };
+    const faces = { f1: meshFace(['a', 'b', 'c']), f2: meshFace(['c', 'b', 'a']) };
+    expect(() => loadBbmodel(meshModel({ vertices, faces }), { limits: { maxVertices: 6 } })).not.toThrow();
+    expectFailure(meshModel({ vertices, faces }), 'TOO_MANY_VERTICES', '$.elements[0].faces.f2', {
+      limits: { maxVertices: 5 },
+    });
+  });
+
+  it('the vertex total over all elements is checked before any geometry or texture is built', () => {
+    const elements = [cube(), cube({ uuid: 'c1' }), mesh({ uuid: 'm0' })];
+    const text = json(model({ elements, outliner: [], textures: [{ source: pngDataUri(16, 16) }] }));
+    expect(() => loadBbmodel(text, { limits: { maxVertices: 52 } })).not.toThrow();
+    vi.mocked(cubeToMesh).mockClear();
+    vi.mocked(meshElementToMesh).mockClear();
+    vi.mocked(decodeDataUri).mockClear();
+    expectFailure(text, 'TOO_MANY_VERTICES', '$.elements[2]', { limits: { maxVertices: 51 } });
+    expect(cubeToMesh).not.toHaveBeenCalled();
+    expect(meshElementToMesh).not.toHaveBeenCalled();
+    expect(decodeDataUri).not.toHaveBeenCalled();
+  });
+
+  it('triangles are counted from the k − 2 bound before any geometry is built', () => {
+    // A collinear 16-gon makes no triangles, but its bound of 14 still counts.
+    const keys = Array.from({ length: 16 }, (_, i) => `v${i}`);
+    const vertices = Object.fromEntries(keys.map((key, i) => [key, [i, 0, 0]]));
+    const text = meshModel({ vertices, faces: { f: meshFace(keys) } });
+    expect(loadBbmodel(text, { limits: { maxTriangles: 14 } }).scene.meshes[0]?.indices).toHaveLength(0);
+    vi.mocked(meshElementToMesh).mockClear();
+    expectFailure(text, 'TOO_MANY_TRIANGLES', '$.elements[0]', { limits: { maxTriangles: 13 } });
+    expect(meshElementToMesh).not.toHaveBeenCalled();
+  });
+});
+
+describe('hostile mesh content is inert', () => {
+  it('__proto__ and constructor as vertex and face keys are plain keys', () => {
+    const uv = '"uv":{"__proto__":[0,0],"constructor":[1,0],"toString":[0,1]}';
+    const text =
+      '{"meta":{"format_version":"4.5"},"elements":[{"type":"mesh","uuid":"m",' +
+      '"vertices":{"__proto__":[0,0,0],"constructor":[1,0,0],"toString":[0,1,0]},' +
+      `"faces":{"__proto__":{"vertices":["__proto__","constructor","toString"],${uv}},` +
+      `"constructor":{"vertices":["toString","constructor","__proto__"],${uv}}}}]}`;
+    const { scene } = loadBbmodel(text);
+    expect(scene.meshes[0]?.indices).toHaveLength(6);
+    expect(Object.prototype).not.toHaveProperty('polluted');
+    expect(({} as Record<string, unknown>).constructor).toBe(Object);
+  });
+
+  it('a vertex ref naming an Object member that the file does not define is unknown', () => {
+    const faces = { f: meshFace(['a', 'b', 'hasOwnProperty']) };
+    expectFailure(meshModel({ faces }), 'INVALID_FIELD', '$.elements[0].faces.f.vertices[2]');
+  });
+});

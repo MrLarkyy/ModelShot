@@ -94,4 +94,17 @@ describe('texel-exact UVs', () => {
       [5, 7, 41, 47].forEach((x, k) => expect(Math.abs((stored[k] ?? NaN) - x / 48)).toBeLessThanOrEqual(1e-7));
     }
   });
+
+  it.each<FixtureName>(['mesh-plane', 'alpha-plane'])(
+    '%s: mesh UV corners land exactly on texel edges of the 16×16 UV space',
+    (name) => {
+      const { scene } = loadBbmodel(fixture(name));
+      for (const mesh of scene.meshes) {
+        for (const value of [...mesh.uvs, ...mesh.uvRects]) {
+          expect(Number.isInteger(value * 16)).toBe(true);
+          expect(value >= 0 && value <= 1).toBe(true);
+        }
+      }
+    },
+  );
 });
