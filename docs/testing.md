@@ -55,12 +55,24 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
 - Goldens: `rt-turntable-y000`, `-y030`, `-y060`, `-y090` (perspective 35°, pitch 20°), `rt-iso` (orthographic
   isometric), `rt-closeup` (half the fit distance, atlas texels about 28 px), `rt-far` (three times the fit
   distance, brick texels about 0.45 px), `rt-fallback` (no-float path), `rt-fit-flat-cube` (frame-to-fit of a plate
-  with zero height). Default tolerance.
+  with zero height), `rt-gltf-nodes-y030` and `rt-obj-shapes-y030` (perspective 35°, pitch 20°, yaw 30°: the glTF
+  and OBJ loader fixtures, below). Default tolerance.
 - Bleeding: no turntable frame has a pixel whose red and blue both exceed green by more than 24 levels (the magenta
-  sentinel after lighting and AgX). Without the face-rectangle clamp the 0° frame has 441 such pixels.
+  sentinel after lighting and AgX). Without the face-rectangle clamp the 0° frame has 441 such pixels. The same holds
+  for `gltf-nodes` at yaw 0°, 30°, 60°, 90°, 180° and 270°; with every UV rectangle widened to the whole image its 0°
+  frame has 179 such pixels (MS-13). Its fixture colours are chosen so that no edge pixel mixing two of them leans
+  magenta.
+- Loader fixtures (MS-13): scene `gltf-nodes` is `packages/formats/test/fixtures/gltf/scene-nodes.gltf` through
+  `loadGltf` (a node hierarchy with TRS, quaternion, non-uniform scale, a matrix node and a mirrored node, a cube
+  instanced twice on an atlas with magenta sentinel rings, a `MASK` cut-out plane, a 50 % `BLEND` plane, a
+  double-sided plane, factor-only colours, a `KHR_texture_transform` panel on `TEXCOORD_1` and a triangle strip);
+  scene `obj-shapes` is `fixtures/obj/shapes.obj` with its `.mtl` and PNG through `loadObj` (quads, a concave star
+  from negative indices, faces without `vn` or `vt`, a `map_Kd` cut-out, `Kd` only, `d 0.5`). Both are static
+  imports, CC0, `LICENSE` next to them. The path-tracer fixture can pair goldens with these scenes.
 - Shimmer: between yaw 30° and 30.25°, the share of pixels changing by more than 64 levels must be at most half of
   the same share with nearest sampling (`aa=0`), in the `far` and `closeup` framings.
-- Order independence: reversing the mesh order gives a byte-identical image on the float path and on the fallback.
+- Order independence: reversing the mesh order gives a byte-identical image on the float path and on the fallback,
+  for the showcase and for `gltf-nodes`.
 - A cut-out texel over the backdrop shows exactly the backdrop colour.
 - Context loss through `WEBGL_lose_context`: the image after the restore matches `rt-turntable-y030`, without a
   reload or a page error.
@@ -124,8 +136,9 @@ after a time. Random numbers come from a seeded integer hash, never `Math.random
 
 ## Model-view fixture
 
-`fixtures/model-view.html?variant=<name>` renders a real loader result (`loadBbmodel` on a formats test fixture,
-imported statically; the URL only picks one of the variants below, looked up as an own key) with one fixed camera,
+`fixtures/model-view.html?variant=<name>` renders a real loader result (`loadBbmodel` or `loadGltf` on a formats test
+fixture, imported statically in `fixtures/src/modelViewScenes.ts`; the URL only picks one of the variants below,
+looked up as an own key) with one fixed camera,
 light and look (`fixtures/src/modelViewCamera.ts`), in two independent ways that read the same material table and
 shading include:
 
@@ -163,6 +176,8 @@ hold fails with a clear error.
 | `mesh-shapes-raycast`  | `mesh-shapes-raycast.png`  | golden; pair                                                                                     |
 | `render-order-raster`  | `render-order-raster.png`  | golden; render-order probes; pair                                                                |
 | `render-order-raycast` | `render-order-raycast.png` | golden; render-order probes; pair                                                                |
+| `gltf-nodes-raster`    | `gltf-nodes-raster.png`    | golden (glTF hierarchy, baked transforms, factor textures); `MASK` probes; pair                  |
+| `gltf-nodes-raycast`   | `gltf-nodes-raycast.png`   | golden; `MASK` probes; pair                                                                      |
 
 The page publishes `probes`: pixels of chosen texels of the cutout plane (and of their shadows on the ground,
 following the light ray) and of the plane seen from behind, with the texel colour. `modelView.spec.ts` checks that the
@@ -173,6 +188,11 @@ opaque texel of it shadows it. In `render-order`, two pairs of coincident quads 
 their depths differ by rounding only) show the higher order's texel: `in_front` over `default`, `default` over
 `behind`; two more pairs face the eye with the `in_front` quad farther along the view by 2 × and 0.5 ×
 `RENDER_ORDER_TIE_DISTANCE`: at 2 × the nearer `default` quad shows, at 0.5 × the `in_front` one.
+
+`gltf-nodes` is `scene-nodes.gltf` loaded with `unitScale: 8` (half the default, so the whole model fits the fixed
+camera) and its 50 % glass plane hidden: a partially transparent texel is only rejected under a blended material
+that a visible mesh draws. Its probes are the top row of the `MASK` cut-out plane: the opaque red texel shows the plane
+and shadows the ground (a generated 1×1 factor texture), the hole shows and lights it.
 
 Shadow receivers: both renderers move the receiving point `SHADOW_NORMAL_OFFSET` (1.5 shadow-map texels, 0.094
 units) along its geometric normal toward the viewer before testing the light (shadow-map lookup or shadow-ray
@@ -190,6 +210,7 @@ deterministic, same on re-runs), differing pixels of 65 536:
 | `alpha-plane`  | 115, 0.00175, 0.119                 | 0.0025, 0.25                          |
 | `mesh-shapes`  | 50, 0.00076, 0.046                  | 0.001, 0.07                           |
 | `render-order` | 40, 0.00061, 0.040                  | 0.0008, 0.06                          |
+| `gltf-nodes`   | 57, 0.00087, 0.050                  | 0.0011, 0.08                          |
 
 The differing pixels are isolated: pixels whose centre lies within a rounding error of a silhouette, of a shadow edge
 (shadow-map texels against exact shadow rays; the longest is the straight edge of the arch's shadow on the checker

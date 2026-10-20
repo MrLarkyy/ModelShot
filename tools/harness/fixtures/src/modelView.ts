@@ -1,25 +1,15 @@
-import { loadBbmodel } from '@modelshot/formats';
-import alphaPlaneSource from '../../../../packages/formats/test/fixtures/bbmodel/alpha-plane.bbmodel?raw';
-import meshShapesSource from '../../../../packages/formats/test/fixtures/bbmodel/mesh-shapes.bbmodel?raw';
-import renderOrderSource from '../../../../packages/formats/test/fixtures/bbmodel/render-order.bbmodel?raw';
 import { createContext, readDrawingBufferBase64 } from './context';
 import type { MsFixture } from './fixtureApi';
 import { computeProbes, type ProbeRequest } from './modelProbes';
 import { renderRaster } from './modelRaster';
 import { renderRaycast } from './modelRaycast';
 import { cameraViewProjection } from './modelViewCamera';
+import { modelViewScene } from './modelViewScenes';
 import { parseModelViewVariant, type ModelViewModel } from './modelViewVariant';
 import { sceneTriangles } from './sceneTriangles';
 import { uploadTextures } from './sceneUpload';
 
 const SIZE = 256;
-
-// Static imports only: the page never loads a model named by the URL.
-const MODELS: Readonly<Record<ModelViewModel, string>> = {
-  'alpha-plane': alphaPlaneSource,
-  'mesh-shapes': meshShapesSource,
-  'render-order': renderOrderSource,
-};
 
 // Block centres of cutout.png (4×4-texel blocks, holes where bx + by is odd, red left half): on the bottom row of the
 // cutout plane, in front of the ground, block (1, 3) is red and block (0, 3) a hole; on the back plane, block (0, 0)
@@ -48,6 +38,13 @@ const PROBES: Readonly<Record<ModelViewModel, readonly ProbeRequest[]>> = {
     { name: 'tie-near', mesh: 'tie-near', uv: [3.5, 1.5] },
     { name: 'tie-far-in-front', mesh: 'tie-far-in-front', uv: [3.5, 1.5] },
   ],
+  // Top row of the glTF cutout plane (MASK): block (0, 0) of cutout.png is opaque red, block (1, 0) a hole.
+  'gltf-nodes': [
+    { name: 'opaque-texel', mesh: 'cutout-plane', uv: [1, 1] },
+    { name: 'transparent-texel', mesh: 'cutout-plane', uv: [3, 1] },
+    { name: 'shadow-of-opaque-texel', mesh: 'cutout-plane', uv: [1, 1], groundY: 0 },
+    { name: 'shadow-of-transparent-texel', mesh: 'cutout-plane', uv: [3, 1], groundY: 0 },
+  ],
 };
 
 const api: MsFixture = {
@@ -69,7 +66,7 @@ async function start(): Promise<void> {
   const { gl } = ctx;
   api.renderer = ctx.renderer;
   api.floatRenderTargets = ctx.floatRenderTargets;
-  const { scene } = loadBbmodel(MODELS[variant.model]);
+  const scene = modelViewScene(variant.model);
   const textures = await uploadTextures(gl, scene);
   const triangles = sceneTriangles(scene);
   if (variant.mode === 'raster') renderRaster(gl, triangles, textures, SIZE);

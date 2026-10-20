@@ -23,6 +23,8 @@ const GOLDENS = [
   spec('far', 'far'),
   spec('fallback', 'fallback'),
   spec('fit-flat-cube', 'fit-flat-cube'),
+  spec('gltf-nodes-y030', 'gltf-nodes-y030'),
+  spec('obj-shapes-y030', 'obj-shapes-y030'),
 ];
 
 interface Image {
@@ -176,6 +178,21 @@ test('partial alpha does not depend on draw order (float path and fallback)', as
       const reversed = await render(page, `variant=turntable-y030&yaw=${yaw}&reverse=1${extra}`);
       expect(reversed.png.equals(forward.png), `yaw ${yaw}${extra}`).toBe(true);
     }
+  }
+});
+
+test('glTF scene: no frame shows an atlas texel from outside its face region', async ({ page }) => {
+  for (const yaw of [0, 30, 60, 90, 180, 270]) {
+    const { image } = await render(page, `variant=gltf-nodes-y030&yaw=${yaw}`);
+    expect(sentinelPixels(image), `gltf-nodes yaw ${yaw}`).toBe(0);
+  }
+});
+
+test('glTF scene: partial alpha does not depend on draw order (float path and fallback)', async ({ page }) => {
+  for (const extra of ['', '&fallback=1']) {
+    const forward = await render(page, `variant=gltf-nodes-y030${extra}`);
+    const reversed = await render(page, `variant=gltf-nodes-y030&reverse=1${extra}`);
+    expect(reversed.png.equals(forward.png), `gltf-nodes${extra}`).toBe(true);
   }
 });
 
