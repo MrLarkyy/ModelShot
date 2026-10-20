@@ -28,7 +28,19 @@ describe('flattenScene', () => {
     expect(Array.from(flat.doubleSided)).toEqual([1, 0]);
     expect(Array.from(flat.renderOrders)).toEqual([-1, 0]);
     expect(Array.from(flat.uvs.subarray(0, 6))).toEqual([0, 0, 1, 0, 0, 1]);
+    expect(Array.from(flat.sources)).toEqual([0, 0, 1, 0]);
     expect(flat.skipped).toBe(0);
+  });
+
+  it('names the mesh and first index of every kept triangle, skipped ones left out', () => {
+    const doc = sceneOf([
+      triangleMesh([...TRI, 5, 5, 5, 5, 5, 5, 5, 5, 5, ...TRI]),
+      triangleMesh(TRI, { visible: false }),
+      triangleMesh([...TRI, ...TRI]),
+    ]);
+    const flat = flattenScene(doc);
+    expect(flat.count).toBe(4);
+    expect(Array.from(flat.sources)).toEqual([0, 0, 0, 6, 2, 0, 2, 3]);
   });
 
   it('leaves out hidden meshes and meshes under a hidden node', () => {
