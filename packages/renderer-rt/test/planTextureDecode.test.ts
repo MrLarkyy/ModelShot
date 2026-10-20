@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { planTextureDecode } from '../src/index';
-import { hasPartialAlpha } from '../src/textureUpload';
 import { pngHeaderSize } from '../src/pngHeaderSize';
 import { pngHeader, testTexture } from './testScene';
 
@@ -69,13 +68,5 @@ describe('pngHeaderSize', () => {
     const larger = new Uint8Array(40);
     larger.set(pngHeader(5, 6), 8);
     expect(pngHeaderSize(larger.subarray(8))).toEqual({ width: 5, height: 6 });
-  });
-});
-
-describe('hasPartialAlpha', () => {
-  it('finds alpha strictly between cutout and opaque', () => {
-    expect(hasPartialAlpha(new Uint8Array([9, 9, 9, 0, 9, 9, 9, 255]))).toBe(false);
-    expect(hasPartialAlpha(new Uint8Array([9, 9, 9, 255, 9, 9, 9, 1]))).toBe(true);
-    expect(hasPartialAlpha(new Uint8Array([9, 9, 9, 254]))).toBe(true);
   });
 });

@@ -1,7 +1,22 @@
-import { meshVisible, nodeVisibility, type SceneDocument, type SceneMesh, type SceneMeshGroup } from '@modelshot/scene';
+import { ALPHA_MODE_ID, alphaCutoffByte, type AlphaModeId } from '@modelshot/looks';
+import {
+  meshVisible,
+  nodeVisibility,
+  resolveMaterialAlpha,
+  type SceneDocument,
+  type SceneMesh,
+  type SceneMeshGroup,
+} from '@modelshot/scene';
+
+/** A material's alpha rule as the shaders take it (texelAlpha): mode id and cutoff byte. */
+export interface BatchAlpha {
+  readonly modeId: AlphaModeId;
+  readonly cutoffByte: number;
+}
 
 /**
- * The visible triangles of one node drawn with one texture, merged into a single vertex and index buffer. Every
+ * The visible triangles of one node drawn with one texture, alpha rule, sidedness and render order, merged into a
+ * single vertex and index buffer. Every
  * vertex keeps its own UV rectangle, so merging changes nothing per texel; it only turns a model with one mesh per
  * element (thousands for a large Blockbench model) into a few draw calls.
  */
@@ -10,6 +25,10 @@ export interface SceneBatch {
   readonly node: number;
   /** Index into `SceneDocument.textures`, −1 for untextured faces. */
   readonly texture: number;
+  /** Untextured faces and materials without an alpha mode are opaque (`resolveMaterialAlpha`). */
+  readonly alpha: BatchAlpha;
+  readonly doubleSided: boolean;
+  readonly renderOrder: number;
   readonly positions: Float32Array;
   readonly normals: Float32Array;
   readonly uvs: Float32Array;
@@ -26,7 +45,21 @@ function textureOf(doc: SceneDocument, group: SceneMeshGroup): number {
   return group.material >= 0 ? (doc.materials[group.material]?.texture ?? -1) : -1;
 }
 
-function merge(node: number, texture: number, parts: readonly Part[]): SceneBatch {
+interface BatchKey {
+  readonly node: number;
+  readonly texture: number;
+  readonly alpha: BatchAlpha;
+  readonly doubleSided: boolean;
+  readonly renderOrder: number;
+}
+
+function alphaOf(doc: SceneDocument, group: SceneMeshGroup, texture: number): BatchAlpha {
+  if (texture < 0) return { modeId: ALPHA_MODE_ID.opaque, cutoffByte: 0 };
+  const rule = resolveMaterialAlpha(doc.materials[group.material]);
+  return { modeId: ALPHA_MODE_ID[rule.mode], cutoffByte: alphaCutoffByte(rule.cutoff) };
+}
+
+function merge(key: BatchKey, parts: readonly Part[]): SceneBatch {
   const bases = new Map<SceneMesh, number>();
   let vertices = 0;
   let indexCount = 0;
@@ -38,8 +71,7 @@ function merge(node: number, texture: number, parts: readonly Part[]): SceneBatc
     indexCount += group.count;
   }
   const batch = {
-    node,
-    texture,
+    ...key,
     positions: new Float32Array(vertices * 3),
     normals: new Float32Array(vertices * 3),
     uvs: new Float32Array(vertices * 2),
@@ -63,26 +95,35 @@ function merge(node: number, texture: number, parts: readonly Part[]): SceneBatc
 }
 
 /**
- * Groups the visible triangles of a validated document by (node, texture), in order of first appearance; within a
- * batch triangles keep the document's mesh and group order.
+ * Groups the visible triangles of a validated document by (node, texture, alpha mode, cutoff byte, sidedness, render
+ * order), in order of first appearance; within a batch triangles keep the document's mesh and group order.
  */
 export function batchScene(doc: SceneDocument): SceneBatch[] {
   const visibility = nodeVisibility(doc);
-  const parts = new Map<string, { node: number; texture: number; parts: Part[] }>();
+  const parts = new Map<string, { key: BatchKey; parts: Part[] }>();
   doc.meshes.forEach((mesh, index) => {
     if (!meshVisible(doc, index, visibility) || mesh.indices.length === 0) return;
     const groups = mesh.groups.length > 0 ? mesh.groups : [{ material: -1, start: 0, count: mesh.indices.length }];
     for (const group of groups) {
       if (group.count === 0) continue;
       const texture = textureOf(doc, group);
-      const key = `${mesh.node}:${texture}`;
-      let entry = parts.get(key);
+      const key: BatchKey = {
+        node: mesh.node,
+        texture,
+        alpha: alphaOf(doc, group, texture),
+        doubleSided: group.doubleSided ?? false,
+        renderOrder: mesh.renderOrder ?? 0,
+      };
+      const id = [key.node, key.texture, key.alpha.modeId, key.alpha.cutoffByte, key.doubleSided, key.renderOrder].join(
+        ':',
+      );
+      let entry = parts.get(id);
       if (!entry) {
-        entry = { node: mesh.node, texture, parts: [] };
-        parts.set(key, entry);
+        entry = { key, parts: [] };
+        parts.set(id, entry);
       }
       entry.parts.push({ mesh, group });
     }
   });
-  return [...parts.values()].map((entry) => merge(entry.node, entry.texture, entry.parts));
+  return [...parts.values()].map((entry) => merge(entry.key, entry.parts));
 }

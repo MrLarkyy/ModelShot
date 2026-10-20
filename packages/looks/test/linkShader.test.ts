@@ -55,7 +55,7 @@ describe('linkShader', () => {
   it('links the shared look chunks', () => {
     const out = linkShader('#version 300 es\n#include "agx"\n#include "texelAlpha"', lookShaderChunks);
     expect(out).toContain('vec3 agxToneMap(vec3 linearColor)');
-    expect(out).toContain('bool texelIsPartial(float alpha)');
+    expect(out).toContain('int texelCoverage(float alpha, int mode, int cutoffByte)');
     expect(out.indexOf('#version')).toBe(0);
   });
 });

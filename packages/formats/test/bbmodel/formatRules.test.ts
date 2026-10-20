@@ -175,6 +175,17 @@ describe('texture render_sides (Blockbench Canvas.getRenderSide)', () => {
       { material: 0, start: 0, count: 12, doubleSided: false },
     ]);
   });
+
+  it('a lone face on a zero-thickness axis keeps its texture sidedness (a pane seen from behind)', () => {
+    const face = { uv: [0, 0, 4, 4], texture: 0 };
+    const text = json(
+      model({
+        textures: [{ name: 't', render_sides: 'double' }],
+        elements: [cube({ from: [0, 0, 0], to: [4, 4, 0], faces: { north: { ...face, texture: null }, south: face } })],
+      }),
+    );
+    expect(loadBbmodel(text).scene.meshes[0]?.groups).toEqual([{ material: 0, start: 0, count: 6, doubleSided: true }]);
+  });
 });
 
 describe('element render_order (Blockbench updateRenderOrder)', () => {

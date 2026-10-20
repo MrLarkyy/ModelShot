@@ -5,9 +5,12 @@ precision highp int;
 #include "texelSample"
 #include "texelAlpha"
 #include "shading"
+#include "depthKey"
 
 uniform sampler2D u_texture;
 uniform bool u_texelAntialias;
+uniform int u_alphaMode;
+uniform int u_alphaCutoffByte;
 
 in vec3 v_normal;
 in vec2 v_uv;
@@ -31,12 +34,13 @@ float toHalf(float v) {
 
 // Weighted blended order-independent transparency (McGuire and Bavoil 2013, equation 10) for partial texels.
 void main() {
-  TexelSample s = sampleTexels(u_texture, v_uv, v_uvRect, u_texelAntialias);
-  if (!texelIsPartial(s.nearestAlpha)) discard;
+  TexelSample s = sampleTexels(u_texture, v_uv, v_uvRect, u_texelAntialias, u_alphaMode, u_alphaCutoffByte);
+  if (s.coverage != COVERAGE_PARTIAL) discard;
   float alpha = 1.0 - toHalf(1.0 - s.nearestAlpha);
   vec3 color = shadeSurface(sampleColor(s), surfaceNormal(v_normal));
   float d = 1.0 - gl_FragCoord.z;
   float weight = alpha * clamp(3.0e3 * d * d * d, 1.0e-2, 3.0e3);
   outAccum = vec4(toHalf(color * weight * alpha), alpha);
   outWeight = vec4(toHalf(weight * alpha), 0.0, 0.0, alpha);
+  writeDepthKey();
 }

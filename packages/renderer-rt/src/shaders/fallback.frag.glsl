@@ -7,9 +7,12 @@ precision highp int;
 #include "shading"
 #include "hashAlpha"
 #include "agx"
+#include "depthKey"
 
 uniform sampler2D u_texture;
 uniform bool u_texelAntialias;
+uniform int u_alphaMode;
+uniform int u_alphaCutoffByte;
 
 in vec3 v_normal;
 in vec2 v_uv;
@@ -19,11 +22,12 @@ out vec4 outColor;
 
 // No float render targets: one pass into the default framebuffer, partial texels as hashed alpha, AgX in place.
 void main() {
-  TexelSample s = sampleTexels(u_texture, v_uv, v_uvRect, u_texelAntialias);
-  if (texelIsCutout(s.nearestAlpha)) discard;
-  if (texelIsPartial(s.nearestAlpha)) {
+  TexelSample s = sampleTexels(u_texture, v_uv, v_uvRect, u_texelAntialias, u_alphaMode, u_alphaCutoffByte);
+  if (s.coverage == COVERAGE_INVISIBLE) discard;
+  if (s.coverage == COVERAGE_PARTIAL) {
     ivec2 texel = nearestTexel(u_texture, v_uv, v_uvRect);
     if (!hashedAlphaCovers(texel, ivec2(gl_FragCoord.xy), s.nearestAlpha)) discard;
   }
   outColor = vec4(agxToneMap(shadeSurface(sampleColor(s), surfaceNormal(v_normal))), 1.0);
+  writeDepthKey();
 }

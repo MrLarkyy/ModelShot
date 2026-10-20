@@ -42,7 +42,9 @@ describe('shader sources', () => {
   }
 
   it('reads the texel alpha classes and AgX from the shared look chunks', () => {
-    expect(shaderProgramSource('opaque').fragment).toContain('TEXEL_ALPHA_OPAQUE_MIN = 254.5 / 255.0');
+    expect(shaderProgramSource('opaque').fragment).toContain(
+      'int texelCoverage(float alpha, int mode, int cutoffByte)',
+    );
     expect(shaderProgramSource('present').fragment).toContain('vec3 agxToneMap(vec3 linearColor)');
     expect(shaderProgramSource('fallback').fragment).toContain('vec3 agxToneMap(vec3 linearColor)');
   });

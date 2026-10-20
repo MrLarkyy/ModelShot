@@ -97,4 +97,29 @@ describe('validateScene', () => {
       'meshes[0].node',
     );
   });
+
+  it.each<[string, number]>([
+    ['a fraction', 0.5],
+    ['beyond 1024', 2000],
+    ['beyond -1024', -1025],
+    ['NaN', NaN],
+  ])('rejects a renderOrder that is %s', (_name, renderOrder) => {
+    expectInvalid(
+      withMesh(() => ({ renderOrder })),
+      'meshes[0].renderOrder',
+    );
+  });
+
+  it('accepts renderOrder ±1024 and absent', () => {
+    expect(() => validateScene(withMesh(() => ({ renderOrder: 1024 })))).not.toThrow();
+    expect(() => validateScene(withMesh(() => ({ renderOrder: -1024 })))).not.toThrow();
+  });
+
+  it('rejects a doubleSided that is not a boolean', () => {
+    const groups = [{ material: 0, start: 0, count: 6, doubleSided: 'yes' as unknown as boolean }];
+    expectInvalid(
+      withMesh(() => ({ groups })),
+      'meshes[0].groups[0].doubleSided',
+    );
+  });
 });

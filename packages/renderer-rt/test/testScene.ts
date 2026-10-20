@@ -31,7 +31,8 @@ export function quadScene(): SceneDocument {
       },
     ],
     meshes: [mesh],
-    materials: [{ name: 'm', texture: 0 }],
+    // Blended with the MS-14 cutoff (alpha byte 0 invisible), as a Blockbench-like texture.
+    materials: [{ name: 'm', texture: 0, alphaMode: 'blend', alphaCutoff: 0.5 / 255 }],
     textures: [testTexture()],
     rootNodes: [0],
   };

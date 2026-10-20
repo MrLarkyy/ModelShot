@@ -5,7 +5,7 @@ const vec3 GROUND_FILL = vec3(0.20, 0.19, 0.18);
 const vec3 KEY_DIRECTION = vec3(0.39904, 0.79808, 0.45140);
 const vec3 KEY_COLOR = vec3(1.25, 1.22, 1.18);
 
-// Faces are drawn double-sided: the back of a face is lit with the flipped normal.
+// The back of a double-sided face (drawn in its own pass) is lit with the flipped normal.
 vec3 surfaceNormal(vec3 interpolatedNormal) {
   vec3 n = normalize(interpolatedNormal);
   return gl_FrontFacing ? n : -n;

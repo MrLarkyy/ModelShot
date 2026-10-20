@@ -37,7 +37,8 @@ texels as hashed (screen-door) alpha from an integer hash of texel and pixel. Bo
 deterministic (no clock, no random source). The renderer also switches to this path for good when the driver
 rejects the float targets at a new drawing size; `capabilities` then reports `path: 'fallback'` and 0 samples.
 
-Geometry is batched at upload: the visible triangles of one node with one texture share one vertex and index buffer
+Geometry is batched at upload: the visible triangles of one node with one texture, alpha rule, sidedness and render
+order share one vertex and index buffer
 (`batchScene`). Every vertex keeps its own UV rectangle, so batching changes nothing per texel; a model with one mesh
 per element (thousands for a large Blockbench model) draws in a few calls per pass.
 
@@ -53,19 +54,32 @@ per element (thousands for a large Blockbench model) draws in a few calls per pa
   keeps far views from shimmering.
 - `texelAntialias: false` samples plain nearest texels (used by the shimmer test as its reference).
 
-## Transparency
+## Transparency, sides and render order
 
-The class of a pixel comes from its nearest texel (`#include "texelAlpha"` from `@modelshot/looks`, mirrored by
-`classifyTexelAlpha`): alpha below 0.5/255 is cut out (discarded in every pass before any depth write), above
-254.5/255 opaque, anything else partial (OIT on the float path, hashed alpha on the fallback). Cut-out shapes are
-therefore exactly per texel. Shadow, AO and path-tracer rays must use the same chunk.
+The rules are the scene format's ([scene-format.md](scene-format.md): `SceneMaterial` for alpha, `SceneMesh` for
+`doubleSided` and `renderOrder`); this section only says how the renderer realises them.
 
-Faces are drawn double-sided; the back of a face is lit with the flipped normal. Zero-thickness planes and inner
-faces seen through cut-outs need this. Every pass draws front faces first (back faces culled), then back faces (front
-faces culled) pushed back by `polygonOffset(1, 1)`: of two coincident faces (a zero-thickness element with both faces
-textured) the one turned to the camera wins, from either side and on any GPU. Front means counter-clockwise seen from
-outside, the winding every loader produces. The path tracer follows the same rule: every triangle is two-sided, and at
-equal hit distance the front-facing hit wins.
+- **Alpha**: each draw gets its material's mode and cutoff as an alpha mode id and a cutoff byte (`alphaCutoffByte`,
+  the smallest byte k with k / 255 ≥ cutoff), and `#include "texelAlpha"` (`@modelshot/looks`) classifies the nearest
+  texel's alpha byte, which equals the scene's `texelCoverage` for every byte, mode and cutoff. Invisible texels are
+  discarded in every pass before any depth write, opaque ones are drawn by the opaque pass, partial ones by OIT on the
+  float path and hashed alpha on the fallback. Texel anti-aliasing weighs each tap by its coverage (invisible 0,
+  opaque 1, partial its alpha), so an opaque-mode material ignores alpha and a cut-out neighbour adds no fringe. A
+  texture goes to the transparency pass only if one of its alpha bytes is partial under the draw's rule (alpha bytes
+  read back once at load).
+- **Sides**: single-sided groups are drawn with back faces culled in every pass. Double-sided groups are drawn twice
+  per render order: front faces, then back faces (front faces culled), the back lit with the flipped normal.
+- **Render order**: draws are sorted by render order, descending. Each draw is pulled `(order + back) ×
+RENDER_ORDER_TIE_DISTANCE` towards the camera along the view axis (that distance times the projection's third
+  column added to `gl_Position`; back = −1/16 for the back pass), so the depth test compares the scene format's key
+  without a polygon offset. When the depth buffer cannot resolve the tie distance at the far plane (24-bit step
+  `(f − n)·f / (n·2²⁴)` above a quarter of it, i.e. a camera inside the model's bounding sphere, or a 16-bit default
+  depth buffer on the fallback path) the frame switches to the linear variant (`depthKeyMode`): every mesh pass
+  writes `gl_FragDepth = (view depth − pull) / far`. Both variants are linked at start-up.
+- **Deviation in v0**: the key is compared on interpolated depth, which carries the rasteriser's error. Two coincident
+  faces split along different diagonals and seen at a grazing angle get depths that differ by up to about
+  5 × RENDER_ORDER_TIE_DISTANCE on SwiftShader, so their tie can resolve wrongly in patches; surfaces facing the camera
+  resolve the tie and the gap as the rule says. Pinned by an expected-failure test in `realtime.spec.ts`.
 
 ## Lighting and tone mapping
 
@@ -82,7 +96,8 @@ ships in three.js `AgXToneMapping` (MIT) and Filament.
 ## Shaders
 
 GLSL ES 3.00 in `src/shaders/*.glsl`, composed by `linkShader` from static chunks only: the renderer's own
-(`texelSample`, `shading`, `hashAlpha`) and the shared look chunks (`agx`, `texelAlpha`). An unknown or cyclic
+(`texelSample`, `shading`, `hashAlpha`, `depthKey` in a raster and a linear variant) and the shared look chunks
+(`agx`, `texelAlpha`). An unknown or cyclic
 include throws; no shader text is built from user input. A compile or link failure throws `RendererError`
 (`SHADER_COMPILE` / `SHADER_LINK`) with the driver's info log.
 
@@ -90,8 +105,9 @@ include throws; no shader text is built from user input. A compile or link failu
 
 - `setScene` validates the document first (`validateScene`): buffer lengths (3 / 3 / 2 / 4 floats per vertex),
   indices below the vertex count, groups on whole triangles inside the index buffer, material, texture, node and mesh
-  indices in range or −1. A failure rejects with `RendererError` `INVALID_SCENE` naming the path, e.g.
-  `meshes[0].indices[5]`.
+  indices in range or −1, `renderOrder` an integer in ±1024 and `doubleSided` a boolean (both optional; material
+  `alphaMode` / `alphaCutoff` are not checked, `resolveMaterialAlpha` turns any value into a valid rule). A failure
+  rejects with `RendererError` `INVALID_SCENE` naming the path, e.g. `meshes[0].indices[5]`.
 - Textures are checked from the PNG header in their bytes (signature and IHDR) before decoding, never from the size
   the document declares: each side at most min(`maxTextureSide`, default 4096, `MAX_TEXTURE_SIZE`), at most
   `maxTexturePixelsTotal` (default 64 Mi) pixels per scene, and the header size must equal the declared size.

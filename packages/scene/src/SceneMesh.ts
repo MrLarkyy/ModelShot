@@ -25,8 +25,8 @@ export interface SceneMesh {
   /** `false` hides this mesh. */
   readonly visible: boolean;
   /**
-   * Integer, absent: 0. Breaks ties between nearly coincident surfaces: each step pulls the surface
-   * `RENDER_ORDER_TIE_DISTANCE` nearer along the ray, so the higher order wins only within that distance.
+   * Integer in ±`MAX_ABS_RENDER_ORDER`, absent: 0. Breaks ties between nearly coincident surfaces by the rule in
+   * `renderOrder.ts` (each step pulls the surface `RENDER_ORDER_TIE_DISTANCE` nearer).
    */
   readonly renderOrder?: number;
   /** 3 floats per vertex. */

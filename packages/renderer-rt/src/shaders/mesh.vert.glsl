@@ -7,17 +7,25 @@ layout(location = 2) in vec2 a_uv;
 layout(location = 3) in vec4 a_uvRect;
 
 uniform mat4 u_model;
+uniform mat4 u_view;
 uniform mat4 u_viewProjection;
+// Render order: (order × RENDER_ORDER_TIE_DISTANCE) × the projection's third column, i.e. the vertex moved that far
+// towards the camera along the view axis (see depthKey).
+uniform vec4 u_depthPull;
 
 out vec3 v_normal;
 out vec2 v_uv;
 // Every vertex of a face carries the same rectangle; flat avoids interpolation error at the clamp bounds.
 flat out vec4 v_uvRect;
+// Depth along the view axis, for the linear depth-key variant.
+out float v_viewDepth;
 
 void main() {
   // Node world matrices are rigid (rotation and translation only), so their upper 3x3 also maps normals.
   v_normal = mat3(u_model) * a_normal;
   v_uv = a_uv;
   v_uvRect = a_uvRect;
-  gl_Position = u_viewProjection * (u_model * vec4(a_position, 1.0));
+  vec4 world = u_model * vec4(a_position, 1.0);
+  v_viewDepth = -(u_view * world).z;
+  gl_Position = u_viewProjection * world + u_depthPull;
 }

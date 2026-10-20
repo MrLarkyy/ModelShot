@@ -64,7 +64,7 @@ additive, layered) is not carried.
   `maxTriangles`); no `texture` key or `texture: false` is a blank face drawn untextured (material −1, UVs normalised
   by the project resolution); a number is a texture index and a string a texture uuid (unknown → `INVALID_FIELD`).
   A face object missing from `faces` produces no triangles. A face with zero area produces no triangles, so a flat
-  cube keeps only its two large faces, each single-sided (see sidedness below). Blockbench instead pads the cube by
+  cube keeps only its large faces, single-sided when both are drawn (see sidedness below). Blockbench instead pads the cube by
   0.001 and draws all six faces with the texture's sidedness; there, with a double-sided texture, both large faces
   show from each side and fight in depth, and both cast shadows.
 - Each mesh element becomes one `SceneMesh`: every face gets its own vertices, placed at
@@ -81,9 +81,12 @@ additive, layered) is not carried.
 - Faces of a mesh are grouped by material, then single- before double-sided; cube faces likewise.
 - Sidedness: a face is double-sided when its texture's `render_sides` is `double`, or `auto` in any format but
   `java_block`; untextured faces are double-sided except in `java_block`. A cube face lying in the plane of a
-  zero-thickness axis (a flat cube) is always single-sided: its opposite face is coincident and faces the other way,
+  zero-thickness axis (a flat cube) whose opposite face is drawn too is single-sided: the two are coincident and face
+  opposite ways,
   so each side shows exactly one of them, and only the one whose front faces the light casts a shadow (single-sided
-  means one-sided for every ray, see the [scene format](scene-format.md#scenemesh)).
+  means one-sided for every ray, see the [scene format](scene-format.md#scenemesh)). A lone face there (its opposite
+  removed or absent, e.g. a glass pane) keeps its texture's sidedness, so it still shows from behind where the
+  texture is double-sided, as in Blockbench.
 - `render_order`: `default` (or absent) → `renderOrder` 0, `behind` → −1, `in_front` → 1.
 - One material per texture, same index, `alphaMode: "blend"`, `alphaCutoff: 0.01`.
 

@@ -11,5 +11,7 @@ describe('@modelshot/scene', () => {
     expect(typeof scene.texelCoverage).toBe('function');
     expect(scene.DEFAULT_ALPHA_CUTOFF).toBe(0.5);
     expect(scene.RENDER_ORDER_TIE_DISTANCE).toBe(1e-3);
+    expect(scene.BACK_SIDE_RENDER_ORDER).toBe(-1 / 16);
+    expect(scene.MAX_ABS_RENDER_ORDER).toBe(1024);
   });
 });

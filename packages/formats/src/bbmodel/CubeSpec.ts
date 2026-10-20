@@ -59,8 +59,10 @@ const NORMAL_AXIS: Readonly<Record<FaceDirection, 0 | 1 | 2>> = {
 };
 
 /**
- * A face lying in the plane of a zero-thickness axis stays single-sided whatever its texture says: the opposite face is
- * coincident, faces the other way and has its own UV, so each side shows exactly one of them, with no depth fight.
+ * A face lying in the plane of a zero-thickness axis whose opposite face is drawn too stays single-sided whatever its
+ * texture says: the two are coincident, face opposite ways and have their own UVs, so each side shows exactly one of
+ * them, with no depth fight. A lone face there (its opposite removed or absent) keeps its texture's sidedness, so a
+ * single pane still shows from behind where its texture is double-sided, as in Blockbench.
  */
 export function readCube(element: JsonObject, path: string, context: ConverterContext): CubeSpec {
   const from = readVec3(field(element, 'from'), childPath(path, 'from'));
@@ -79,10 +81,13 @@ export function readCube(element: JsonObject, path: string, context: ConverterCo
   const specs: CubeFaceSpec[] = [];
   for (const direction of FACE_DIRECTIONS) {
     const face = readFace(faces, direction, childPath(facesPath, direction), context, layout?.[direction]);
-    if (!face || faceArea(direction, min, max) <= 0) continue;
-    const axis = NORMAL_AXIS[direction];
-    specs.push(max[axis] - min[axis] > 0 ? face : { ...face, doubleSided: false });
+    if (face && faceArea(direction, min, max) > 0) specs.push(face);
   }
+  const flatFaces = specs.filter((face) => max[NORMAL_AXIS[face.direction]] - min[NORMAL_AXIS[face.direction]] <= 0);
+  const paired = flatFaces.length === 2;
+  const drawn = paired
+    ? specs.map((face) => (flatFaces.includes(face) ? { ...face, doubleSided: false } : face))
+    : specs;
   return {
     name: readOptionalString(element, 'name', path, context.maxStringChars, 'cube'),
     sourceId: readOptionalString(element, 'uuid', path, context.maxStringChars, ''),
@@ -92,7 +97,7 @@ export function readCube(element: JsonObject, path: string, context: ConverterCo
     origin: readOptionalVec3(element, 'origin', path, ZERO),
     rotation: readOptionalVec3(element, 'rotation', path, ZERO),
     renderOrder: readRenderOrder(element, path, context.warnings),
-    faces: specs,
+    faces: drawn,
   };
 }
 
