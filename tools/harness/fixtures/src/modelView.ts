@@ -45,6 +45,14 @@ const PROBES: Readonly<Record<ModelViewModel, readonly ProbeRequest[]>> = {
     { name: 'shadow-of-opaque-texel', mesh: 'cutout-plane', uv: [1, 1], groundY: 0 },
     { name: 'shadow-of-transparent-texel', mesh: 'cutout-plane', uv: [3, 1], groundY: 0 },
   ],
+  // Skin-classic.png (generate.mjs): head front texel (2, 2) is alpha 0 with cyan RGB under the opaque base material;
+  // texel (5, 2) shows through a hole of the hat; hat front texel (3, 0) is on the hat's opaque ring.
+  player: [
+    { name: 'face-probe', mesh: 'head', uv: [10.5, 10.5] },
+    { name: 'hat-hole', mesh: 'head', uv: [13.5, 10.5] },
+    { name: 'hat-ring', mesh: 'hat', uv: [43.5, 8.5] },
+    { name: 'held-cube', mesh: 'block', uv: [4.5, 4.5] },
+  ],
 };
 
 const api: MsFixture = {

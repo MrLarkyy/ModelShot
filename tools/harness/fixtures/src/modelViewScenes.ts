@@ -5,6 +5,7 @@ import meshShapesSource from '../../../../packages/formats/test/fixtures/bbmodel
 import renderOrderSource from '../../../../packages/formats/test/fixtures/bbmodel/render-order.bbmodel?raw';
 import sceneNodesSource from '../../../../packages/formats/test/fixtures/gltf/scene-nodes.gltf?raw';
 import type { ModelViewModel } from './modelViewVariant';
+import { modelViewPlayer } from './playerScenes';
 
 /**
  * The scene of each model-view model, loaded by the real loaders from formats test fixtures (static imports only: the
@@ -20,6 +21,8 @@ export function modelViewScene(model: ModelViewModel): SceneDocument {
       return loadBbmodel(meshShapesSource).scene;
     case 'render-order':
       return loadBbmodel(renderOrderSource).scene;
+    case 'player':
+      return modelViewPlayer();
     case 'gltf-nodes':
       return hideMeshes(loadGltf(sceneNodesSource, { unitScale: 8 }).scene, ['glass-plane']);
   }

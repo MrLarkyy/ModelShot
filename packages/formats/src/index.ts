@@ -27,3 +27,9 @@ export {
   detectModelFormat,
   type ModelFormat,
 } from './detectModelFormat';
+export { SkinError, type SkinErrorCode } from './player/SkinError';
+export { DEFAULT_SKIN_LIMITS, type SkinLimits } from './player/SkinLimits';
+export type { SkinLayout, SkinLoadResult } from './player/SkinLoadResult';
+export { MAX_SKIN_NAME_CHARS, loadSkin, type SkinLoadOptions } from './player/loadSkin';
+export type { PlayerArms, PlayerModelOptions } from './player/PlayerModelOptions';
+export { PLAYER_OUTER_ALPHA_CUTOFF, createPlayerModel } from './player/createPlayerModel';

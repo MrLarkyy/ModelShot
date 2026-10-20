@@ -1,4 +1,4 @@
-import type { SceneDocument, SceneMesh } from '@modelshot/scene';
+import { attachModel, poseScene, type SceneDocument, type SceneMesh } from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
 import { RendererError, validateScene } from '../src/index';
 import { quadScene } from './testScene';
@@ -121,5 +121,32 @@ describe('validateScene', () => {
       withMesh(() => ({ groups })),
       'meshes[0].groups[0].doubleSided',
     );
+  });
+  it.each([
+    ['rotation', 1, NaN],
+    ['pivot', 0, Infinity],
+    ['translation', 2, -Infinity],
+    ['restRotation', 1, NaN],
+  ] as const)('rejects a non-finite node %s', (key, k, value) => {
+    const doc = quadScene();
+    const node = doc.nodes[0]!;
+    const triple: [number, number, number] = [0, 0, 0];
+    triple[k] = value;
+    expectInvalid({ ...doc, nodes: [{ ...node, [key]: triple }] }, `nodes[0].${key}[${k}]`);
+  });
+
+  it('rejects a node rotation with a hole', () => {
+    const doc = quadScene();
+    // eslint-disable-next-line no-sparse-arrays
+    const rotation = [0, , 0] as unknown as [number, number, number];
+    expectInvalid({ ...doc, nodes: [{ ...doc.nodes[0]!, rotation }] }, 'nodes[0].rotation[1]');
+  });
+
+  it('accepts a posed document with models attached, nested', () => {
+    const once = attachModel(quadScene(), quadScene(), { bone: 'root', offset: [1, 0, 0], scale: 0.5 });
+    const twice = attachModel(once, once, { bone: once.nodes.length - 1, rotation: [0, 90, 0] });
+    const posed = poseScene(twice, { name: 'p', bones: [{ bone: 'root', rotation: [10, 20, 30] }] }).document;
+    expect(() => validateScene(posed)).not.toThrow();
+    expect(posed.meshes).toHaveLength(4);
   });
 });
