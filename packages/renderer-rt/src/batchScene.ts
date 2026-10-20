@@ -29,6 +29,8 @@ export interface SceneBatch {
   readonly alpha: BatchAlpha;
   readonly doubleSided: boolean;
   readonly renderOrder: number;
+  /** Every mesh in it is closed and opaque on every face (`closedOpaqueMeshes`): raster frames may skip its backs. */
+  readonly closedOpaque: boolean;
   readonly positions: Float32Array;
   readonly normals: Float32Array;
   readonly uvs: Float32Array;
@@ -51,6 +53,7 @@ interface BatchKey {
   readonly alpha: BatchAlpha;
   readonly doubleSided: boolean;
   readonly renderOrder: number;
+  readonly closedOpaque: boolean;
 }
 
 function alphaOf(doc: SceneDocument, group: SceneMeshGroup, texture: number): BatchAlpha {
@@ -96,9 +99,10 @@ function merge(key: BatchKey, parts: readonly Part[]): SceneBatch {
 
 /**
  * Groups the visible triangles of a validated document by (node, texture, alpha mode, cutoff byte, sidedness, render
- * order), in order of first appearance; within a batch triangles keep the document's mesh and group order.
+ * order, closed and opaque), in order of first appearance; within a batch triangles keep the document's mesh and group
+ * order. `closedOpaque[m]` marks mesh `m` closed and opaque on every face (`closedOpaqueMeshes`; default none).
  */
-export function batchScene(doc: SceneDocument): SceneBatch[] {
+export function batchScene(doc: SceneDocument, closedOpaque: readonly boolean[] = []): SceneBatch[] {
   const visibility = nodeVisibility(doc);
   const parts = new Map<string, { key: BatchKey; parts: Part[] }>();
   doc.meshes.forEach((mesh, index) => {
@@ -113,10 +117,17 @@ export function batchScene(doc: SceneDocument): SceneBatch[] {
         alpha: alphaOf(doc, group, texture),
         doubleSided: group.doubleSided ?? false,
         renderOrder: mesh.renderOrder ?? 0,
+        closedOpaque: closedOpaque[index] ?? false,
       };
-      const id = [key.node, key.texture, key.alpha.modeId, key.alpha.cutoffByte, key.doubleSided, key.renderOrder].join(
-        ':',
-      );
+      const id = [
+        key.node,
+        key.texture,
+        key.alpha.modeId,
+        key.alpha.cutoffByte,
+        key.doubleSided,
+        key.renderOrder,
+        key.closedOpaque,
+      ].join(':');
       let entry = parts.get(id);
       if (!entry) {
         entry = { key, parts: [] };

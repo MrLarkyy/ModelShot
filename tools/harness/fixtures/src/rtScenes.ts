@@ -35,6 +35,7 @@ export const RT_SCENE_NAMES = [
   'large-order',
   'closed-cube-open',
   'closed-cube-order-open',
+  'closed-cube-cutout',
   'tie-pair',
   'tie-single',
   'tie-pair-double',
@@ -84,6 +85,7 @@ export type RtLook =
   | 'cube'
   | 'cube-grazing-1'
   | 'cube-grazing-5'
+  | 'cube-inside'
   | 'ramp';
 
 /** Fixed cameras: the model-view fixture's (same image positions as its probes) and two views of a horizontal pair. */
@@ -99,6 +101,8 @@ const LOOKS: Readonly<Record<RtLook, { eye: Point3; target: Point3; near: number
   // The east face (x = 4) about 1 and 5 degrees from edge-on: its extended plane runs far behind the box.
   'cube-grazing-1': { eye: [4.5, 3, 30], target: [0, 0, 0], near: 20, far: 40 },
   'cube-grazing-5': { eye: [6.6, 3, 30], target: [0, 0, 0], near: 20, far: 40 },
+  // Inside the cube, towards the back side of its east face; the clip planes keep the raster depth key.
+  'cube-inside': { eye: [0, 1, 1], target: [4, 0, 0], near: 0.5, far: 20 },
   // Square onto the 16 x 16 alpha ramp at z = 0 with a backdrop border: one texel is about 15 pixels at 256 px.
   ramp: {
     eye: [0, 0, 8.5 / Math.tan((MODEL_VIEW_LOOK.fovYDegrees * Math.PI) / 360)],
@@ -213,6 +217,8 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return closedCube(0, true);
     case 'closed-cube-order-open':
       return closedCube(1, true);
+    case 'closed-cube-cutout':
+      return closedCube(0, false, true);
     case 'step':
       return step(0, false);
     case 'step-open':
@@ -370,9 +376,10 @@ export function parseRtView(params: URLSearchParams): RtView {
  * A closed 8-unit cube around the origin, every face double-sided (free format, render_sides auto): the faces the
  * `cube` look sees (south, east, up) are red, the others blue, so any blue pixel is a back side shown through a front
  * face. `renderOrder` 1 makes the renderer use the exact depth key. `open` leaves the hidden faces out: the image must
- * not change, at any sample.
+ * not change, at any sample. `cutout` gives the hidden faces a rectangle with a hole, so the cube is closed but not
+ * opaque on every face and raster frames still draw its back sides.
  */
-function closedCube(renderOrder: number, open: boolean): SceneDocument {
+function closedCube(renderOrder: number, open: boolean, cutout = false): SceneDocument {
   return boxes(
     [
       [
@@ -382,6 +389,7 @@ function closedCube(renderOrder: number, open: boolean): SceneDocument {
     ],
     renderOrder,
     open,
+    cutout,
   );
 }
 
@@ -412,10 +420,16 @@ function step(renderOrder: number, open: boolean): SceneDocument {
  * east, up) red, the others blue; the first box at render order 1 when `renderOrder` is 1. `open` leaves the blue
  * faces out: the image must not change at any sample.
  */
-function boxes(extents: readonly (readonly [number[], number[]])[], renderOrder: number, open: boolean): SceneDocument {
+function boxes(
+  extents: readonly (readonly [number[], number[]])[],
+  renderOrder: number,
+  open: boolean,
+  cutout = false,
+): SceneDocument {
   const texture = (JSON.parse(alphaPlaneSource) as { textures: unknown[] }).textures[0];
   const red = { uv: [0, 0, 4, 4], texture: 0 };
-  const blue = { uv: [8, 0, 12, 4], texture: 0 };
+  // `cutout`: the hidden faces' rectangle is half hole (texel columns 6-7, alpha 0), half blue (columns 8-9).
+  const blue = { uv: cutout ? [6, 0, 10, 4] : [8, 0, 12, 4], texture: 0 };
   const model = {
     meta: { format_version: '4.10', model_format: 'free', box_uv: false },
     resolution: { width: 16, height: 16 },

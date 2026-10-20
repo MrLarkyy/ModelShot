@@ -80,9 +80,18 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
 - Closed double-sided boxes against the same boxes without their hidden faces (`closed-cube` / `closed-cube-open`, and
   `step` / `step-open`: a tall box beside a low one, with a T-junction and a hidden face coincident with a visible one
   facing the other way; visible faces red, hidden blue): not one pixel may differ, on float and fallback, with the
-  exact key inside the sphere and from render order 1 (`-order` scenes), seen from `cube`, `cube-grazing-1` (the east
-  face about 1° from edge-on) and `cube-grazing-5`; the raster key from `cube` (its grazing MSAA deviation is
-  documented in realtime-renderer.md). The raster back pass at `polygonOffset(1, 1)` differs in 117 pixels.
+  raster key, the exact key inside the sphere and the exact key from render order 1 (`-order` scenes), seen from
+  `cube`, `cube-grazing-1` (the east face about 1° from edge-on) and `cube-grazing-5` (`step`: `cube` and
+  `cube-grazing-5`). The raster frames skip these opaque closed boxes' back pass; drawing it anyway differs in 74
+  pixels (cube, 1°) and 23 (step, 5°) on float.
+- Raster back pass of closed meshes, float and fallback: `closed-cube-cutout` (the hidden faces' rectangle half
+  hole, so the cube is closed but not opaque and keeps its back pass) against `closed-cube-open`: 0 pixels from
+  `cube` (at `polygonOffset(1, 1)`: 45), at most 10 from `cube-grazing-1` on float (the pinned MSAA deviation,
+  realtime-renderer.md), 0 on fallback; `closed-cube` from `cube-inside` (camera inside the cube's bounds): no backdrop
+  pixel, every wall a back side (skipping it there leaves only backdrop). Unit tests (`closedOpaque.test.ts`): closedness
+  (cube, shared or own vertices, open sheet, missing face, a face wound the other way, duplicated faces), the
+  translucent-texel count inside a UV rectangle, the per-mesh decision (readback failure, opaque mode, untextured,
+  single-sided, groups), `backSidesVisible` (inside, outside, near plane) and the batch key.
 - Render-order tie at sample level: a red `in_front` quad over a coincident blue default quad split along the other
   diagonal (`tie-pair`) against the red quad alone (`tie-single`): not one pixel may differ, exact key, float and
   fallback, seen `above`, `grazing-above` (about 8°) and `model-view`; the double-sided pair seen `below` and

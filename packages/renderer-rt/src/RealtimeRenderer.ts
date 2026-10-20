@@ -17,7 +17,14 @@ import { createRendererPrograms, type MeshPassName, type RendererPrograms } from
 import { RendererError } from './RendererError';
 import type { RendererWarning } from './RendererWarning';
 import { RenderTargets } from './RenderTargets';
-import { PLACEHOLDER_IMAGE, UNTEXTURED_IMAGE, readAlphaLevels, uploadTexture, type AlphaLevels } from './textureUpload';
+import { backSidesVisible, closedOpaqueMeshes } from './closedOpaque';
+import {
+  PLACEHOLDER_IMAGE,
+  UNTEXTURED_IMAGE,
+  readTextureAlpha,
+  uploadTexture,
+  type AlphaLevels,
+} from './textureUpload';
 import { disposeGpuScene, uploadExactGeometry, uploadScene, type DrawItem, type GpuScene } from './uploadScene';
 import { validateScene } from './validateScene';
 
@@ -65,6 +72,8 @@ interface LoadedScene {
   readonly bitmaps: readonly (ImageBitmap | null)[];
   /** Per texture: the alpha bytes it holds, read back once and kept CPU-side. */
   alphaLevels: (AlphaLevels | null)[] | null;
+  /** Per mesh: closed and opaque on every face (`closedOpaqueMeshes`), from the same readback. */
+  closedOpaque: boolean[] | null;
 }
 
 /** What one frame draws with: matrices, the far plane and the depth-key variant (`depthKeyMode`). */
@@ -74,6 +83,9 @@ interface FrameView {
   readonly inverseProjection: Float32Array;
   readonly viewProjection: Float32Array;
   readonly far: number;
+  /** Camera position and near distance: whether a closed opaque batch's back sides can show (`backSidesVisible`). */
+  readonly eye: readonly [number, number, number];
+  readonly near: number;
   readonly mode: DepthKeyMode;
   /** Viewport of every mesh pass (the float targets and the fallback both draw at the canvas size). */
   readonly viewport: readonly [number, number];
@@ -176,7 +188,7 @@ export class RealtimeRenderer {
     const decoded = await decodeTextures(doc.textures, this.textureLimits(), () => this.isCurrent(generation));
     if (!decoded) return { applied: false, warnings: [] };
     this.releaseScene();
-    this.loaded = { doc, bitmaps: decoded.bitmaps, alphaLevels: null };
+    this.loaded = { doc, bitmaps: decoded.bitmaps, alphaLevels: null, closedOpaque: null };
     if (this.gpu && !this.lost) this.uploadLoadedScene(this.gpu);
     this.dirty = true;
     return { applied: true, warnings: decoded.warnings };
@@ -240,6 +252,8 @@ export class RealtimeRenderer {
       inverseProjection: new Float32Array(invertMat4(projection)),
       viewProjection: new Float32Array(mat4Multiply(projection, view)),
       far: camera.far,
+      eye: camera.position,
+      near: camera.near,
       mode,
       viewport: [width, height],
     };
@@ -318,11 +332,20 @@ export class RealtimeRenderer {
     if (!loaded) return;
     const gl = this.gl;
     gpu.sceneTextures = loaded.bitmaps.map((bitmap) => (bitmap ? uploadTexture(gl, bitmap) : null));
-    loaded.alphaLevels ??= loaded.bitmaps.map((bitmap, index) => {
-      const texture = gpu.sceneTextures[index];
-      return bitmap && texture ? readAlphaLevels(gl, texture, bitmap.width, bitmap.height) : null;
-    });
-    gpu.scene = uploadScene(gl, loaded.doc, loaded.alphaLevels);
+    if (!loaded.alphaLevels || !loaded.closedOpaque) {
+      const alpha = loaded.bitmaps.map((bitmap, index) => {
+        const texture = gpu.sceneTextures[index];
+        return bitmap && texture ? readTextureAlpha(gl, texture, bitmap.width, bitmap.height) : null;
+      });
+      loaded.alphaLevels = alpha.map((texture) => texture?.levels ?? null);
+      // A texture without an image draws the opaque placeholder. The translucent-texel tables are needed only here;
+      // the per-mesh result is kept for a rebuilt context.
+      loaded.closedOpaque = closedOpaqueMeshes(
+        loaded.doc,
+        alpha.map((texture) => texture?.opacity ?? 'opaque'),
+      );
+    }
+    gpu.scene = uploadScene(gl, loaded.doc, loaded.alphaLevels, loaded.closedOpaque);
   }
 
   private releaseScene(): void {
@@ -383,7 +406,8 @@ export class RealtimeRenderer {
    * Exact frames key each fragment by `order` (a back face `order + BACK_SIDE_RENDER_ORDER`) in the shader. Raster
    * frames carry only order 0: the front pass is drawn as is and the back pass gets `polygonOffset(4, 4)`, a
    * slope-scaled push that keeps a back side behind the front face it meets at a silhouette (the −1/16 order is below
-   * the interpolation error there). The depth test is set by the caller.
+   * the interpolation error there), and skips closed batches opaque on every face while the camera is outside their
+   * bounds and the near plane does not reach them (`backSidesVisible`). The depth test is set by the caller.
    */
   private drawItems(gpu: GpuResources, passName: MeshPassName, items: readonly DrawItem[], frame: FrameView): void {
     const pass = gpu.programs.meshPasses[frame.mode][passName];
@@ -431,9 +455,14 @@ export class RealtimeRenderer {
       } else {
         gl.enable(gl.POLYGON_OFFSET_FILL);
         // Slope factor 4: MSAA samples next to a silhouette compare against the front face's depth up to about a
-        // pixel away; factors 1 and 2 still let back sides through there (closed-cube test).
+        // pixel away; factors 1 and 2 still let back sides through there (closed-cube-cutout test).
         gl.polygonOffset(4, 4);
-        for (const item of level) if (!item.cull) draw(item, order);
+        for (const item of level) {
+          // A closed batch opaque on every face shows no back side from outside its bounds; drawing them anyway
+          // would let them through MSAA samples beside a near edge-on face (docs/realtime-renderer.md).
+          const hidden = item.closedBounds && !backSidesVisible(item.closedBounds, frame.eye, frame.view, frame.near);
+          if (!item.cull && !hidden) draw(item, order);
+        }
         gl.disable(gl.POLYGON_OFFSET_FILL);
       }
       first = end;

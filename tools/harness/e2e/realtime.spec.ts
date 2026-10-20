@@ -480,9 +480,9 @@ test.describe('closed double-sided boxes: no hidden face at any sample', () => {
     for (const [label, order, query, mode] of modes) {
       test(`${shape}, ${label}: the hidden faces change no pixel (${looks.join(', ')})`, async ({ page }) => {
         const scene = shape === 'closed-cube' && order ? 'closed-cube-order' : `${shape}${order}`;
-        // The raster key keeps MSAA; at a face within a few degrees of edge-on its samples next to the silhouette
-        // still let a hidden face through (docs/realtime-renderer.md, deviation), so it is held to the framed look.
-        for (const look of mode === 'raster' ? (['cube'] as const) : looks) {
+        // Raster frames skip the back pass of these closed opaque boxes, so even beside a face 1 degree from
+        // edge-on no MSAA sample shows a hidden face.
+        for (const look of looks) {
           // The open variant has only the faces in view; the hidden (blue) faces must not change a single pixel.
           const closed = await render(page, `scene=${scene}${query}&look=${look}`);
           expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe(mode);
@@ -492,6 +492,52 @@ test.describe('closed double-sided boxes: no hidden face at any sample', () => {
         }
       });
     }
+  }
+});
+
+/**
+ * Pixels the hidden faces of `closed-cube-cutout` change at the `cube-grazing-1` look on the float path (raster key,
+ * MSAA), as measured when the remaining deviation was pinned: an upper bound, so the leak cannot grow unnoticed.
+ */
+const CUTOUT_GRAZING_1_PIXELS = 10;
+
+test.describe('raster back pass of closed meshes', () => {
+  for (const [label, query] of [
+    ['float', ''],
+    ['fallback', '&fallback=1'],
+  ] as const) {
+    test(`${label}: a closed cube with cut-outs keeps its back pass; beside a face 1 degree from edge-on its hidden faces touch at most the pinned pixel count`, async ({
+      page,
+    }) => {
+      // Not opaque on every face, so the back sides are drawn, and MSAA samples next to the near edge-on east face
+      // still let a few through (docs/realtime-renderer.md, deviation). The bound is the count measured when pinned.
+      const bound = label === 'float' ? CUTOUT_GRAZING_1_PIXELS : 0;
+      for (const [look, max] of [
+        ['cube', 0],
+        ['cube-grazing-1', bound],
+      ] as const) {
+        const closed = await render(page, `scene=closed-cube-cutout${query}&look=${look}`);
+        expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('raster');
+        const open = await render(page, `scene=closed-cube-open${query}&look=${look}`);
+        expect(
+          differingPixels(closed.image, open.image),
+          `${look}: pixels touched by a hidden face`,
+        ).toBeLessThanOrEqual(max);
+      }
+    });
+
+    test(`${label}: with the camera inside a closed opaque cube the back sides are still drawn`, async ({ page }) => {
+      const { image } = await render(page, `scene=closed-cube${query}&look=cube-inside`);
+      expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('raster');
+      // Every wall seen from inside is a back side: no backdrop pixel may remain.
+      const { image: empty } = await render(page, `scene=empty${query}&look=cube-inside`);
+      const backdrop = pixel(empty, 0, 0);
+      let backdropPixels = 0;
+      for (let y = 0; y < image.height; y++) {
+        for (let x = 0; x < image.width; x++) if (near(pixel(image, x, y), backdrop, 0)) backdropPixels++;
+      }
+      expect(backdropPixels).toBe(0);
+    });
   }
 });
 

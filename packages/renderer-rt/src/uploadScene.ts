@@ -1,5 +1,6 @@
 import { meshVisible, nodeVisibility, worldMatrices, type SceneDocument } from '@modelshot/scene';
 import { batchScene, type BatchAlpha, type SceneBatch } from './batchScene';
+import { worldBounds } from './closedOpaque';
 import { hasPartialCoverage, type AlphaLevels } from './textureUpload';
 
 /** One indexed draw: a batch with its node's world matrix, texture, alpha rule, sidedness and render order. */
@@ -15,6 +16,11 @@ export interface DrawItem {
   /** Single-sided: back faces culled in every pass. */
   readonly cull: boolean;
   readonly renderOrder: number;
+  /**
+   * World bounds `[minX, minY, minZ, maxX, maxY, maxZ]` of a closed batch opaque on every face (`closedOpaqueMeshes`),
+   * whose back pass raster frames skip while the camera is outside them (`backSidesVisible`); null for other batches.
+   */
+  readonly closedBounds: Float64Array | null;
   /** The batch's geometry, kept to build the de-indexed copy of the exact depth key on first use. */
   readonly batch: SceneBatch;
 }
@@ -49,20 +55,22 @@ const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 
 
 /**
  * Uploads the visible geometry of a validated document, merged by `batchScene`, one vertex array per batch.
- * `alphaLevels[t]` holds the alpha bytes present in texture `t` (`readAlphaLevels`); a batch whose texture has a byte
- * that its alpha rule makes partial is also drawn by the transparency pass.
+ * `alphaLevels[t]` holds the alpha bytes present in texture `t` (`readTextureAlpha`); a batch whose texture has a byte
+ * that its alpha rule makes partial is also drawn by the transparency pass. `closedOpaque[m]` marks mesh `m` closed and
+ * opaque on every face (`closedOpaqueMeshes`).
  */
 export function uploadScene(
   gl: WebGL2RenderingContext,
   doc: SceneDocument,
   alphaLevels: readonly (AlphaLevels | null)[],
+  closedOpaque: readonly boolean[] = [],
 ): GpuScene {
   const world = worldMatrices(doc.nodes);
   const vaos: WebGLVertexArrayObject[] = [];
   const buffers: WebGLBuffer[] = [];
   const opaque: DrawItem[] = [];
   const partial: DrawItem[] = [];
-  for (const batch of batchScene(doc)) {
+  for (const batch of batchScene(doc, closedOpaque)) {
     const vao = gl.createVertexArray();
     vaos.push(vao);
     gl.bindVertexArray(vao);
@@ -91,6 +99,7 @@ export function uploadScene(
       alpha: batch.alpha,
       cull: !batch.doubleSided,
       renderOrder: batch.renderOrder,
+      closedBounds: batch.closedOpaque && batch.doubleSided ? worldBounds(batch.positions, model) : null,
       batch,
     };
     opaque.push(item);

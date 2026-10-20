@@ -1,4 +1,5 @@
 import { COVERAGE_PARTIAL, texelCoverageByte, type AlphaModeId } from '@modelshot/looks';
+import { textureOpacityOf, type TextureOpacity } from './closedOpaque';
 
 /** Which of the 256 alpha bytes occur in a texture, as 256 flags. */
 export type AlphaLevels = Uint8Array;
@@ -61,28 +62,38 @@ export function hasPartialCoverage(levels: AlphaLevels, modeId: AlphaModeId, cut
   return false;
 }
 
+/** What the load-time readback of one texture says about its alpha. */
+export interface TextureAlpha {
+  /** The alpha bytes it holds. */
+  readonly levels: AlphaLevels;
+  /** Where its translucent texels are (`closedOpaque`). */
+  readonly opacity: TextureOpacity;
+}
+
 /**
- * Reads an uploaded texture back through a temporary framebuffer (one readback per texture, at scene load) and
- * returns the alpha bytes it holds, so each draw knows whether its alpha rule leaves partial texels for the
- * transparency pass.
+ * Reads an uploaded texture back through a temporary framebuffer (one readback per texture, at scene load): the alpha
+ * bytes it holds, so each draw knows whether its alpha rule leaves partial texels for the transparency pass, and where
+ * its translucent texels are, so raster frames know which closed meshes are opaque on every face.
  */
-export function readAlphaLevels(
+export function readTextureAlpha(
   gl: WebGL2RenderingContext,
   texture: WebGLTexture,
   width: number,
   height: number,
-): AlphaLevels {
+): TextureAlpha {
   const framebuffer = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
-  // When the readback is impossible every byte counts as present: drawing a texture in both passes is always correct.
-  let levels: AlphaLevels = new Uint8Array(256).fill(1);
+  // When the readback is impossible every byte counts as present (drawing a texture in both passes is always correct)
+  // and no face counts as opaque (its back sides stay drawn).
+  let alpha: TextureAlpha = { levels: new Uint8Array(256).fill(1), opacity: 'unknown' };
   if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) {
     const pixels = new Uint8Array(width * height * 4);
     gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-    levels = alphaLevelsOf(pixels);
+    // Framebuffer row 0 is texture row 0, the row texelFetch indexes as y = 0.
+    alpha = { levels: alphaLevelsOf(pixels), opacity: textureOpacityOf(pixels, width, height) };
   }
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.deleteFramebuffer(framebuffer);
-  return levels;
+  return alpha;
 }
