@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import indexHtml from '../index.html?raw';
 
 // Any absolute or protocol-relative URL, wherever it appears (attributes, CSS, inline script, meta refresh).
-const offOrigin = /(?:b[a-z][a-zd+.-]*:)?//[^s"'<>)]*/gi;
+const offOrigin = /(?:\b[a-z][a-z\d+.-]*:)?\/\/[^\s"'<>)]*/gi;
 
 function offOriginReferences(html: string): string[] {
   return html.match(offOrigin) ?? [];
