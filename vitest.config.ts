@@ -5,6 +5,7 @@ const packages = ['formats', 'scene', 'renderer-rt', 'pathtracer', 'looks', 'exp
 export default defineConfig({
   test: {
     projects: packages.map((name) => ({
+      extends: `./packages/${name}/vite.config.ts`,
       test: {
         name,
         root: `packages/${name}`,
