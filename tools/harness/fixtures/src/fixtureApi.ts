@@ -8,7 +8,19 @@ export interface MsFixture {
   readRGBA: () => string;
   renderFrames?: (count: number) => number[];
   timeToSamples?: (samples: number) => number;
+  /** Load-and-first-frame bench (rt.html): milliseconds until the GPU finished. */
+  timeScene?: () => Promise<number>;
+  /** Model-view fixture: pixels to check in the rendered image. */
+  probes?: ModelViewProbe[];
   rt?: RtControls;
+}
+
+/** A pixel (x right, y down from the top-left, as in the PNG) and the RGBA of the texel it should show. */
+export interface ModelViewProbe {
+  name: string;
+  x: number;
+  y: number;
+  texel: number[];
 }
 
 /** Extra controls of the realtime renderer fixture (rt.html). */
@@ -33,6 +45,8 @@ export interface RtControls {
   setScenes: (names: string[]) => Promise<boolean[]>;
   /** Starts a setScene, disposes the renderer before it finishes; resolves with whether it was applied. */
   disposeDuringDecode: () => Promise<boolean>;
+  /** Depth-key variant (`raster` or `exact`) of the last frame, `none` before one. */
+  depthKeyMode: () => string;
   /** Image position (pixels, top-left origin) of a world point under the current camera. */
   project: (x: number, y: number, z: number) => [number, number];
   /** Sets the canvas CSS size; resolves after the resize observer resized the backing store and redrew. */

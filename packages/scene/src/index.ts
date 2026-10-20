@@ -1,6 +1,13 @@
 export const packageName = '@modelshot/scene';
 
 export {
+  DEFAULT_ALPHA_CUTOFF,
+  resolveMaterialAlpha,
+  texelCoverage,
+  type MaterialAlpha,
+  type TexelCoverage,
+} from './materialAlpha';
+export {
   mat4Identity,
   mat4Multiply,
   mat4NodeLocal,
@@ -9,8 +16,9 @@ export {
   mat4TransformPoint,
   type Mat4,
 } from './Mat4';
+export { BACK_SIDE_RENDER_ORDER, MAX_ABS_RENDER_ORDER, RENDER_ORDER_TIE_DISTANCE } from './renderOrder';
 export { SCENE_FORMAT_VERSION, type SceneDocument, type SceneSource } from './SceneDocument';
-export type { SceneMaterial } from './SceneMaterial';
+export type { SceneAlphaMode, SceneMaterial } from './SceneMaterial';
 export type { SceneMesh, SceneMeshGroup } from './SceneMesh';
 export type { SceneNode } from './SceneNode';
 export type { SceneTexture } from './SceneTexture';

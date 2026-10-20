@@ -6,6 +6,7 @@ import { encodeFlipped, expectGolden, openFixture, renderFixture, type FixtureIn
 import type { RasterGoldenSpec } from '../src/goldenSpec';
 import { goldenPath } from '../src/goldenStore';
 import { expect, test } from '../src/harnessTest';
+import type { ModelViewProbe } from '../fixtures/src/fixtureApi';
 
 const spec = (name: string, variant: string): RasterGoldenSpec => ({
   kind: 'raster',
@@ -287,7 +288,7 @@ function greenPixels(image: Image): number {
   return count;
 }
 
-test('of two coincident faces the one turned to the camera wins, from either side and on both paths', async ({
+test('of the two coincident single-sided faces of a flat cube the one turned to the camera shows, from either side and on both paths', async ({
   page,
 }) => {
   for (const extra of ['', '&fallback=1']) {
@@ -356,4 +357,271 @@ test.describe('lifetime', () => {
     expect(result).toEqual({ applied: false, gl: 0, bitmaps: 0 });
     expect(errors).toEqual([]);
   });
+});
+
+/** Probes of the model-view fixture (same camera image positions as `look=model-view`). */
+async function modelViewProbes(page: Page, variant: string): Promise<ModelViewProbe[]> {
+  await openFixture(page, `/model-view.html?variant=${variant}`);
+  return page.evaluate(() => window.__msFixture?.probes ?? []);
+}
+
+/** Cosine between two RGB colours (lighting and tone mapping scale a texel's colour but keep its direction). */
+function hueMatch(a: readonly number[], b: readonly number[]): number {
+  const dot = [0, 1, 2].reduce((sum, k) => sum + (a[k] ?? 0) * (b[k] ?? 0), 0);
+  return dot / (Math.hypot(a[0] ?? 0, a[1] ?? 0, a[2] ?? 0) * Math.hypot(b[0] ?? 0, b[1] ?? 0, b[2] ?? 0));
+}
+
+/** Pixels of the opposite quad colour (red: r > 1.5 b; blue: b > 1.5 r) where `expected` must show alone. */
+function wrongColourPixels(image: Image, expected: 'red' | 'blue'): number {
+  let count = 0;
+  for (let i = 0; i < image.data.length; i += 4) {
+    const r = image.data[i] ?? 0;
+    const b = image.data[i + 2] ?? 0;
+    if (expected === 'red' ? b > 1.5 * r + 8 : r > 1.5 * b + 8) count++;
+  }
+  return count;
+}
+
+/** Path and clip planes; the mode is the depth key an order-0 scene gets (a scene with render order is always exact). */
+const RT_MODES = [
+  ['float, framed', '&depth=framed', 'raster'],
+  ['float, inside the sphere', '&depth=inside', 'exact'],
+  ['fallback, framed', '&depth=framed&fallback=1', 'raster'],
+  ['fallback, inside the sphere', '&depth=inside&fallback=1', 'exact'],
+] as const;
+
+test.describe('scene-format rule in the realtime renderer (model-view scenes)', () => {
+  for (const [label, query, mode] of RT_MODES) {
+    test(`alpha-plane, ${label}: cutout, back side and texels match the fixture`, async ({ page }) => {
+      const probes = await modelViewProbes(page, 'alpha-plane-raster');
+      const at = (name: string) => probes.find((p) => p.name === name)!;
+      const { image } = await render(page, `scene=alpha-plane&look=model-view${query}`);
+      expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe(mode);
+      const [r, g, b] = pixel(image, at('opaque-texel').x, at('opaque-texel').y);
+      expect(r, 'the opaque texel shows the plane').toBeGreaterThan(1.5 * Math.max(g, b));
+      const seen = pixel(image, at('transparent-texel').x, at('transparent-texel').y);
+      expect(Math.max(...seen) - Math.min(...seen), 'the transparent texel shows the grey ground').toBeLessThan(24);
+      const [br, bg, bb] = pixel(image, at('back-side-texel').x, at('back-side-texel').y);
+      expect(br, 'the double-sided back shows the same texel, mirrored').toBeGreaterThan(1.5 * Math.max(bg, bb));
+    });
+
+    test(`render-order, ${label}: coincident pairs, gaps (2 × TIE) and ties (0.5 × TIE) resolve as in the fixture`, async ({
+      page,
+    }) => {
+      const probes = await modelViewProbes(page, 'render-order-raster');
+      const at = (name: string) => probes.find((p) => p.name === name)!;
+      const { image } = await render(page, `scene=render-order&look=model-view${query}`);
+      // The scene has render orders, so every frame uses the exact key.
+      expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('exact');
+      for (const [winner, loser] of [
+        ['in-front', 'under-in-front'],
+        ['over-behind', 'behind'],
+        ['gap-near', 'gap-far-in-front'],
+        ['tie-far-in-front', 'tie-near'],
+      ] as const) {
+        const shown = pixel(image, at(winner).x, at(winner).y);
+        const toWinner = hueMatch(shown, at(winner).texel);
+        const toLoser = hueMatch(shown, at(loser).texel);
+        expect(toWinner, `${winner} over ${loser}: ${toWinner} vs ${toLoser}`).toBeGreaterThan(toLoser + 0.05);
+      }
+    });
+  }
+});
+
+test.describe('coincident double-sided faces and single-sided backs', () => {
+  for (const [label, query, mode] of RT_MODES) {
+    test(`${label}: the side facing the camera wins from above and below; a single-sided back shows nothing`, async ({
+      page,
+    }) => {
+      for (const look of ['above', 'below', 'grazing-above', 'grazing-below'] as const) {
+        const { image } = await render(page, `scene=coincident-double&look=${look}${query}`);
+        expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe(mode);
+        const backdrop = pixel(image, 0, 0);
+        const [px, py] = await page.evaluate(() => window.__msFixture!.rt!.project(-6, 0, 0));
+        const [r, , b] = pixel(image, px, py);
+        if (look.endsWith('above')) expect(r, `${look}: the up-facing red quad`).toBeGreaterThan(1.5 * b);
+        else expect(b, `${look}: the down-facing blue quad`).toBeGreaterThan(1.5 * r);
+        if (look.startsWith('grazing')) {
+          // Every pixel of the pair: no patch of the other colour (order-0 scene, back side −1/16 on the raster pull).
+          expect(wrongColourPixels(image, look.endsWith('above') ? 'red' : 'blue'), look).toBe(0);
+          continue;
+        }
+        const [sx, sy] = await page.evaluate(() => window.__msFixture!.rt!.project(6, 0, 0));
+        const single = pixel(image, sx, sy);
+        if (look === 'above') expect(near(single, backdrop, 8), 'single-sided front is drawn').toBe(false);
+        else expect(single, 'single-sided back is not drawn').toEqual(backdrop);
+      }
+    });
+  }
+});
+
+/** Pixels that differ at all between two images of the same size (a single MSAA sample changes a pixel). */
+function differingPixels(a: Image, b: Image): number {
+  let count = 0;
+  for (let i = 0; i < a.data.length; i += 4) {
+    if (a.data[i] !== b.data[i] || a.data[i + 1] !== b.data[i + 1] || a.data[i + 2] !== b.data[i + 2]) count++;
+  }
+  return count;
+}
+
+test.describe('closed double-sided boxes: no hidden face at any sample', () => {
+  const modes = [
+    ['float, raster key', '', '&depth=framed', 'raster'],
+    ['float, exact key (inside the sphere)', '', '&depth=inside', 'exact'],
+    ['float, exact key (render order)', '-order', '&depth=framed', 'exact'],
+    ['fallback, raster key', '', '&depth=framed&fallback=1', 'raster'],
+    ['fallback, exact key (inside the sphere)', '', '&depth=inside&fallback=1', 'exact'],
+    ['fallback, exact key (render order)', '-order', '&depth=framed&fallback=1', 'exact'],
+  ] as const;
+  for (const [shape, looks] of [
+    ['closed-cube', ['cube', 'cube-grazing-1', 'cube-grazing-5']],
+    ['step', ['cube', 'cube-grazing-5']],
+  ] as const) {
+    for (const [label, order, query, mode] of modes) {
+      test(`${shape}, ${label}: the hidden faces change no pixel (${looks.join(', ')})`, async ({ page }) => {
+        const scene = shape === 'closed-cube' && order ? 'closed-cube-order' : `${shape}${order}`;
+        // Raster frames skip the back pass of these closed opaque boxes, so even beside a face 1 degree from
+        // edge-on no MSAA sample shows a hidden face.
+        for (const look of looks) {
+          // The open variant has only the faces in view; the hidden (blue) faces must not change a single pixel.
+          const closed = await render(page, `scene=${scene}${query}&look=${look}`);
+          expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe(mode);
+          expect(modelBox(closed.image).x1 - modelBox(closed.image).x0, `${look}: drawn`).toBeGreaterThan(20);
+          const open = await render(page, `scene=${scene}-open${query}&look=${look}`);
+          expect(differingPixels(closed.image, open.image), `${look}: pixels touched by a hidden face`).toBe(0);
+        }
+      });
+    }
+  }
+});
+
+/**
+ * Pixels the hidden faces of `closed-cube-cutout` change at the `cube-grazing-1` look on the float path (raster key,
+ * MSAA), as measured when the remaining deviation was pinned: an upper bound, so the leak cannot grow unnoticed.
+ */
+const CUTOUT_GRAZING_1_PIXELS = 10;
+
+test.describe('raster back pass of closed meshes', () => {
+  for (const [label, query] of [
+    ['float', ''],
+    ['fallback', '&fallback=1'],
+  ] as const) {
+    test(`${label}: a closed cube with cut-outs keeps its back pass; beside a face 1 degree from edge-on its hidden faces touch at most the pinned pixel count`, async ({
+      page,
+    }) => {
+      // Not opaque on every face, so the back sides are drawn, and MSAA samples next to the near edge-on east face
+      // still let a few through (docs/realtime-renderer.md, deviation). The bound is the count measured when pinned.
+      const bound = label === 'float' ? CUTOUT_GRAZING_1_PIXELS : 0;
+      for (const [look, max] of [
+        ['cube', 0],
+        ['cube-grazing-1', bound],
+      ] as const) {
+        const closed = await render(page, `scene=closed-cube-cutout${query}&look=${look}`);
+        expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('raster');
+        const open = await render(page, `scene=closed-cube-open${query}&look=${look}`);
+        expect(
+          differingPixels(closed.image, open.image),
+          `${look}: pixels touched by a hidden face`,
+        ).toBeLessThanOrEqual(max);
+      }
+    });
+
+    test(`${label}: an inside-out closed cube keeps its back pass: its near wall shows at the centre`, async ({
+      page,
+    }) => {
+      // Inverted faces: the near (red) walls are back sides, the far (blue) walls face the camera. Skipping the back
+      // pass would show the blue far wall at the centre.
+      const { image } = await render(page, `scene=closed-cube-inverted${query}&look=cube`);
+      expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('raster');
+      const [r, g, b] = pixel(image, image.width / 2, image.height / 2);
+      expect(r, `centre ${r}, ${g}, ${b}: red near wall`).toBeGreaterThan(2 * Math.max(g, b) + 10);
+    });
+
+    test(`${label}: with the camera inside a closed opaque cube the back sides are still drawn`, async ({ page }) => {
+      const { image } = await render(page, `scene=closed-cube${query}&look=cube-inside`);
+      expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('raster');
+      // Every wall seen from inside is a back side: no backdrop pixel may remain.
+      const { image: empty } = await render(page, `scene=empty${query}&look=cube-inside`);
+      const backdrop = pixel(empty, 0, 0);
+      let backdropPixels = 0;
+      for (let y = 0; y < image.height; y++) {
+        for (let x = 0; x < image.width; x++) if (near(pixel(image, x, y), backdrop, 0)) backdropPixels++;
+      }
+      expect(backdropPixels).toBe(0);
+    });
+  }
+});
+
+test.describe('render-order tie at MSAA sample level: coincident quads with different diagonals (exact key)', () => {
+  for (const [look, kind] of [
+    ['above', ''],
+    ['grazing-above', ''],
+    ['model-view', ''],
+    ['below', '-double'],
+    ['grazing-below', '-double'],
+  ] as const) {
+    for (const extra of ['', '&fallback=1']) {
+      const sides = kind ? 'back sides' : 'fronts';
+      test(`${look}${extra}: the in_front quad wins every sample (${sides}), along both diagonals`, async ({
+        page,
+      }) => {
+        const pair = await render(page, `scene=tie-pair${kind}&look=${look}${extra}`);
+        expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('exact');
+        const single = await render(page, `scene=tie-single${kind}&look=${look}${extra}`);
+        expect(modelBox(single.image).x1 - modelBox(single.image).x0, 'the quad is drawn').toBeGreaterThan(20);
+        expect(differingPixels(pair.image, single.image), 'pixels touched by the default quad').toBe(0);
+      });
+    }
+  }
+
+  test.describe('device pixel ratio 2, non-square viewport', () => {
+    test.use({ deviceScaleFactor: 2 });
+
+    test('the exact key uses the viewport the passes draw into (768 x 512)', async ({ page }) => {
+      const images: Image[] = [];
+      for (const scene of ['tie-pair', 'tie-single']) {
+        const { info } = await render(page, `scene=${scene}&look=grazing-above`);
+        await page.evaluate(() => window.__msFixture!.rt!.setCssSize(384, 256));
+        const image = decode(await readPng(page, info));
+        expect([image.width, image.height]).toEqual([768, 512]);
+        images.push(image);
+      }
+      expect(differingPixels(images[0]!, images[1]!)).toBe(0);
+    });
+  });
+});
+
+test.describe('texel alpha bytes in the shaders (alpha ramp, no texel anti-aliasing)', () => {
+  for (const [scene, invisibleBelow] of [
+    ['alpha-ramp-blend', 3],
+    ['alpha-ramp-mask', 128],
+    ['alpha-ramp-opaque', 0],
+  ] as const) {
+    for (const extra of ['', '&fallback=1']) {
+      test(`${scene}${extra}: bytes below ${invisibleBelow} show only the backdrop, the others do not`, async ({
+        page,
+      }) => {
+        const { image } = await render(page, `scene=${scene}&look=ramp&aa=0${extra}`);
+        const backdrop = pixel(image, 0, 0);
+        const invisible: number[] = [];
+        for (let k = 0; k < 256; k++) {
+          const [x, y] = await page.evaluate(
+            ([col, row]) => window.__msFixture!.rt!.project(-8 + col + 0.5, 8 - row - 0.5, 0),
+            [k % 16, Math.floor(k / 16)] as const,
+          );
+          let allBackdrop = true;
+          for (let dy = -5; dy <= 5 && allBackdrop; dy++) {
+            for (let dx = -5; dx <= 5; dx++) {
+              if (!near(pixel(image, x + dx, y + dy), backdrop, 0)) {
+                allBackdrop = false;
+                break;
+              }
+            }
+          }
+          if (allBackdrop) invisible.push(k);
+        }
+        expect(invisible).toEqual(Array.from({ length: invisibleBelow }, (_, k) => k));
+      });
+    }
+  }
 });

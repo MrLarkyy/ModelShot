@@ -1,6 +1,6 @@
 import { observeCanvasSize, RealtimeRenderer, type RendererWarning } from '@modelshot/renderer-rt';
 import { cameraProjection, cameraView, mat4Multiply, type SceneDocument } from '@modelshot/scene';
-import { installFrameBench, installFrameReadout } from './bench';
+import { installFrameBench, installFrameReadout, installSceneBench } from './bench';
 import { readDrawingBufferBase64 } from './context';
 import type { MsFixture, RtControls } from './fixtureApi';
 import { breakFramebuffers } from './breakFramebuffers';
@@ -8,7 +8,7 @@ import { installGlTracker } from './glTracker';
 import { isRtSceneName, parseRtView, reverseMeshOrder, rtCamera, rtScene, type RtSceneName } from './rtScenes';
 
 // URL parameters: variant (a preset of rtScenes.ts) or scene, yaw, pitch, proj=persp|ortho, fov, zoom, iso=0|1,
-// aa=0|1, fallback=1, reverse=1; size (CSS pixels, default 256), maxTextureSide, track=1 (count GL objects),
+// aa=0|1, fallback=1, reverse=1, look=model-view|above|below with depth=framed|inside; size (CSS pixels, default 256), maxTextureSide, track=1 (count GL objects),
 // fps=1 (continuous drawing with a frame-time readout, for a manual run on real hardware).
 const params = new URLSearchParams(location.search);
 
@@ -89,6 +89,11 @@ async function start(): Promise<void> {
   });
 
   installFrameBench(api, gl, () => renderer.render());
+  installSceneBench(api, gl, async () => {
+    doc = sceneOf('large-order');
+    warnings = (await renderer.setScene(doc)).warnings;
+    frame();
+  });
   if (continuous) {
     const output = document.createElement('output');
     document.body.appendChild(output);
@@ -164,6 +169,7 @@ async function start(): Promise<void> {
       renderer.dispose();
       return (await pending).applied;
     },
+    depthKeyMode: () => renderer.depthKeyMode ?? 'none',
     project: (x, y, z) => {
       const aspect = canvas.width / canvas.height;
       const camera = rtCamera(doc, view, aspect);

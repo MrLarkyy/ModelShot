@@ -64,4 +64,35 @@ describe('batchScene', () => {
     );
     expect(batches).toEqual([]);
   });
+
+  it('splits by alpha rule, sidedness and render order; an all-default scene keeps one batch', () => {
+    const single = [{ material: 0, start: 0, count: 6 }];
+    const double = [{ material: 0, start: 0, count: 6, doubleSided: true }];
+    const scene = doc(
+      [
+        quad(0, 0),
+        quad(0, 10, { groups: double }),
+        quad(0, 20, { renderOrder: 1 }),
+        quad(0, 30, { groups: [{ material: 1, start: 0, count: 6 }] }),
+        quad(0, 40, { groups: single }),
+      ],
+      {
+        materials: [
+          { name: 'a', texture: 0 },
+          { name: 'b', texture: 0, alphaMode: 'blend', alphaCutoff: 0.01 },
+        ],
+      },
+    );
+    const batches = batchScene(scene);
+    expect(
+      batches.map((b) => [b.alpha.modeId, b.alpha.cutoffByte, b.doubleSided, b.renderOrder, b.indices.length]),
+    ).toEqual([
+      [0, 128, false, 0, 12],
+      [0, 128, true, 0, 6],
+      [0, 128, false, 1, 6],
+      [2, 3, false, 0, 6],
+    ]);
+    const untextured = batchScene(doc([quad(0, 0, { groups: [{ material: -1, start: 0, count: 6 }] })]));
+    expect(untextured[0]?.alpha).toEqual({ modeId: 0, cutoffByte: 0 });
+  });
 });

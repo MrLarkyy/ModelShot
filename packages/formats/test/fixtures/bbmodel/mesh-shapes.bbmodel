@@ -1,0 +1,258 @@
+{
+  "meta": {
+    "format_version": "4.10",
+    "model_format": "free",
+    "box_uv": false
+  },
+  "name": "mesh-shapes",
+  "resolution": {
+    "width": 16,
+    "height": 16
+  },
+  "elements": [
+    {
+      "name": "shapes",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "vertices": {
+        "t1": [-14, 2, 0],
+        "t2": [-8, 2, 0],
+        "t3": [-11, 8, 0],
+        "tm": [-11, 2, 0],
+        "q1": [-6, 2, 0],
+        "q2": [0, 2, 0],
+        "q3": [0, 8, 0],
+        "q4": [-6, 8, 0],
+        "l1": [9, 2, 0],
+        "l2": [15, 2, 0],
+        "l3": [15, 4, 0],
+        "l4": [11, 4, 0],
+        "l5": [11, 8, 0],
+        "l6": [9, 8, 0],
+        "f1": [-14, 0, 6],
+        "f2": [15, 0, 6],
+        "f3": [15, 0, -4],
+        "f4": [-14, 0, -4],
+        "n1": [-3, 9, 0],
+        "n2": [3, 9, 0],
+        "n3": [3, 12, 0],
+        "n4": [-3, 12, 0],
+        "p1": [5, 8, 0],
+        "p2": [2.1468, 5.9271, 0],
+        "p3": [3.2366, 2.5729, 0],
+        "p4": [6.7634, 2.5729, 0],
+        "p5": [7.8532, 5.9271, 0]
+      },
+      "faces": {
+        "triangle": {
+          "uv": {
+            "t1": [0, 16],
+            "t2": [16, 16],
+            "t3": [8, 0]
+          },
+          "vertices": ["t1", "t2", "t3"],
+          "texture": 0
+        },
+        "zigzag": {
+          "uv": {
+            "q1": [0, 16],
+            "q3": [16, 0],
+            "q2": [16, 16],
+            "q4": [0, 0]
+          },
+          "vertices": ["q1", "q3", "q2", "q4"],
+          "texture": "t-checker"
+        },
+        "pentagon": {
+          "uv": {
+            "p1": [8, 0],
+            "p2": [0.3914666666666662, 5.527733333333333],
+            "p3": [3.2976000000000005, 14.472266666666664],
+            "p4": [12.702399999999999, 14.472266666666664],
+            "p5": [15.608533333333334, 5.527733333333333]
+          },
+          "vertices": ["p1", "p2", "p3", "p4", "p5"],
+          "texture": 0
+        },
+        "ell": {
+          "uv": {
+            "l1": [0, 16],
+            "l2": [16, 16],
+            "l3": [16, 10.666666666666666],
+            "l4": [5.333333333333333, 10.666666666666666],
+            "l5": [5.333333333333333, 0],
+            "l6": [0, 0]
+          },
+          "vertices": ["l1", "l2", "l3", "l4", "l5", "l6"],
+          "texture": 0
+        },
+        "edge": {
+          "uv": {
+            "t1": [0, 16],
+            "t2": [16, 16]
+          },
+          "vertices": ["t1", "t2"],
+          "texture": 0
+        },
+        "collinear": {
+          "uv": {
+            "t1": [0, 16],
+            "tm": [8, 16],
+            "t2": [16, 16]
+          },
+          "vertices": ["t1", "tm", "t2"],
+          "texture": 0
+        },
+        "floor": {
+          "uv": {
+            "f1": [0, 0],
+            "f2": [0, 0],
+            "f3": [0, 0],
+            "f4": [0, 0]
+          },
+          "vertices": ["f1", "f2", "f3", "f4"]
+        },
+        "disabled": {
+          "uv": {
+            "n1": [0, 16],
+            "n2": [16, 16],
+            "n3": [16, 8],
+            "n4": [0, 8]
+          },
+          "vertices": ["n1", "n2", "n3", "n4"],
+          "texture": null
+        }
+      },
+      "type": "mesh",
+      "uuid": "m-shapes"
+    },
+    {
+      "name": "turned",
+      "origin": [0, 10, -6],
+      "rotation": [0, 30, 0],
+      "vertices": {
+        "a": [-4, 0, 0],
+        "b": [4, 0, 0],
+        "c": [4, 6, 0],
+        "d": [-4, 6, 0],
+        "e": [0, 9, 0]
+      },
+      "faces": {
+        "panel": {
+          "uv": {
+            "a": [0, 16],
+            "b": [16, 16],
+            "c": [16, 0],
+            "d": [0, 0]
+          },
+          "vertices": ["a", "b", "c", "d"],
+          "texture": 0
+        },
+        "roof": {
+          "uv": {
+            "d": [0, 16],
+            "c": [16, 16],
+            "e": [8, 0]
+          },
+          "vertices": ["d", "c", "e"],
+          "texture": "t-checker"
+        }
+      },
+      "type": "mesh",
+      "uuid": "m-turned"
+    },
+    {
+      "name": "arch",
+      "origin": [-11, 10, 0],
+      "shading": "smooth",
+      "vertices": {
+        "b0": [3, 0, 0],
+        "t0": [3, 6, 0],
+        "b1": [2.1213, 0, 2.1213],
+        "t1": [2.1213, 6, 2.1213],
+        "b2": [0, 0, 3],
+        "t2": [0, 6, 3],
+        "b3": [-2.1213, 0, 2.1213],
+        "t3": [-2.1213, 6, 2.1213],
+        "b4": [-3, 0, 0],
+        "t4": [-3, 6, 0]
+      },
+      "faces": {
+        "q0": {
+          "uv": {
+            "b1": [12, 16],
+            "b0": [16, 16],
+            "t0": [16, 0],
+            "t1": [12, 0]
+          },
+          "vertices": ["b1", "b0", "t0", "t1"],
+          "texture": 0
+        },
+        "q1": {
+          "uv": {
+            "b2": [8, 16],
+            "b1": [12, 16],
+            "t1": [12, 0],
+            "t2": [8, 0]
+          },
+          "vertices": ["b2", "b1", "t1", "t2"],
+          "texture": 0
+        },
+        "q2": {
+          "uv": {
+            "b3": [4, 16],
+            "b2": [8, 16],
+            "t2": [8, 0],
+            "t3": [4, 0]
+          },
+          "vertices": ["b3", "b2", "t2", "t3"],
+          "texture": 0
+        },
+        "q3": {
+          "uv": {
+            "b4": [0, 16],
+            "b3": [4, 16],
+            "t3": [4, 0],
+            "t4": [0, 0]
+          },
+          "vertices": ["b4", "b3", "t3", "t4"],
+          "texture": 0
+        }
+      },
+      "type": "mesh",
+      "uuid": "m-arch"
+    }
+  ],
+  "groups": [
+    {
+      "name": "tilt",
+      "origin": [0, 0, -6],
+      "rotation": [-20, 0, 0],
+      "uuid": "g-tilt"
+    }
+  ],
+  "outliner": [
+    "m-shapes",
+    {
+      "uuid": "g-tilt",
+      "children": ["m-turned"]
+    },
+    "m-arch"
+  ],
+  "textures": [
+    {
+      "name": "uv-grid.png",
+      "uuid": "t-grid",
+      "uv_width": 16,
+      "uv_height": 16,
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAARUlEQVR4AaXBsQ3DABADMQZQ4fL2r7ypM8STv+d5vxBCCCGEEEIIIUxOJieTk8nJ5GRyMjmZnExOJieTk8nJ5GRyMjn5A+lgA82/LlltAAAAAElFTkSuQmCC"
+    },
+    {
+      "name": "checker.png",
+      "uuid": "t-checker",
+      "uv_width": 16,
+      "uv_height": 16,
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAArklEQVR4AaXBAXHYABADwYvHYArrYRwEwRDTNMLg3R//9Zc/NkxOxobJydgwORkb5uGj14bJydgwORkbJidjw+RkHj56czI2TE7GhsnJ2DA5GRvm4aPXhsnJ2DA5GRsmJ2PD5GQePnpzMjZMTsaGycnYMDkZG+bho9eGycnYMDkZGyYnY8PkZB4+enMyNkxOxobJydgwORkb5uGj14bJydgwORkbJidjw+RkHj76DxPoYQ1QPwrhAAAAAElFTkSuQmCC"
+    }
+  ]
+}

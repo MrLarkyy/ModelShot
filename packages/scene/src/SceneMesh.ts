@@ -3,6 +3,13 @@ export interface SceneMeshGroup {
   readonly material: number;
   readonly start: number;
   readonly count: number;
+  /**
+   * Absent or `false`: one-sided for every ray (camera, shadow, ambient occlusion, path tracing): a ray that meets the
+   * back passes through; a shadow ray counts as travelling from the light, so only a face whose front faces the light
+   * casts a shadow. `true`: both sides; the back shows the same texels, mirrored as seen from behind, with the normal
+   * flipped toward the viewer or ray.
+   */
+  readonly doubleSided?: boolean;
 }
 
 /**
@@ -17,6 +24,11 @@ export interface SceneMesh {
   readonly node: number;
   /** `false` hides this mesh. */
   readonly visible: boolean;
+  /**
+   * Integer in ±`MAX_ABS_RENDER_ORDER`, absent: 0. Breaks ties between nearly coincident surfaces by the rule in
+   * `renderOrder.ts` (each step pulls the surface `RENDER_ORDER_TIE_DISTANCE` nearer).
+   */
+  readonly renderOrder?: number;
   /** 3 floats per vertex. */
   readonly positions: Float32Array;
   /** 3 floats per vertex, unit length. */

@@ -52,8 +52,8 @@ function meshUvSize(scene: SceneDocument, index: number): { width: number; heigh
 }
 
 /**
- * Golden form of a load result: node transforms (world matrix rounded to 1e-6), meshes in world space (1e-5),
- * textures without their bytes, warnings. Number arrays print on one line.
+ * Golden form of a load result: node transforms (world matrix rounded to 1e-6), meshes in world space (1e-5) with
+ * render order and group sidedness, materials with their alpha rule, textures without their bytes, warnings. Number arrays print on one line.
  */
 export function serializeResult(result: BbmodelLoadResult): string {
   const { scene } = result;
@@ -79,6 +79,7 @@ export function serializeResult(result: BbmodelLoadResult): string {
       sourceId: mesh.sourceId,
       node: mesh.node,
       visible: mesh.visible,
+      renderOrder: mesh.renderOrder,
       groups: mesh.groups,
       indices: [...mesh.indices],
       vertexColumns: 'x y z nx ny nz u v uMin vMin uMax vMax (uv in texture uv units; untextured: normalised)',

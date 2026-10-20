@@ -93,11 +93,8 @@ describe('hand-checked transforms', () => {
       ['stand', -1, [0, 0, 0], [0, 0, 0]],
       ['spire', 0, [0, 8, 0], [0, 0, 30]],
     ]);
-    expect(scene.meshes.map((m) => m.name)).toEqual(['base', 'tip']);
-    expect(warnings.map((w) => [w.code, w.path])).toEqual([
-      ['UNSUPPORTED_ELEMENT', '$.elements[2]'],
-      ['UNSUPPORTED_ELEMENT', '$.elements[3]'],
-    ]);
+    expect(scene.meshes.map((m) => m.name)).toEqual(['base', 'tip', 'sculpt']);
+    expect(warnings.map((w) => [w.code, w.path])).toEqual([['UNSUPPORTED_ELEMENT', '$.elements[2]']]);
   });
 
   it('referenced-texture: the picked file is used, the URL is not fetched', () => {
@@ -109,13 +106,23 @@ describe('hand-checked transforms', () => {
     expect(warnings.map((w) => w.code)).toEqual(['SOURCE_NOT_FETCHED', 'MISSING_TEXTURE']);
   });
 
-  it('flat-cube: a zero-thickness cube keeps up and down; null removes a face, no texture key leaves it blank', () => {
+  it('flat-cube: a zero-thickness cube keeps up and down, single-sided; null removes a face, no texture key leaves it blank', () => {
     const { scene } = load('flat-cube');
     expect(scene.meshes[0]?.indices).toHaveLength(2 * 6);
+    expect(scene.meshes[0]?.groups).toEqual([{ material: 0, start: 0, count: 12, doubleSided: false }]);
     expect(scene.meshes[1]?.indices).toHaveLength(4 * 6);
     expect(scene.meshes[1]?.groups).toEqual([
-      { material: -1, start: 0, count: 6 },
-      { material: 0, start: 6, count: 18 },
+      { material: -1, start: 0, count: 6, doubleSided: true },
+      { material: 0, start: 6, count: 18, doubleSided: true },
     ]);
+  });
+
+  it('alpha-plane: the cutout plane turns −50° about X around its origin (−8, 9, 0)', () => {
+    const { scene } = load('alpha-plane');
+    expect(scene.meshes[1]?.name).toBe('cutout-plane');
+    // Corner (−8, −8, 0) from the origin: y' = −8 cos 50°, z' = 8 sin 50°.
+    const corner = [-16, 9 - 8 * Math.cos((50 * Math.PI) / 180), 8 * Math.sin((50 * Math.PI) / 180)];
+    expect(hasVertex(worldVertices(scene, 1), corner)).toBe(true);
+    expect(scene.meshes.map((m) => m.groups.map((g) => g.doubleSided))).toEqual([[true], [true], [true], [false]]);
   });
 });

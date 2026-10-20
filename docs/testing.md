@@ -2,7 +2,8 @@
 
 `pnpm test` runs two layers, in order; either failing fails the command and the CI job.
 
-1. `pnpm test:unit`: Vitest, every package plus `tools/harness/test` (comparator, golden store, budgets, bundle size).
+1. `pnpm test:unit`: Vitest, every package plus `tools/harness/test` (comparator, golden store, budgets, bundle size,
+   model-view helpers).
 2. `pnpm test:browser`: Playwright in a pinned headless Chromium on software WebGL (SwiftShader), `tools/harness`.
 
 Run `pnpm browsers` once per machine (and after a Playwright version bump) to install the browser. Playwright is pinned
@@ -64,8 +65,46 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
 - Context loss through `WEBGL_lose_context`: the image after the restore matches `rt-turntable-y030`, without a
   reload or a page error.
 - Device pixel ratio 2 doubles the backing store; an element resize reallocates and keeps the projection unstretched.
-- Two-sided drawing: the zero-height plate seen from above shows its grass face, from below only its stone face, on
-  both paths (with one unordered pass the first drawn face won from both sides).
+- Sides: the zero-height plate (two coincident single-sided faces) seen from above shows its grass face, from below
+  only its stone face, on both paths.
+- Scene-format rule against the model-view fixture (`look=model-view` uses the fixture's camera, so its `probes` fall
+  on the same pixels; `depth=framed` clips at 20..120, `depth=inside` at far × 1e-4..120 like a camera inside the
+  bounding sphere, which switches the renderer to the exact depth key; `rt.depthKeyMode()` is asserted), on the
+  float path and the fallback: `alpha-plane` (opaque texel, transparent texel showing the ground, double-sided back
+  showing the mirrored texel), `render-order` (a scene with render orders, so always the exact key: the coincident
+  horizontal pairs split along different diagonals, gap pairs at 2 × TIE where the nearer shows and tie pairs at
+  0.5 × TIE where `in_front` shows), and `coincident-double` (order 0, so the raster key when framed;
+  `look=above|below|grazing-above|grazing-below`: of two coincident double-sided quads split along different
+  diagonals the one facing the camera wins, at about 8° with no pixel of the other colour; a single-sided quad seen
+  from behind shows the backdrop).
+- Closed double-sided boxes against the same boxes without their hidden faces (`closed-cube` / `closed-cube-open`, and
+  `step` / `step-open`: a tall box beside a low one, with a T-junction and a hidden face coincident with a visible one
+  facing the other way; visible faces red, hidden blue): not one pixel may differ, on float and fallback, with the
+  raster key, the exact key inside the sphere and the exact key from render order 1 (`-order` scenes), seen from
+  `cube`, `cube-grazing-1` (the east face about 1° from edge-on) and `cube-grazing-5` (`step`: `cube` and
+  `cube-grazing-5`). The raster frames skip these opaque closed boxes' back pass; drawing it anyway differs in 74
+  pixels (cube, 1°) and 23 (step, 5°) on float.
+- Raster back pass of closed meshes, float and fallback: `closed-cube-cutout` (the hidden faces' rectangle half hole, so
+  the cube is closed but not opaque and keeps its back pass) against `closed-cube-open`: 0 pixels from `cube` (at
+  `polygonOffset(1, 1)`: 45), at most 10 from `cube-grazing-1` on float (the pinned MSAA deviation,
+  realtime-renderer.md), 0 on fallback; `closed-cube` from `cube-inside` (camera inside the cube's bounds): no backdrop
+  pixel, every wall a back side (skipping it there leaves only backdrop); `closed-cube-inverted` (every triangle
+  reversed, normals flipped) from `cube`: the centre pixel is the red near wall, a back side (an orientation-blind
+  closedness test skips it and shows the blue far wall: 76, 108, 190). Unit tests (`closedOpaque.test.ts`): solids
+  (cube, shared or own vertices, two disjoint cubes; not: open sheet, missing face, a face wound the other way,
+  duplicated faces, inside-out cube, coincident opposite pair with different diagonals, cavity, nested shell), the
+  translucent-texel count inside a UV rectangle, the per-mesh decision (readback failure, opaque mode, untextured,
+  single-sided, groups), `backSidesVisible` (inside, outside, near plane) and the batch key.
+- Render-order tie at sample level: a red `in_front` quad over a coincident blue default quad split along the other
+  diagonal (`tie-pair`) against the red quad alone (`tie-single`): not one pixel may differ, exact key, float and
+  fallback, seen `above`, `grazing-above` (about 8°) and `model-view`; the double-sided pair seen `below` and
+  `grazing-below` ties two back sides (without the shared-edge flags 1–124 pixels differ); and at device pixel ratio 2
+  in a non-square 768 x 512 viewport (the exact key's ray uses the viewport the passes draw into; a drawing buffer
+  smaller than the canvas cannot be produced in this harness).
+- Texel alpha bytes in the shaders: a 16 x 16 quad with `fixtures/models/rt-alpha-ramp.png` (white texels whose alpha
+  byte is their index, CC0) seen square on, `aa=0`, float and fallback: under blend 0.01 exactly the bytes 0–2 show
+  only the backdrop, under mask 128/255 the bytes 0–127, under opaque none (so the cutoff byte and the bytes below it,
+  254 and 255 run through `texelAlpha.glsl`).
 - Float targets the driver rejects at a new size (`breakFramebuffers()` makes every framebuffer report incomplete)
   switch the renderer to the no-float path; `capabilities.path` reports it.
 - Hostile textures (corrupt bytes rejected at the header, a valid header with scrambled image data that fails to
@@ -83,12 +122,92 @@ string.
 Fix the seed, the sample count, the resolution and the camera. The accumulation stops after exactly N samples, never
 after a time. Random numbers come from a seeded integer hash, never `Math.random`.
 
+## Model-view fixture
+
+`fixtures/model-view.html?variant=<name>` renders a real loader result (`loadBbmodel` on a formats test fixture,
+imported statically; the URL only picks one of the variants below, looked up as an own key) with one fixed camera,
+light and look (`fixtures/src/modelViewCamera.ts`), in two independent ways that read the same material table and
+shading include:
+
+- `raster`: an orthographic depth-only pass from the light (DEPTH_COMPONENT24, 1024², alpha-tested, slope polygon
+  offset, back faces of single-sided runs culled as seen from the light), then the camera pass with the same culling,
+  alpha discard, a `gl_FrontFacing` normal flip and a hard shadow-map lookup, into its own RGBA8 +
+  DEPTH_COMPONENT24 target (blitted to the canvas; the default depth buffer may have only 16 bits). Its fragment depth
+  is the scene format's render-order key (view depth − (order + back) × TIE, back = −1/16 for a back face) over
+  `DEPTH_RANGE` (far + 1), computed per fragment from the pixel's ray and the triangle's plane (three flat corner
+  attributes) by `shaders/include/cameraRay.glsl`, the same code the raycast uses, with a `LESS` test; no polygon
+  offset. Interpolated positions or depths are not precise enough for the 0.001 tie (the rasteriser's error at a
+  grazing angle is several times larger), which is why the fixture writes `gl_FragDepth` and gives up early-z: it is a
+  reference, not a renderer; `@modelshot/renderer-rt` realises the key its own way (realtime-renderer.md).
+- `raycast`: per pixel centre, a camera ray to the nearest triangle whose texel passes the alpha test
+  (single-sided triangles only from the front; the smallest render-order key wins, the same key), shaded with the barycentric vertex normal, then one shadow ray toward the light that an
+  alpha-passing
+  triangle blocks (a single-sided one only if its front faces the light). Triangles and their vertex normals live in
+  an RGBA32F data texture (at most 256, checked against `MAX_TEXTURE_SIZE`).
+
+Textures are decoded with `createImageBitmap(…, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' })`,
+uploaded unflipped and unpremultiplied into a NEAREST `TEXTURE_2D_ARRAY` without mipmaps, and read back; a
+partially transparent texel under a blended material fails the page with a clear error (partial alpha is drawn by the
+product renderers, MS-14 and MS-17). Shaders are static `.glsl` files joined by `fixtures/src/shaderSource.ts`
+(`#version` line, then `#define`s, then includes from `shaders/include/`, then the stage). Every constant the
+shaders share with TypeScript (`MAX_MATERIALS`, `MODE_*`, `RENDER_ORDER_TIE`, `SHADOW_NORMAL_OFFSET`,
+`DEPTH_RANGE`) is such a `#define` from
+`fixtures/src/modelShaderDefines.ts`, so it has one source; a model with more materials or textures than the tables
+hold fails with a clear error.
+
+| variant                | golden                     | checks                                                                                           |
+| ---------------------- | -------------------------- | ------------------------------------------------------------------------------------------------ |
+| `alpha-plane-raster`   | `alpha-plane-raster.png`   | golden; probes; pair                                                                             |
+| `alpha-plane-raycast`  | `alpha-plane-raycast.png`  | golden; probes; pair; byte-identical re-render                                                   |
+| `mesh-shapes-raster`   | `mesh-shapes-raster.png`   | golden (triangle, out-of-order quad, n-gons, null-texture face, rotated mesh, smooth arch); pair |
+| `mesh-shapes-raycast`  | `mesh-shapes-raycast.png`  | golden; pair                                                                                     |
+| `render-order-raster`  | `render-order-raster.png`  | golden; render-order probes; pair                                                                |
+| `render-order-raycast` | `render-order-raycast.png` | golden; render-order probes; pair                                                                |
+
+The page publishes `probes`: pixels of chosen texels of the cutout plane (and of their shadows on the ground,
+following the light ray) and of the plane seen from behind, with the texel colour. `modelView.spec.ts` checks that the
+opaque texel shows the plane, the transparent texel shows the ground, the ground under the transparent texel is lit
+and under the opaque one shadowed, the back side shows the same texel at its mirrored place, and on the flat cube
+(two coincident single-sided faces) light through a hole of the face toward the light reaches the ground while an
+opaque texel of it shadows it. In `render-order`, two pairs of coincident quads (split along different diagonals, so
+their depths differ by rounding only) show the higher order's texel: `in_front` over `default`, `default` over
+`behind`; two more pairs face the eye with the `in_front` quad farther along the view by 2 × and 0.5 ×
+`RENDER_ORDER_TIE_DISTANCE`: at 2 × the nearer `default` quad shows, at 0.5 × the `in_front` one.
+
+Shadow receivers: both renderers move the receiving point `SHADOW_NORMAL_OFFSET` (1.5 shadow-map texels, 0.094
+units) along its geometric normal toward the viewer before testing the light (shadow-map lookup or shadow-ray
+origin). Without it the shadow map's own depth error made a dithered acne band on the grazing-lit smooth arch of
+`mesh-shapes` (about 45 pixels, raster only); the offset is far below a texel of any fixture model, and the alpha-plane
+shadow probes still pass.
+
+**Pair tests**: the raster and raycast images of each model are compared with its `MODEL_VIEW_PAIR_TOLERANCE`
+entry (`threshold 0.1` throughout); the test prints `[model-view pair] <model>: … px differ, ratio … / max …, mean
+delta … / max …` into the build log and attaches it. Measured on SwiftShader (local Windows dev machine,
+deterministic, same on re-runs), differing pixels of 65 536:
+
+| model          | measured: pixels, ratio, mean delta | limit: `maxDiffRatio`, `maxMeanDelta` |
+| -------------- | ----------------------------------- | ------------------------------------- |
+| `alpha-plane`  | 115, 0.00175, 0.119                 | 0.0025, 0.25                          |
+| `mesh-shapes`  | 50, 0.00076, 0.046                  | 0.001, 0.07                           |
+| `render-order` | 40, 0.00061, 0.040                  | 0.0008, 0.06                          |
+
+The differing pixels are isolated: pixels whose centre lies within a rounding error of a silhouette, of a shadow edge
+(shadow-map texels against exact shadow rays; the longest is the straight edge of the arch's shadow on the checker
+quad in `mesh-shapes`), or of a texel boundary on a gradient texture (the raster interpolates UVs per pixel, the
+raycast takes exact barycentrics; adjacent `uv-grid.png` texels differ by about 13 levels after lighting). No region
+differs as a whole. The measured values of a run are also in
+`tools/harness/test-results/model-view-pair-<model>.json`. Dropping the alpha test from the shadow pass alone changes
+about 2 000 pixels of `alpha-plane`, dropping the render-order term from the raster depth about 3 400 of
+`render-order`; a tolerance is never widened to make a pair pass.
+
 ## Budgets
 
 `budgets.json` (root, `"version": 1`) holds `max` values for frame time, time to 64 samples and gzip bundle size of
 `app` and `embed`. `pnpm test` measures them (`bench.spec.ts`; the bundle is built fresh into a temporary directory, so
 it does not depend on `pnpm -r build`) and fails when a value exceeds its `max`, when a budget has no measurement, or
-a measurement has no budget. The measured values are in `tools/harness/test-results/budgets-measured.json`.
+a measurement has no budget. The measured values are in `tools/harness/test-results/budgets-measured.json`, and
+every run prints each one against its max (`[budget] <group>.<key>: measured … / max …`, from `bench.spec.ts` and
+`test/bundleSize.test.ts`; Vitest runs with `silent: false` so passing tests print too).
 
 Measured on the local Windows dev machine (SwiftShader, 3 runs) when the budgets were set: frame time median 0.3, 0.3,
 0.4 ms; time to 64 samples median 23.8, 23, 25.8 ms; gzip app 437 B, embed 115 B.
@@ -101,6 +220,17 @@ median of 30 frames after 5 warm-up frames. Local SwiftShader medians 68.9, 70.2
 nodes batched per node); max 750 ms is 10x the middle run (702 ms), rounded up, room for a CI runner that is 3-5x slower than the dev machine. SwiftShader cannot
 stand in for a laptop GPU: the 60 fps criterion is evidenced by a manual run of the `fps=1` page on real hardware
 (16.7 ms or less of frame work), recorded with the machine and GPU in the task.
+
+`frameTimeMs.rt-load-first-frame-200k-order` times `setScene` plus the first frame of a generated scene at the
+loader's limits (100 000 quads, 200 000 triangles, 400 000 vertices) at render order 1, which builds the exact key's
+de-indexed geometry and its shared-edge flags at upload: local SwiftShader 348, 344 and 354 ms before the flags, 506
+and 527 ms with them; since round 7 436 and 447 ms; max 3500 ms (10x of the first measurement).
+
+`frameTimeMs.rt-bench-order-512` is the same scene with one mesh at render order 1, so every frame uses the exact
+depth key (fragment depth, de-indexed geometry); max 750 ms like the raster bench. MS-12 local SwiftShader medians:
+`rt-bench-512` 92, 118 and 120 ms (raster key, cubes double-sided as the loader marks free-format faces, coverage per
+texel tap), `rt-bench-order-512` 117, 145 and 148 ms with MSAA, 83 and 107 ms since exact frames draw single-sampled
+(MS-12 round 7).
 
 - `frameTimeMs` max 5: the median is below 1 ms and `performance.now` is coarsened to 0.1 ms without cross-origin
   isolation, so 5x the median (2 ms) would be 20 ticks and one GC pause from flaking on a shared runner. 5 ms is 12-16x the

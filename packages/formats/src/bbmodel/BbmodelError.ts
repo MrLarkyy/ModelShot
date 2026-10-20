@@ -8,6 +8,7 @@ export type BbmodelErrorCode =
   | 'INVALID_FIELD'
   | 'TOO_MANY_ELEMENTS'
   | 'TOO_MANY_TRIANGLES'
+  | 'TOO_MANY_VERTICES'
   | 'TOO_MANY_TEXTURES'
   | 'NESTING_TOO_DEEP'
   | 'DUPLICATE_REFERENCE'
@@ -22,6 +23,7 @@ const TITLES: Readonly<Record<BbmodelErrorCode, string>> = {
   INVALID_FIELD: 'Invalid field',
   TOO_MANY_ELEMENTS: 'Too many elements',
   TOO_MANY_TRIANGLES: 'Too many triangles',
+  TOO_MANY_VERTICES: 'Too many vertices',
   TOO_MANY_TEXTURES: 'Too many textures',
   NESTING_TOO_DEEP: 'Nesting too deep',
   DUPLICATE_REFERENCE: 'Duplicate reference',

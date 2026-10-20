@@ -1,0 +1,204 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "format": "bbmodel",
+    "formatVersion": "4.10",
+    "modelFormat": "free"
+  },
+  "rootNodes": [],
+  "nodes": [],
+  "meshes": [
+    {
+      "name": "plane-front",
+      "sourceId": "m-front",
+      "node": -1,
+      "visible": true,
+      "renderOrder": 0,
+      "groups": [
+        {
+          "material": 0,
+          "start": 0,
+          "count": 6,
+          "doubleSided": false
+        }
+      ],
+      "indices": [0, 1, 2, 0, 2, 3],
+      "vertexColumns": "x y z nx ny nz u v uMin vMin uMax vMax (uv in texture uv units; untextured: normalised)",
+      "vertices": [
+        [-8, 0, 4, 0, 1, 0, 16, 16, 0, 0, 16, 16],
+        [-8, 0, -4, 0, 1, 0, 16, 0, 0, 0, 16, 16],
+        [-16, 0, -4, 0, 1, 0, 0, 0, 0, 0, 16, 16],
+        [-16, 0, 4, 0, 1, 0, 0, 16, 0, 0, 16, 16]
+      ]
+    },
+    {
+      "name": "plane-double",
+      "sourceId": "m-double",
+      "node": -1,
+      "visible": true,
+      "renderOrder": -1,
+      "groups": [
+        {
+          "material": 1,
+          "start": 0,
+          "count": 6,
+          "doubleSided": true
+        }
+      ],
+      "indices": [0, 1, 2, 0, 2, 3],
+      "vertexColumns": "x y z nx ny nz u v uMin vMin uMax vMax (uv in texture uv units; untextured: normalised)",
+      "vertices": [
+        [2, 0, 4, 0, 1, 0, 16, 16, 0, 0, 16, 16],
+        [2, 0, -4, 0, 1, 0, 16, 0, 0, 0, 16, 16],
+        [-6, 0, -4, 0, 1, 0, 0, 0, 0, 0, 16, 16],
+        [-6, 0, 4, 0, 1, 0, 0, 16, 0, 0, 16, 16]
+      ]
+    },
+    {
+      "name": "plane-auto",
+      "sourceId": "m-auto",
+      "node": -1,
+      "visible": true,
+      "renderOrder": 1,
+      "groups": [
+        {
+          "material": 2,
+          "start": 0,
+          "count": 6,
+          "doubleSided": true
+        }
+      ],
+      "indices": [0, 1, 2, 0, 2, 3],
+      "vertexColumns": "x y z nx ny nz u v uMin vMin uMax vMax (uv in texture uv units; untextured: normalised)",
+      "vertices": [
+        [12, -4, 0, 0, 0, 1, 16, 16, 0, 0, 16, 16],
+        [12, 4, 0, 0, 0, 1, 16, 0, 0, 0, 16, 16],
+        [4, 4, 0, 0, 0, 1, 0, 0, 0, 0, 16, 16],
+        [4, -4, 0, 0, 0, 1, 0, 16, 0, 0, 16, 16]
+      ]
+    },
+    {
+      "name": "flat",
+      "sourceId": "c-flat",
+      "node": -1,
+      "visible": true,
+      "renderOrder": 1,
+      "groups": [
+        {
+          "material": 1,
+          "start": 0,
+          "count": 12,
+          "doubleSided": false
+        }
+      ],
+      "indices": [0, 3, 2, 0, 2, 1, 4, 7, 6, 4, 6, 5],
+      "vertexColumns": "x y z nx ny nz u v uMin vMin uMax vMax (uv in texture uv units; untextured: normalised)",
+      "vertices": [
+        [-4, 6, -4, 0, 1, 0, 0, 0, 0, 0, 16, 16],
+        [4, 6, -4, 0, 1, 0, 16, 0, 0, 0, 16, 16],
+        [4, 6, 4, 0, 1, 0, 16, 16, 0, 0, 16, 16],
+        [-4, 6, 4, 0, 1, 0, 0, 16, 0, 0, 16, 16],
+        [-4, 6, 4, 0, -1, 0, 0, 0, 0, 0, 16, 16],
+        [4, 6, 4, 0, -1, 0, 16, 0, 0, 0, 16, 16],
+        [4, 6, -4, 0, -1, 0, 16, 16, 0, 0, 16, 16],
+        [-4, 6, -4, 0, -1, 0, 0, 16, 0, 0, 16, 16]
+      ]
+    },
+    {
+      "name": "box",
+      "sourceId": "c-box",
+      "node": -1,
+      "visible": true,
+      "renderOrder": -1,
+      "groups": [
+        {
+          "material": 0,
+          "start": 0,
+          "count": 36,
+          "doubleSided": false
+        }
+      ],
+      "indices": [0, 3, 2, 0, 2, 1, 4, 7, 6, 4, 6, 5, 8, 11, 10, 8, 10, 9, 12, 15, 14, 12, 14, 13, 16, 19, 18, 16, 18, 17, 20, 23, 22, 20, 22, 21],
+      "vertexColumns": "x y z nx ny nz u v uMin vMin uMax vMax (uv in texture uv units; untextured: normalised)",
+      "vertices": [
+        [14, 10, -2, 0, 0, -1, 0, 0, 0, 0, 16, 16],
+        [10, 10, -2, 0, 0, -1, 16, 0, 0, 0, 16, 16],
+        [10, 6, -2, 0, 0, -1, 16, 16, 0, 0, 16, 16],
+        [14, 6, -2, 0, 0, -1, 0, 16, 0, 0, 16, 16],
+        [14, 10, 2, 1, 0, 0, 0, 0, 0, 0, 16, 16],
+        [14, 10, -2, 1, 0, 0, 16, 0, 0, 0, 16, 16],
+        [14, 6, -2, 1, 0, 0, 16, 16, 0, 0, 16, 16],
+        [14, 6, 2, 1, 0, 0, 0, 16, 0, 0, 16, 16],
+        [10, 10, 2, 0, 0, 1, 0, 0, 0, 0, 16, 16],
+        [14, 10, 2, 0, 0, 1, 16, 0, 0, 0, 16, 16],
+        [14, 6, 2, 0, 0, 1, 16, 16, 0, 0, 16, 16],
+        [10, 6, 2, 0, 0, 1, 0, 16, 0, 0, 16, 16],
+        [10, 10, -2, -1, 0, 0, 0, 0, 0, 0, 16, 16],
+        [10, 10, 2, -1, 0, 0, 16, 0, 0, 0, 16, 16],
+        [10, 6, 2, -1, 0, 0, 16, 16, 0, 0, 16, 16],
+        [10, 6, -2, -1, 0, 0, 0, 16, 0, 0, 16, 16],
+        [10, 10, -2, 0, 1, 0, 0, 0, 0, 0, 16, 16],
+        [14, 10, -2, 0, 1, 0, 16, 0, 0, 0, 16, 16],
+        [14, 10, 2, 0, 1, 0, 16, 16, 0, 0, 16, 16],
+        [10, 10, 2, 0, 1, 0, 0, 16, 0, 0, 16, 16],
+        [10, 6, 2, 0, -1, 0, 0, 0, 0, 0, 16, 16],
+        [14, 6, 2, 0, -1, 0, 16, 0, 0, 0, 16, 16],
+        [14, 6, -2, 0, -1, 0, 16, 16, 0, 0, 16, 16],
+        [10, 6, -2, 0, -1, 0, 0, 16, 0, 0, 16, 16]
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "front.png",
+      "texture": 0,
+      "alphaMode": "blend",
+      "alphaCutoff": 0.01
+    },
+    {
+      "name": "double.png",
+      "texture": 1,
+      "alphaMode": "blend",
+      "alphaCutoff": 0.01
+    },
+    {
+      "name": "auto.png",
+      "texture": 2,
+      "alphaMode": "blend",
+      "alphaCutoff": 0.01
+    }
+  ],
+  "textures": [
+    {
+      "name": "front.png",
+      "mimeType": "image/png",
+      "width": 16,
+      "height": 16,
+      "uvWidth": 16,
+      "uvHeight": 16,
+      "missing": false,
+      "byteLength": 126
+    },
+    {
+      "name": "double.png",
+      "mimeType": "image/png",
+      "width": 16,
+      "height": 16,
+      "uvWidth": 16,
+      "uvHeight": 16,
+      "missing": false,
+      "byteLength": 126
+    },
+    {
+      "name": "auto.png",
+      "mimeType": "image/png",
+      "width": 16,
+      "height": 16,
+      "uvWidth": 16,
+      "uvHeight": 16,
+      "missing": false,
+      "byteLength": 126
+    }
+  ],
+  "warnings": []
+}

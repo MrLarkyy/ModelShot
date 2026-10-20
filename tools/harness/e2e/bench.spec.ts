@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '../src/harnessTest';
-import { checkBudgets, loadBudgets, type Measured } from '../src/budgets';
+import { budgetReport, checkBudgets, loadBudgets, type Measured } from '../src/budgets';
 import { measureBundle } from '../src/bundleSize';
 import { openFixture } from '../src/expectGolden';
 import { median } from '../src/measure';
@@ -28,6 +28,25 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
     return fixture.renderFrames(30);
   });
 
+  // The same scene with one mesh at render order 1: every frame uses the exact depth key (gl_FragDepth).
+  await openFixture(page, '/rt.html?scene=bench-order&size=512');
+  expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('exact');
+  const rtOrderFrames = await page.evaluate(() => {
+    const fixture = window.__msFixture;
+    if (!fixture?.renderFrames) throw new Error('frame bench missing');
+    fixture.renderFrames(5);
+    return fixture.renderFrames(30);
+  });
+
+  // Load and first frame of a scene at the loader's limits with render order: decode, upload, the exact key's
+  // de-indexed geometry, one frame.
+  await openFixture(page, '/rt.html?scene=empty&size=512');
+  const loadMs = await page.evaluate(async () => {
+    const fixture = window.__msFixture;
+    if (!fixture?.timeScene) throw new Error('scene bench missing');
+    return fixture.timeScene();
+  });
+
   await openFixture(page, '/progressive.html?seed=7&samples=64');
   const runs = await page.evaluate(() => {
     const fixture = window.__msFixture;
@@ -38,7 +57,12 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
   const [app, embed] = await Promise.all([measureBundle('app'), measureBundle('embed')]);
 
   const measured: Measured = {
-    frameTimeMs: { 'gradient-256': median(frames), 'rt-bench-512': median(rtFrames) },
+    frameTimeMs: {
+      'gradient-256': median(frames),
+      'rt-bench-512': median(rtFrames),
+      'rt-bench-order-512': median(rtOrderFrames),
+      'rt-load-first-frame-200k-order': loadMs,
+    },
     timeToSamplesMs: { 'progressive-256-n64': median(runs) },
     bundleGzipBytes: { app: app.gzipBytes, embed: embed.gzipBytes },
   };
@@ -46,6 +70,11 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
   writeFileSync(join(testInfo.project.outputDir, 'budgets-measured.json'), json);
   await testInfo.attach('budgets-measured', { body: json, contentType: 'application/json' });
 
-  const violations = checkBudgets(loadBudgets(), measured);
+  const budgets = loadBudgets();
+  for (const line of budgetReport(budgets, measured)) {
+    console.log(`[budget] ${line}`);
+    testInfo.annotations.push({ type: 'budget', description: line });
+  }
+  const violations = checkBudgets(budgets, measured);
   expect(violations.map((v) => v.message)).toEqual([]);
 });

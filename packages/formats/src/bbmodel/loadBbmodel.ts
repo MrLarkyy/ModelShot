@@ -1,5 +1,6 @@
 import { SCENE_FORMAT_VERSION, type SceneMesh, type SceneNode } from '@modelshot/scene';
 import { BbmodelError } from './BbmodelError';
+import { BLOCKBENCH_ALPHA_CUTOFF } from './blockbenchAlpha';
 import { resolveBbmodelLimits, type BbmodelLimits, type BbmodelLoadOptions } from './BbmodelLoadOptions';
 import type { BbmodelLoadResult } from './BbmodelLoadResult';
 import { BbmodelWarningList } from './BbmodelWarning';
@@ -21,6 +22,7 @@ import {
 import { readTextureEntries, resolveTextures, textureIdIndex, type UvSize } from './parseTextures';
 import { quoteValue } from './quoteValue';
 import { readJson } from './readJson';
+import { formatDoubleSided, isDoubleSided } from './RenderSides';
 
 const SUPPORTED_MAJOR_VERSIONS = [3, 4, 5];
 const DEFAULT_RESOLUTION: UvSize = { width: 16, height: 16 };
@@ -31,7 +33,7 @@ interface PlacedElement {
 }
 
 /**
- * Loads a Blockbench `.bbmodel` (format 3.x–5.x): cubes, groups and PNG textures. Synchronous and bounded: every
+ * Loads a Blockbench `.bbmodel` (format 3.x–5.x): cubes, meshes, groups and PNG textures. Synchronous and bounded: every
  * count, size and depth is checked against `limits` before anything proportional to it is allocated or decoded, and
  * the result does not depend on the clock or randomness. A bad file throws only `BbmodelError`; recoverable problems
  * are warnings. Invalid `options.limits` throw a `RangeError`.
@@ -58,7 +60,8 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
         });
   const resolution = readResolution(root);
   // Blockbench formats with per-texture UV size: only `free` (bedrock's multi-file ruleset is runtime-only state).
-  const textureEntries = readTextureEntries(root, resolution, modelFormat === 'free', limits);
+  const textureEntries = readTextureEntries(root, resolution, modelFormat === 'free', limits, warnings);
+  const formatDefaultSides = formatDoubleSided(modelFormat);
   const elementObjects = elements.map((item, index) => readObject(item, childPath('$.elements', index)));
   const hierarchy = buildHierarchy(root, elementIds(elementObjects, limits), elements.length, limits, warnings);
 
@@ -66,9 +69,14 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
     textureUvSizes: textureEntries.map((entry) => ({ width: entry.uvWidth, height: entry.uvHeight })),
     resolution,
     textureIds: textureIdIndex(textureEntries),
+    textureDoubleSided: textureEntries.map((entry) => isDoubleSided(entry.renderSides, formatDefaultSides)),
+    untexturedDoubleSided: formatDefaultSides,
     boxUv: readOptionalBoolean(meta, 'box_uv', '$.meta', false),
     boxUvFloatSize: modelFormat === 'modded_entity',
     maxStringChars: limits.maxStringChars,
+    maxVertices: limits.maxVertices,
+    maxFaceVertices: limits.maxFaceVertices,
+    warnings,
   };
   const placed = prepareElements(elementObjects, hierarchy.placements, context, limits, warnings);
 
@@ -91,7 +99,12 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
       source: { format: 'bbmodel', formatVersion, modelFormat },
       nodes,
       meshes,
-      materials: textures.map((texture, index) => ({ name: texture.name, texture: index })),
+      materials: textures.map((texture, index) => ({
+        name: texture.name,
+        texture: index,
+        alphaMode: 'blend',
+        alphaCutoff: BLOCKBENCH_ALPHA_CUTOFF,
+      })),
       textures,
       rootNodes: hierarchy.rootNodes,
     },
@@ -137,7 +150,7 @@ function elementIds(elements: readonly JsonObject[], limits: BbmodelLimits): Map
   return ids;
 }
 
-/** Validates every placed element and counts its triangles against the limit; allocates no geometry. */
+/** Validates every placed element and counts its triangles and vertices against the limits; allocates no geometry. */
 function prepareElements(
   elements: readonly JsonObject[],
   placements: readonly ElementPlacement[],
@@ -147,6 +160,7 @@ function prepareElements(
 ): PlacedElement[] {
   const placed: PlacedElement[] = [];
   let triangles = 0;
+  let vertices = 0;
   for (const { element: index, node } of placements) {
     const element = elements[index];
     if (!element) continue;
@@ -161,6 +175,10 @@ function prepareElements(
     triangles += prepared.triangleCount;
     if (triangles > limits.maxTriangles) {
       throw new BbmodelError('TOO_MANY_TRIANGLES', path, `more than ${limits.maxTriangles} triangles`);
+    }
+    vertices += prepared.vertexCount;
+    if (vertices > limits.maxVertices) {
+      throw new BbmodelError('TOO_MANY_VERTICES', path, `more than ${limits.maxVertices} vertices`);
     }
     placed.push({ prepared, node });
   }

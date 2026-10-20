@@ -45,7 +45,7 @@
     {
       "name": "sculpt",
       "vertices": { "a": [0, 0, 0], "b": [1, 0, 0], "c": [0, 1, 0] },
-      "faces": { "f": { "vertices": ["a", "b", "c"], "texture": 0 } },
+      "faces": { "f": { "vertices": ["a", "b", "c"], "uv": { "a": [0, 0], "b": [1, 0], "c": [0, 1] }, "texture": 0 } },
       "type": "mesh",
       "uuid": "m-sculpt"
     }

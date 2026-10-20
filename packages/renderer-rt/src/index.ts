@@ -3,6 +3,7 @@ export const packageName = '@modelshot/renderer-rt';
 export { bindOrbitInput, type BindOrbitInputOptions, type MotionQuery, type OrbitInputElement } from './bindOrbitInput';
 export { canvasSize, type CanvasCssSize, type CanvasSize, type CanvasSizeLimits } from './canvasSize';
 export { DEFAULT_MAX_TEXTURE_PIXELS_TOTAL, planTextureDecode, type TextureLimits } from './decodeTextures';
+export { depthKeyMode, depthStepAtFar, type DepthKeyMode } from './depthKeyMode';
 export type { GlLimits } from './glLimits';
 export { observeCanvasSize } from './observeCanvasSize';
 export {

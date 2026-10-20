@@ -15,6 +15,7 @@ import {
   type JsonObject,
 } from './JsonFields';
 import { quoteValue } from './quoteValue';
+import { RENDER_SIDES, type RenderSides } from './RenderSides';
 
 /** What the loader knows about a texture before any bytes are decoded. */
 export interface TextureEntry {
@@ -28,6 +29,7 @@ export interface TextureEntry {
   readonly fileKeys: readonly string[];
   readonly uvWidth: number;
   readonly uvHeight: number;
+  readonly renderSides: RenderSides;
 }
 
 export interface UvSize {
@@ -44,13 +46,15 @@ export function readTextureEntries(
   resolution: UvSize,
   perTextureUvSize: boolean,
   limits: BbmodelLimits,
+  warnings: BbmodelWarningList,
 ): TextureEntry[] {
   const value = field(root, 'textures');
   if (value === undefined) return [];
   const list = readArray(value, '$.textures', { max: limits.maxTextures, code: 'TOO_MANY_TEXTURES', what: 'textures' });
   return list.map((item, index) => {
     const path = childPath('$.textures', index);
-    return readTextureEntry(item, path, index, perTextureUvSize ? undefined : resolution, resolution, limits);
+    const fixedUvSize = perTextureUvSize ? undefined : resolution;
+    return readTextureEntry(item, path, index, fixedUvSize, resolution, limits, warnings);
   });
 }
 
@@ -70,6 +74,7 @@ function readTextureEntry(
   fixedUvSize: UvSize | undefined,
   resolution: UvSize,
   limits: BbmodelLimits,
+  warnings: BbmodelWarningList,
 ): TextureEntry {
   const texture = readObject(value, path);
   const name = readOptionalString(texture, 'name', path, limits.maxStringChars, `texture ${index}`);
@@ -99,7 +104,24 @@ function readTextureEntry(
     fileKeys,
     uvWidth: uvSize.width,
     uvHeight: uvSize.height,
+    renderSides: readRenderSides(texture, path, warnings),
   };
+}
+
+/** Absent: `auto`; an unknown string warns and counts as `auto`. */
+function readRenderSides(texture: JsonObject, path: string, warnings: BbmodelWarningList): RenderSides {
+  const value = field(texture, 'render_sides');
+  if (value === undefined) return 'auto';
+  const valuePath = childPath(path, 'render_sides');
+  if (typeof value !== 'string') {
+    throw new BbmodelError('INVALID_FIELD', valuePath, `expected auto, front or double, got ${quoteValue(value)}`);
+  }
+  const sides = RENDER_SIDES.find((candidate) => candidate === value);
+  if (sides === undefined) {
+    warnings.add('UNSUPPORTED_VALUE', valuePath, `${quoteValue(value)} is not auto, front or double; using auto`);
+    return 'auto';
+  }
+  return sides;
 }
 
 function readOptionalPositive(texture: JsonObject, key: string, path: string, fallback: number): number {

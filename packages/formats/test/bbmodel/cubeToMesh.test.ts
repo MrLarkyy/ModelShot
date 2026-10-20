@@ -3,6 +3,7 @@ import { cubeToMesh } from '../../src/bbmodel/cubeToMesh';
 import { cubeTriangleCount, readCube } from '../../src/bbmodel/CubeSpec';
 import type { ConverterContext } from '../../src/bbmodel/ElementConverter';
 import { BbmodelError, loadBbmodel } from '../../src/index';
+import { BbmodelWarningList } from '../../src/bbmodel/BbmodelWarning';
 import { cube, model } from './fixtures';
 
 const context: ConverterContext = {
@@ -11,7 +12,12 @@ const context: ConverterContext = {
   resolution: { width: 16, height: 16 },
   boxUv: false,
   boxUvFloatSize: false,
+  textureDoubleSided: [true],
+  untexturedDoubleSided: true,
   maxStringChars: 1024,
+  maxVertices: 400_000,
+  maxFaceVertices: 16,
+  warnings: new BbmodelWarningList(),
 };
 
 function meshOf(element: Record<string, unknown>) {
@@ -43,7 +49,8 @@ describe('cubeToMesh', () => {
     const mesh = meshOf(cube({ faces: allFaces(textured([0, 0, 1, 1])) }));
     expect(mesh.positions).toHaveLength(24 * 3);
     expect(mesh.indices).toHaveLength(12 * 3);
-    expect(mesh.groups).toEqual([{ material: 0, start: 0, count: 36 }]);
+    expect(mesh.groups).toEqual([{ material: 0, start: 0, count: 36, doubleSided: true }]);
+    expect(mesh.renderOrder).toBe(0);
   });
 
   it('bakes 90° about Z around an off-centre origin into the vertices', () => {
@@ -104,8 +111,8 @@ describe('cubeToMesh', () => {
     const mesh = meshOf(cube({ faces }));
     expect(mesh.indices).toHaveLength(5 * 6);
     expect(mesh.groups).toEqual([
-      { material: -1, start: 0, count: 12 },
-      { material: 0, start: 12, count: 18 },
+      { material: -1, start: 0, count: 12, doubleSided: true },
+      { material: 0, start: 12, count: 18, doubleSided: true },
     ]);
   });
 
@@ -117,7 +124,7 @@ describe('cubeToMesh', () => {
 
   it('a texture uuid string resolves to its texture index; an unknown uuid is INVALID_FIELD', () => {
     const mesh = meshOf(cube({ faces: { up: textured([0, 0, 1, 1], { texture: 'tex-uuid' }) } }));
-    expect(mesh.groups).toEqual([{ material: 0, start: 0, count: 6 }]);
+    expect(mesh.groups).toEqual([{ material: 0, start: 0, count: 6, doubleSided: true }]);
     expect(() => meshOf(cube({ faces: { up: textured([0, 0, 1, 1], { texture: 'other' }) } }))).toThrow(
       expect.objectContaining({ code: 'INVALID_FIELD', path: '$.elements[0].faces.up.texture' }) as Error,
     );

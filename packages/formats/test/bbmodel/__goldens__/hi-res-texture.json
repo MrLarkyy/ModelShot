@@ -13,11 +13,13 @@
       "sourceId": "c-fine",
       "node": -1,
       "visible": true,
+      "renderOrder": 0,
       "groups": [
         {
           "material": 0,
           "start": 0,
-          "count": 36
+          "count": 36,
+          "doubleSided": true
         }
       ],
       "indices": [0, 3, 2, 0, 2, 1, 4, 7, 6, 4, 6, 5, 8, 11, 10, 8, 10, 9, 12, 15, 14, 12, 14, 13, 16, 19, 18, 16, 18, 17, 20, 23, 22, 20, 22, 21],
@@ -53,7 +55,9 @@
   "materials": [
     {
       "name": "tex32.png",
-      "texture": 0
+      "texture": 0,
+      "alphaMode": "blend",
+      "alphaCutoff": 0.01
     }
   ],
   "textures": [

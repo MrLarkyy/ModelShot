@@ -1,5 +1,10 @@
 import { linkShader, lookShaderChunks, type ShaderChunks } from '@modelshot/looks';
+import type { DepthKeyMode } from './depthKeyMode';
 import backdropFrag from './shaders/backdrop.frag.glsl?raw';
+import depthKeyExact from './shaders/depthKeyExact.glsl?raw';
+import depthKeyVertexExact from './shaders/depthKeyVertexExact.glsl?raw';
+import depthKeyVertexRaster from './shaders/depthKeyVertexRaster.glsl?raw';
+import depthKeyRaster from './shaders/depthKeyRaster.glsl?raw';
 import fallbackFrag from './shaders/fallback.frag.glsl?raw';
 import fullscreenVert from './shaders/fullscreen.vert.glsl?raw';
 import hashAlpha from './shaders/hashAlpha.glsl?raw';
@@ -26,6 +31,12 @@ export const RENDERER_SHADER_CHUNKS: ShaderChunks = Object.freeze({
   hashAlpha,
 });
 
+/** `#include "depthKey"` (fragment) and `#include "depthKeyVertex"` per depth-key variant of the mesh passes. */
+const DEPTH_KEY_CHUNKS: Readonly<Record<DepthKeyMode, ShaderChunks>> = {
+  raster: Object.freeze({ ...RENDERER_SHADER_CHUNKS, depthKey: depthKeyRaster, depthKeyVertex: depthKeyVertexRaster }),
+  exact: Object.freeze({ ...RENDERER_SHADER_CHUNKS, depthKey: depthKeyExact, depthKeyVertex: depthKeyVertexExact }),
+};
+
 const PROGRAMS: Readonly<Record<ShaderProgramName, readonly [string, string]>> = {
   opaque: [meshVert, opaqueFrag],
   oitAccum: [meshVert, oitAccumFrag],
@@ -35,11 +46,9 @@ const PROGRAMS: Readonly<Record<ShaderProgramName, readonly [string, string]>> =
   backdrop: [fullscreenVert, backdropFrag],
 };
 
-/** Linked GLSL of one program. */
-export function shaderProgramSource(name: ShaderProgramName): ShaderProgramSource {
+/** Linked GLSL of one program; mesh passes come in a `raster` (default) and an `exact` depth-key variant. */
+export function shaderProgramSource(name: ShaderProgramName, depthKey: DepthKeyMode = 'raster'): ShaderProgramSource {
   const [vertex, fragment] = PROGRAMS[name];
-  return {
-    vertex: linkShader(vertex, RENDERER_SHADER_CHUNKS),
-    fragment: linkShader(fragment, RENDERER_SHADER_CHUNKS),
-  };
+  const chunks = DEPTH_KEY_CHUNKS[depthKey];
+  return { vertex: linkShader(vertex, chunks), fragment: linkShader(fragment, chunks) };
 }

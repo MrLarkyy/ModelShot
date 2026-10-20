@@ -42,9 +42,24 @@ describe('shader sources', () => {
   }
 
   it('reads the texel alpha classes and AgX from the shared look chunks', () => {
-    expect(shaderProgramSource('opaque').fragment).toContain('TEXEL_ALPHA_OPAQUE_MIN = 254.5 / 255.0');
+    expect(shaderProgramSource('opaque').fragment).toContain(
+      'int texelCoverage(float alpha, int mode, int cutoffByte)',
+    );
     expect(shaderProgramSource('present').fragment).toContain('vec3 agxToneMap(vec3 linearColor)');
     expect(shaderProgramSource('fallback').fragment).toContain('vec3 agxToneMap(vec3 linearColor)');
+  });
+
+  it('takes the depth key derivatives before the first discard in every mesh pass', () => {
+    for (const name of ['opaque', 'oitAccum', 'fallback'] as const) {
+      for (const depthKey of ['raster', 'exact'] as const) {
+        const { fragment } = shaderProgramSource(name, depthKey);
+        const body = fragment.slice(fragment.indexOf('void main()'));
+        const prepare = body.indexOf('prepareDepthKey();');
+        const discard = body.indexOf('discard');
+        expect(prepare, `${name} ${depthKey}`).toBeGreaterThan(-1);
+        expect(prepare, `${name} ${depthKey}`).toBeLessThan(discard);
+      }
+    }
   });
 
   it('surfaces a compile error with the info log as RendererError', () => {

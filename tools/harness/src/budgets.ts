@@ -83,3 +83,17 @@ export function checkBudgets(budgets: Budgets, measured: Partial<Measured>): Bud
   }
   return violations;
 }
+
+/** One line per budget, `group.key: measured <value> / max <max>`, so a run shows its numbers, not only pass or fail. */
+export function budgetReport(budgets: Budgets, measured: Partial<Measured>): string[] {
+  const lines: string[] = [];
+  for (const group of BUDGET_GROUPS) {
+    const values = measured[group] ?? {};
+    for (const [key, { max }] of Object.entries(budgets[group])) {
+      const value = Object.hasOwn(values, key) ? values[key] : undefined;
+      const shown = value === undefined ? 'nothing' : String(Number(value.toFixed(3)));
+      lines.push(`${group}.${key}: measured ${shown} / max ${max}`);
+    }
+  }
+  return lines;
+}

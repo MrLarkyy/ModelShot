@@ -1,0 +1,246 @@
+{
+  "meta": {
+    "format_version": "4.10",
+    "model_format": "free",
+    "box_uv": false
+  },
+  "name": "mesh-plane",
+  "resolution": {
+    "width": 16,
+    "height": 16
+  },
+  "elements": [
+    {
+      "name": "plane-front",
+      "origin": [-12, 0, 0],
+      "vertices": {
+        "a": [4, 0, 4],
+        "b": [4, 0, -4],
+        "c": [-4, 0, -4],
+        "d": [-4, 0, 4]
+      },
+      "faces": {
+        "top": {
+          "uv": {
+            "a": [16, 16],
+            "b": [16, 0],
+            "c": [0, 0],
+            "d": [0, 16]
+          },
+          "vertices": ["a", "b", "c", "d"],
+          "texture": 0
+        }
+      },
+      "type": "mesh",
+      "uuid": "m-front"
+    },
+    {
+      "name": "plane-double",
+      "origin": [-2, 0, 0],
+      "render_order": "behind",
+      "vertices": {
+        "a": [4, 0, 4],
+        "b": [4, 0, -4],
+        "c": [-4, 0, -4],
+        "d": [-4, 0, 4]
+      },
+      "faces": {
+        "top": {
+          "uv": {
+            "a": [16, 16],
+            "b": [16, 0],
+            "c": [0, 0],
+            "d": [0, 16]
+          },
+          "vertices": ["a", "b", "c", "d"],
+          "texture": 1
+        }
+      },
+      "type": "mesh",
+      "uuid": "m-double"
+    },
+    {
+      "name": "plane-auto",
+      "origin": [8, 0, 0],
+      "rotation": [90, 0, 0],
+      "render_order": "in_front",
+      "vertices": {
+        "a": [4, 0, 4],
+        "b": [4, 0, -4],
+        "c": [-4, 0, -4],
+        "d": [-4, 0, 4]
+      },
+      "faces": {
+        "top": {
+          "uv": {
+            "a": [16, 16],
+            "b": [16, 0],
+            "c": [0, 0],
+            "d": [0, 16]
+          },
+          "vertices": ["a", "b", "c", "d"],
+          "texture": 2
+        }
+      },
+      "type": "mesh",
+      "uuid": "m-auto"
+    },
+    {
+      "name": "flat",
+      "from": [-4, 6, -4],
+      "to": [4, 6, 4],
+      "origin": [0, 0, 0],
+      "render_order": "in_front",
+      "faces": {
+        "north": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 1
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 1
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 1
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 1
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 1
+        },
+        "down": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 1
+        }
+      },
+      "type": "cube",
+      "uuid": "c-flat"
+    },
+    {
+      "name": "box",
+      "from": [10, 6, -2],
+      "to": [14, 10, 2],
+      "origin": [0, 0, 0],
+      "render_order": "behind",
+      "faces": {
+        "north": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "down": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 0
+        }
+      },
+      "type": "cube",
+      "uuid": "c-box"
+    }
+  ],
+  "outliner": ["m-front", "m-double", "m-auto", "c-flat", "c-box"],
+  "textures": [
+    {
+      "name": "front.png",
+      "uuid": "t-front",
+      "uv_width": 16,
+      "uv_height": 16,
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAARUlEQVR4AaXBsQ3DABADMQZQ4fL2r7ypM8STv+d5vxBCCCGEEEIIIUxOJieTk8nJ5GRyMjmZnExOJieTk8nJ5GRyMjn5A+lgA82/LlltAAAAAElFTkSuQmCC",
+      "render_sides": "front"
+    },
+    {
+      "name": "double.png",
+      "uuid": "t-double",
+      "uv_width": 16,
+      "uv_height": 16,
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAARUlEQVR4AaXBsQ3DABADMQZQ4fL2r7ypM8STv+d5vxBCCCGEEEIIIUxOJieTk8nJ5GRyMjmZnExOJieTk8nJ5GRyMjn5A+lgA82/LlltAAAAAElFTkSuQmCC",
+      "render_sides": "double"
+    },
+    {
+      "name": "auto.png",
+      "uuid": "t-auto",
+      "uv_width": 16,
+      "uv_height": 16,
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAARUlEQVR4AaXBsQ3DABADMQZQ4fL2r7ypM8STv+d5vxBCCCGEEEIIIUxOJieTk8nJ5GRyMjmZnExOJieTk8nJ5GRyMjn5A+lgA82/LlltAAAAAElFTkSuQmCC",
+      "render_sides": "auto"
+    }
+  ]
+}

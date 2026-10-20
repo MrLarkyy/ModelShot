@@ -1,4 +1,8 @@
-import { classifyTexelAlpha } from '@modelshot/looks';
+import { COVERAGE_PARTIAL, texelCoverageByte, type AlphaModeId } from '@modelshot/looks';
+import { textureOpacityOf, type TextureOpacity } from './closedOpaque';
+
+/** Which of the 256 alpha bytes occur in a texture, as 256 flags. */
+export type AlphaLevels = Uint8Array;
 
 export interface RawImage {
   readonly width: number;
@@ -43,35 +47,53 @@ export function uploadTexture(gl: WebGL2RenderingContext, image: ImageBitmap | R
   return texture;
 }
 
-/** Whether any texel of an RGBA8 image is in the partial alpha class. */
-export function hasPartialAlpha(rgba: Uint8Array): boolean {
-  for (let i = 3; i < rgba.length; i += 4) {
-    if (classifyTexelAlpha((rgba[i] ?? 255) / 255) === 'partial') return true;
+/** The alpha bytes present in an RGBA8 image. */
+export function alphaLevelsOf(rgba: Uint8Array): AlphaLevels {
+  const levels = new Uint8Array(256);
+  for (let i = 3; i < rgba.length; i += 4) levels[rgba[i] ?? 255] = 1;
+  return levels;
+}
+
+/** Whether any present alpha byte is partially covering under the given mode id and cutoff byte. */
+export function hasPartialCoverage(levels: AlphaLevels, modeId: AlphaModeId, cutoffByte: number): boolean {
+  for (let k = 0; k < 256; k++) {
+    if (levels[k] === 1 && texelCoverageByte(k, modeId, cutoffByte) === COVERAGE_PARTIAL) return true;
   }
   return false;
 }
 
+/** What the load-time readback of one texture says about its alpha. */
+export interface TextureAlpha {
+  /** The alpha bytes it holds. */
+  readonly levels: AlphaLevels;
+  /** Where its translucent texels are (`closedOpaque`). */
+  readonly opacity: TextureOpacity;
+}
+
 /**
- * Reads an uploaded texture back through a temporary framebuffer (one readback per texture, at scene load) and
- * reports whether it has partial alpha; only textures that do are drawn by the transparency pass.
+ * Reads an uploaded texture back through a temporary framebuffer (one readback per texture, at scene load): the alpha
+ * bytes it holds, so each draw knows whether its alpha rule leaves partial texels for the transparency pass, and where
+ * its translucent texels are, so raster frames know which closed meshes are opaque on every face.
  */
-export function readPartialAlpha(
+export function readTextureAlpha(
   gl: WebGL2RenderingContext,
   texture: WebGLTexture,
   width: number,
   height: number,
-): boolean {
+): TextureAlpha {
   const framebuffer = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
-  // When the readback is impossible the texture is treated as partial: drawing it in both passes is always correct.
-  let partial = true;
+  // When the readback is impossible every byte counts as present (drawing a texture in both passes is always correct)
+  // and no face counts as opaque (its back sides stay drawn).
+  let alpha: TextureAlpha = { levels: new Uint8Array(256).fill(1), opacity: 'unknown' };
   if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) {
     const pixels = new Uint8Array(width * height * 4);
     gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-    partial = hasPartialAlpha(pixels);
+    // Framebuffer row 0 is texture row 0, the row texelFetch indexes as y = 0.
+    alpha = { levels: alphaLevelsOf(pixels), opacity: textureOpacityOf(pixels, width, height) };
   }
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.deleteFramebuffer(framebuffer);
-  return partial;
+  return alpha;
 }
