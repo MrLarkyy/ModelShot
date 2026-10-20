@@ -37,8 +37,9 @@ requestAnimationFrame(frame);
   how many it drew. The caller paces it (there is no clock or animation loop inside); a no-op returning 0 without a
   camera, when complete, cancelled, while the context is lost or after `dispose()`.
 - `samplesDone`, `targetSamples`, `running`; `cancel()` stops the request and keeps the image of the samples done.
-- `readAccumulation()`: the RGBA32F per-pixel sums (divide by `samplesDone`), for the denoiser and supersampling of
-  MS-18.
+- `readAccumulation()`: the RGBA32F accumulation per pixel (rows bottom to top), for the denoiser and supersampling
+  of MS-18 and for tests: rgb the radiance sums (divide by `samplesDone`), alpha the count of traversals stopped by
+  the per-ray node cap (not divided; 0 in ordinary scenes, see Limits and errors).
 - `onContextRestored(listener)`, `dispose()` (every GL object, decoded image and listener).
 
 `setScene`, `setCamera`, `resize` and `start` restart the accumulation at sample 0.
