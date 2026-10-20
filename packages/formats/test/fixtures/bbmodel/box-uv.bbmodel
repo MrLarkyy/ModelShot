@@ -1,0 +1,45 @@
+{
+  "meta": { "format_version": "4.5", "model_format": "modded_entity", "box_uv": true },
+  "name": "box-uv",
+  "resolution": { "width": 32, "height": 16 },
+  "elements": [
+    {
+      "name": "body",
+      "from": [0, 0, 0],
+      "to": [4, 6, 2],
+      "origin": [0, 0, 0],
+      "uv_offset": [0, 0],
+      "faces": {
+        "north": { "texture": null },
+        "east": { "texture": null },
+        "south": { "texture": null },
+        "west": { "texture": null },
+        "up": { "texture": null },
+        "down": { "texture": null }
+      },
+      "type": "cube",
+      "uuid": "c-body"
+    },
+    {
+      "name": "mirrored",
+      "from": [-3, 0, 0],
+      "to": [-1, 6, 2],
+      "inflate": 0.5,
+      "origin": [0, 0, 0],
+      "uv_offset": [12, 0],
+      "mirror_uv": true,
+      "faces": {
+        "north": { "texture": null },
+        "east": { "texture": null },
+        "south": { "texture": null },
+        "west": { "texture": null },
+        "up": { "texture": null },
+        "down": { "texture": null }
+      },
+      "type": "cube",
+      "uuid": "c-mirrored"
+    }
+  ],
+  "outliner": ["c-body", "c-mirrored"],
+  "textures": []
+}

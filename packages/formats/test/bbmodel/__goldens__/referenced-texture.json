@@ -1,0 +1,102 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "format": "bbmodel",
+    "formatVersion": "4.5",
+    "modelFormat": "free"
+  },
+  "rootNodes": [],
+  "nodes": [],
+  "meshes": [
+    {
+      "name": "crate",
+      "sourceId": "c-crate",
+      "node": -1,
+      "visible": true,
+      "groups": [
+        {
+          "material": 0,
+          "start": 0,
+          "count": 24
+        },
+        {
+          "material": 1,
+          "start": 24,
+          "count": 12
+        }
+      ],
+      "indices": [0, 3, 2, 0, 2, 1, 4, 7, 6, 4, 6, 5, 8, 11, 10, 8, 10, 9, 12, 15, 14, 12, 14, 13, 16, 19, 18, 16, 18, 17, 20, 23, 22, 20, 22, 21],
+      "vertexColumns": "x y z nx ny nz u v uMin vMin uMax vMax (uv in texture uv units; untextured: normalised)",
+      "vertices": [
+        [16, 16, 0, 0, 0, -1, 0, 0, 0, 0, 16, 16],
+        [0, 16, 0, 0, 0, -1, 16, 0, 0, 0, 16, 16],
+        [0, 0, 0, 0, 0, -1, 16, 16, 0, 0, 16, 16],
+        [16, 0, 0, 0, 0, -1, 0, 16, 0, 0, 16, 16],
+        [16, 16, 16, 1, 0, 0, 0, 0, 0, 0, 16, 16],
+        [16, 16, 0, 1, 0, 0, 16, 0, 0, 0, 16, 16],
+        [16, 0, 0, 1, 0, 0, 16, 16, 0, 0, 16, 16],
+        [16, 0, 16, 1, 0, 0, 0, 16, 0, 0, 16, 16],
+        [0, 16, 16, 0, 0, 1, 0, 0, 0, 0, 16, 16],
+        [16, 16, 16, 0, 0, 1, 16, 0, 0, 0, 16, 16],
+        [16, 0, 16, 0, 0, 1, 16, 16, 0, 0, 16, 16],
+        [0, 0, 16, 0, 0, 1, 0, 16, 0, 0, 16, 16],
+        [0, 16, 0, -1, 0, 0, 0, 0, 0, 0, 16, 16],
+        [0, 16, 16, -1, 0, 0, 16, 0, 0, 0, 16, 16],
+        [0, 0, 16, -1, 0, 0, 16, 16, 0, 0, 16, 16],
+        [0, 0, 0, -1, 0, 0, 0, 16, 0, 0, 16, 16],
+        [0, 16, 0, 0, 1, 0, 0, 0, 0, 0, 16, 16],
+        [16, 16, 0, 0, 1, 0, 16, 0, 0, 0, 16, 16],
+        [16, 16, 16, 0, 1, 0, 16, 16, 0, 0, 16, 16],
+        [0, 16, 16, 0, 1, 0, 0, 16, 0, 0, 16, 16],
+        [0, 0, 16, 0, -1, 0, 0, 0, 0, 0, 16, 16],
+        [16, 0, 16, 0, -1, 0, 16, 0, 0, 0, 16, 16],
+        [16, 0, 0, 0, -1, 0, 16, 16, 0, 0, 16, 16],
+        [0, 0, 0, 0, -1, 0, 0, 16, 0, 0, 16, 16]
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "Referenced.png",
+      "texture": 0
+    },
+    {
+      "name": "remote.png",
+      "texture": 1
+    }
+  ],
+  "textures": [
+    {
+      "name": "Referenced.png",
+      "mimeType": "image/png",
+      "width": 16,
+      "height": 16,
+      "uvWidth": 16,
+      "uvHeight": 16,
+      "missing": false,
+      "byteLength": 92
+    },
+    {
+      "name": "remote.png",
+      "mimeType": "image/png",
+      "width": 0,
+      "height": 0,
+      "uvWidth": 16,
+      "uvHeight": 16,
+      "missing": true,
+      "byteLength": null
+    }
+  ],
+  "warnings": [
+    {
+      "code": "SOURCE_NOT_FETCHED",
+      "path": "$.textures[1].source",
+      "message": "Texture source not fetched at $.textures[1].source: \"https://example.invalid/remote.p\"… is not embedded; nothing is fetched"
+    },
+    {
+      "code": "MISSING_TEXTURE",
+      "path": "$.textures[1]",
+      "message": "Missing texture at $.textures[1]: no embedded image and no picked file \"remote.png\""
+    }
+  ]
+}

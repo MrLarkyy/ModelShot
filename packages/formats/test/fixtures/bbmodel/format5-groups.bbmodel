@@ -1,0 +1,86 @@
+{
+  "meta": { "format_version": "5.0", "model_format": "free", "box_uv": false },
+  "name": "format5-groups",
+  "resolution": { "width": 16, "height": 16 },
+  "elements": [
+    {
+      "name": "base",
+      "from": [-2, 0, -2],
+      "to": [2, 8, 2],
+      "origin": [0, 0, 0],
+      "faces": {
+        "north": { "uv": [0, 0, 4, 8], "texture": 0 },
+        "east": { "uv": [4, 0, 8, 8], "texture": 0 },
+        "south": { "uv": [8, 0, 12, 8], "texture": 0 },
+        "west": { "uv": [12, 0, 16, 8], "texture": 0 },
+        "up": { "uv": [0, 8, 4, 12], "texture": 0 },
+        "down": { "uv": [4, 8, 8, 12], "texture": 0 }
+      },
+      "type": "cube",
+      "uuid": "c-base"
+    },
+    {
+      "name": "tip",
+      "from": [-1, 8, -1],
+      "to": [1, 12, 1],
+      "origin": [0, 8, 0],
+      "rotation": [0, 45, 0],
+      "faces": {
+        "north": { "uv": [8, 8, 10, 12], "texture": 0 },
+        "east": { "uv": [10, 8, 12, 12], "texture": 0 },
+        "south": { "uv": [12, 8, 14, 12], "texture": 0 },
+        "west": { "uv": [14, 8, 16, 12], "texture": 0 },
+        "up": { "uv": [8, 12, 10, 14], "texture": 0 },
+        "down": { "uv": [10, 12, 12, 14], "texture": 0 }
+      },
+      "type": "cube",
+      "uuid": "c-tip"
+    },
+    {
+      "name": "pivot marker",
+      "position": [0, 8, 0],
+      "type": "locator",
+      "uuid": "l-marker"
+    },
+    {
+      "name": "sculpt",
+      "vertices": { "a": [0, 0, 0], "b": [1, 0, 0], "c": [0, 1, 0] },
+      "faces": { "f": { "vertices": ["a", "b", "c"], "texture": 0 } },
+      "type": "mesh",
+      "uuid": "m-sculpt"
+    }
+  ],
+  "groups": [
+    {
+      "name": "stand",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "uuid": "g-stand",
+      "export": true,
+      "visibility": true
+    },
+    {
+      "name": "spire",
+      "origin": [0, 8, 0],
+      "rotation": [0, 0, 30],
+      "uuid": "g-spire",
+      "export": true,
+      "visibility": true
+    }
+  ],
+  "outliner": [
+    {
+      "uuid": "g-stand",
+      "isOpen": true,
+      "children": ["c-base", { "uuid": "g-spire", "isOpen": false, "children": ["c-tip", "l-marker"] }]
+    },
+    "m-sculpt"
+  ],
+  "textures": [
+    {
+      "name": "tex16.png",
+      "uuid": "t-16",
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAB8ElEQVR42hXS0RRAIQAE0RBCCCGERQghhBBCCCGEEEIIIYQM9s37vufM14QQ5BjkFOQcZAW5BLkGuQW54wOf+MI3fvCLPzyEKMcopyjnKCvKJco1yi3KHR/4xBe+8YNf/MU/kOSY5JTknGQluSS5JrklueMDn/jCN37wi7/0B7Ics5yynLOsLJcs1yy3LHd84BNf+MYPfvGX/4DkKDlJzpIluUiukpvkjg984gvf+MEv/vQHihyLnIqci6wilyLXIrcid3zgE1/4xg9+8Vf+QJVjlVOVc5VV5VLlWuVW5Y4PfOIL3/jBL/7qH2hybHJqcm6ymlyaXJvcmtzxgU984Rs/+MVf+wOdDzofdD7ofND5oPNB54POB/jAJ77wjR/84q//gcEHgw8GHww+GHww+GDwweADfOATX/jGD37xN/7A5IPJB5MPJh9MPph8MPlg8gE+8IkvfOMHv/ibf2DxweKDxQeLDxYfLD5YfLD4AB/4xBe+8YNf/K0/sPlg88Hmg80Hmw82H2w+2HyAD3ziC9/4wS/+9h84fHD44PDB4YPDB4cPDh8cPsAHPvGFb/zgF3/nD1w+uHxw+eDyweWDyweXDy4f4AOf+MI3fvB7Fd5VCOHxweODxwePDx4fPD54fPD4AB/4xBe+8YPfp/CewgfZLCsjtuun1QAAAABJRU5ErkJggg=="
+    }
+  ]
+}

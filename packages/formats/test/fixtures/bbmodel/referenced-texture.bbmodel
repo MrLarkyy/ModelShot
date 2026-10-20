@@ -1,0 +1,42 @@
+{
+  "meta": { "format_version": "4.5", "model_format": "free", "box_uv": false },
+  "name": "referenced-texture",
+  "resolution": { "width": 16, "height": 16 },
+  "elements": [
+    {
+      "name": "crate",
+      "from": [0, 0, 0],
+      "to": [16, 16, 16],
+      "origin": [8, 8, 8],
+      "faces": {
+        "north": { "uv": [0, 0, 16, 16], "texture": 0 },
+        "east": { "uv": [0, 0, 16, 16], "texture": 0 },
+        "south": { "uv": [0, 0, 16, 16], "texture": 0 },
+        "west": { "uv": [0, 0, 16, 16], "texture": 0 },
+        "up": { "uv": [0, 0, 16, 16], "texture": 1 },
+        "down": { "uv": [0, 0, 16, 16], "texture": 1 }
+      },
+      "type": "cube",
+      "uuid": "c-crate"
+    }
+  ],
+  "outliner": ["c-crate"],
+  "textures": [
+    {
+      "path": "C:\\models\\textures\\Referenced.png",
+      "name": "Referenced.png",
+      "relative_path": "../textures/referenced.png",
+      "uv_width": 16,
+      "uv_height": 16,
+      "uuid": "t-ref"
+    },
+    {
+      "path": "",
+      "name": "remote.png",
+      "uv_width": 16,
+      "uv_height": 16,
+      "uuid": "t-remote",
+      "source": "https://example.invalid/remote.png"
+    }
+  ]
+}

@@ -194,6 +194,26 @@ importers:
         specifier: ^5.0.5
         version: 5.0.5(vite@8.3.4)
 
+  packages/app: {}
+
+  packages/embed: {}
+
+  packages/export: {}
+
+  packages/formats:
+    dependencies:
+      '@modelshot/scene':
+        specifier: workspace:*
+        version: link:../scene
+
+  packages/looks: {}
+
+  packages/pathtracer: {}
+
+  packages/renderer-rt: {}
+
+  packages/scene: {}
+
 packages:
 
   '@cacheable/memory@2.2.0':

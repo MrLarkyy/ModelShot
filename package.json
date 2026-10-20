@@ -12,7 +12,8 @@
     "lint": "eslint .",
     "format:check": "prettier --check .",
     "format": "prettier --write .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "golden:update": "vitest run --update"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
