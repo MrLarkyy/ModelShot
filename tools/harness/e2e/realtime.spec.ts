@@ -245,6 +245,7 @@ test('framing keeps the whole model inside the image', async ({ page }) => {
 test.describe('hostile textures', () => {
   for (const [query, code, texture] of [
     ['scene=hostile-corrupt', 'TEXTURE_DECODE_FAILED', 0],
+    ['scene=hostile-corrupt-data', 'TEXTURE_DECODE_FAILED', 0],
     ['scene=hostile-missing', 'TEXTURE_MISSING', 0],
     ['scene=hostile-mismatch', 'TEXTURE_SIZE_MISMATCH', 0],
     ['scene=hostile-huge-header', 'TEXTURE_TOO_LARGE', 0],

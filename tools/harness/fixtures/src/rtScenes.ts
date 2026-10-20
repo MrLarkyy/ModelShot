@@ -14,6 +14,7 @@ export const RT_SCENE_NAMES = [
   'flat',
   'bench',
   'hostile-corrupt',
+  'hostile-corrupt-data',
   'hostile-missing',
   'hostile-mismatch',
   'hostile-huge-header',
@@ -101,9 +102,17 @@ export function rtScene(name: RtSceneName): SceneDocument {
     case 'bench':
       return benchScene(load(showcaseSource));
     case 'hostile-corrupt': {
-      // A PNG signature followed by bytes that are no valid chunk.
+      // A PNG signature followed by bytes that are no valid chunk: rejected at the header check, never decoded.
       const bytes = new Uint8Array(64).map((_, i) => (i < 8 ? [137, 80, 78, 71, 13, 10, 26, 10][i]! : (i * 37) & 255));
       return withTexture(load(showcaseSource), 0, { bytes });
+    }
+    case 'hostile-corrupt-data': {
+      // Signature and IHDR intact (33 bytes), every later byte scrambled: passes the header check, fails to decode.
+      const doc = load(showcaseSource);
+      const bytes = new Uint8Array(doc.textures[0]?.bytes ?? new Uint8Array(0)).map((value, i) =>
+        i < 33 ? value : value ^ ((i * 151) & 255) ^ 0x5a,
+      );
+      return withTexture(doc, 0, { bytes });
     }
     case 'hostile-missing':
       return withTexture(load(showcaseSource), 0, { bytes: null, missing: true, width: 0, height: 0 });
