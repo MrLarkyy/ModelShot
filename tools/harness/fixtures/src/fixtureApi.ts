@@ -21,6 +21,8 @@ export interface RtControls {
   liveGlObjects: () => number;
   openBitmaps: () => number;
   render: () => void;
+  /** Makes every framebuffer report itself incomplete from now on (see breakFramebuffers.ts). */
+  breakFramebuffers: () => void;
   /** WEBGL_lose_context: resolves once the context is lost, or restored and redrawn. */
   lose: () => Promise<void>;
   restore: () => Promise<void>;

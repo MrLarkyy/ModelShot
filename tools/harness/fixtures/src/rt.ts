@@ -3,6 +3,7 @@ import { cameraProjection, cameraView, mat4Multiply, type SceneDocument } from '
 import { installFrameBench, installFrameReadout } from './bench';
 import { readDrawingBufferBase64 } from './context';
 import type { MsFixture, RtControls } from './fixtureApi';
+import { breakFramebuffers } from './breakFramebuffers';
 import { installGlTracker } from './glTracker';
 import { isRtSceneName, parseRtView, reverseMeshOrder, rtCamera, rtScene, type RtSceneName } from './rtScenes';
 
@@ -96,8 +97,13 @@ async function start(): Promise<void> {
 
   const lose = gl.getExtension('WEBGL_lose_context');
   const controls: RtControls = {
-    path: capabilities.path,
-    msaaSamples: capabilities.msaaSamples,
+    get path() {
+      return renderer.capabilities?.path ?? 'fallback';
+    },
+    get msaaSamples() {
+      return renderer.capabilities?.msaaSamples ?? 0;
+    },
+    breakFramebuffers,
     get warnings() {
       return warnings.map(({ code, texture }) => ({ code, texture }));
     },

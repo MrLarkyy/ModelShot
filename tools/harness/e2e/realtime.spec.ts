@@ -247,6 +247,7 @@ test.describe('hostile textures', () => {
     ['scene=hostile-corrupt', 'TEXTURE_DECODE_FAILED', 0],
     ['scene=hostile-missing', 'TEXTURE_MISSING', 0],
     ['scene=hostile-mismatch', 'TEXTURE_SIZE_MISMATCH', 0],
+    ['scene=hostile-huge-header', 'TEXTURE_TOO_LARGE', 0],
     ['maxTextureSide=32', 'TEXTURE_TOO_LARGE', 1],
   ] as const) {
     test(`${query} draws a placeholder with a ${code} warning`, async ({ page }) => {
@@ -261,10 +262,61 @@ test.describe('hostile textures', () => {
     });
   }
 
+  test('a PNG header over the limit is rejected before decoding, whatever size the scene declares', async ({
+    page,
+  }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030&scene=hostile-huge-header&track=1');
+    // Only the brick texture was decoded.
+    expect(await page.evaluate(() => window.__msFixture?.rt?.openBitmaps())).toBe(1);
+  });
+
   test('an empty scene draws only the backdrop', async ({ page }) => {
     const { image } = await render(page, 'scene=empty');
     expect(modelBox(image).x0).toBe(Infinity);
   });
+});
+
+/** Pixels where green clearly dominates (the grass of the plate's up face; its down face is grey stone). */
+function greenPixels(image: Image): number {
+  let count = 0;
+  for (let i = 0; i < image.data.length; i += 4) {
+    const [r = 0, g = 0, b = 0] = image.data.subarray(i, i + 3);
+    if (g - r > 20 && g - b > 20) count++;
+  }
+  return count;
+}
+
+test('of two coincident faces the one turned to the camera wins, from either side and on both paths', async ({
+  page,
+}) => {
+  for (const extra of ['', '&fallback=1']) {
+    const above = await render(page, `variant=fit-flat-cube${extra}`);
+    const below = await render(page, `variant=fit-flat-cube&pitch=-20${extra}`);
+    expect(greenPixels(above.image), `above${extra}`).toBeGreaterThan(1000);
+    expect(modelBox(below.image).x1 - modelBox(below.image).x0, `below${extra}`).toBeGreaterThan(100);
+    expect(greenPixels(below.image), `below${extra}`).toBe(0);
+  }
+});
+
+test('float targets rejected at a new size switch the renderer to the no-float path', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(String(error)));
+  const info = await openFixture(page, '/rt.html?variant=turntable-y030');
+  expect(await page.evaluate(() => window.__msFixture?.rt?.path)).toBe('float');
+  await page.evaluate(async () => {
+    const rt = window.__msFixture!.rt!;
+    rt.breakFramebuffers();
+    await rt.setCssSize(200, 200);
+  });
+  const after = await page.evaluate(() => ({
+    path: window.__msFixture?.rt?.path,
+    msaa: window.__msFixture?.rt?.msaaSamples,
+  }));
+  expect(after).toEqual({ path: 'fallback', msaa: 0 });
+  const image = decode(await readPng(page, info));
+  expect([image.width, image.height]).toEqual([200, 200]);
+  expect(modelBox(image).x1 - modelBox(image).x0).toBeGreaterThan(50);
+  expect(errors).toEqual([]);
 });
 
 test.describe('lifetime', () => {

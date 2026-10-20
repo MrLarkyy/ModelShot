@@ -76,47 +76,37 @@ function cellRect(cell: number): [number, number, number, number] {
   return [x / ATLAS_SIZE, y / ATLAS_SIZE, (x + 6) / ATLAS_SIZE, (y + 6) / ATLAS_SIZE];
 }
 
-function layerMesh(layer: number): SceneMesh {
-  const cubes = GRID_X * GRID_Z;
-  const vertices = cubes * 24;
+function cubeMesh(id: number, origin: readonly [number, number, number]): SceneMesh {
+  const vertices = 24;
   const positions = new Float32Array(vertices * 3);
   const normals = new Float32Array(vertices * 3);
   const uvs = new Float32Array(vertices * 2);
   const uvRects = new Float32Array(vertices * 4);
-  const indices = new Uint32Array(cubes * 36);
-  let v = 0;
-  let i = 0;
-  for (let gz = 0; gz < GRID_Z; gz++) {
-    for (let gx = 0; gx < GRID_X; gx++) {
-      const id = (layer * GRID_Z + gz) * GRID_X + gx;
-      const origin = [(gx - GRID_X / 2) * SPACING, layer * SPACING, (gz - GRID_Z / 2) * SPACING];
-      FACES.forEach((face, f) => {
-        // Every seventh cube shows partial-alpha glass on its south face, so the transparency pass has work.
-        const cell = f === 0 && id % 7 === 0 ? GLASS_CELL : (OPAQUE_CELLS[(id + f) % OPAQUE_CELLS.length] ?? 0);
-        const rect = cellRect(cell);
-        const cornerUvs = [
-          [rect[0], rect[1]],
-          [rect[2], rect[1]],
-          [rect[2], rect[3]],
-          [rect[0], rect[3]],
-        ];
-        face.corners.forEach((corner, c) => {
-          positions.set(
-            corner.map((unit, axis) => (origin[axis] ?? 0) + unit * CUBE),
-            (v + c) * 3,
-          );
-          normals.set(face.normal, (v + c) * 3);
-          uvs.set(cornerUvs[c] ?? [0, 0], (v + c) * 2);
-          uvRects.set(rect, (v + c) * 4);
-        });
-        indices.set([v, v + 3, v + 2, v, v + 2, v + 1], i);
-        v += 4;
-        i += 6;
-      });
-    }
-  }
+  const indices = new Uint32Array(36);
+  FACES.forEach((face, f) => {
+    // Every seventh cube shows partial-alpha glass on its south face, so the transparency pass has work.
+    const cell = f === 0 && id % 7 === 0 ? GLASS_CELL : (OPAQUE_CELLS[(id + f) % OPAQUE_CELLS.length] ?? 0);
+    const rect = cellRect(cell);
+    const cornerUvs = [
+      [rect[0], rect[1]],
+      [rect[2], rect[1]],
+      [rect[2], rect[3]],
+      [rect[0], rect[3]],
+    ];
+    const v = f * 4;
+    face.corners.forEach((corner, c) => {
+      positions.set(
+        corner.map((unit, axis) => (origin[axis] ?? 0) + unit * CUBE),
+        (v + c) * 3,
+      );
+      normals.set(face.normal, (v + c) * 3);
+      uvs.set(cornerUvs[c] ?? [0, 0], (v + c) * 2);
+      uvRects.set(rect, (v + c) * 4);
+    });
+    indices.set([v, v + 3, v + 2, v, v + 2, v + 1], f * 6);
+  });
   return {
-    name: `layer-${layer}`,
+    name: `cube-${id}`,
     sourceId: '',
     node: -1,
     visible: true,
@@ -130,8 +120,8 @@ function layerMesh(layer: number): SceneMesh {
 }
 
 /**
- * The frame-time benchmark: a 16 x 16 x 8 grid of textured cubes (2,048 cubes, 24,576 triangles) in 8 meshes, using
- * the showcase atlas. Built in code and deterministic.
+ * The frame-time benchmark: a 16 x 16 x 8 grid of textured cubes (2,048 cubes, 24,576 triangles) using the showcase
+ * atlas, one mesh per cube as the Blockbench loader produces them. Built in code and deterministic.
  */
 export function benchScene(showcase: SceneDocument): SceneDocument {
   const atlas = showcase.textures[0];
@@ -140,7 +130,12 @@ export function benchScene(showcase: SceneDocument): SceneDocument {
     formatVersion: showcase.formatVersion,
     source: showcase.source,
     nodes: [],
-    meshes: Array.from({ length: LAYERS }, (_, layer) => layerMesh(layer)),
+    meshes: Array.from({ length: LAYERS * GRID_Z * GRID_X }, (_, id) => {
+      const gx = id % GRID_X;
+      const gz = Math.floor(id / GRID_X) % GRID_Z;
+      const layer = Math.floor(id / (GRID_X * GRID_Z));
+      return cubeMesh(id, [(gx - GRID_X / 2) * SPACING, layer * SPACING, (gz - GRID_Z / 2) * SPACING]);
+    }),
     materials: [{ name: 'atlas', texture: 0 }],
     textures: [atlas],
     rootNodes: [],

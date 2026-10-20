@@ -16,6 +16,7 @@ export const RT_SCENE_NAMES = [
   'hostile-corrupt',
   'hostile-missing',
   'hostile-mismatch',
+  'hostile-huge-header',
   'empty',
 ] as const;
 export type RtSceneName = (typeof RT_SCENE_NAMES)[number];
@@ -109,6 +110,14 @@ export function rtScene(name: RtSceneName): SceneDocument {
     case 'hostile-mismatch':
       // The header claims 16x16; the image is 32x32.
       return withTexture(load(showcaseSource), 0, { width: 16, height: 16 });
+    case 'hostile-huge-header': {
+      // The scene declares 16x16; the PNG header claims 16384x16384 (never decoded, so its CRC does not matter).
+      const doc = load(showcaseSource);
+      const bytes = new Uint8Array(doc.textures[0]?.bytes ?? new Uint8Array(24));
+      new DataView(bytes.buffer).setUint32(16, 16384);
+      new DataView(bytes.buffer).setUint32(20, 16384);
+      return withTexture(doc, 0, { bytes, width: 16, height: 16 });
+    }
     case 'empty':
       return { ...load(showcaseSource), meshes: [], nodes: [], rootNodes: [] };
   }
