@@ -24,9 +24,12 @@ requestAnimationFrame(frame);
   look's backdrop, as in the preview), `maxBounces` (1..16, default 4), `maxTriangles` (default 200 000, the loaders'
   limit), `maxTextureSide` (default 4096, capped by `MAX_TEXTURE_SIZE`), `maxTexturePixelsTotal` (default 64 Mi),
   `tileSize` (16..4096, default 256), `maxPixels`, `preserveDrawingBuffer`.
-- `setScene(doc, { emission })`: validates, flattens, builds the BVH, decodes textures, swaps the scene in. A later call
-  or `dispose()` supersedes a pending one: it resolves `{ applied: false }` and closes what it decoded. Resolves
-  `{ applied, warnings, triangles }`.
+- `setScene(doc, { emission })`: validates, checks the material count, flattens, builds the BVH and packs the data
+  (synchronously, before its first `await`), then decodes the textures, lays them out and swaps the scene in. Resolves
+  `{ applied, warnings, triangles }`. A call that fails keeps the current scene and closes whatever it decoded.
+  Superseding: a later call that passes the synchronous checks, or `dispose()`, supersedes a pending one, which
+  resolves `{ applied: false }` and closes what it decoded; a later call rejected by those checks (`INVALID_SCENE`,
+  `SCENE_TOO_LARGE` for materials, triangles or data rows) does not, and the pending one still applies.
 - `setCamera(camera)`, `resize(cssSize)`: the shared `SceneCamera` and the canvas size, as for the preview.
 - `start({ seed, samples })`: a request for exactly `samples` samples per pixel (1..65 536) from `seed`
   (0..2^32 − 1); anything else throws a `RangeError`.
@@ -124,9 +127,18 @@ Materials are Lambert (albedo = the texel's linear colour) plus emission. The li
 `PathTracerError` codes: `WEBGL2_UNAVAILABLE`; `FLOAT_TARGETS_UNAVAILABLE` (no `EXT_color_buffer_float` or RGBA32F
 targets not renderable) and `HIGHP_UNAVAILABLE` (fragment shaders without 32-bit highp): there is no inexact fallback,
 which would break determinism, and the preview remains; `SHADER_COMPILE` / `SHADER_LINK` with the driver's info log;
-`INVALID_SCENE` with the path; `SCENE_TOO_LARGE` for triangles over `maxTriangles`, data rows over `MAX_TEXTURE_SIZE`
-or texture layers over `MAX_ARRAY_TEXTURE_LAYERS`, always before allocating. Warnings: the realtime renderer's
-texture codes (with `texture`) and `DEGENERATE_TRIANGLES` (with `count`).
+`INVALID_SCENE` with the path; `SCENE_TOO_LARGE` for more materials than the material table holds (1.4 M) or
+triangles over `maxTriangles` (both before any vertex is read or any array allocated), data rows over
+`MAX_TEXTURE_SIZE` (before the data arrays are allocated, after flattening and the BVH build), or texture layers over
+`MAX_ARRAY_TEXTURE_LAYERS` (found after decoding: the decoded images are closed). Every one comes before any GPU
+allocation and leaves the current scene in place. Warnings: the realtime renderer's texture codes (with `texture`) and
+`DEGENERATE_TRIANGLES` (with `count`).
+
+Per-ray work is bounded: a traversal visits at most `MAX_NODE_VISITS` (1024) BVH nodes, so a draw call stays short
+whatever the model (10 000 coincident cubes give identical node boxes that no test prunes;
+`pt.html?scene=coincident-cubes` renders them). Past the cap the traversal stops the same way on every run: a camera
+or bounce ray keeps the best hit found so far, a shadow ray counts as blocked. Ordinary scenes do not reach it: every
+path-traced golden still passes at threshold 0 with the cap.
 
 Shaders are static `.glsl` files under `src/shaders/` (`trace.frag`, `present.frag`, `fullscreen.vert` and the chunks
 `rng`, `sceneData`, `primaryRay`, `surfaceHit`, `bvhTraverse`) composed by `linkShader` with the shared look chunks

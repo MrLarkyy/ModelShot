@@ -26,6 +26,7 @@ import { flattenScene, DEFAULT_MAX_TRIANGLES } from './flattenScene';
 import { disposeGpuScene, uploadGpuScene, type GpuScene } from './gpuScene';
 import {
   DATA_TEXTURE_WIDTH,
+  checkMaterialCount,
   packGeometry,
   packMaterials,
   type MaterialTextures,
@@ -202,10 +203,14 @@ export class PathTracer {
   }
 
   /**
-   * Validates `doc` (a malformed one rejects with `PathTracerError` `INVALID_SCENE`), flattens its visible triangles
-   * (over `maxTriangles` rejects with `SCENE_TOO_LARGE` before allocating), builds the BVH, decodes the textures and
-   * swaps the scene in; the accumulation restarts at sample 0. A later call or `dispose()` supersedes a pending one: it
-   * resolves with `applied: false` and releases what it decoded.
+   * Validates `doc` (`PathTracerError` `INVALID_SCENE`), checks its material count and flattens its visible triangles
+   * (`SCENE_TOO_LARGE` before any vertex is read or array allocated), builds the BVH and packs the data
+   * (`SCENE_TOO_LARGE` for rows over MAX_TEXTURE_SIZE before the arrays are allocated), all before the first `await`;
+   * then decodes the textures, lays them out (`SCENE_TOO_LARGE` over MAX_ARRAY_TEXTURE_LAYERS, the decoded images
+   * closed) and swaps the scene in; the accumulation restarts at sample 0. Nothing reaches the GPU before every check
+   * passed, and a failing call keeps the current scene. A later call that passes the synchronous checks, or
+   * `dispose()`, supersedes a pending one: it resolves with `applied: false` and closes what it decoded. A later call
+   * rejected by the synchronous checks supersedes nothing.
    */
   async setScene(doc: SceneDocument, options: SetSceneOptions = {}): Promise<SetSceneResult> {
     if (this.disposed) return { applied: false, warnings: [], triangles: 0 };
@@ -218,6 +223,7 @@ export class PathTracer {
       throw error;
     }
     const capabilities = this.capabilities ?? this.queryCapabilities();
+    checkMaterialCount(doc.materials.length);
     const flat = flattenScene(doc, this.options.maxTriangles ?? DEFAULT_MAX_TRIANGLES);
     const geometry = packGeometry(flat, buildBvh(flat.positions, flat.count), capabilities.maxTextureSize);
     // Only a scene that passed every limit supersedes a pending one.
@@ -226,21 +232,24 @@ export class PathTracer {
       this.isCurrent(generation),
     );
     if (!decoded) return { applied: false, warnings: [], triangles: 0 };
-    let layout: ReturnType<typeof layoutTextures>;
+    // Everything that can still fail runs before the current scene is released: a failure keeps it and closes the
+    // images this call decoded.
+    let loaded: LoadedScene;
     try {
-      layout = layoutTextures(decoded.bitmaps, capabilities.layerSide, capabilities.maxArrayTextureLayers);
+      const layout = layoutTextures(decoded.bitmaps, capabilities.layerSide, capabilities.maxArrayTextureLayers);
+      loaded = {
+        geometry,
+        materials: packMaterials(doc, layout.textures, options.emission),
+        plan: layout.plan,
+        images: layout.images,
+        bitmaps: decoded.bitmaps,
+      };
     } catch (error) {
       for (const bitmap of decoded.bitmaps) bitmap?.close();
       throw error;
     }
     this.releaseScene();
-    this.loaded = {
-      geometry,
-      materials: packMaterials(doc, layout.textures, options.emission),
-      plan: layout.plan,
-      images: layout.images,
-      bitmaps: decoded.bitmaps,
-    };
+    this.loaded = loaded;
     if (this.gpu && !this.lost) this.uploadLoaded(this.gpu);
     this.restart();
     const warnings: PathTracerWarning[] = [];

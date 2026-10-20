@@ -99,6 +99,11 @@ export interface MaterialTextures {
   readonly textures: readonly (TexturePlacement | null)[];
 }
 
+/** Throws `SCENE_TOO_LARGE` when the material table of `count` materials (plus slot 0) would not fit its texture. */
+export function checkMaterialCount(count: number): void {
+  rowsFor((count + 1) * MATERIAL_TEXELS, DATA_TEXTURE_WIDTH, 'materials');
+}
+
 const nonNegative = (x: number | undefined): number => (x !== undefined && Number.isFinite(x) && x > 0 ? x : 0);
 
 /**

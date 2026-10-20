@@ -36,6 +36,13 @@ describe('path tracer shaders', () => {
     expect(trace).toContain(`const int BVH_STACK_SIZE = ${MAX_BVH_DEPTH + 1};`);
   });
 
+  it('bounds every traversal by a fixed node count', () => {
+    const trace = pathTracerProgramSource('trace').fragment;
+    expect(trace).toContain('const int MAX_NODE_VISITS = 1024;');
+    expect(trace.match(/for \(int visits = 0; visits < MAX_NODE_VISITS; visits\+\+\)/g)).toHaveLength(2);
+    expect(trace).not.toMatch(/while \(/);
+  });
+
   it('has no clock or time input', () => {
     const trace = pathTracerProgramSource('trace').fragment;
     expect(trace).not.toMatch(/u_time|u_clock|u_frameTime/);

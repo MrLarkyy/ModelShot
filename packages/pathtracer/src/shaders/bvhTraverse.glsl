@@ -6,6 +6,10 @@
 
 // The build keeps leaves at depth 31 or less: at most one pending sibling per level plus two children.
 const int BVH_STACK_SIZE = 32;
+// Nodes one traversal may visit. Bounds the work of every ray whatever the model (thousands of coincident boxes give
+// identical node boxes that nothing prunes), so a draw call stays short on any GPU. Past it the traversal stops, the
+// same way for every run: a camera or bounce ray keeps the best hit found so far, a shadow ray counts as blocked.
+const int MAX_NODE_VISITS = 1024;
 
 uniform float u_maxRenderOrder;
 uniform float u_orderTie;
@@ -71,7 +75,8 @@ bool closestHit(
   int stack[BVH_STACK_SIZE];
   int size = 1;
   stack[0] = 0;
-  while (size > 0) {
+  for (int visits = 0; visits < MAX_NODE_VISITS; visits++) {
+    if (size == 0) return hit.triangle >= 0;
     int node = stack[--size];
     vec4 a = dataTexel(u_nodes, node * NODE_TEXELS);
     vec4 b = dataTexel(u_nodes, node * NODE_TEXELS + 1);
@@ -123,7 +128,8 @@ float shadowTransmittance(vec3 origin, vec3 direction, int skip) {
   int stack[BVH_STACK_SIZE];
   int size = 1;
   stack[0] = 0;
-  while (size > 0) {
+  for (int visits = 0; visits < MAX_NODE_VISITS; visits++) {
+    if (size == 0) return transmittance;
     int node = stack[--size];
     vec4 a = dataTexel(u_nodes, node * NODE_TEXELS);
     vec4 b = dataTexel(u_nodes, node * NODE_TEXELS + 1);
@@ -154,5 +160,6 @@ float shadowTransmittance(vec3 origin, vec3 direction, int skip) {
       if (coverage == COVERAGE_PARTIAL) transmittance *= 1.0 - alpha;
     }
   }
-  return transmittance;
+  // Stopped at MAX_NODE_VISITS with nodes left: blocked.
+  return size == 0 ? transmittance : 0.0;
 }

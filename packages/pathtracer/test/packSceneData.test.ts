@@ -4,6 +4,7 @@ import { buildBvh, NODE_FLOATS } from '../src/buildBvh';
 import { flattenScene } from '../src/flattenScene';
 import {
   DATA_TEXTURE_WIDTH,
+  checkMaterialCount,
   MATERIAL_TEXELS,
   TRIANGLE_ATTRIBUTE_TEXELS,
   TRIANGLE_POSITION_TEXELS,
@@ -57,6 +58,15 @@ describe('packGeometry', () => {
     expect(() => packGeometry(flat, bvh, 3)).toThrow(PathTracerError);
     expect(() => packGeometry(flat, bvh, 3)).toThrow(/triangle attributes need 4 rows/);
     expect(packGeometry(flat, bvh, 4).triAttributes.rows).toBe(4);
+  });
+});
+
+describe('checkMaterialCount', () => {
+  it('admits what the 2048-row material table holds and rejects one more', () => {
+    const fits = Math.floor((2048 * DATA_TEXTURE_WIDTH) / MATERIAL_TEXELS) - 1;
+    expect(() => checkMaterialCount(fits)).not.toThrow();
+    expect(() => checkMaterialCount(fits + 1)).toThrow(PathTracerError);
+    expect(() => checkMaterialCount(fits + 1)).toThrow(/materials need 2049 rows/);
   });
 });
 
