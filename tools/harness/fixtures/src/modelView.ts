@@ -1,4 +1,5 @@
 import { loadBbmodel } from '@modelshot/formats';
+import type { SceneDocument } from '@modelshot/scene';
 import alphaPlaneSource from '../../../../packages/formats/test/fixtures/bbmodel/alpha-plane.bbmodel?raw';
 import meshShapesSource from '../../../../packages/formats/test/fixtures/bbmodel/mesh-shapes.bbmodel?raw';
 import renderOrderSource from '../../../../packages/formats/test/fixtures/bbmodel/render-order.bbmodel?raw';
@@ -9,16 +10,18 @@ import { renderRaster } from './modelRaster';
 import { renderRaycast } from './modelRaycast';
 import { cameraViewProjection } from './modelViewCamera';
 import { parseModelViewVariant, type ModelViewModel } from './modelViewVariant';
+import { modelViewPlayer } from './playerScenes';
 import { sceneTriangles } from './sceneTriangles';
 import { uploadTextures } from './sceneUpload';
 
 const SIZE = 256;
 
 // Static imports only: the page never loads a model named by the URL.
-const MODELS: Readonly<Record<ModelViewModel, string>> = {
-  'alpha-plane': alphaPlaneSource,
-  'mesh-shapes': meshShapesSource,
-  'render-order': renderOrderSource,
+const MODELS: Readonly<Record<ModelViewModel, () => SceneDocument>> = {
+  'alpha-plane': () => loadBbmodel(alphaPlaneSource).scene,
+  'mesh-shapes': () => loadBbmodel(meshShapesSource).scene,
+  'render-order': () => loadBbmodel(renderOrderSource).scene,
+  player: modelViewPlayer,
 };
 
 // Block centres of cutout.png (4×4-texel blocks, holes where bx + by is odd, red left half): on the bottom row of the
@@ -48,6 +51,14 @@ const PROBES: Readonly<Record<ModelViewModel, readonly ProbeRequest[]>> = {
     { name: 'tie-near', mesh: 'tie-near', uv: [3.5, 1.5] },
     { name: 'tie-far-in-front', mesh: 'tie-far-in-front', uv: [3.5, 1.5] },
   ],
+  // Skin-classic.png (generate.mjs): head front texel (2, 2) is alpha 0 with cyan RGB under the opaque base material;
+  // texel (5, 2) shows through a hole of the hat; hat front texel (3, 0) is on the hat's opaque ring.
+  player: [
+    { name: 'face-probe', mesh: 'head', uv: [10.5, 10.5] },
+    { name: 'hat-hole', mesh: 'head', uv: [13.5, 10.5] },
+    { name: 'hat-ring', mesh: 'hat', uv: [43.5, 8.5] },
+    { name: 'held-cube', mesh: 'block', uv: [4.5, 4.5] },
+  ],
 };
 
 const api: MsFixture = {
@@ -69,7 +80,7 @@ async function start(): Promise<void> {
   const { gl } = ctx;
   api.renderer = ctx.renderer;
   api.floatRenderTargets = ctx.floatRenderTargets;
-  const { scene } = loadBbmodel(MODELS[variant.model]);
+  const scene = MODELS[variant.model]();
   const textures = await uploadTextures(gl, scene);
   const triangles = sceneTriangles(scene);
   if (variant.mode === 'raster') renderRaster(gl, triangles, textures, SIZE);

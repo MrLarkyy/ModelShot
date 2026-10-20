@@ -43,3 +43,25 @@ export function testDoc(nodes: readonly SceneNode[], meshes: readonly SceneMesh[
     rootNodes: nodes.flatMap((node, index) => (node.parent < 0 ? [index] : [])),
   };
 }
+
+/**
+ * The player rig of `createPlayerModel` (classic arms) without meshes: bones with Minecraft's pivots, the hands as
+ * anchors at the end of the arms. Built here because scene must not depend on formats.
+ */
+export function playerRig(): SceneDocument {
+  const bone = (name: string, parent: number, pivot: Vec3, children: number[] = []): SceneNode =>
+    testNode(parent, { name, pivot, children });
+  return testDoc(
+    [
+      bone('head', -1, [0, 24, 0]),
+      bone('body', -1, [0, 24, 0]),
+      bone('right_arm', -1, [5, 22, 0], [6]),
+      bone('left_arm', -1, [-5, 22, 0], [7]),
+      bone('right_leg', -1, [1.9, 12, 0]),
+      bone('left_leg', -1, [-1.9, 12, 0]),
+      bone('right_hand', 2, [6, 12, 0]),
+      bone('left_hand', 3, [-6, 12, 0]),
+    ],
+    [],
+  );
+}

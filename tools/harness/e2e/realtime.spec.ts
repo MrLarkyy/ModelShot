@@ -16,6 +16,16 @@ const spec = (name: string, variant: string): RasterGoldenSpec => ({
 });
 
 const TURNTABLE = ['y000', 'y030', 'y060', 'y090'].map((yaw) => spec(`turntable-${yaw}`, `turntable-${yaw}`));
+const PLAYER = [
+  'player-classic-front',
+  'player-classic-back',
+  'player-slim-34',
+  'player-legacy-34',
+  'player-hold-34',
+  'player-walk-hold-34',
+  'player-slim-fallback',
+  'player-wave-front',
+].map((variant) => spec(variant, variant));
 const GOLDENS = [
   ...TURNTABLE,
   spec('iso', 'iso'),
@@ -23,6 +33,7 @@ const GOLDENS = [
   spec('far', 'far'),
   spec('fallback', 'fallback'),
   spec('fit-flat-cube', 'fit-flat-cube'),
+  ...PLAYER,
 ];
 
 async function render(page: Page, query: string): Promise<{ png: Buffer; image: Image; info: FixtureInfo }> {
@@ -65,7 +76,7 @@ test.describe('realtime goldens', () => {
     test(`${golden.name} matches its golden`, async ({ page }, testInfo) => {
       await expectGolden(page, testInfo, golden);
       const path = await page.evaluate(() => window.__msFixture?.rt?.path);
-      expect(path).toBe(golden.variant === 'fallback' ? 'fallback' : 'float');
+      expect(path).toBe(golden.variant?.endsWith('fallback') ? 'fallback' : 'float');
     });
   }
 });
@@ -90,6 +101,8 @@ test('the fixture rejects unknown or malformed parameters', async ({ page }) => 
     ['proj=fisheye', /query parameter proj/],
     ['aa=2', /query parameter aa/],
     ['size=0', /query parameter size/],
+    ['hide=a%20b', /query parameter hide/],
+    ['scene=player-classic&hide=block', /unknown mesh/],
   ] as const) {
     await expect(openFixture(page, `/rt.html?${query}`), query).rejects.toThrow(message);
   }
@@ -571,4 +584,105 @@ test.describe('texel alpha bytes in the shaders (alpha ramp, no texel anti-alias
       });
     }
   }
+});
+
+/** World point → image position under the page's current camera. */
+async function projectPoint(page: Page, point: readonly [number, number, number]): Promise<[number, number]> {
+  return page.evaluate(([x, y, z]) => window.__msFixture!.rt!.project(x, y, z), point);
+}
+
+function meanPixel(image: Image, x: number, y: number): [number, number, number] {
+  const sum = [0, 0, 0];
+  for (let dy = -2; dy <= 2; dy++) {
+    for (let dx = -2; dx <= 2; dx++) pixel(image, x + dx, y + dy).forEach((v, k) => (sum[k] = (sum[k] ?? 0) + v));
+  }
+  return [(sum[0] ?? 0) / 25, (sum[1] ?? 0) / 25, (sum[2] ?? 0) / 25];
+}
+
+/** Centroid and count of the pixels where two images differ. */
+function differenceCentroid(a: Image, b: Image): { x: number; y: number; count: number } {
+  let x = 0;
+  let y = 0;
+  let count = 0;
+  for (let i = 0; i < a.data.length; i += 4) {
+    if (a.data.readUInt32BE(i) === b.data.readUInt32BE(i)) continue;
+    const p = i / 4;
+    x += (p % a.width) + 0.5;
+    y += Math.floor(p / a.width) + 0.5;
+    count++;
+  }
+  return { x: x / count, y: y / count, count };
+}
+
+// The generated skins (packages/formats/test/fixtures/skins/generate.mjs): blue never above green, so only the magenta
+// sentinel around the face regions can trip `sentinelPixels`. Head front texels (2..3, 2..3) are alpha 0 with RGB
+// (0, 200, 200); the head front is otherwise red (255, 64, 64); the hat front is a ring around holes, and in the slim
+// skin hat front texels (4..5, 4..5) are green at alpha 128. Model units: head front at z = -4 from x = 4 (u 8) to
+// x = -4, hat front at z = -4.5 with 9/8-unit texels.
+const HEAD_PROBE: readonly [number, number, number] = [1, 29, -4];
+const HEAD_THROUGH_HAT_HOLE: readonly [number, number, number] = [-1.5, 29.5, -4];
+const HAT_PARTIAL: readonly [number, number, number] = [4.5 - 5 * 1.125, 32.5 - 5 * 1.125, -4.5];
+// The held cube's centre in the right hand's frame: 1.5 below the hand anchor (6, 12, 0) (fixtures/src/playerScenes.ts).
+const HELD_CUBE_CENTRE: readonly [number, number, number] = [6, 10.5, 0];
+const HOLDING = ['player-hold-34', 'player-walk-hold-34'];
+
+test.describe('player skins', () => {
+  test('no player frame shows a skin texel from outside its part region', async ({ page }) => {
+    for (const golden of PLAYER) {
+      // The held cube has its own texture (a gradient with magenta-like texels), so its frames are checked without it.
+      const hide = HOLDING.includes(golden.variant ?? '') ? '&hide=block' : '';
+      const { image } = await render(page, `variant=${golden.variant ?? ''}${hide}`);
+      expect(sentinelPixels(image), golden.name).toBe(0);
+    }
+  });
+
+  for (const extra of ['', '&fallback=1']) {
+    test(`an alpha-0 base texel shows opaque, a cut-out outer texel shows the base${extra}`, async ({ page }) => {
+      const { image } = await render(page, `scene=player-classic&yaw=180&pitch=10${extra}`);
+      const [pr, pg, pb] = pixel(image, ...(await projectPoint(page, HEAD_PROBE)));
+      expect(pg, 'the alpha-0 texel is drawn with its cyan RGB').toBeGreaterThan(80);
+      expect(Math.abs(pg - pb), 'cyan: green and blue alike').toBeLessThan(0.15 * pg);
+      expect(pr, 'cyan: little red').toBeLessThan(0.6 * pg);
+      const [hr, hg, hb] = pixel(image, ...(await projectPoint(page, HEAD_THROUGH_HAT_HOLE)));
+      expect(hr, 'the head shows through the hat hole').toBeGreaterThan(1.5 * Math.max(hg, hb));
+    });
+
+    test(`an alpha-128 outer texel lies between the base and its own colour${extra}`, async ({ page }) => {
+      const { image } = await render(page, `scene=player-slim&yaw=180&pitch=10${extra}`);
+      // A 5 x 5 mean inside the 2 x 2-texel block (about 15 px): the fallback dithers partial alpha per pixel.
+      const base = meanPixel(image, ...(await projectPoint(page, HEAD_THROUGH_HAT_HOLE)));
+      const blended = meanPixel(image, ...(await projectPoint(page, HAT_PARTIAL)));
+      expect(blended[0], 'less red than the head').toBeLessThan(base[0] - 30);
+      expect(blended[0], 'but some of it').toBeGreaterThan(20);
+      expect(blended[1], 'more green than the head').toBeGreaterThan(base[1] + 30);
+    });
+  }
+
+  test('outer-layer transparency does not depend on draw order (float path and fallback)', async ({ page }) => {
+    for (const variant of ['player-slim-34', 'player-hold-34', 'player-slim-fallback']) {
+      const forward = await render(page, `variant=${variant}`);
+      const reversed = await render(page, `variant=${variant}&reverse=1`);
+      expect(reversed.png.equals(forward.png), variant).toBe(true);
+    }
+  });
+
+  test('the held cube follows the right hand through the hold and walk poses', async ({ page }) => {
+    const centres: { x: number; y: number }[] = [];
+    for (const variant of HOLDING) {
+      const shown = await render(page, `variant=${variant}`);
+      const hidden = await render(page, `variant=${variant}&hide=block`);
+      const cube = differenceCentroid(shown.image, hidden.image);
+      const [x, y, z] = await page.evaluate(
+        (p) => window.__msFixture!.rt!.nodePoint('right_hand', p[0], p[1], p[2]),
+        HELD_CUBE_CENTRE,
+      );
+      const [ex, ey] = await projectPoint(page, [x, y, z]);
+      expect(cube.count, `${variant}: the cube is drawn`).toBeGreaterThan(100);
+      expect(Math.hypot(cube.x - ex, cube.y - ey), `${variant}: cube at ${cube.x}, ${cube.y}`).toBeLessThanOrEqual(2);
+      centres.push(cube);
+    }
+    // The arm is 40° forward in hold and 30° in walk: the cube moved with it.
+    const [hold, walk] = centres;
+    expect(Math.hypot((hold?.x ?? 0) - (walk?.x ?? 0), (hold?.y ?? 0) - (walk?.y ?? 0))).toBeGreaterThan(5);
+  });
 });

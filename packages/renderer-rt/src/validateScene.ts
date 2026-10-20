@@ -20,6 +20,15 @@ function checkArray(
   if (value.length !== length) fail(path, `expected ${length} values, got ${value.length}`);
 }
 
+/** A node transform with a non-finite value would give NaN world matrices and silently drop its subtree. */
+function checkFiniteVec3(value: unknown, path: string): void {
+  if (!Array.isArray(value) || value.length !== 3) fail(path, 'expected three numbers');
+  for (let k = 0; k < 3; k++) {
+    const item: unknown = (value as unknown[])[k];
+    if (typeof item !== 'number' || !Number.isFinite(item)) fail(`${path}[${k}]`, 'expected a finite number');
+  }
+}
+
 function validateMesh(mesh: SceneMesh, path: string, doc: SceneDocument): void {
   checkIndex(mesh.node, doc.nodes.length, `${path}.node`, true);
   const order: unknown = mesh.renderOrder;
@@ -62,7 +71,8 @@ function validateMesh(mesh: SceneMesh, path: string, doc: SceneDocument): void {
 }
 
 /**
- * Checks every cross reference and buffer length the renderer relies on, so a malformed document fails with a
+ * Checks every cross reference, buffer length and node transform (finite `pivot`, `rotation`, `translation` and
+ * `restRotation`) the renderer relies on, so a malformed document fails with a
  * `RendererError` `INVALID_SCENE` naming the path instead of reading out of bounds on the GPU; also `renderOrder`
  * (an integer in ±1024, the range the exact depth key maps into depth, `exactDepthRange`) and `doubleSided` (a boolean). Material
  * `alphaMode` / `alphaCutoff` are not checked: `resolveMaterialAlpha` turns any value into a valid rule.
@@ -71,6 +81,8 @@ export function validateScene(doc: SceneDocument): void {
   doc.nodes.forEach((node, n) => {
     const path = `nodes[${n}]`;
     if (node.parent !== -1) checkIndex(node.parent, n, `${path}.parent`, false);
+    for (const key of ['pivot', 'rotation', 'translation'] as const) checkFiniteVec3(node[key], `${path}.${key}`);
+    if (node.restRotation !== undefined) checkFiniteVec3(node.restRotation, `${path}.restRotation`);
     node.meshes.forEach((mesh, i) => checkIndex(mesh, doc.meshes.length, `${path}.meshes[${i}]`, false));
     node.children.forEach((child, i) => checkIndex(child, doc.nodes.length, `${path}.children[${i}]`, false));
   });
