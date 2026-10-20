@@ -6,7 +6,7 @@ const vec3 GROUND_FILL = vec3(0.20, 0.19, 0.18);
 const vec3 KEY_DIRECTION = vec3(0.39904, 0.79808, 0.45140);
 const vec3 KEY_COLOR = vec3(1.25, 1.22, 1.18);
 // Angular radius (radians) of the key's disc: the path tracer and the light bake sample its visibility in this cone.
-const float KEY_ANGULAR_RADIUS = 0.05;
+const float KEY_ANGULAR_RADIUS = 0.04;
 // Share of the light a fully shadowed shadow-catcher point loses (shadowCatcher).
 const float CATCHER_STRENGTH = 0.8;
 

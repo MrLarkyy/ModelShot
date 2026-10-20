@@ -5,7 +5,9 @@ import {
   UNTEXTURED_IMAGE,
   canvasSize,
   decodeTextures,
+  shadowCatcherPlane,
   validateScene,
+  type ShadowCatcherPlane,
   type CanvasCssSize,
   type CanvasSize,
   type RawImage,
@@ -15,6 +17,7 @@ import {
   BACK_SIDE_RENDER_ORDER,
   RENDER_ORDER_TIE_DISTANCE,
   SCENE_FORMAT_VERSION,
+  sceneBounds,
   type SceneCamera,
   type SceneDocument,
 } from '@modelshot/scene';
@@ -73,6 +76,8 @@ interface LoadedScene {
   readonly plan: TextureLayerPlan;
   readonly images: readonly (ImageBitmap | RawImage)[];
   readonly bitmaps: readonly (ImageBitmap | null)[];
+  /** The shadow catcher camera rays see, `null` when `SetSceneOptions.shadowCatcher` is false. */
+  readonly catcher: ShadowCatcherPlane | null;
 }
 
 interface Gpu {
@@ -226,6 +231,9 @@ export class PathTracer {
     checkMaterialCount(doc.materials.length);
     const flat = flattenScene(doc, this.options.maxTriangles ?? DEFAULT_MAX_TRIANGLES);
     const geometry = packGeometry(flat, buildBvh(flat.positions, flat.count), capabilities.maxTextureSize);
+    // The catcher's height and rectangle do not depend on its texel size, which only the light bake needs.
+    const catcher =
+      options.shadowCatcher === false ? null : shadowCatcherPlane(sceneBounds(doc), LIGHT_RIG_V0.keyDirection, 1);
     // Only a scene that passed every limit supersedes a pending one.
     const generation = ++this.generation;
     const decoded = await decodeTextures(doc.textures, this.textureLimits(capabilities), () =>
@@ -243,6 +251,7 @@ export class PathTracer {
         plan: layout.plan,
         images: layout.images,
         bitmaps: decoded.bitmaps,
+        catcher,
       };
     } catch (error) {
       for (const bitmap of decoded.bitmaps) bitmap?.close();
@@ -480,6 +489,10 @@ export class PathTracer {
     gl.uniform1ui(uniform('u_seed'), seed);
     gl.uniform1i(uniform('u_maxBounces'), this.maxBounces);
     gl.uniform3fv(uniform('u_background'), this.background);
+    const catcher = this.loaded?.catcher ?? null;
+    gl.uniform1i(uniform('u_catcherOn'), catcher ? 1 : 0);
+    gl.uniform1f(uniform('u_catcherY'), catcher?.y ?? 0);
+    gl.uniform4fv(uniform('u_catcherRect'), catcher?.rect ?? [0, 0, 0, 0]);
   }
 
   /** Data for a tracer without a scene: no nodes, so every camera ray shows the background. */

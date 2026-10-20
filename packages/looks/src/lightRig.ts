@@ -24,7 +24,7 @@ export const LIGHT_RIG_V0: LightRig = Object.freeze({
   keyDirection: [0.39904, 0.79808, 0.4514],
   keyColor: [1.25, 1.22, 1.18],
   background: [0.14, 0.15, 0.17],
-  keyAngularRadius: 0.05,
+  keyAngularRadius: 0.04,
   catcherStrength: 0.8,
 } as const);
 
