@@ -1,8 +1,8 @@
 import { defineConfig } from 'vite';
-import { harnessPort } from './src/harnessPort.ts';
 
+// Playwright starts this server with --port and --strictPort (playwright.config.ts).
 export default defineConfig({
   root: 'fixtures',
-  server: { host: '127.0.0.1', port: harnessPort(), strictPort: true },
+  server: { host: '127.0.0.1' },
   logLevel: 'warn',
 });

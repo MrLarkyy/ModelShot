@@ -9,6 +9,7 @@ export interface ResolveOptions {
   updateMode: UpdateMode;
   ci: boolean;
   allowUpdate: boolean;
+  specFile: string;
   goldenDir?: string;
 }
 
@@ -45,7 +46,7 @@ export function resolveGolden(
     }
   }
   if (expected === null) {
-    throw new Error(`golden missing: ${path}; run pnpm golden:update golden.spec after checking the render`);
+    throw new Error(`golden missing: ${path}; run pnpm golden:update ${options.specFile} after checking the render`);
   }
   return { written: false, expected };
 }

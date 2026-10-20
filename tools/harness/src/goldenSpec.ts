@@ -1,6 +1,7 @@
 export interface GoldenTolerance {
   threshold?: number;
   maxDiffRatio?: number;
+  maxMeanDelta?: number;
   reason: string;
 }
 
@@ -34,6 +35,12 @@ function checkInteger(label: string, value: number, min: number, max: number): v
   }
 }
 
+function checkRange(label: string, value: number | undefined, max: number): void {
+  if (value !== undefined && !(Number.isFinite(value) && value >= 0 && value <= max)) {
+    throw new Error(`${label} must be a number in 0..${max}, got ${String(value)}`);
+  }
+}
+
 export function validateSpec(spec: GoldenSpec): void {
   if (!NAME.test(spec.name)) throw new Error(`golden name "${spec.name}" must match ${String(NAME)}`);
   if (!NAME.test(spec.fixture)) throw new Error(`fixture "${spec.fixture}" must match ${String(NAME)}`);
@@ -41,8 +48,12 @@ export function validateSpec(spec: GoldenSpec): void {
     checkInteger('seed', spec.seed, 0, MAX_SEED);
     checkInteger('samples', spec.samples, 1, MAX_SAMPLES);
   }
-  if (spec.tolerance && spec.tolerance.reason.trim() === '') {
-    throw new Error('a golden tolerance override needs a non-empty reason');
+  const tolerance = spec.tolerance;
+  if (tolerance) {
+    if (tolerance.reason.trim() === '') throw new Error('a golden tolerance override needs a non-empty reason');
+    checkRange('tolerance.threshold', tolerance.threshold, 1);
+    checkRange('tolerance.maxDiffRatio', tolerance.maxDiffRatio, 1);
+    checkRange('tolerance.maxMeanDelta', tolerance.maxMeanDelta, 255);
   }
 }
 

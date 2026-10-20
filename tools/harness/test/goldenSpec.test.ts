@@ -40,6 +40,21 @@ describe('goldenSpec', () => {
     expect(goldenFileName(spec('SwiftShader differs by edge pixels on Linux, see CI diff'))).toBe('gradient.png');
   });
 
+  it('accepts and range-checks every tolerance field', () => {
+    const spec = (tolerance: object): GoldenSpec => ({
+      kind: 'raster',
+      fixture: 'gradient',
+      name: 'gradient',
+      tolerance: { reason: 'GPU variance, see CI diff', ...tolerance },
+    });
+    expect(goldenFileName(spec({ threshold: 0.2, maxDiffRatio: 0.01, maxMeanDelta: 3 }))).toBe('gradient.png');
+    expect(() => goldenFileName(spec({ maxMeanDelta: 256 }))).toThrow(/maxMeanDelta/);
+    expect(() => goldenFileName(spec({ maxMeanDelta: -1 }))).toThrow(/maxMeanDelta/);
+    expect(() => goldenFileName(spec({ maxDiffRatio: 2 }))).toThrow(/maxDiffRatio/);
+    expect(() => goldenFileName(spec({ threshold: Number.NaN }))).toThrow(/threshold/);
+    expect(() => goldenFileName(spec({ maxMeanDelta: 3, reason: '' }))).toThrow(/reason/);
+  });
+
   it('rejects names that could escape the golden directory', () => {
     expect(() => goldenFileName({ kind: 'raster', fixture: 'gradient', name: '../x' })).toThrow(/name/);
     expect(() => fixtureUrl({ kind: 'raster', fixture: 'a/b', name: 'x' })).toThrow(/fixture/);

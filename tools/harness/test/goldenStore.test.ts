@@ -20,13 +20,14 @@ const options = (patch: Partial<ResolveOptions>): ResolveOptions => ({
   updateMode: 'none',
   ci: false,
   allowUpdate: true,
+  specFile: 'my.spec',
   goldenDir: dir,
   ...patch,
 });
 
 describe('resolveGolden', () => {
   it('fails a missing golden without an update and writes nothing', () => {
-    expect(() => resolveGolden(spec, actual, options({}))).toThrow(/golden missing.*pnpm golden:update golden\.spec/);
+    expect(() => resolveGolden(spec, actual, options({}))).toThrow(/golden missing.*pnpm golden:update my\.spec after/);
     expect(existsSync(goldenPath(spec, dir))).toBe(false);
   });
 

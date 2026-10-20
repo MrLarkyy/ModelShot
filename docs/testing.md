@@ -33,11 +33,11 @@ image code uses no clock or random source (lint rule; timing lives in `fixtures/
   differs from the request (`assertSampleCount`); for the same seed, 63 or 65 samples instead of 64 also fail the
   comparison by themselves, with 0 differing pixels but a mean delta of 1.40..1.42 levels against the limit of 1 (seed 8:
   12.8, 32 samples: 9.0). The 63/65 margin is small; do not raise `maxMeanDelta` without a replacement check.
-- A missing golden fails the test. Goldens are written only by `pnpm golden:update [spec file pattern]`, for
+- A missing golden fails the test, and the message names the spec file of the failing test as the update pattern. Goldens are written only by `pnpm golden:update [spec file pattern]`, for
   example `pnpm golden:update golden.spec` (Playwright `--update-snapshots=changed`; the pattern selects spec files, not
   golden names); the command is refused when `CI` is set. Review every changed image as an image before
   committing.
-- A per-golden tolerance override needs a non-empty `reason` in the spec, and GPU-variance evidence (the CI diff
+- A per-golden tolerance override (`threshold`, `maxDiffRatio`, `maxMeanDelta`, each range-checked) needs a non-empty `reason` in the spec, and GPU-variance evidence (the CI diff
   artefact) in the commit.
 
 ## Path-tracer goldens
@@ -57,7 +57,7 @@ Measured on the local Windows dev machine (SwiftShader, 3 runs) when the budgets
 
 - `frameTimeMs` max 5: the median is below 1 ms and `performance.now` is coarsened to 0.1 ms without cross-origin
   isolation, so 5x the median (2 ms) would be 20 ticks and one GC pause from flaking on a shared runner. 5 ms is 12-16x the
-  local median and still catches a 10x regression.
+  local median and still catches about 12x and above over the local median.
 - `timeToSamplesMs` max 150: about 5.8x the worst local median (25.8 ms).
 - `bundleGzipBytes` app 2500, embed 2200: measured plus about 2 kB, so a real dependency shows up while noise does not.
 

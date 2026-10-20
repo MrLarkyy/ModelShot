@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { expect, type Page, type TestInfo } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { compareImages } from './compareImages';
@@ -76,6 +76,7 @@ export async function expectGolden(
   const compareOptions = {
     ...(spec.tolerance?.threshold !== undefined ? { threshold: spec.tolerance.threshold } : {}),
     ...(spec.tolerance?.maxDiffRatio !== undefined ? { maxDiffRatio: spec.tolerance.maxDiffRatio } : {}),
+    ...(spec.tolerance?.maxMeanDelta !== undefined ? { maxMeanDelta: spec.tolerance.maxMeanDelta } : {}),
   };
   let result: ReturnType<typeof compareImages> | undefined;
   const resolution = resolveGolden(
@@ -85,6 +86,7 @@ export async function expectGolden(
       updateMode: testInfo.config.updateSnapshots,
       ci: Boolean(process.env['CI']),
       allowUpdate: options.allowUpdate ?? true,
+      specFile: basename(testInfo.file).replace(/\.ts$/, ''),
     },
     (expected) => {
       result = compareImages(png, expected, compareOptions);
