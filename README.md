@@ -23,3 +23,6 @@ pnpm test
 Also: `pnpm typecheck`, `pnpm lint`, `pnpm format:check` (`pnpm format` fixes formatting).
 
 Packages (`packages/*`): `formats`, `scene`, `renderer-rt`, `pathtracer`, `looks`, `export`, `app`, `embed`.
+
+Docs: [scene format](docs/scene-format.md) (what every loader produces), [Blockbench loader](docs/bbmodel.md)
+(supported features, limits, error codes).
