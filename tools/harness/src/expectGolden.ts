@@ -4,6 +4,7 @@ import { expect, type Page, type TestInfo } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { compareImages } from './compareImages';
 import { resolveGolden } from './goldenStore';
+import { assertSampleCount } from './sampleCount';
 import { fixtureUrl, validateSpec, type GoldenSpec } from './goldenSpec';
 
 export interface ExpectGoldenOptions {
@@ -23,7 +24,7 @@ export interface FixtureInfo {
 export async function openFixture(page: Page, url: string): Promise<FixtureInfo> {
   await page.goto(url);
   await page.waitForFunction(() => window.__msFixture !== undefined);
-  return page.evaluate(async () => {
+  const info = await page.evaluate(async () => {
     const fixture = window.__msFixture;
     if (!fixture) throw new Error('fixture API missing');
     await fixture.ready;
@@ -36,6 +37,8 @@ export async function openFixture(page: Page, url: string): Promise<FixtureInfo>
       rgba: fixture.readRGBA(),
     };
   });
+  assertSwiftShader(info.renderer);
+  return info;
 }
 
 export function assertSwiftShader(renderer: string): void {
@@ -57,10 +60,7 @@ export function encodeFlipped(info: FixtureInfo): Buffer {
 
 export async function renderFixture(page: Page, spec: GoldenSpec): Promise<{ png: Buffer; info: FixtureInfo }> {
   const info = await openFixture(page, fixtureUrl(spec));
-  assertSwiftShader(info.renderer);
-  if (spec.kind === 'pathtraced' && info.samplesDone !== spec.samples) {
-    throw new Error(`fixture accumulated ${info.samplesDone} samples, the spec asks for ${spec.samples}`);
-  }
+  if (spec.kind === 'pathtraced') assertSampleCount(spec.samples, info.samplesDone);
   return { png: encodeFlipped(info), info };
 }
 
@@ -110,7 +110,7 @@ export async function expectGolden(
     await testInfo.attach(`${spec.name}-${name}`, { path, contentType: 'image/png' });
   }
   expect(
-    result.ratio,
-    `${spec.name}: ${result.diffPixels} pixels differ (ratio ${result.ratio.toFixed(5)}); diff image ${artefacts.diff}`,
-  ).toBeLessThanOrEqual(compareOptions.maxDiffRatio ?? 0.001);
+    result.pass,
+    `${spec.name}: ${result.diffPixels} pixels differ (ratio ${result.ratio.toFixed(5)}), mean delta ${result.meanDelta.toFixed(3)} levels; diff image ${artefacts.diff}`,
+  ).toBe(true);
 }

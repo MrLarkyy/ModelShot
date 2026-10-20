@@ -1,14 +1,19 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../src/harnessTest';
 import { assertSwiftShader, openFixture } from '../src/expectGolden';
 
-test('the browser renders WebGL2 on SwiftShader with float render targets', async ({ page }) => {
+test('every fixture renders WebGL2 on SwiftShader and stays on the fixture origin', async ({ page, baseURL }) => {
   const origins = new Set<string>();
   page.on('request', (request) => origins.add(new URL(request.url()).origin));
 
-  const info = await openFixture(page, '/progressive.html?seed=1&samples=1');
-  expect(() => assertSwiftShader(info.renderer)).not.toThrow();
-  expect(info.floatRenderTargets).toBe(true);
-  expect([...origins]).toEqual(['http://127.0.0.1:4410']);
+  const progressive = await openFixture(page, '/progressive.html?seed=1&samples=1');
+  await openFixture(page, '/gradient.html');
+  expect(progressive.floatRenderTargets).toBe(true);
+  expect([...origins]).toEqual([new URL(baseURL!).origin]);
+});
+
+test.fail('a request off the fixture origin fails the test', async ({ page }) => {
+  await openFixture(page, '/gradient.html');
+  await page.evaluate(() => fetch('http://example.invalid/x').catch(() => undefined));
 });
 
 test('a hardware renderer name is rejected', () => {
@@ -25,5 +30,7 @@ test('the fixture rejects out of range or malformed parameters', async ({ page }
   ]) {
     await expect(openFixture(page, `/progressive.html?${query}`), query).rejects.toThrow(/query parameter/);
   }
-  await expect(openFixture(page, '/gradient.html?variant=nope')).rejects.toThrow(/unknown variant/);
+  for (const variant of ['nope', 'constructor', 'toString']) {
+    await expect(openFixture(page, `/gradient.html?variant=${variant}`)).rejects.toThrow(/unknown variant/);
+  }
 });

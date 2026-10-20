@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../src/harnessTest';
 import { checkBudgets, loadBudgets, type Measured } from '../src/budgets';
 import { measureBundle } from '../src/bundleSize';
 import { openFixture } from '../src/expectGolden';

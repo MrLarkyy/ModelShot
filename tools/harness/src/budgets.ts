@@ -69,7 +69,7 @@ export function checkBudgets(budgets: Budgets, measured: Partial<Measured>): Bud
     const limits = budgets[group];
     const values = measured[group] ?? {};
     for (const [key, { max }] of Object.entries(limits)) {
-      const value = values[key];
+      const value = Object.hasOwn(values, key) ? values[key] : undefined;
       if (value === undefined) {
         violations.push({ group, key, message: `${group}.${key}: budget has no measurement` });
       } else if (value > max) {
@@ -77,7 +77,8 @@ export function checkBudgets(budgets: Budgets, measured: Partial<Measured>): Bud
       }
     }
     for (const key of Object.keys(values)) {
-      if (!(key in limits)) violations.push({ group, key, message: `${group}.${key}: measurement has no budget` });
+      if (!Object.hasOwn(limits, key))
+        violations.push({ group, key, message: `${group}.${key}: measurement has no budget` });
     }
   }
   return violations;

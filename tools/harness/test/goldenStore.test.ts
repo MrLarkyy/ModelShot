@@ -26,7 +26,7 @@ const options = (patch: Partial<ResolveOptions>): ResolveOptions => ({
 
 describe('resolveGolden', () => {
   it('fails a missing golden without an update and writes nothing', () => {
-    expect(() => resolveGolden(spec, actual, options({}))).toThrow(/golden missing.*pnpm golden:update gradient/);
+    expect(() => resolveGolden(spec, actual, options({}))).toThrow(/golden missing.*pnpm golden:update golden\.spec/);
     expect(existsSync(goldenPath(spec, dir))).toBe(false);
   });
 

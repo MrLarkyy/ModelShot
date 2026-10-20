@@ -1,5 +1,8 @@
 import { defineConfig } from '@playwright/test';
+import { harnessPort } from './src/harnessPort';
 
+const port = harnessPort();
+const origin = `http://127.0.0.1:${port}`;
 const ci = Boolean(process.env['CI']);
 
 export default defineConfig({
@@ -10,15 +13,15 @@ export default defineConfig({
   retries: 0,
   forbidOnly: ci,
   updateSnapshots: 'none',
-  reporter: ci ? [['list'], ['html', { open: 'never' }]] : [['list']],
+  reporter: [['list']],
   webServer: {
-    command: 'pnpm exec vite --config vite.config.ts',
-    url: 'http://127.0.0.1:4410/gradient.html',
-    reuseExistingServer: !ci,
+    command: `pnpm exec vite --config vite.config.ts --port ${port} --strictPort`,
+    url: `${origin}/gradient.html`,
+    reuseExistingServer: false,
     timeout: 60_000,
   },
   use: {
-    baseURL: 'http://127.0.0.1:4410',
+    baseURL: origin,
     headless: true,
     viewport: { width: 512, height: 512 },
     deviceScaleFactor: 1,

@@ -57,7 +57,8 @@ function start(): void {
   }
   gl.bindVertexArray(vao);
 
-  const accumulate = (count: number): void => {
+  const accumulate = (count: number): number => {
+    let drawn = 0;
     gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
     gl.viewport(0, 0, SIZE, SIZE);
     gl.disable(gl.BLEND);
@@ -70,8 +71,10 @@ function start(): void {
     for (let i = 0; i < count; i++) {
       gl.uniform1ui(sampleLocation, i);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
+      drawn++;
     }
     gl.disable(gl.BLEND);
+    return drawn;
   };
 
   const resolve = (count: number): void => {
@@ -85,18 +88,16 @@ function start(): void {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   };
 
-  accumulate(samples);
-  resolve(samples);
-  api.samplesDone = samples;
+  const drawn = accumulate(samples);
+  resolve(drawn);
+  api.samplesDone = drawn;
   installSampleBench(api, gl, (count) => {
-    accumulate(count);
-    resolve(count);
+    resolve(accumulate(count));
   });
 }
 
 try {
   start();
-  api.ready = Promise.race([ctx.lost, Promise.resolve()]);
 } catch (error) {
   api.ready = Promise.reject(error instanceof Error ? error : new Error(String(error)));
   api.ready.catch(() => undefined);

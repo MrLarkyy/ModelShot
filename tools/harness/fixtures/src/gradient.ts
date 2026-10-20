@@ -22,7 +22,7 @@ window.__msFixture = api;
 
 function start(): void {
   const variantName = new URLSearchParams(location.search).get('variant');
-  const variant = variantName === null ? 0 : VARIANTS[variantName];
+  const variant = variantName === null ? 0 : Object.hasOwn(VARIANTS, variantName) ? VARIANTS[variantName] : undefined;
   if (variant === undefined) throw new Error(`unknown variant "${String(variantName)}"`);
   const program = createProgram(gl, vertexSource, fragmentSource);
   const variantLocation = gl.getUniformLocation(program, 'u_variant');
@@ -41,7 +41,6 @@ function start(): void {
 
 try {
   start();
-  api.ready = Promise.race([ctx.lost, Promise.resolve()]);
 } catch (error) {
   api.ready = Promise.reject(error instanceof Error ? error : new Error(String(error)));
   api.ready.catch(() => undefined);

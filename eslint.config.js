@@ -23,10 +23,17 @@ export default defineConfig(
       'no-restricted-properties': [
         'error',
         { object: 'Math', property: 'random', message: 'Fixture images are deterministic: no random source.' },
+        ...['window', 'globalThis', 'self'].flatMap((object) => [
+          { object, property: 'Math', message: 'Fixture images are deterministic: no indirect Math.random.' },
+          { object, property: 'Date', message: 'Fixture images are deterministic: no clock.' },
+          { object, property: 'crypto', message: 'Fixture images are deterministic: no random source.' },
+          { object, property: 'performance', message: 'Timing belongs in fixtures/src/bench.ts only.' },
+        ]),
       ],
       'no-restricted-globals': [
         'error',
         { name: 'Date', message: 'Fixture images are deterministic: no clock.' },
+        { name: 'crypto', message: 'Fixture images are deterministic: no random source.' },
         { name: 'performance', message: 'Timing belongs in fixtures/src/bench.ts only.' },
       ],
     },

@@ -44,6 +44,15 @@ describe('checkBudgets', () => {
     expect(violations.map((v) => v.message)).toEqual(['bundleGzipBytes.c: budget has no measurement']);
   });
 
+  it('does not treat inherited object keys as budgeted or measured', () => {
+    const violations = checkBudgets(budgets, { ...measured, frameTimeMs: { a: 1, toString: 1 } });
+    expect(violations.map((v) => v.message)).toEqual(['frameTimeMs.toString: measurement has no budget']);
+    const inherited = parseBudgets(JSON.stringify({ ...valid, frameTimeMs: { toString: { max: 1 } } }));
+    expect(checkBudgets(inherited, measured).map((v) => v.message)).toContain(
+      'frameTimeMs.toString: budget has no measurement',
+    );
+  });
+
   it('fails a measurement without a budget', () => {
     const violations = checkBudgets(budgets, { ...measured, frameTimeMs: { a: 1, z: 1 } });
     expect(violations.map((v) => v.message)).toEqual(['frameTimeMs.z: measurement has no budget']);

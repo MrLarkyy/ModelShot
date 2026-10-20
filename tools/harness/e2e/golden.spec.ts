@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../src/harnessTest';
 import { expectGolden, renderFixture } from '../src/expectGolden';
 import type { GoldenSpec, PathTracedGoldenSpec, RasterGoldenSpec } from '../src/goldenSpec';
 
@@ -37,7 +37,8 @@ test('the same seed and sample count render byte-identical images', async ({ pag
 test.describe('another seed or sample count fails the comparison', () => {
   const variants: [string, GoldenSpec][] = [
     ['seed 8', { ...progressive, seed: 8 }],
-    ['16 samples', { ...progressive, samples: 16 }],
+    ['63 samples', { ...progressive, samples: 63 }],
+    ['65 samples', { ...progressive, samples: 65 }],
   ];
   for (const [label, spec] of variants) {
     test(label, async ({ page }, testInfo) => {

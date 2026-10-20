@@ -3,7 +3,6 @@ export interface FixtureContext {
   canvas: HTMLCanvasElement;
   renderer: string;
   floatRenderTargets: boolean;
-  lost: Promise<never>;
 }
 
 export function createContext(size: number): FixtureContext {
@@ -22,11 +21,7 @@ export function createContext(size: number): FixtureContext {
   if (!gl) throw new Error('WebGL2 is not available');
   const info = gl.getExtension('WEBGL_debug_renderer_info');
   const renderer = String(info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
-  const lost = new Promise<never>((_, reject) => {
-    canvas.addEventListener('webglcontextlost', () => reject(new Error('WebGL context lost')));
-  });
-  lost.catch(() => undefined);
-  return { gl, canvas, renderer, floatRenderTargets: gl.getExtension('EXT_color_buffer_float') !== null, lost };
+  return { gl, canvas, renderer, floatRenderTargets: gl.getExtension('EXT_color_buffer_float') !== null };
 }
 
 export function requireFloatTargets(ctx: FixtureContext): void {
@@ -64,6 +59,7 @@ export function createProgram(gl: WebGL2RenderingContext, vertexSource: string, 
 }
 
 export function readDrawingBufferBase64(gl: WebGL2RenderingContext, width: number, height: number): string {
+  if (gl.isContextLost()) throw new Error('WebGL context lost');
   gl.finish();
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   const pixels = new Uint8Array(width * height * 4);

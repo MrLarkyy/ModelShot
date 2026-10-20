@@ -45,7 +45,7 @@ export function resolveGolden(
     }
   }
   if (expected === null) {
-    throw new Error(`golden missing: ${path}; run pnpm golden:update ${spec.name} after checking the render`);
+    throw new Error(`golden missing: ${path}; run pnpm golden:update golden.spec after checking the render`);
   }
   return { written: false, expected };
 }
