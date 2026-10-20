@@ -30,4 +30,5 @@ Packages (`packages/*`): `formats`, `scene`, `renderer-rt`, `pathtracer`, `looks
 Docs: [scene format](docs/scene-format.md) (what every loader produces), [Blockbench loader](docs/bbmodel.md),
 [glTF / GLB loader](docs/gltf.md) and [OBJ loader](docs/obj.md) (supported features, limits, error codes),
 [realtime renderer](docs/realtime-renderer.md) (passes, pixel-art sampling, transparency, context loss),
+[path tracer](docs/path-tracer.md) (API, determinism, alpha, sides and order on every ray, lighting),
 [camera](docs/camera.md) (the shared camera, frame-to-fit, controls).

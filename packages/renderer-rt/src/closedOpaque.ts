@@ -222,7 +222,8 @@ export function textureOpacityOf(rgba: Uint8Array, width: number, height: number
 
 /**
  * Translucent texels a face samples: those in its texel range, from the normalised UV rectangle
- * `[uMin, vMin, uMax, vMax]` the way `faceTexelRange` (texelSample.glsl) computes it, clamped to the image.
+ * `[uMin, vMin, uMax, vMax]` the way `faceTexelRange` (faceTexels.glsl of @modelshot/looks) computes it, clamped to
+ * the image.
  */
 export function translucentTexelsIn(table: TranslucentTexels, rect: ArrayLike<number>): number {
   const { width, height, sums } = table;

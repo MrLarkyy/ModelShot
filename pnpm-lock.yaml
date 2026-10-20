@@ -208,7 +208,17 @@ importers:
 
   packages/looks: {}
 
-  packages/pathtracer: {}
+  packages/pathtracer:
+    dependencies:
+      '@modelshot/looks':
+        specifier: workspace:*
+        version: link:../looks
+      '@modelshot/renderer-rt':
+        specifier: workspace:*
+        version: link:../renderer-rt
+      '@modelshot/scene':
+        specifier: workspace:*
+        version: link:../scene
 
   packages/renderer-rt:
     dependencies:
@@ -226,6 +236,12 @@ importers:
       '@modelshot/formats':
         specifier: workspace:*
         version: link:../../packages/formats
+      '@modelshot/looks':
+        specifier: workspace:*
+        version: link:../../packages/looks
+      '@modelshot/pathtracer':
+        specifier: workspace:*
+        version: link:../../packages/pathtracer
       '@modelshot/renderer-rt':
         specifier: workspace:*
         version: link:../../packages/renderer-rt

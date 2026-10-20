@@ -13,5 +13,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelshot/looks": "workspace:*",
+    "@modelshot/renderer-rt": "workspace:*",
+    "@modelshot/scene": "workspace:*"
   }
 }

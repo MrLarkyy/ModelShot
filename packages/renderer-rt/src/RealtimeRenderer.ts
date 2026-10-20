@@ -8,6 +8,7 @@ import {
   type SceneCamera,
   type SceneDocument,
 } from '@modelshot/scene';
+import { LIGHT_RIG_V0 } from '@modelshot/looks';
 import { canvasSize, type CanvasCssSize, type CanvasSize } from './canvasSize';
 import { DEFAULT_MAX_TEXTURE_PIXELS_TOTAL, decodeTextures, type TextureLimits } from './decodeTextures';
 import { queryGlLimits, type GlLimits } from './glLimits';
@@ -60,7 +61,6 @@ export interface SetSceneResult {
   readonly warnings: readonly RendererWarning[];
 }
 
-const DEFAULT_BACKGROUND = [0.14, 0.15, 0.17] as const;
 const DEFAULT_MAX_TEXTURE_SIDE = 4096;
 const DEFAULT_MSAA_SAMPLES = 4;
 /** The float path's depth renderbuffers are DEPTH_COMPONENT24 (RenderTargets). */
@@ -124,7 +124,7 @@ export class RealtimeRenderer {
     private readonly gl: WebGL2RenderingContext,
     private readonly options: RendererOptions,
   ) {
-    this.background = options.background ?? DEFAULT_BACKGROUND;
+    this.background = options.background ?? LIGHT_RIG_V0.background;
     canvas.addEventListener('webglcontextlost', this.handleContextLost);
     canvas.addEventListener('webglcontextrestored', this.handleContextRestored);
     try {

@@ -76,3 +76,29 @@ export function installSampleBench(
     return performance.now() - start;
   };
 }
+
+/**
+ * Manual time-to-samples readout for a run on real hardware (pt.html?timing=1): draws one sample per animation frame
+ * until `target` and shows the elapsed time until the GPU finished each, and the mean per sample.
+ */
+export function installSampleReadout(
+  gl: WebGL2RenderingContext,
+  step: () => number,
+  done: () => number,
+  target: number,
+  output: HTMLElement,
+  renderer: string,
+): void {
+  const start = performance.now();
+  const tick = (): void => {
+    step();
+    finish(gl);
+    const elapsed = performance.now() - start;
+    const samples = done();
+    output.textContent =
+      `${samples} / ${target} samples in ${elapsed.toFixed(0)} ms (${(elapsed / Math.max(1, samples)).toFixed(1)} ms ` +
+      `per sample), ${gl.drawingBufferWidth}x${gl.drawingBufferHeight}, ${renderer}`;
+    if (samples < target) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}

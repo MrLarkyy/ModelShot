@@ -58,6 +58,8 @@ export const RT_SCENE_NAMES = [
   'player-hold',
   'player-walk-hold',
   'player-wave',
+  'coincident-cubes',
+  'grass-field',
 ] as const;
 export type RtSceneName = (typeof RT_SCENE_NAMES)[number];
 
@@ -102,7 +104,8 @@ export type RtLook =
   | 'cube-grazing-1'
   | 'cube-grazing-5'
   | 'cube-inside'
-  | 'ramp';
+  | 'ramp'
+  | 'flat-shadow';
 
 /** Fixed cameras: the model-view fixture's (same image positions as its probes) and two views of a horizontal pair. */
 const LOOKS: Readonly<Record<RtLook, { eye: Point3; target: Point3; near: number; far: number }>> = {
@@ -126,6 +129,8 @@ const LOOKS: Readonly<Record<RtLook, { eye: Point3; target: Point3; near: number
     near: 5,
     far: 40,
   },
+  // From the north, above: the ground north of alpha-plane's flat cube, where the key light casts its shadow.
+  'flat-shadow': { eye: [10, 40, -30], target: [10, 0, 6], near: 5, far: 120 },
 };
 
 export const DEFAULT_RT_VIEW: RtView = {
@@ -159,6 +164,10 @@ export const RT_VARIANTS: Readonly<Record<string, Partial<RtView>>> = {
   'fit-flat-cube': { scene: 'flat', yawDeg: 30, pitchDeg: 20 },
   'gltf-nodes-y030': { scene: 'gltf-nodes', yawDeg: 30 },
   'obj-shapes-y030': { scene: 'obj-shapes', yawDeg: 30 },
+  // The model-view scenes and the alpha ramp under their fixed cameras (path-tracer goldens and preview pairs).
+  'alpha-plane': { scene: 'alpha-plane', look: 'model-view' },
+  'render-order': { scene: 'render-order', look: 'model-view' },
+  'alpha-ramp-blend': { scene: 'alpha-ramp-blend', look: 'ramp' },
   // The player faces -Z: yaw 180 looks at its front, yaw 0 at its back, yaw 210 from its front left.
   'player-classic-front': { scene: 'player-classic', yawDeg: 180, pitchDeg: 10 },
   'player-classic-back': { scene: 'player-classic', yawDeg: 0, pitchDeg: 10 },
@@ -283,6 +292,10 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return loadGltf(sceneNodesSource).scene;
     case 'obj-shapes':
       return loadObj(shapesObjSource, { fileName: 'shapes.obj', files: shapesFiles() }).scene;
+    case 'coincident-cubes':
+      return coincidentCubes(load(showcaseSource));
+    case 'grass-field':
+      return grassField(load(alphaPlaneSource));
     case 'player-classic':
       return playerScene('classic', 'classic');
     case 'player-slim':
@@ -574,6 +587,151 @@ function alphaRamp(alpha: Pick<SceneDocument['materials'][number], 'alphaMode' |
       },
     ],
   };
+}
+
+/**
+ * A field of cut-out plants on a ground plane: 64 x 64 crossed pairs of double-sided 8 x 8 quads 6 units apart, each
+ * showing alpha-plane's cutout.png (half its texels holes), 16 384 quads in all. Seen at a low angle, rays cross dozens
+ * of plants and their holes before a hit: the realistic worst case for the path tracer's per-ray node cap.
+ */
+function grassField(alphaPlane: SceneDocument): SceneDocument {
+  const side = 64;
+  const spacing = 6;
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+  const quad = (corners: readonly (readonly number[])[], normal: readonly number[], uv: readonly number[][]): void => {
+    const base = positions.length / 3;
+    corners.forEach((corner, i) => {
+      positions.push(...corner);
+      normals.push(...normal);
+      uvs.push(...(uv[i] ?? [0, 0]));
+    });
+    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  };
+  const extent = (side * spacing) / 2 + 8;
+  const flat = [
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+  ];
+  quad(
+    [
+      [-extent, 0, extent],
+      [extent, 0, extent],
+      [extent, 0, -extent],
+      [-extent, 0, -extent],
+    ],
+    [0, 1, 0],
+    flat,
+  );
+  const groundIndices = indices.length;
+  const full = [
+    [0, 1],
+    [1, 1],
+    [1, 0],
+    [0, 0],
+  ];
+  for (let i = 0; i < side; i++) {
+    for (let j = 0; j < side; j++) {
+      const x = (i - side / 2 + 0.5) * spacing;
+      const z = (j - side / 2 + 0.5) * spacing;
+      quad(
+        [
+          [x - 4, 0, z],
+          [x + 4, 0, z],
+          [x + 4, 8, z],
+          [x - 4, 8, z],
+        ],
+        [0, 0, 1],
+        full,
+      );
+      quad(
+        [
+          [x, 0, z + 4],
+          [x, 0, z - 4],
+          [x, 8, z - 4],
+          [x, 8, z + 4],
+        ],
+        [1, 0, 0],
+        full,
+      );
+    }
+  }
+  const vertices = positions.length / 3;
+  const mesh: SceneMesh = {
+    name: 'field',
+    sourceId: '',
+    node: -1,
+    visible: true,
+    positions: new Float32Array(positions),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+    uvRects: new Float32Array(Array.from({ length: vertices }, (_, v) => (v < 4 ? [0, 0, 0, 0] : [0, 0, 1, 1])).flat()),
+    indices: new Uint32Array(indices),
+    groups: [
+      { material: -1, start: 0, count: groundIndices },
+      { material: 0, start: groundIndices, count: indices.length - groundIndices, doubleSided: true },
+    ],
+  };
+  return { ...alphaPlane, nodes: [], rootNodes: [], meshes: [mesh] };
+}
+
+/**
+ * 10 000 coincident untextured 8-unit cubes (the bbmodel loader's element limit, 120 000 triangles) in one mesh: every
+ * BVH node box is the same, so nothing prunes a traversal. The path tracer's per-ray node cap must keep a sample short.
+ */
+function coincidentCubes(showcase: SceneDocument): SceneDocument {
+  const cubes = 10_000;
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const cube: number[] = [];
+  for (const [axis, sign] of [
+    [0, 1],
+    [0, -1],
+    [1, 1],
+    [1, -1],
+    [2, 1],
+    [2, -1],
+  ] as const) {
+    const u = (axis + 1) % 3;
+    const v = (axis + 2) % 3;
+    const base = positions.length / 3;
+    for (const [a, b] of [
+      [-4, -4],
+      [4, -4],
+      [4, 4],
+      [-4, 4],
+    ] as const) {
+      const p = [0, 0, 0];
+      p[axis] = 4 * sign;
+      p[u] = a;
+      p[v] = b;
+      positions.push(...p);
+      const n = [0, 0, 0];
+      n[axis] = sign;
+      normals.push(...n);
+    }
+    // Counter-clockwise seen from outside.
+    cube.push(...(sign > 0 ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2]).map((i) => base + i));
+  }
+  const indices = new Uint32Array(cubes * cube.length);
+  for (let c = 0; c < cubes; c++) indices.set(cube, c * cube.length);
+  const mesh: SceneMesh = {
+    name: 'cubes',
+    sourceId: '',
+    node: -1,
+    visible: true,
+    positions: new Float32Array(positions),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array((positions.length / 3) * 2),
+    uvRects: new Float32Array((positions.length / 3) * 4),
+    indices,
+    groups: [{ material: -1, start: 0, count: indices.length }],
+  };
+  return { ...showcase, nodes: [], rootNodes: [], meshes: [mesh] };
 }
 
 /**

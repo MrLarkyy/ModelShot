@@ -2,13 +2,7 @@
 // face's texel rectangle so no texel of a neighbouring atlas region is ever read. Textures are SRGB8_ALPHA8 with
 // NEAREST filtering and no mipmaps; texelFetch returns linear colour, so the taps blend in linear space.
 #include "texelAlpha"
-
-// Inclusive texel range [xy, zw] of a face from its normalised UV rectangle [uMin, vMin, uMax, vMax].
-ivec4 faceTexelRange(vec4 uvRect, vec2 size) {
-  vec2 lo = floor(uvRect.xy * size + 1.0e-3);
-  vec2 hi = max(ceil(uvRect.zw * size - 1.0e-3) - 1.0, lo);
-  return ivec4(lo, hi);
-}
+#include "faceTexels"
 
 // A tap weighs by its coverage (texelAlpha): invisible 0, opaque 1, partial its alpha. In the opaque mode every texel
 // is opaque, so alpha never darkens or fringes it.

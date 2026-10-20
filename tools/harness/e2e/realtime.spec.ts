@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
 import type { Page } from '@playwright/test';
-import { PNG } from 'pngjs';
 import { compareImages } from '../src/compareImages';
 import { encodeFlipped, expectGolden, openFixture, renderFixture, type FixtureInfo } from '../src/expectGolden';
 import type { RasterGoldenSpec } from '../src/goldenSpec';
 import { goldenPath } from '../src/goldenStore';
 import { expect, test } from '../src/harnessTest';
+import { decodePng, hueMatch, modelBox, near, pixel, sentinelPixels, type Image } from '../src/imageMetrics';
 import type { ModelViewProbe } from '../fixtures/src/fixtureApi';
 
 const spec = (name: string, variant: string): RasterGoldenSpec => ({
@@ -38,20 +38,10 @@ const GOLDENS = [
   ...PLAYER,
 ];
 
-interface Image {
-  width: number;
-  height: number;
-  data: Buffer;
-}
-
-function decode(png: Buffer): Image {
-  return PNG.sync.read(png);
-}
-
 async function render(page: Page, query: string): Promise<{ png: Buffer; image: Image; info: FixtureInfo }> {
   const info = await openFixture(page, `/rt.html?${query}`);
   const png = encodeFlipped(info);
-  return { png, image: decode(png), info };
+  return { png, image: decodePng(png), info };
 }
 
 /** Reads the current drawing buffer again, after the page changed it without a reload. */
@@ -69,24 +59,6 @@ function matchesGolden(png: Buffer, golden: RasterGoldenSpec): { pass: boolean; 
   return { pass: result.pass, message: `${result.diffPixels} pixels differ, mean delta ${result.meanDelta}` };
 }
 
-function pixel(image: Image, x: number, y: number): [number, number, number] {
-  const i = (Math.floor(y) * image.width + Math.floor(x)) * 4;
-  return [image.data[i] ?? 0, image.data[i + 1] ?? 0, image.data[i + 2] ?? 0];
-}
-
-const near = (a: readonly number[], b: readonly number[], levels: number): boolean =>
-  a.every((v, i) => Math.abs(v - (b[i] ?? 0)) <= levels);
-
-/** Pixels whose hue leans to the magenta sentinel: red and blue both clearly above green. */
-function sentinelPixels(image: Image): number {
-  let count = 0;
-  for (let i = 0; i < image.data.length; i += 4) {
-    const [r = 0, g = 0, b = 0] = image.data.subarray(i, i + 3);
-    if (r - g > 24 && b - g > 24) count++;
-  }
-  return count;
-}
-
 /** Share of pixels where some channel changed by more than 64 levels. */
 function changedShare(a: Image, b: Image): number {
   let changed = 0;
@@ -99,25 +71,6 @@ function changedShare(a: Image, b: Image): number {
     }
   }
   return changed / (a.width * a.height);
-}
-
-/** Bounding box of the pixels that differ from the backdrop (the top-left pixel). */
-function modelBox(image: Image): { x0: number; y0: number; x1: number; y1: number } {
-  const backdrop = pixel(image, 0, 0);
-  let x0 = Infinity;
-  let y0 = Infinity;
-  let x1 = -Infinity;
-  let y1 = -Infinity;
-  for (let y = 0; y < image.height; y++) {
-    for (let x = 0; x < image.width; x++) {
-      if (near(pixel(image, x, y), backdrop, 2)) continue;
-      x0 = Math.min(x0, x);
-      y0 = Math.min(y0, y);
-      x1 = Math.max(x1, x);
-      y1 = Math.max(y1, y);
-    }
-  }
-  return { x0, y0, x1, y1 };
 }
 
 test.describe('realtime goldens', () => {
@@ -252,7 +205,7 @@ test.describe('device pixel ratio 2', () => {
     expect([info.width, info.height]).toEqual([512, 512]);
     const before = modelBox(image);
     await page.evaluate(() => window.__msFixture!.rt!.setCssSize(384, 256));
-    const after = decode(await readPng(page, info));
+    const after = decodePng(await readPng(page, info));
     expect([after.width, after.height]).toEqual([768, 512]);
     const box = modelBox(after);
     // Same height in pixels and centred: the projection follows the new aspect instead of stretching.
@@ -345,7 +298,7 @@ test('float targets rejected at a new size switch the renderer to the no-float p
     msaa: window.__msFixture?.rt?.msaaSamples,
   }));
   expect(after).toEqual({ path: 'fallback', msaa: 0 });
-  const image = decode(await readPng(page, info));
+  const image = decodePng(await readPng(page, info));
   expect([image.width, image.height]).toEqual([200, 200]);
   expect(modelBox(image).x1 - modelBox(image).x0).toBeGreaterThan(50);
   expect(errors).toEqual([]);
@@ -393,12 +346,6 @@ test.describe('lifetime', () => {
 async function modelViewProbes(page: Page, variant: string): Promise<ModelViewProbe[]> {
   await openFixture(page, `/model-view.html?variant=${variant}`);
   return page.evaluate(() => window.__msFixture?.probes ?? []);
-}
-
-/** Cosine between two RGB colours (lighting and tone mapping scale a texel's colour but keep its direction). */
-function hueMatch(a: readonly number[], b: readonly number[]): number {
-  const dot = [0, 1, 2].reduce((sum, k) => sum + (a[k] ?? 0) * (b[k] ?? 0), 0);
-  return dot / (Math.hypot(a[0] ?? 0, a[1] ?? 0, a[2] ?? 0) * Math.hypot(b[0] ?? 0, b[1] ?? 0, b[2] ?? 0));
 }
 
 /** Pixels of the opposite quad colour (red: r > 1.5 b; blue: b > 1.5 r) where `expected` must show alone. */
@@ -612,7 +559,7 @@ test.describe('render-order tie at MSAA sample level: coincident quads with diff
       for (const scene of ['tie-pair', 'tie-single']) {
         const { info } = await render(page, `scene=${scene}&look=grazing-above`);
         await page.evaluate(() => window.__msFixture!.rt!.setCssSize(384, 256));
-        const image = decode(await readPng(page, info));
+        const image = decodePng(await readPng(page, info));
         expect([image.width, image.height]).toEqual([768, 512]);
         images.push(image);
       }
