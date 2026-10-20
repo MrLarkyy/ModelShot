@@ -59,7 +59,8 @@ DOM, no clock.
 
 Damping (default on, 80 ms time constant) eases the camera towards the input goal in `update(dtMs)`, which returns
 whether it is still moving; once within 1e-6 of the goal it snaps to it, so with no input the state stays
-bit-identical forever (tested over 10,000 steps). `update(0)` changes nothing.
+bit-identical forever (tested over 10,000 steps). `update(0)` changes nothing. Non-finite input (NaN or infinite
+angles, deltas, zoom factors, field of view or options) is ignored, so the camera always stays defined.
 
 ## Input
 
@@ -70,6 +71,6 @@ bit-identical forever (tested over 10,000 steps). `update(0)` changes nothing.
 - keys on the focused element: arrows orbit, Shift + arrows pan, + / − zoom, Home or 0 reset, O toggles
   orthographic, I isometric. Other keys and any key with Ctrl, Alt or Meta are left to the page.
 
-The element gets `tabindex="0"` when it has none and `touch-action: none`. Under `prefers-reduced-motion: reduce`
-damping is switched off. Labels and the visible focus style belong to the app. The returned function removes every
+The element gets `tabindex="0"` when it has none and `touch-action: none`. While `prefers-reduced-motion: reduce`
+is set damping is off, following changes of the setting (a controller created without damping stays without). Labels and the visible focus style belong to the app. The returned function removes every
 listener.

@@ -27,14 +27,19 @@ Float path (needs `EXT_color_buffer_float`):
    RGBA16F); 0 samples draws single-sampled), resolved by a blit of colour and depth.
 2. Weighted blended order-independent transparency (McGuire and Bavoil 2013, weight of equation 10) for partial
    texels: an RGBA16F target (rgb: weighted premultiplied colour, a: product of 1 − alpha) and an R16F target (sum of
-   weighted alpha), depth-tested against the resolved depth with depth writes off. Only groups whose texture has
+   weighted alpha), depth-tested against the resolved depth with depth writes off. Only batches whose texture has
    partial alpha are drawn here (one readback per texture at load decides it).
 3. Composite of the transparency average over the opaque image.
 4. Present: AgX and the display encoding into the canvas.
 
 No-float path (`capabilities.path === 'fallback'`): one pass into the canvas with AgX in the fragment shader, partial
 texels as hashed (screen-door) alpha from an integer hash of texel and pixel. Both paths are order-independent and
-deterministic (no clock, no random source).
+deterministic (no clock, no random source). The renderer also switches to this path for good when the driver
+rejects the float targets at a new drawing size; `capabilities` then reports `path: 'fallback'` and 0 samples.
+
+Geometry is batched at upload: the visible triangles of one node with one texture share one vertex and index buffer
+(`batchScene`). Every vertex keeps its own UV rectangle, so batching changes nothing per texel; a model with one mesh
+per element (thousands for a large Blockbench model) draws in a few calls per pass.
 
 ## Pixel art
 
@@ -55,8 +60,12 @@ The class of a pixel comes from its nearest texel (`#include "texelAlpha"` from 
 254.5/255 opaque, anything else partial (OIT on the float path, hashed alpha on the fallback). Cut-out shapes are
 therefore exactly per texel. Shadow, AO and path-tracer rays must use the same chunk.
 
-Faces are drawn double-sided (no culling); the back of a face is lit with the flipped normal. Zero-thickness planes
-and inner faces seen through cut-outs need this; the path tracer treats every triangle as two-sided the same way.
+Faces are drawn double-sided; the back of a face is lit with the flipped normal. Zero-thickness planes and inner
+faces seen through cut-outs need this. Every pass draws front faces first (back faces culled), then back faces (front
+faces culled) pushed back by `polygonOffset(1, 1)`: of two coincident faces (a zero-thickness element with both faces
+textured) the one turned to the camera wins, from either side and on any GPU. Front means counter-clockwise seen from
+outside, the winding every loader produces. The path tracer follows the same rule: every triangle is two-sided, and at
+equal hit distance the front-facing hit wins.
 
 ## Lighting and tone mapping
 
@@ -64,6 +73,10 @@ Lighting v0 is a constant sky/ground hemisphere fill plus one directional key (`
 become look data later. The HDR result goes through AgX (`#include "agx"` from `@modelshot/looks`, mirrored by
 `agxToneMap` for tests), whose output is already display-encoded and is written as is. The backdrop colour (option
 `background`, scene-linear) goes through the same transform on both paths.
+
+Third-party: the AgX matrices, log2 range and contrast polynomial in `looks/src/glsl/agx.glsl` and
+`looks/src/agxToneMap.ts` come from Benjamin Wrensch's minimal AgX implementation (Missing Deadlines / iolite),
+MIT License; the notice is in both files.
 
 ## Shaders
 
@@ -78,10 +91,12 @@ include throws; no shader text is built from user input. A compile or link failu
   indices below the vertex count, groups on whole triangles inside the index buffer, material, texture, node and mesh
   indices in range or −1. A failure rejects with `RendererError` `INVALID_SCENE` naming the path, e.g.
   `meshes[0].indices[5]`.
-- Textures are checked from their header size before decoding: each side at most min(`maxTextureSide`, default
-  4096, `MAX_TEXTURE_SIZE`), and at most `maxTexturePixelsTotal` (default 64 Mi) pixels per scene. Decoding uses
-  `createImageBitmap` on a `Blob` of the bytes (never a URL, so nothing is fetched).
-- A texture that is missing, too large, fails to decode or decodes to another size than its header becomes a 2 × 2
+- Textures are checked from the PNG header in their bytes (signature and IHDR) before decoding, never from the size
+  the document declares: each side at most min(`maxTextureSide`, default 4096, `MAX_TEXTURE_SIZE`), at most
+  `maxTexturePixelsTotal` (default 64 Mi) pixels per scene, and the header size must equal the declared size.
+  Decoding uses `createImageBitmap` on a `Blob` of the bytes (never a URL, so nothing is fetched); the decoded size is
+  checked again.
+- A texture that is missing, not a PNG, too large, fails to decode or whose size disagrees becomes a 2 × 2
   grey checker, and `setScene` resolves with a `RendererWarning` (`TEXTURE_MISSING`, `TEXTURE_TOO_LARGE`,
   `TEXTURE_DECODE_FAILED`, `TEXTURE_SIZE_MISMATCH`, with the texture index); the rest of the model draws.
 - A later `setScene` or `dispose()` supersedes a pending one: it resolves with `applied: false` and closes the images

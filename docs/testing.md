@@ -64,8 +64,12 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
 - Context loss through `WEBGL_lose_context`: the image after the restore matches `rt-turntable-y030`, without a
   reload or a page error.
 - Device pixel ratio 2 doubles the backing store; an element resize reallocates and keeps the projection unstretched.
-- Hostile textures (corrupt bytes, missing, header size lying, over `maxTextureSide`) draw a placeholder with a
-  warning; two quick `setScene` calls show only the second; `dispose()` (also during decoding) leaves no live WebGL
+- Two-sided drawing: the zero-height plate seen from above shows its grass face, from below only its stone face, on
+  both paths (with one unordered pass the first drawn face won from both sides).
+- Float targets the driver rejects at a new size (`breakFramebuffers()` makes every framebuffer report incomplete)
+  switch the renderer to the no-float path; `capabilities.path` reports it.
+- Hostile textures (corrupt bytes, missing, header size lying, a 16384 x 16384 PNG header behind a declared 16 x 16,
+  over `maxTextureSide`) draw a placeholder with a warning, the oversized one without being decoded; two quick `setScene` calls show only the second; `dispose()` (also during decoding) leaves no live WebGL
   object or open ImageBitmap (counted with `track=1`).
 - Framing: the fit and isometric views keep a 2 px backdrop border around the model.
 
@@ -89,9 +93,10 @@ Measured on the local Windows dev machine (SwiftShader, 3 runs) when the budgets
 0.4 ms; time to 64 samples median 23.8, 23, 25.8 ms; gzip app 437 B, embed 115 B.
 
 `frameTimeMs.rt-bench-512` is the realtime renderer on the benchmark scene (`fixtures/src/benchScene.ts`: 16 x 16 x 8
-textured cubes, 2,048 cubes, 24,576 triangles, every seventh with a partial-alpha face; 512 x 512, 4x MSAA, both
-passes), median of 30 frames after 5 warm-up frames. Local SwiftShader medians 66.2, 69.9 and 80.0 ms (3 runs);
-max 700 ms is 10x the middle run, room for a CI runner that is 3-5x slower than the dev machine. SwiftShader cannot
+textured cubes, 2,048 cubes, 24,576 triangles, one mesh per cube as the Blockbench loader produces them, every
+seventh with a partial-alpha face; 512 x 512, 4x MSAA, front and back face passes, opaque and transparency passes),
+median of 30 frames after 5 warm-up frames. Local SwiftShader medians 67.3, 67.0 and 79.2 ms (3 runs, with the
+per-cube meshes batched at upload); max 700 ms is 10x the middle run, rounded up, room for a CI runner that is 3-5x slower than the dev machine. SwiftShader cannot
 stand in for a laptop GPU: the 60 fps criterion is evidenced by a manual run of the `fps=1` page on real hardware
 (16.7 ms or less of frame work), recorded with the machine and GPU in the task.
 
