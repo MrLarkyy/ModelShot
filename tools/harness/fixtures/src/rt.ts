@@ -113,6 +113,20 @@ async function start(): Promise<void> {
     liveGlObjects: () => tracker?.liveGlObjects() ?? -1,
     openBitmaps: () => tracker?.openBitmaps() ?? -1,
     render: () => renderer.render(),
+    drawCallsPerFrame: () => {
+      let calls = 0;
+      const drawElements = gl.drawElements.bind(gl);
+      gl.drawElements = (...args: Parameters<WebGL2RenderingContext['drawElements']>): void => {
+        calls++;
+        drawElements(...args);
+      };
+      try {
+        renderer.render();
+      } finally {
+        delete (gl as Partial<Pick<WebGL2RenderingContext, 'drawElements'>>).drawElements;
+      }
+      return calls;
+    },
     lose: () =>
       new Promise((resolve, reject) => {
         if (!lose) return reject(new Error('WEBGL_lose_context is not available'));

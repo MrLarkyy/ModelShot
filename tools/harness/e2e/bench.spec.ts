@@ -19,6 +19,8 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
 
   const rtBench = await openFixture(page, '/rt.html?scene=bench&size=512');
   expect([rtBench.width, rtBench.height]).toEqual([512, 512]);
+  // 128 group nodes, one batch each, drawn front and back in the opaque and the transparency pass.
+  expect(await page.evaluate(() => window.__msFixture?.rt?.drawCallsPerFrame())).toBe(128 * 2 * 2);
   const rtFrames = await page.evaluate(() => {
     const fixture = window.__msFixture;
     if (!fixture?.renderFrames) throw new Error('frame bench missing');

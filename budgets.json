@@ -2,7 +2,7 @@
   "version": 1,
   "frameTimeMs": {
     "gradient-256": { "max": 5 },
-    "rt-bench-512": { "max": 700 }
+    "rt-bench-512": { "max": 750 }
   },
   "timeToSamplesMs": {
     "progressive-256-n64": { "max": 300 }

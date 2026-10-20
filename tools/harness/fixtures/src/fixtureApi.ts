@@ -21,6 +21,8 @@ export interface RtControls {
   liveGlObjects: () => number;
   openBitmaps: () => number;
   render: () => void;
+  /** Mesh draw calls (drawElements) of one rendered frame. */
+  drawCallsPerFrame: () => number;
   /** Makes every framebuffer report itself incomplete from now on (see breakFramebuffers.ts). */
   breakFramebuffers: () => void;
   /** WEBGL_lose_context: resolves once the context is lost, or restored and redrawn. */
