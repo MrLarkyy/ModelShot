@@ -5,7 +5,7 @@ import texelAlphaSource from '../shaders/include/texelAlpha.glsl?raw';
 import vertexSource from '../shaders/fullscreen.vert.glsl?raw';
 import raycastSource from '../shaders/raycast.frag.glsl?raw';
 import { createProgram } from './context';
-import { MODEL_VIEW_LOOK, cameraViewProjection, invert } from './modelViewCamera';
+import { MODEL_VIEW_LOOK, cameraViewProjection, invert, viewAxis } from './modelViewCamera';
 import { setMaterialUniforms, setShadeUniforms } from './modelUniforms';
 import type { SceneTriangles } from './sceneTriangles';
 import type { UploadedTextures } from './sceneUpload';
@@ -57,6 +57,7 @@ export function renderRaycast(
   gl.uniform1i(gl.getUniformLocation(program, 'u_triangleCount'), triangles.count);
   gl.uniformMatrix4fv(gl.getUniformLocation(program, 'u_inverseViewProjection'), false, invert(viewProjection));
   gl.uniform3fv(gl.getUniformLocation(program, 'u_eye'), MODEL_VIEW_LOOK.eye);
+  gl.uniform3fv(gl.getUniformLocation(program, 'u_forward'), viewAxis());
   gl.uniform2f(gl.getUniformLocation(program, 'u_viewportSize'), size, size);
   gl.uniform3fv(gl.getUniformLocation(program, 'u_background'), MODEL_VIEW_LOOK.background);
   gl.bindVertexArray(gl.createVertexArray());

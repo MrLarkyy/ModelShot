@@ -8,7 +8,7 @@ import shadowSource from '../shaders/shadowDepth.frag.glsl?raw';
 import { createProgram } from './context';
 import { MODEL_SHADER_DEFINES } from './modelShaderDefines';
 import { buildShader } from './shaderSource';
-import { MODEL_VIEW_LOOK, cameraViewProjection, invert, lightViewProjection } from './modelViewCamera';
+import { MODEL_VIEW_LOOK, cameraViewProjection, invert, lightViewProjection, viewAxis } from './modelViewCamera';
 import { setMaterialUniforms, setShadeUniforms } from './modelUniforms';
 import type { SceneTriangles } from './sceneTriangles';
 import type { UploadedTextures } from './sceneUpload';
@@ -62,6 +62,7 @@ export function renderRaster(
   gl.uniformMatrix4fv(gl.getUniformLocation(cameraProgram, 'u_viewProjection'), false, cameraViewProjection(1));
   gl.uniformMatrix4fv(gl.getUniformLocation(cameraProgram, 'u_lightViewProjection'), false, light);
   gl.uniform3fv(gl.getUniformLocation(cameraProgram, 'u_eye'), MODEL_VIEW_LOOK.eye);
+  gl.uniform3fv(gl.getUniformLocation(cameraProgram, 'u_forward'), viewAxis());
   gl.uniformMatrix4fv(
     gl.getUniformLocation(cameraProgram, 'u_inverseViewProjection'),
     false,

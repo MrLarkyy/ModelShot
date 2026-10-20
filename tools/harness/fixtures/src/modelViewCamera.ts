@@ -29,6 +29,12 @@ export const MODEL_VIEW_LOOK = Object.freeze({
   ambient: 0.35,
 });
 
+/** Unit view axis of the fixture camera, eye towards target. */
+export function viewAxis(): Point3 {
+  const { eye, target } = MODEL_VIEW_LOOK;
+  return normalize([target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]]);
+}
+
 export function cameraViewProjection(aspect: number): Matrix {
   const { eye, target, fovYDegrees, near, far } = MODEL_VIEW_LOOK;
   return multiply(perspective(fovYDegrees, aspect, near, far), lookAt(eye, target, [0, 1, 0]));

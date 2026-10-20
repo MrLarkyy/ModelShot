@@ -43,6 +43,8 @@ export interface RtControls {
   setScenes: (names: string[]) => Promise<boolean[]>;
   /** Starts a setScene, disposes the renderer before it finishes; resolves with whether it was applied. */
   disposeDuringDecode: () => Promise<boolean>;
+  /** Depth-key variant (`raster` or `linear`) the renderer uses for the current camera and path. */
+  depthKeyMode: () => string;
   /** Image position (pixels, top-left origin) of a world point under the current camera. */
   project: (x: number, y: number, z: number) => [number, number];
   /** Sets the canvas CSS size; resolves after the resize observer resized the backing store and redrew. */

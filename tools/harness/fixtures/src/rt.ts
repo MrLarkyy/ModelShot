@@ -1,4 +1,4 @@
-import { observeCanvasSize, RealtimeRenderer, type RendererWarning } from '@modelshot/renderer-rt';
+import { depthKeyMode, observeCanvasSize, RealtimeRenderer, type RendererWarning } from '@modelshot/renderer-rt';
 import { cameraProjection, cameraView, mat4Multiply, type SceneDocument } from '@modelshot/scene';
 import { installFrameBench, installFrameReadout } from './bench';
 import { readDrawingBufferBase64 } from './context';
@@ -8,7 +8,7 @@ import { installGlTracker } from './glTracker';
 import { isRtSceneName, parseRtView, reverseMeshOrder, rtCamera, rtScene, type RtSceneName } from './rtScenes';
 
 // URL parameters: variant (a preset of rtScenes.ts) or scene, yaw, pitch, proj=persp|ortho, fov, zoom, iso=0|1,
-// aa=0|1, fallback=1, reverse=1; size (CSS pixels, default 256), maxTextureSide, track=1 (count GL objects),
+// aa=0|1, fallback=1, reverse=1, look=model-view|above|below with depth=framed|inside; size (CSS pixels, default 256), maxTextureSide, track=1 (count GL objects),
 // fps=1 (continuous drawing with a frame-time readout, for a manual run on real hardware).
 const params = new URLSearchParams(location.search);
 
@@ -163,6 +163,12 @@ async function start(): Promise<void> {
       const pending = renderer.setScene(sceneOf('showcase'));
       renderer.dispose();
       return (await pending).applied;
+    },
+    depthKeyMode: () => {
+      const camera = rtCamera(doc, view, canvas.width / canvas.height);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      const bits = renderer.capabilities?.path === 'float' ? 24 : Number(gl.getParameter(gl.DEPTH_BITS));
+      return depthKeyMode(camera, bits);
     },
     project: (x, y, z) => {
       const aspect = canvas.width / canvas.height;

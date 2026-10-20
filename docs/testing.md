@@ -65,8 +65,16 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
 - Context loss through `WEBGL_lose_context`: the image after the restore matches `rt-turntable-y030`, without a
   reload or a page error.
 - Device pixel ratio 2 doubles the backing store; an element resize reallocates and keeps the projection unstretched.
-- Two-sided drawing: the zero-height plate seen from above shows its grass face, from below only its stone face, on
-  both paths (with one unordered pass the first drawn face won from both sides).
+- Sides: the zero-height plate (two coincident single-sided faces) seen from above shows its grass face, from below
+  only its stone face, on both paths.
+- Scene-format rule against the model-view fixture (`look=model-view` uses the fixture's camera, so its `probes` fall
+  on the same pixels; `depth=framed` clips at 20..120, `depth=inside` at far × 1e-4..120 like a camera inside the
+  bounding sphere, which switches the renderer to the linear depth key; `rt.depthKeyMode()` is asserted), on the
+  float path and the fallback: `alpha-plane` (opaque texel, transparent texel showing the ground, double-sided back
+  showing the mirrored texel), `render-order` gap and tie pairs facing the eye (2 × TIE: the nearer shows; 0.5 × TIE:
+  `in_front` shows), and `coincident-double` (`look=above|below`: of two coincident double-sided quads split along
+  different diagonals the one facing the camera wins; a single-sided quad seen from behind shows the backdrop). The
+  coincident horizontal pairs of `render-order` are an expected failure (realtime-renderer.md, deviation).
 - Float targets the driver rejects at a new size (`breakFramebuffers()` makes every framebuffer report incomplete)
   switch the renderer to the no-float path; `capabilities.path` reports it.
 - Hostile textures (corrupt bytes rejected at the header, a valid header with scrambled image data that fails to
@@ -95,11 +103,14 @@ shading include:
   offset, back faces of single-sided runs culled as seen from the light), then the camera pass with the same culling,
   alpha discard, a `gl_FrontFacing` normal flip and a hard shadow-map lookup, into its own RGBA8 +
   DEPTH_COMPONENT24 target (blitted to the canvas; the default depth buffer may have only 16 bits). Its fragment depth
-  is the render-order key of the scene format, computed from the pixel's ray and the triangle's plane by
-  `shaders/include/cameraRay.glsl`, the same code the raycast uses, with a `LESS` test; no polygon offset.
+  is the scene format's render-order key (view depth − (order + back) × TIE, back = −1/16 for a back face) over
+  `DEPTH_RANGE` (far + 1), computed per fragment from the pixel's ray and the triangle's plane (three flat corner
+  attributes) by `shaders/include/cameraRay.glsl`, the same code the raycast uses, with a `LESS` test; no polygon
+  offset. Interpolated positions or depths are not precise enough for the 0.001 tie (the rasteriser's error at a
+  grazing angle is several times larger), which is why the fixture writes `gl_FragDepth` and gives up early-z: it is a
+  reference, not a renderer; `@modelshot/renderer-rt` realises the key its own way (realtime-renderer.md).
 - `raycast`: per pixel centre, a camera ray to the nearest triangle whose texel passes the alpha test
-  (single-sided triangles only from the front; hits within `RENDER_ORDER_TIE_DISTANCE` go to the higher render
-  order, the same key), shaded with the barycentric vertex normal, then one shadow ray toward the light that an
+  (single-sided triangles only from the front; the smallest render-order key wins, the same key), shaded with the barycentric vertex normal, then one shadow ray toward the light that an
   alpha-passing
   triangle blocks (a single-sided one only if its front faces the light). Triangles and their vertex normals live in
   an RGBA32F data texture (at most 256, checked against `MAX_TEXTURE_SIZE`).

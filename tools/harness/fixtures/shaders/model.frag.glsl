@@ -40,6 +40,6 @@ void main() {
   outColor = vec4(shade(texel.rgb, normal, lit), 1.0);
   // The depth test compares the raycast's key, computed the same way from the pixel's ray and the triangle's plane
   // (interpolated positions are not precise enough for RENDER_ORDER_TIE).
-  float key = renderOrderKey(planeDistance(u_eye, dir, v_corner0, e1, e2), u_renderOrder);
+  float key = renderOrderKey(planeDistance(u_eye, dir, v_corner0, e1, e2), dir, u_renderOrder, !gl_FrontFacing);
   gl_FragDepth = clamp(key / DEPTH_RANGE, 0.0, 1.0);
 }

@@ -1,7 +1,9 @@
-// The camera ray through a pixel centre and its distance to a triangle's plane, shared by both renderers so the raster
-// depth key and the raycast hit distance are the same computation.
+// The camera ray through a pixel centre, its distance to a triangle's plane and the render-order key, shared by both
+// renderers so the raster depth and the raycast hit choice are the same computation.
 uniform mat4 u_inverseViewProjection;
 uniform vec3 u_eye;
+// Unit view axis of the camera (eye towards target).
+uniform vec3 u_forward;
 uniform vec2 u_viewportSize;
 
 vec3 cameraRayDirection(vec2 fragCoord) {
@@ -16,8 +18,9 @@ float planeDistance(vec3 origin, vec3 dir, vec3 p0, vec3 e1, vec3 e2) {
   return dot(e2, qv) / dot(e1, cross(dir, e2));
 }
 
-// The order-aware depth key: distance along the ray, pulled nearer by RENDER_ORDER_TIE per render-order step; the
-// smallest key is shown.
-float renderOrderKey(float distance, float renderOrder) {
-  return distance - renderOrder * RENDER_ORDER_TIE;
+// The scene format's key for a camera ray: depth along the view axis minus RENDER_ORDER_TIE per render-order step, the
+// back of a double-sided face counting BACK_SIDE_RENDER_ORDER more; the smallest key is shown.
+float renderOrderKey(float distance, vec3 dir, float renderOrder, bool backSide) {
+  float order = renderOrder + (backSide ? BACK_SIDE_RENDER_ORDER : 0.0);
+  return distance * dot(dir, u_forward) - order * RENDER_ORDER_TIE;
 }

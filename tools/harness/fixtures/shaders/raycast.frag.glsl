@@ -89,7 +89,10 @@ void main() {
     float t;
     vec2 bary;
     if (!intersect(i, u_eye, dir, singleSided(i) ? SIDE_FRONT : SIDE_ANY, t, bary)) continue;
-    float key = renderOrderKey(t, fetchRow(i, 2).w);
+    // det < 0: the ray meets the back, which only a double-sided triangle shows.
+    vec3 p0i = fetchRow(i, 0).xyz;
+    bool backSide = dot(dir, cross(fetchRow(i, 1).xyz - p0i, fetchRow(i, 2).xyz - p0i)) > 0.0;
+    float key = renderOrderKey(t, dir, fetchRow(i, 2).w, backSide);
     if (key >= bestKey || !opaqueAt(i, bary)) continue;
     bestKey = key;
     best = t;

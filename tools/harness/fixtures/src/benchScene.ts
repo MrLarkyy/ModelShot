@@ -117,7 +117,8 @@ function cubeMesh(id: number, node: number, origin: readonly [number, number, nu
     uvs,
     uvRects,
     indices,
-    groups: [{ material: 0, start: 0, count: indices.length }],
+    // Double-sided, as the loader marks faces of a free-format model (texture render_sides auto): the costlier case.
+    groups: [{ material: 0, start: 0, count: indices.length, doubleSided: true }],
   };
 }
 
@@ -160,7 +161,8 @@ export function benchScene(showcase: SceneDocument): SceneDocument {
     source: showcase.source,
     nodes,
     meshes,
-    materials: [{ name: 'atlas', texture: 0 }],
+    // Blended with byte 0 invisible, as the bench measured before scene alpha modes existed (MS-14).
+    materials: [{ name: 'atlas', texture: 0, alphaMode: 'blend', alphaCutoff: 0.5 / 255 }],
     textures: [atlas],
     rootNodes: nodes.map((_, index) => index),
   };

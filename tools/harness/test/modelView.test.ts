@@ -7,13 +7,14 @@ import {
   MODEL_VIEW_LOOK,
   invert,
   lightViewProjection,
+  viewAxis,
   cameraViewProjection,
   multiply,
   projectToPixel,
 } from '../fixtures/src/modelViewCamera';
 import { parseModelViewVariant } from '../fixtures/src/modelViewVariant';
 import { sceneTriangles } from '../fixtures/src/sceneTriangles';
-import { RENDER_ORDER_TIE_DISTANCE } from '@modelshot/scene';
+import { BACK_SIDE_RENDER_ORDER, RENDER_ORDER_TIE_DISTANCE, type SceneDocument } from '@modelshot/scene';
 import texelAlpha from '../fixtures/shaders/include/texelAlpha.glsl?raw';
 import raycast from '../fixtures/shaders/raycast.frag.glsl?raw';
 import cameraRay from '../fixtures/shaders/include/cameraRay.glsl?raw';
@@ -61,8 +62,9 @@ describe('buildShader', () => {
       MODE_MASK: { int: MODE_CODES.mask },
       MODE_BLEND: { int: MODE_CODES.blend },
       RENDER_ORDER_TIE: { float: RENDER_ORDER_TIE_DISTANCE },
+      BACK_SIDE_RENDER_ORDER: { float: BACK_SIDE_RENDER_ORDER },
       SHADOW_NORMAL_OFFSET: { float: MODEL_VIEW_LOOK.shadowNormalOffset },
-      DEPTH_RANGE: { float: MODEL_VIEW_LOOK.far },
+      DEPTH_RANGE: { float: MODEL_VIEW_LOOK.far + 1 },
     });
     for (const source of [texelAlpha, raycast, modelFragment, cameraRay]) {
       for (const name of Object.keys(MODEL_SHADER_DEFINES)) {
@@ -108,6 +110,27 @@ describe('model-view camera', () => {
     }
   });
 
+  it('DEPTH_RANGE holds the largest key: view depth at the far frustum corners plus one order step', () => {
+    const inverse = invert(cameraViewProjection(1));
+    const axis = viewAxis();
+    let largest = 0;
+    for (const [x, y] of [
+      [-1, -1],
+      [1, -1],
+      [1, 1],
+      [-1, 1],
+    ] as const) {
+      const p = [0, 1, 2, 3].map(
+        (r) => (inverse[r] ?? 0) * x + (inverse[4 + r] ?? 0) * y + (inverse[8 + r] ?? 0) + (inverse[12 + r] ?? 0),
+      );
+      const w = p[3] ?? 1;
+      const d = [0, 1, 2].map((k) => (p[k] ?? 0) / w - (MODEL_VIEW_LOOK.eye[k] ?? 0));
+      largest = Math.max(largest, d[0]! * axis[0] + d[1]! * axis[1] + d[2]! * axis[2]);
+    }
+    const range = (MODEL_SHADER_DEFINES['DEPTH_RANGE'] as { float: number }).float;
+    expect(largest + RENDER_ORDER_TIE_DISTANCE).toBeLessThanOrEqual(range);
+  });
+
   it('projects the target to the image centre, y down', () => {
     const [x = NaN, y = NaN] = projectToPixel(cameraViewProjection(1), [0, 4, 0], 256, 256) ?? [];
     expect(Math.abs(x - 128) <= 1 && Math.abs(y - 128) <= 1).toBe(true);
@@ -127,6 +150,18 @@ describe('sceneTriangles', () => {
     ]);
     // Slot 0 is untextured (the ground), slot 1 the cutout texture.
     expect(new Set(triangles.materials)).toEqual(new Set([0, 1]));
+  });
+
+  it('a hidden parent hides the meshes of its child nodes', () => {
+    const { scene } = loadBbmodel(meshShapes);
+    const tilt = scene.nodes.findIndex((n) => n.name === 'tilt');
+    const hidden: SceneDocument = {
+      ...scene,
+      nodes: scene.nodes.map((n, i) => (i === tilt ? { ...n, visible: false } : n)),
+    };
+    const turned = scene.meshes.findIndex((m) => m.name === 'turned');
+    expect([...sceneTriangles(scene).meshes]).toContain(turned);
+    expect([...sceneTriangles(hidden).meshes]).not.toContain(turned);
   });
 
   it('mesh-shapes: the turned mesh is placed by its group', () => {

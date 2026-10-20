@@ -1,9 +1,12 @@
 import { loadBbmodel } from '@modelshot/formats';
 import { OrbitController } from '@modelshot/renderer-rt';
-import { sceneBounds, type SceneCamera, type SceneDocument } from '@modelshot/scene';
+import { sceneBounds, type SceneCamera, type SceneDocument, type SceneMesh } from '@modelshot/scene';
+import alphaPlaneSource from '../../../../packages/formats/test/fixtures/bbmodel/alpha-plane.bbmodel?raw';
+import renderOrderSource from '../../../../packages/formats/test/fixtures/bbmodel/render-order.bbmodel?raw';
 import flatSource from '../models/rt-flat.bbmodel?raw';
 import showcaseSource from '../models/rt-showcase.bbmodel?raw';
 import { benchScene } from './benchScene';
+import { MODEL_VIEW_LOOK, type Point3 } from './modelViewCamera';
 
 /**
  * Named scenes and camera presets of the realtime fixture. The path-tracer fixture renders the same scenes and
@@ -19,6 +22,9 @@ export const RT_SCENE_NAMES = [
   'hostile-mismatch',
   'hostile-huge-header',
   'empty',
+  'alpha-plane',
+  'render-order',
+  'coincident-double',
 ] as const;
 export type RtSceneName = (typeof RT_SCENE_NAMES)[number];
 
@@ -42,7 +48,23 @@ export interface RtView {
   readonly texelAntialias: boolean;
   /** Draw meshes in reverse order (the transparency result must not change). */
   readonly reverse: boolean;
+  /** A fixed camera instead of the orbit (`LOOKS`), with the clip planes of `depth`. */
+  readonly look: RtLook | null;
+  /**
+   * `framed`: clip planes around the content (the raster depth key holds); `inside`: near = far × 1e-4, as for a
+   * camera inside the bounding sphere (the renderer switches to the linear depth key).
+   */
+  readonly depth: 'framed' | 'inside';
 }
+
+export type RtLook = 'model-view' | 'above' | 'below';
+
+/** Fixed cameras: the model-view fixture's (same image positions as its probes) and two views of a horizontal pair. */
+const LOOKS: Readonly<Record<RtLook, { eye: Point3; target: Point3; near: number; far: number }>> = {
+  'model-view': { eye: MODEL_VIEW_LOOK.eye, target: MODEL_VIEW_LOOK.target, near: 20, far: 120 },
+  above: { eye: [0, 10, 14], target: [0, 0, 0], near: 5, far: 40 },
+  below: { eye: [0, -10, 14], target: [0, 0, 0], near: 5, far: 40 },
+};
 
 export const DEFAULT_RT_VIEW: RtView = {
   scene: 'showcase',
@@ -55,6 +77,8 @@ export const DEFAULT_RT_VIEW: RtView = {
   fallback: false,
   texelAntialias: true,
   reverse: false,
+  look: null,
+  depth: 'framed',
 };
 
 /** Golden presets, selected by the `variant` URL parameter. */
@@ -129,11 +153,73 @@ export function rtScene(name: RtSceneName): SceneDocument {
     }
     case 'empty':
       return { ...load(showcaseSource), meshes: [], nodes: [], rootNodes: [] };
+    case 'alpha-plane':
+      return load(alphaPlaneSource);
+    case 'render-order':
+      return load(renderOrderSource);
+    case 'coincident-double':
+      return coincidentDouble(load(alphaPlaneSource));
   }
 }
 
-/** The camera of a view for a viewport of `aspect`, through the orbit controller the app uses. */
+/** A horizontal quad over x, z in [x0, x0 + 8] × [−4, 4] at y = 0, its front up (+y) or down, split along a or c. */
+function quad(name: string, x0: number, up: boolean, diagonal: 'a' | 'c', uv: [number, number], doubleSided: boolean) {
+  const corners = [
+    [x0, 0, 4],
+    [x0 + 8, 0, 4],
+    [x0 + 8, 0, -4],
+    [x0, 0, -4],
+  ];
+  const order = up ? [0, 1, 2, 3] : [3, 2, 1, 0];
+  const indices = diagonal === 'a' ? [0, 1, 2, 0, 2, 3] : [1, 2, 3, 1, 3, 0];
+  const mesh: SceneMesh = {
+    name,
+    sourceId: '',
+    node: -1,
+    visible: true,
+    positions: new Float32Array(order.flatMap((i) => corners[i] ?? [0, 0, 0])),
+    normals: new Float32Array(Array.from({ length: 4 }, () => [0, up ? 1 : -1, 0]).flat()),
+    uvs: new Float32Array(Array.from({ length: 4 }, () => uv).flat()),
+    uvRects: new Float32Array(Array.from({ length: 4 }, () => [uv[0], uv[1], uv[0], uv[1]]).flat()),
+    indices: new Uint32Array(indices),
+    groups: [{ material: 0, start: 0, count: 6, doubleSided }],
+  };
+  return mesh;
+}
+
+/**
+ * Two coincident double-sided quads, one facing up (red texel of cutout.png), one facing down (blue texel), split
+ * along different diagonals: from above the red one must show, from below the blue one. Beside them a single-sided
+ * red quad facing up: from below it shows nothing.
+ */
+function coincidentDouble(alphaPlane: SceneDocument): SceneDocument {
+  const red: [number, number] = [2.5 / 16, 2.5 / 16];
+  const blue: [number, number] = [10.5 / 16, 2.5 / 16];
+  return {
+    ...alphaPlane,
+    nodes: [],
+    rootNodes: [],
+    meshes: [
+      quad('up', -10, true, 'a', red, true),
+      quad('down', -10, false, 'c', blue, true),
+      quad('single', 2, true, 'a', red, false),
+    ],
+  };
+}
+
+/** The camera of a view for a viewport of `aspect`: a fixed look, or the orbit controller the app uses. */
 export function rtCamera(doc: SceneDocument, view: RtView, aspect: number): SceneCamera {
+  if (view.look) {
+    const { eye, target, near, far } = LOOKS[view.look];
+    return {
+      position: eye,
+      target,
+      up: [0, 1, 0],
+      projection: { kind: 'perspective', fovYDeg: MODEL_VIEW_LOOK.fovYDegrees },
+      near: view.depth === 'inside' ? far * 1e-4 : near,
+      far,
+    };
+  }
   const controller = new OrbitController({
     damping: false,
     yawDeg: view.yawDeg,
@@ -189,5 +275,15 @@ export function parseRtView(params: URLSearchParams): RtView {
   view.texelAntialias = flag('aa') ?? view.texelAntialias;
   view.reverse = flag('reverse') ?? view.reverse;
   view.isometric = flag('iso') ?? view.isometric;
+  const look = params.get('look');
+  if (look !== null) {
+    if (!Object.hasOwn(LOOKS, look)) throw new Error(`unknown look "${look}"`);
+    view.look = look as RtLook;
+  }
+  const depth = params.get('depth');
+  if (depth !== null) {
+    if (depth !== 'framed' && depth !== 'inside') throw new Error('query parameter depth must be framed or inside');
+    view.depth = depth;
+  }
   return view;
 }

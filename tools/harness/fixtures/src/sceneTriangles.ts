@@ -1,4 +1,6 @@
 import {
+  meshVisible,
+  nodeVisibility,
   mat4Identity,
   mat4TransformDirection,
   mat4TransformPoint,
@@ -47,13 +49,10 @@ interface Source {
 
 export function sceneTriangles(scene: SceneDocument): SceneTriangles {
   const world = worldMatrices(scene.nodes);
-  const nodeVisible = scene.nodes.map((node) => node.visible);
-  scene.nodes.forEach((node, i) => {
-    if (node.parent >= 0 && !nodeVisible[node.parent]) nodeVisible[i] = false;
-  });
+  const visibility = nodeVisibility(scene);
   const sources: Source[] = [];
   scene.meshes.forEach((mesh, m) => {
-    if (!mesh.visible || (mesh.node >= 0 && !nodeVisible[mesh.node])) return;
+    if (!meshVisible(scene, m, visibility)) return;
     for (const group of mesh.groups) {
       for (let t = group.start / 3; t < (group.start + group.count) / 3; t++) {
         sources.push({
