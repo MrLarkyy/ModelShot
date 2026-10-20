@@ -112,6 +112,19 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
   over `maxTextureSide`) draw a placeholder with a warning, the oversized one without being decoded; two quick `setScene` calls show only the second; `dispose()` (also during decoding) leaves no live WebGL
   object or open ImageBitmap (counted with `track=1`).
 - Framing: the fit and isometric views keep a 2 px backdrop border around the model.
+- Player skins (`player-*` scenes, built by `fixtures/src/playerScenes.ts` from the generated skins below):
+  goldens `rt-player-classic-front` (yaw 180°, pitch 10°), `rt-player-classic-back` (yaw 0°), `rt-player-slim-34`,
+  `rt-player-legacy-34`, `rt-player-hold-34` (classic in the `hold` preset with `single-cube.bbmodel` at half size
+  attached to `right_hand`), `rt-player-walk-hold-34` (the same in `walk`) (yaw 210°, pitch 20°) and
+  `rt-player-slim-fallback`; default tolerance. No player frame has a magenta sentinel pixel (the held cube's own
+  gradient texture is hidden for that check with `hide=block`; the camera frames the unhidden scene, so the view does
+  not move). Probes projected from model space, float and fallback: the alpha-0 base texel shows its cyan RGB (base
+  layer opaque), a hat hole shows the red head front, and the slim skin's alpha-128 hat texel (5 x 5 mean, as the
+  fallback dithers) is less red and more green than the head beside it. Reversed mesh order is byte-identical
+  (`player-slim-34`, `player-hold-34`, `player-slim-fallback`). The held cube (the pixels that change when it is
+  hidden) has its centroid within 2 px of the projection of its centre, taken from the right hand's world matrix
+  (`rt.nodePoint`) at 1.5 units below the anchor, in `hold` and in `walk`. Offsetting the hat's skin offset by one
+  row puts 203 sentinel pixels into `rt-player-classic-front`.
 
 For a manual run on real hardware open `rt.html?scene=bench&size=512&fps=1`: it draws continuously and shows the
 median frame work (draw until the GPU finished) and display interval over the last 120 frames, with the renderer
@@ -163,6 +176,8 @@ hold fails with a clear error.
 | `mesh-shapes-raycast`  | `mesh-shapes-raycast.png`  | golden; pair                                                                                     |
 | `render-order-raster`  | `render-order-raster.png`  | golden; render-order probes; pair                                                                |
 | `render-order-raycast` | `render-order-raycast.png` | golden; render-order probes; pair                                                                |
+| `player-raster`        | `player-raster.png`        | golden; skin probes; pair                                                                        |
+| `player-raycast`       | `player-raycast.png`       | golden; skin probes; pair                                                                        |
 
 The page publishes `probes`: pixels of chosen texels of the cutout plane (and of their shadows on the ground,
 following the light ray) and of the plane seen from behind, with the texel colour. `modelView.spec.ts` checks that the
@@ -172,7 +187,10 @@ and under the opaque one shadowed, the back side shows the same texel at its mir
 opaque texel of it shadows it. In `render-order`, two pairs of coincident quads (split along different diagonals, so
 their depths differ by rounding only) show the higher order's texel: `in_front` over `default`, `default` over
 `behind`; two more pairs face the eye with the `in_front` quad farther along the view by 2 × and 0.5 ×
-`RENDER_ORDER_TIE_DISTANCE`: at 2 × the nearer `default` quad shows, at 0.5 × the `in_front` one.
+`RENDER_ORDER_TIE_DISTANCE`: at 2 × the nearer `default` quad shows, at 0.5 × the `in_front` one. `player` is the
+classic test skin in the `hold` pose holding `single-cube.bbmodel`, attached at 0.6 scale and turned to face the camera
+(the camera frames about 16 units); its probes show the alpha-0 cyan head texel (opaque base layer), the head through a
+hat hole, a hat ring texel and the held cube, each by the hue of its texel.
 
 Shadow receivers: both renderers move the receiving point `SHADOW_NORMAL_OFFSET` (1.5 shadow-map texels, 0.094
 units) along its geometric normal toward the viewer before testing the light (shadow-map lookup or shadow-ray
@@ -190,6 +208,7 @@ deterministic, same on re-runs), differing pixels of 65 536:
 | `alpha-plane`  | 115, 0.00175, 0.119                 | 0.0025, 0.25                          |
 | `mesh-shapes`  | 50, 0.00076, 0.046                  | 0.001, 0.07                           |
 | `render-order` | 40, 0.00061, 0.040                  | 0.0008, 0.06                          |
+| `player`       | 111, 0.00169, 0.063                 | 0.0025, 0.095                         |
 
 The differing pixels are isolated: pixels whose centre lies within a rounding error of a silhouette, of a shadow edge
 (shadow-map texels against exact shadow rays; the longest is the straight edge of the arch's shadow on the checker
@@ -199,6 +218,24 @@ differs as a whole. The measured values of a run are also in
 `tools/harness/test-results/model-view-pair-<model>.json`. Dropping the alpha test from the shadow pass alone changes
 about 2 000 pixels of `alpha-plane`, dropping the render-order term from the raster depth about 3 400 of
 `render-order`; a tolerance is never widened to make a pair pass.
+
+## Player skin fixtures
+
+`packages/formats/test/fixtures/skins/generate.mjs` (no dependencies, deterministic; CC0 with the images, `LICENSE`
+there) writes `skin-classic.png` and `skin-slim.png` (64 x 64) and `skin-legacy.png` (64 x 32). Every face of every
+part has its own colour (hues 0–75° for the base layer, 90–165° for the outer layer, blue never above green so no mix
+reads as the sentinel), its top-left texel darker to show orientation; every texel outside the face regions is the
+magenta sentinel. Outer-layer faces are an opaque one-texel ring around alpha-0 holes. Head front texels (2..3, 2..3)
+are alpha 0 with RGB (0, 200, 200); in `skin-slim.png` hat front texels (4..5, 4..5) and jacket front texels
+(3..4, 5..6) are green at alpha 128. Run it again after changing it and commit the images with it.
+
+Unit tests: `formats/test/player/loadSkin.test.ts` (accepted sizes, every error code, the order of the checks, no copy
+before the size rule passes), `createPlayerModel.test.ts` (box-UV corners, slim and legacy geometry, materials, render
+orders, hand anchors, every face rectangle inside its part's skin region) with the data goldens
+`formats/test/player/__goldens__/player-{classic,slim,legacy}.json` (`serializeScene.ts`; update with
+`pnpm golden:update:data`), `scene/test/poseScene.test.ts`, `playerPosePresets.test.ts`, `attachModel.test.ts` (the
+attached vertex formula in four poses, re-posing, nesting, index remapping, every `RangeError` path) and
+`renderer-rt/test/validateScene.test.ts` (a posed document with nested attachments is a valid scene).
 
 ## Budgets
 

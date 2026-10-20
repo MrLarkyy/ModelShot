@@ -8,6 +8,7 @@ import alphaRampUri from '../models/rt-alpha-ramp.png?inline';
 import showcaseSource from '../models/rt-showcase.bbmodel?raw';
 import { benchScene } from './benchScene';
 import { MODEL_VIEW_LOOK, type Point3 } from './modelViewCamera';
+import { holdingCube, playerScene } from './playerScenes';
 
 /**
  * Named scenes and camera presets of the realtime fixture. The path-tracer fixture renders the same scenes and
@@ -45,6 +46,11 @@ export const RT_SCENE_NAMES = [
   'step-open',
   'step-order',
   'step-order-open',
+  'player-classic',
+  'player-slim',
+  'player-legacy',
+  'player-hold',
+  'player-walk-hold',
 ] as const;
 export type RtSceneName = (typeof RT_SCENE_NAMES)[number];
 
@@ -75,6 +81,8 @@ export interface RtView {
    * camera inside the bounding sphere (the renderer switches to the exact depth key).
    */
   readonly depth: 'framed' | 'inside';
+  /** Hides every mesh of this name (it must exist in the scene); null hides nothing. */
+  readonly hide: string | null;
 }
 
 export type RtLook =
@@ -126,6 +134,7 @@ export const DEFAULT_RT_VIEW: RtView = {
   reverse: false,
   look: null,
   depth: 'framed',
+  hide: null,
 };
 
 /** Golden presets, selected by the `variant` URL parameter. */
@@ -141,10 +150,24 @@ export const RT_VARIANTS: Readonly<Record<string, Partial<RtView>>> = {
   far: { yawDeg: 30, zoom: 3 },
   fallback: { yawDeg: 30, fallback: true },
   'fit-flat-cube': { scene: 'flat', yawDeg: 30, pitchDeg: 20 },
+  // The player faces -Z: yaw 180 looks at its front, yaw 0 at its back, yaw 210 from its front left.
+  'player-classic-front': { scene: 'player-classic', yawDeg: 180, pitchDeg: 10 },
+  'player-classic-back': { scene: 'player-classic', yawDeg: 0, pitchDeg: 10 },
+  'player-slim-34': { scene: 'player-slim', yawDeg: 210, pitchDeg: 20 },
+  'player-legacy-34': { scene: 'player-legacy', yawDeg: 210, pitchDeg: 20 },
+  'player-hold-34': { scene: 'player-hold', yawDeg: 210, pitchDeg: 20 },
+  'player-walk-hold-34': { scene: 'player-walk-hold', yawDeg: 210, pitchDeg: 20 },
+  'player-slim-fallback': { scene: 'player-slim', yawDeg: 210, pitchDeg: 20, fallback: true },
 };
 
 function load(source: string): SceneDocument {
   return loadBbmodel(source).scene;
+}
+
+/** A copy of `doc` with every mesh named `name` hidden; throws when the scene has no such mesh. */
+export function hideMeshes(doc: SceneDocument, name: string): SceneDocument {
+  if (!doc.meshes.some((mesh) => mesh.name === name)) throw new Error(`unknown mesh "${name}"`);
+  return { ...doc, meshes: doc.meshes.map((mesh) => (mesh.name === name ? { ...mesh, visible: false } : mesh)) };
 }
 
 /** A copy of `doc` whose meshes are stored, and so drawn, in reverse order. */
@@ -246,6 +269,16 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return alphaRamp({ alphaMode: 'opaque' });
     case 'large-order':
       return largeOrderScene(load(showcaseSource));
+    case 'player-classic':
+      return playerScene('classic', 'classic');
+    case 'player-slim':
+      return playerScene('slim', 'slim');
+    case 'player-legacy':
+      return playerScene('legacy', 'classic');
+    case 'player-hold':
+      return holdingCube(playerScene('classic', 'classic'), 'hold');
+    case 'player-walk-hold':
+      return holdingCube(playerScene('classic', 'classic'), 'walk');
   }
 }
 
@@ -371,6 +404,11 @@ export function parseRtView(params: URLSearchParams): RtView {
   if (depth !== null) {
     if (depth !== 'framed' && depth !== 'inside') throw new Error('query parameter depth must be framed or inside');
     view.depth = depth;
+  }
+  const hide = params.get('hide');
+  if (hide !== null) {
+    if (!/^[\w-]{1,64}$/.test(hide)) throw new Error('query parameter hide must be a mesh name');
+    view.hide = hide;
   }
   return view;
 }
