@@ -1,7 +1,7 @@
 /**
- * A PNG image carried as its encoded bytes (the loader never decodes pixels). `width` × `height` is the pixel size from
- * the PNG header; UVs are normalised by `uvWidth` × `uvHeight` (the model's texture space), so one UV unit covers
- * `width / uvWidth` pixels.
+ * A PNG image carried as its encoded bytes, unchanged by the loader (only `loadSkin` decodes pixels, of a legacy skin,
+ * once, to apply the legacy hat rule). `width` × `height` is the pixel size from the PNG header; UVs are normalised by
+ * `uvWidth` × `uvHeight` (the model's texture space), so one UV unit covers `width / uvWidth` pixels.
  */
 export interface SceneTexture {
   readonly name: string;

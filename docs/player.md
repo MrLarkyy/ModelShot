@@ -19,8 +19,9 @@ const holding = attachModel(posed, sword, { bone: 'right_hand', scale: 0.5, rota
 `loadSkin(bytes, { name?, limits? })` returns `{ texture, layout, legacyHatOpaque }`. The bytes are copied into the
 texture and decoded by the renderer, like any model texture. A modern skin's pixels are never decoded while loading; a
 legacy skin's pixels are, once, to set `legacyHatOpaque` (see [Legacy hat](#legacy-hat)). That decoder is
-synchronous and bounded: at most as many pixels as the header declares (so at most 1024 × 512 under the default
-limits), image data inflated to exactly the size the header implies and no further; it never throws.
+synchronous and bounded: at most 1024 × 512 pixels whatever `limits.maxSide` allows, image data inflated to exactly
+the size the header implies and no further (not even started when that size is over 1032 times the compressed data,
+more than deflate can produce); it never throws.
 
 | image size (pixels)          | `layout` | UV space | outer layer                   |
 | ---------------------------- | -------- | -------- | ----------------------------- |
@@ -111,7 +112,8 @@ transparent texel (`doNotchTransparencyHack`), and so does ModelShot: `loadSkin`
 texel in x 32..64, y 0..32 of the 64 × 32 UV space (scaled for HD skins: x 32s..64s, y 0..32s with s = width / 64) has
 alpha ≥ 128 (16-bit alpha: its high byte), and `createPlayerModel` then builds no `hat` mesh at all, whatever
 `showOuterLayer` says. One texel below alpha 128 anywhere in that area keeps the hat as the usual cut-out blend layer.
-A legacy skin whose pixel data does not decode keeps its hat. Modern 64 × 64 skins always keep theirs.
+A legacy skin whose pixel data does not decode keeps its hat, and so does one larger than 1024 × 512 (only possible
+with a raised `limits.maxSide`; its pixels are not decoded). Modern 64 × 64 skins always keep theirs.
 
 ## Poses
 

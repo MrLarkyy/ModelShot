@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SKIN_LIMITS, loadSkin, SkinError, type SkinErrorCode, type SkinLoadOptions } from '../../src/index';
 import * as decodeModule from '../../src/png/decodePngRgba';
 import { pngHeader } from '../bbmodel/fixtures';
-import { buildPng } from '../support/buildPng';
+import { deflateSync } from 'node:zlib';
+import { BitWriter } from '../support/BitWriter';
+import { buildPng, imageData, pngChunk, type PngSpec } from '../support/buildPng';
 import { seededRandom } from '../support/seededRandom';
 import { skinBytes } from './skins';
 
@@ -28,6 +30,12 @@ function headerOver(width: number, height: number, extra: number): Uint8Array {
   const bytes = new Uint8Array(33 + extra).map((_, i) => (i * 97) & 255);
   bytes.set(pngHeader(width, height));
   return bytes;
+}
+
+function concat(parts: readonly Uint8Array[]): Uint8Array {
+  const out = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
+  parts.reduce((at, part) => (out.set(part, at), at + part.length), 0);
+  return out;
 }
 
 describe('loadSkin', () => {
@@ -97,8 +105,8 @@ describe('loadSkin', () => {
     expect(loadSkin(skinBytes('legacy-opaque-hat')).legacyHatOpaque).toBe(true);
     expect(loadSkin(skinBytes('legacy')).legacyHatOpaque).toBe(false);
     expect(decodeSpy).toHaveBeenCalledTimes(2);
-    // Bounded by the header size: no more pixels than the header declares.
-    expect(decodeSpy).toHaveBeenLastCalledWith(expect.any(Uint8Array), 64 * 32);
+    // Bounded by a fixed pixel count, never by what the header claims.
+    expect(decodeSpy).toHaveBeenLastCalledWith(expect.any(Uint8Array), 1024 * 512);
     decodeSpy.mockClear();
     expect(loadSkin(skinBytes('classic')).legacyHatOpaque).toBe(false);
     expect(loadSkin(skinBytes('slim')).legacyHatOpaque).toBe(false);
@@ -128,6 +136,93 @@ describe('loadSkin', () => {
     }
     // The mutations reach every outcome, so the loop exercised the decoder and not only the header check.
     expect(Math.min(outcomes.error, outcomes.opaque, outcomes.kept)).toBeGreaterThan(20);
+  });
+
+  it('keeps the hat of a legacy header claiming 2^31 x 2^30 pixels without allocating them', () => {
+    const png = concat([
+      pngHeader(2 ** 31, 2 ** 30),
+      pngChunk('IDAT', new Uint8Array(deflateSync(new Uint8Array(8)))),
+      pngChunk('IEND', new Uint8Array(0)),
+    ]);
+    expect(png).toHaveLength(68);
+    const skin = loadSkin(png, { limits: { maxSide: 2 ** 31 } });
+    expect(skin.layout).toBe('legacy');
+    expect(skin.legacyHatOpaque).toBe(false);
+  });
+
+  it('decodes an opaque legacy skin up to 1024 x 512; a 2048 x 1024 one keeps its hat', () => {
+    const opaqueGrey = (width: number): Uint8Array =>
+      buildPng({
+        width,
+        height: width / 2,
+        colourType: 0,
+        depth: 8,
+        samples: new Uint8Array((width * width) / 2).fill(200),
+      });
+    expect(loadSkin(opaqueGrey(1024)).legacyHatOpaque).toBe(true);
+    expect(loadSkin(opaqueGrey(2048), { limits: { maxSide: 2048 } }).legacyHatOpaque).toBe(false);
+  });
+
+  const opaqueLegacy: PngSpec = {
+    width: 64,
+    height: 32,
+    colourType: 6,
+    depth: 8,
+    samples: new Uint8Array(64 * 32 * 4).fill(255),
+  };
+
+  it('keeps the hat of a legacy skin whose IDAT is cut short', () => {
+    expect(loadSkin(buildPng(opaqueLegacy)).legacyHatOpaque).toBe(true);
+    for (const keep of [0, 2, 0.5, 0.9]) {
+      const png = buildPng({
+        ...opaqueLegacy,
+        mapIdat: (zlib) => zlib.subarray(0, keep < 1 ? Math.floor(zlib.length * keep) : keep),
+      });
+      expect(loadSkin(png).legacyHatOpaque, `IDAT cut to ${keep}`).toBe(false);
+    }
+  });
+
+  it('keeps the hat of a legacy skin whose IDAT is a zlib bomb (64 MiB of zeros for 8 KiB of pixels)', () => {
+    const bomb = new Uint8Array(deflateSync(new Uint8Array(64 * 1024 * 1024), { level: 9 }));
+    const png = buildPng({ ...opaqueLegacy, mapIdat: () => bomb });
+    expect(png.length).toBeLessThan(DEFAULT_SKIN_LIMITS.maxFileBytes);
+    const start = performance.now();
+    expect(loadSkin(png).legacyHatOpaque).toBe(false);
+    expect(performance.now() - start).toBeLessThan(1000);
+  });
+
+  it('walks 2 MiB of minimal dynamic blocks in a legacy skin within a second', () => {
+    // Each block (91 bits) redefines every code and holds only an end-of-block: the most table builds per byte.
+    const w = new BitWriter();
+    const order = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1];
+    const blocks = Math.floor(((DEFAULT_SKIN_LIMITS.maxFileBytes - 8224 - 200) * 8) / 91);
+    for (let b = 0; b < blocks; b++) {
+      w.bits(0, 1)
+        .bits(2, 2)
+        .bits(0, 5)
+        .bits(0, 5)
+        .bits(order.length - 4, 4);
+      // Code-length code: symbols 1 and 18 at one bit each (codes 0 and 1).
+      for (const symbol of order) w.bits(symbol === 1 || symbol === 18 ? 1 : 0, 3);
+      // Literal 0 and end-of-block at length 1, 255 zeros between (138 + 117), one distance code of length 1.
+      w.code(0, 1).code(1, 1).bits(127, 7).code(1, 1).bits(106, 7).code(0, 1).code(0, 1);
+      w.code(1, 1);
+    }
+    const raw = imageData(opaqueLegacy);
+    w.bits(1, 1)
+      .bits(0, 2)
+      .raw([raw.length & 0xff, raw.length >> 8, ~raw.length & 0xff, (~raw.length >> 8) & 0xff]);
+    w.raw(Array.from(raw));
+    const stream = w.done();
+    const png = buildPng({ ...opaqueLegacy, mapIdat: () => stream });
+    expect(png.length).toBeLessThanOrEqual(DEFAULT_SKIN_LIMITS.maxFileBytes);
+    expect(png.length).toBeGreaterThan(DEFAULT_SKIN_LIMITS.maxFileBytes - 1024);
+    const start = performance.now();
+    const skin = loadSkin(png);
+    const elapsed = performance.now() - start;
+    // Decoded through every block to the final stored one.
+    expect(skin.legacyHatOpaque).toBe(true);
+    expect(elapsed).toBeLessThan(1000);
   });
 
   it('decodes a 1024 x 512 16-bit RGBA legacy skin within a second', () => {

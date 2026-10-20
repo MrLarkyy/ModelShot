@@ -2,51 +2,7 @@ import { constants, deflateSync, type ZlibOptions } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { inflateZlib } from '../../src/png/inflateZlib';
 import { seededBytes, seededRandom } from '../support/seededRandom';
-
-/** Writes deflate's bit stream: values least significant bit first, Huffman codes most significant bit first. */
-class BitWriter {
-  private readonly bytes: number[] = [];
-  private buffer = 0;
-  private count = 0;
-
-  constructor(header: readonly number[] = [0x78, 0x01]) {
-    this.bytes.push(...header);
-  }
-
-  bits(value: number, count: number): this {
-    for (let i = 0; i < count; i++) this.bit((value >> i) & 1);
-    return this;
-  }
-
-  code(code: number, length: number): this {
-    for (let i = length - 1; i >= 0; i--) this.bit((code >> i) & 1);
-    return this;
-  }
-
-  /** Pads to a byte boundary and appends raw bytes. */
-  raw(bytes: readonly number[]): this {
-    this.flush();
-    this.bytes.push(...bytes);
-    return this;
-  }
-
-  done(): Uint8Array {
-    this.flush();
-    return Uint8Array.from(this.bytes);
-  }
-
-  private bit(bit: number): void {
-    this.buffer |= bit << this.count;
-    if (++this.count === 8) this.flush();
-  }
-
-  private flush(): void {
-    if (this.count === 0) return;
-    this.bytes.push(this.buffer);
-    this.buffer = 0;
-    this.count = 0;
-  }
-}
+import { BitWriter } from '../support/BitWriter';
 
 /** Canonical Huffman codes for per-symbol code lengths (RFC 1951 3.2.2). */
 function canonical(lengths: readonly number[]): number[] {
@@ -242,6 +198,16 @@ describe('inflateZlib', () => {
     const stream = new Uint8Array(deflateSync(new Uint8Array(64 * 1024 * 1024), { level: 9 }));
     expect(stream.length).toBeLessThan(100_000);
     expect(inflateZlib(stream, 8 * 1024)).toBeUndefined();
+  });
+
+  it('rejects an expected length past the 1032:1 deflate ratio before allocating it', () => {
+    const stream = new Uint8Array(deflateSync(new Uint8Array(1)));
+    expect(stream.length).toBeLessThan(16);
+    expect(inflateZlib(stream, 2 ** 40)).toBeUndefined();
+    expect(inflateZlib(stream, stream.length * 1032 + 1)).toBeUndefined();
+    // The largest real ratio stays inside the bound: 1 MiB of zeros.
+    const zeros = new Uint8Array(1 << 20);
+    expect(inflateZlib(new Uint8Array(deflateSync(zeros, { level: 9 })), zeros.length)).toEqual(zeros);
   });
 
   it('throws a RangeError for an invalid expected length', () => {

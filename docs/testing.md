@@ -329,7 +329,8 @@ changing it and commit the images with it.
 Unit tests: `formats/test/player/loadSkin.test.ts` (accepted sizes, every error code, the order of the checks, no copy
 before the size rule passes, `legacyHatOpaque` of every fixture, modern skins never decoded, undecodable legacy data
 keeping the hat, a seeded fuzz of 2000 corrupted legacy skins throwing nothing but `SkinError`, a 1024 x 512 16-bit
-legacy skin decoded in under a second), `legacyHatOpaque.test.ts` (the area, HD scaling, the alpha-128 threshold, 8-
+legacy skin decoded in under a second, a 2048 x 1024 one and a 2^31 x 2^30 header keeping the hat undecoded, a cut-short
+IDAT and a zlib bomb in IDAT keeping the hat, 2 MiB of minimal dynamic deflate blocks walked in under a second), `legacyHatOpaque.test.ts` (the area, HD scaling, the alpha-128 threshold, 8-
 and 16-bit), `createPlayerModel.test.ts` (box-UV corners, slim and legacy geometry, materials, render orders, hand
 anchors, every face rectangle inside its part's skin region, no `hat` mesh for an opaque legacy hat whatever
 `showOuterLayer`, the `RangeError` for a non-boolean `legacyHatOpaque`) with the data goldens
