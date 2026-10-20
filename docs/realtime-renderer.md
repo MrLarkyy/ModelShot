@@ -69,17 +69,22 @@ The rules are the scene format's ([scene-format.md](scene-format.md): `SceneMate
   read back once at load).
 - **Sides**: single-sided groups are drawn with back faces culled in every pass. Double-sided groups are drawn twice
   per render order: front faces, then back faces (front faces culled), the back lit with the flipped normal.
-- **Render order**: draws are sorted by render order, descending. Each draw is pulled `(order + back) ×
-RENDER_ORDER_TIE_DISTANCE` towards the camera along the view axis (that distance times the projection's third
-  column added to `gl_Position`; back = −1/16 for the back pass), so the depth test compares the scene format's key
-  without a polygon offset. When the depth buffer cannot resolve the tie distance at the far plane (24-bit step
-  `(f − n)·f / (n·2²⁴)` above a quarter of it, i.e. a camera inside the model's bounding sphere, or a 16-bit default
-  depth buffer on the fallback path) the frame switches to the linear variant (`depthKeyMode`): every mesh pass
-  writes `gl_FragDepth = (view depth − pull) / far`. Both variants are linked at start-up.
-- **Deviation in v0**: the key is compared on interpolated depth, which carries the rasteriser's error. Two coincident
-  faces split along different diagonals and seen at a grazing angle get depths that differ by up to about
-  5 × RENDER_ORDER_TIE_DISTANCE on SwiftShader, so their tie can resolve wrongly in patches; surfaces facing the camera
-  resolve the tie and the gap as the rule says. Pinned by an expected-failure test in `realtime.spec.ts`.
+- **Render order**: draws are sorted by render order, descending; per order the front pass, then the back pass of
+  double-sided items (back = −1/16). The scene format's key is realised in one of two depth-key variants, picked per
+  frame by `depthKeyMode` (both linked at start-up; `RealtimeRenderer.depthKeyMode` reports the last frame's):
+  - `raster`: each draw is pulled `(order + back) × RENDER_ORDER_TIE_DISTANCE` towards the camera along the view axis
+    (that distance times the projection's third column added to `gl_Position`) and the depth buffer compares; early
+    depth testing and per-sample MSAA depth stay. Only as exact as the rasteriser's depth interpolation: two coincident
+    faces split along different diagonals at a grazing angle differ by several times the tie distance (about 5× on
+    SwiftShader), so it is used only where every visible mesh has render order 0. There the only ties are the back
+    side's −1/16 against the coincident front of a double-sided pair, which the front-then-back draw order with a
+    `LESS` test resolves (tested at a grazing angle).
+  - `exact`: every mesh pass computes the key per fragment from the pixel's ray and the triangle's plane (three corners
+    in view space, from a de-indexed copy of the geometry built on first use) and writes `gl_FragDepth = (view depth −
+pull) / far`; costs early depth testing and gives per-pixel MSAA depth. Used for every draw of a frame when the
+    scene has a visible mesh with render order ≠ 0 (decided once per scene upload) or when the depth buffer cannot
+    resolve the tie at the far plane (24-bit step `(f − n)·f / (n·2²⁴)` above a quarter of it: a camera inside the
+    bounding sphere, or a 16-bit default depth buffer on the fallback path).
 
 ## Lighting and tone mapping
 
@@ -96,7 +101,7 @@ ships in three.js `AgXToneMapping` (MIT) and Filament.
 ## Shaders
 
 GLSL ES 3.00 in `src/shaders/*.glsl`, composed by `linkShader` from static chunks only: the renderer's own
-(`texelSample`, `shading`, `hashAlpha`, `depthKey` in a raster and a linear variant) and the shared look chunks
+(`texelSample`, `shading`, `hashAlpha`, `depthKey` and `depthKeyVertex` in a raster and an exact variant) and the shared look chunks
 (`agx`, `texelAlpha`). An unknown or cyclic
 include throws; no shader text is built from user input. A compile or link failure throws `RendererError`
 (`SHADER_COMPILE` / `SHADER_LINK`) with the driver's info log.

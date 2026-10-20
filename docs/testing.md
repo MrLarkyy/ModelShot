@@ -69,12 +69,14 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
   only its stone face, on both paths.
 - Scene-format rule against the model-view fixture (`look=model-view` uses the fixture's camera, so its `probes` fall
   on the same pixels; `depth=framed` clips at 20..120, `depth=inside` at far × 1e-4..120 like a camera inside the
-  bounding sphere, which switches the renderer to the linear depth key; `rt.depthKeyMode()` is asserted), on the
+  bounding sphere, which switches the renderer to the exact depth key; `rt.depthKeyMode()` is asserted), on the
   float path and the fallback: `alpha-plane` (opaque texel, transparent texel showing the ground, double-sided back
-  showing the mirrored texel), `render-order` gap and tie pairs facing the eye (2 × TIE: the nearer shows; 0.5 × TIE:
-  `in_front` shows), and `coincident-double` (`look=above|below`: of two coincident double-sided quads split along
-  different diagonals the one facing the camera wins; a single-sided quad seen from behind shows the backdrop). The
-  coincident horizontal pairs of `render-order` are an expected failure (realtime-renderer.md, deviation).
+  showing the mirrored texel), `render-order` (a scene with render orders, so always the exact key: the coincident
+  horizontal pairs split along different diagonals, gap pairs at 2 × TIE where the nearer shows and tie pairs at
+  0.5 × TIE where `in_front` shows), and `coincident-double` (order 0, so the raster key when framed;
+  `look=above|below|grazing-above|grazing-below`: of two coincident double-sided quads split along different
+  diagonals the one facing the camera wins, at about 8° with no pixel of the other colour; a single-sided quad seen
+  from behind shows the backdrop).
 - Float targets the driver rejects at a new size (`breakFramebuffers()` makes every framebuffer report incomplete)
   switch the renderer to the no-float path; `capabilities.path` reports it.
 - Hostile textures (corrupt bytes rejected at the header, a valid header with scrambled image data that fails to
@@ -190,6 +192,11 @@ median of 30 frames after 5 warm-up frames. Local SwiftShader medians 68.9, 70.2
 nodes batched per node); max 750 ms is 10x the middle run (702 ms), rounded up, room for a CI runner that is 3-5x slower than the dev machine. SwiftShader cannot
 stand in for a laptop GPU: the 60 fps criterion is evidenced by a manual run of the `fps=1` page on real hardware
 (16.7 ms or less of frame work), recorded with the machine and GPU in the task.
+
+`frameTimeMs.rt-bench-order-512` is the same scene with one mesh at render order 1, so every frame uses the exact
+depth key (fragment depth, de-indexed geometry); max 750 ms like the raster bench. MS-12 local SwiftShader medians:
+`rt-bench-512` 94, 119 and 121 ms (raster key, cubes double-sided as the loader marks free-format faces, coverage per
+texel tap), `rt-bench-order-512` 136, 136 and 138 ms.
 
 - `frameTimeMs` max 5: the median is below 1 ms and `performance.now` is coarsened to 0.1 ms without cross-origin
   isolation, so 5x the median (2 ms) would be 20 ticks and one GC pause from flaking on a shared runner. 5 ms is 12-16x the

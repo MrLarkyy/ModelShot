@@ -53,7 +53,7 @@ export interface RtView {
   readonly look: RtLook | null;
   /**
    * `framed`: clip planes around the content (the raster depth key holds); `inside`: near = far × 1e-4, as for a
-   * camera inside the bounding sphere (the renderer switches to the linear depth key).
+   * camera inside the bounding sphere (the renderer switches to the exact depth key).
    */
   readonly depth: 'framed' | 'inside';
 }
