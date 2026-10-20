@@ -1,6 +1,7 @@
 export const packageName = '@modelshot/looks';
 
 export { agxToneMap, type Rgb } from './agxToneMap';
+export { catcherShade } from './catcherShade';
 export { LIGHT_RIG_V0, unoccludedRadiance, type LightRig } from './lightRig';
 export { linkShader, type ShaderChunks } from './linkShader';
 export { lookShaderChunks } from './lookShaderChunks';
