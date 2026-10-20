@@ -70,9 +70,9 @@ export function model(extra: Record<string, unknown> = {}): Record<string, unkno
   };
 }
 
-/** A 1×1×1 cube with all six faces untextured; `extra` replaces keys. */
+/** A 1×1×1 cube with all six faces blank (no `texture` key: drawn untextured); `extra` replaces keys. */
 export function cube(extra: Record<string, unknown> = {}): Record<string, unknown> {
-  const face = { uv: [0, 0, 1, 1], texture: null };
+  const face = { uv: [0, 0, 1, 1] };
   return {
     name: 'cube',
     type: 'cube',

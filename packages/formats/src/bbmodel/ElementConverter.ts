@@ -6,10 +6,14 @@ import type { UvSize } from './parseTextures';
 export interface ConverterContext {
   /** UV size of each texture, indexed like the file's `textures`; its length bounds face texture indices. */
   readonly textureUvSizes: readonly UvSize[];
+  /** Texture index by texture uuid, for faces that name their texture by uuid. */
+  readonly textureIds: ReadonlyMap<string, number>;
   /** Project UV size, used for faces without a texture. */
   readonly resolution: UvSize;
   /** Project-wide box UV (`meta.box_uv`); an element may override it. */
   readonly boxUv: boolean;
+  /** Box-UV sizes are not floored (Blockbench `box_uv_float_size`, only `modded_entity`). */
+  readonly boxUvFloatSize: boolean;
   readonly maxStringChars: number;
 }
 

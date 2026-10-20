@@ -109,7 +109,7 @@ describe('hand-checked transforms', () => {
     expect(warnings.map((w) => w.code)).toEqual(['SOURCE_NOT_FETCHED', 'MISSING_TEXTURE']);
   });
 
-  it('flat-cube: a zero-thickness cube keeps up and down; false drops a face, null leaves it untextured', () => {
+  it('flat-cube: a zero-thickness cube keeps up and down; null removes a face, no texture key leaves it blank', () => {
     const { scene } = load('flat-cube');
     expect(scene.meshes[0]?.indices).toHaveLength(2 * 6);
     expect(scene.meshes[1]?.indices).toHaveLength(4 * 6);

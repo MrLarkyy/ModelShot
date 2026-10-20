@@ -42,14 +42,17 @@ export interface CubeSpec {
 }
 
 const ZERO: Vec3 = [0, 0, 0];
+const ONE: Vec3 = [1, 1, 1];
 
 export function readCube(element: JsonObject, path: string, context: ConverterContext): CubeSpec {
   const from = readVec3(field(element, 'from'), childPath(path, 'from'));
   const to = readVec3(field(element, 'to'), childPath(path, 'to'));
   const inflate = readOptionalNumber(element, 'inflate', path, 0);
-  const [min, max] = inflatedBox(from, to, inflate);
+  const stretch = readOptionalVec3(element, 'stretch', path, ONE);
+  const [min, max] = inflatedBox(from, to, inflate, stretch);
   const boxUv = readOptionalBoolean(element, 'box_uv', path, context.boxUv);
-  const boxSize: Vec3 = [boxSide(from[0], to[0]), boxSide(from[1], to[1]), boxSide(from[2], to[2])];
+  const side = (axis: 0 | 1 | 2): number => boxSide(from[axis], to[axis], context.boxUvFloatSize);
+  const boxSize: Vec3 = [side(0), side(1), side(2)];
   const layout = boxUv
     ? boxUvLayout(boxSize, uvOffset(element, path), readOptionalBoolean(element, 'mirror_uv', path, false))
     : undefined;
@@ -76,26 +79,33 @@ export function cubeTriangleCount(cube: CubeSpec): number {
   return cube.faces.length * 2;
 }
 
-// Inflate grows the box on every side; a negative inflate larger than half a side collapses that axis to its centre.
-function inflatedBox(from: Vec3, to: Vec3, inflate: number): [Vec3, Vec3] {
-  const [x0, x1] = inflatedAxis(from[0], to[0], inflate);
-  const [y0, y1] = inflatedAxis(from[1], to[1], inflate);
-  const [z0, z1] = inflatedAxis(from[2], to[2], inflate);
+/**
+ * Blockbench's geometry: `centre ∓ (half + inflate) · stretch` per axis. A negative inflate larger than half a side
+ * collapses that axis to its centre instead of turning the box inside out; a negative stretch counts as its magnitude
+ * (the box is the same, only Blockbench's winding would differ).
+ */
+function inflatedBox(from: Vec3, to: Vec3, inflate: number, stretch: Vec3): [Vec3, Vec3] {
+  const [x0, x1] = inflatedAxis(from[0], to[0], inflate, stretch[0]);
+  const [y0, y1] = inflatedAxis(from[1], to[1], inflate, stretch[1]);
+  const [z0, z1] = inflatedAxis(from[2], to[2], inflate, stretch[2]);
   return [
     [x0, y0, z0],
     [x1, y1, z1],
   ];
 }
 
-function inflatedAxis(a: number, b: number, inflate: number): [number, number] {
-  const lo = Math.min(a, b) - inflate;
-  const hi = Math.max(a, b) + inflate;
-  return lo > hi ? [(lo + hi) / 2, (lo + hi) / 2] : [lo, hi];
+function inflatedAxis(a: number, b: number, inflate: number, stretch: number): [number, number] {
+  const centre = (a + b) / 2;
+  const extent = Math.max(0, Math.abs(b - a) / 2 + inflate) * Math.abs(stretch);
+  return [centre - extent, centre + extent];
 }
 
-// Box UV sizes ignore inflate and are whole units; the epsilon keeps 2.9999999 from flooring to 2.
-function boxSide(a: number, b: number): number {
-  return Math.floor(Math.abs(b - a) + 1e-6);
+/**
+ * Box-UV size of one axis from the un-inflated, un-stretched cube, as Blockbench's `size()`: floored to whole units
+ * with a 1e-7 epsilon, except in formats with float box-UV sizes (`modded_entity`).
+ */
+function boxSide(from: number, to: number, floatSize: boolean): number {
+  return floatSize ? to - from : Math.floor(to - from + 1e-7);
 }
 
 function uvOffset(element: JsonObject, path: string): [number, number] {
@@ -105,7 +115,7 @@ function uvOffset(element: JsonObject, path: string): [number, number] {
   return [u, v];
 }
 
-/** `undefined` when the face is absent or disabled (`texture: false`). */
+/** `undefined` when the face is absent from the file or removed (`texture: null`). */
 function readFace(
   faces: JsonObject,
   direction: FaceDirection,
@@ -117,7 +127,7 @@ function readFace(
   if (value === undefined) return undefined;
   const face = readObject(value, path);
   const material = readFaceTexture(face, path, context);
-  if (material === false) return undefined;
+  if (material === null) return undefined;
   const uvValue = field(face, 'uv');
   let uv: FaceUv;
   if (uvValue === undefined && boxUv) uv = boxUv;
@@ -146,17 +156,28 @@ function readFace(
   };
 }
 
-/** Texture index, −1 for `null` or absent (untextured), `false` for a disabled face. */
-function readFaceTexture(face: JsonObject, path: string, context: ConverterContext): number | false {
+/**
+ * Blockbench's face texture: `null` removes the face (`null` is returned); absent or `false` is a blank face drawn
+ * untextured (−1); a number is a texture index, a string a texture uuid.
+ */
+function readFaceTexture(face: JsonObject, path: string, context: ConverterContext): number | null {
   const value = field(face, 'texture');
-  if (value === false) return false;
-  if (value === null || value === undefined) return -1;
+  if (value === null) return null;
+  if (value === undefined || value === false) return -1;
+  const texturePath = childPath(path, 'texture');
   const count = context.textureUvSizes.length;
+  if (typeof value === 'string') {
+    const index = context.textureIds.get(value);
+    if (index === undefined) {
+      throw new BbmodelError('INVALID_FIELD', texturePath, `expected a texture uuid, got ${quoteValue(value)}`);
+    }
+    return index;
+  }
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value >= count) {
     throw new BbmodelError(
       'INVALID_FIELD',
-      childPath(path, 'texture'),
-      `expected a texture index below ${count}, null or false, got ${quoteValue(value)}`,
+      texturePath,
+      `expected a texture index below ${count}, a texture uuid, null or false, got ${quoteValue(value)}`,
     );
   }
   return value;

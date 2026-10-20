@@ -105,7 +105,7 @@ describe('hostile files fail fast with a coded error', () => {
     ['faces missing', json(model({ elements: [cube({ faces: undefined })] })), 'INVALID_FIELD', '$.elements[0].faces'],
     [
       'face uv missing',
-      json(model({ elements: [cube({ faces: { up: { texture: null } } })] })),
+      json(model({ elements: [cube({ faces: { up: {} } })] })),
       'INVALID_FIELD',
       '$.elements[0].faces.up.uv',
     ],
@@ -300,7 +300,7 @@ describe('hostile content is inert', () => {
     const text =
       '{"meta":{"format_version":"4.5"},"__proto__":{"polluted":1},' +
       '"elements":[{"__proto__":{"polluted":2},"uuid":"c0","from":[0,0,0],"to":[1,1,1],' +
-      '"faces":{"__proto__":{"polluted":3},"up":{"uv":[0,0,1,1],"texture":null}}}],' +
+      '"faces":{"__proto__":{"polluted":3},"up":{"uv":[0,0,1,1]}}}],' +
       '"outliner":[{"__proto__":{"polluted":4},"name":"g","children":["c0"]}],' +
       '"textures":[{"__proto__":{"polluted":5},"name":"t"}]}';
     const { scene } = loadBbmodel(text);

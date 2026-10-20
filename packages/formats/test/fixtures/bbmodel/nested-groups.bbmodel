@@ -13,7 +13,7 @@
         "east": { "uv": [0, 4, 4, 8], "texture": 0 },
         "south": { "uv": [8, 0, 16, 4], "texture": 0 },
         "west": { "uv": [4, 4, 8, 8], "texture": 0 },
-        "up": { "uv": [8, 4, 16, 8], "texture": null },
+        "up": { "uv": [8, 4, 16, 8], "texture": false },
         "down": { "uv": [8, 8, 16, 12] }
       },
       "type": "cube",

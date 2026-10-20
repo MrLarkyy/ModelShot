@@ -10,12 +10,12 @@
       "origin": [0, 0, 0],
       "uv_offset": [0, 0],
       "faces": {
-        "north": { "texture": null },
-        "east": { "texture": null },
-        "south": { "texture": null },
-        "west": { "texture": null },
-        "up": { "texture": null },
-        "down": { "texture": null }
+        "north": {},
+        "east": {},
+        "south": {},
+        "west": {},
+        "up": {},
+        "down": {}
       },
       "type": "cube",
       "uuid": "c-body"
@@ -29,12 +29,12 @@
       "uv_offset": [12, 0],
       "mirror_uv": true,
       "faces": {
-        "north": { "texture": null },
-        "east": { "texture": null },
-        "south": { "texture": null },
-        "west": { "texture": null },
-        "up": { "texture": null },
-        "down": { "texture": null }
+        "north": {},
+        "east": {},
+        "south": {},
+        "west": {},
+        "up": {},
+        "down": {}
       },
       "type": "cube",
       "uuid": "c-mirrored"

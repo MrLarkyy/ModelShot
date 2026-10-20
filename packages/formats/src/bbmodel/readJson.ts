@@ -7,7 +7,7 @@ export function readJson(input: string | Uint8Array, maxFileBytes: number): unkn
     if (utf8LengthExceeds(input, maxFileBytes)) {
       throw new BbmodelError('FILE_TOO_LARGE', '$', `more than the limit of ${maxFileBytes} bytes`);
     }
-    text = input.startsWith('﻿') ? input.slice(1) : input;
+    text = input.startsWith('\uFEFF') ? input.slice(1) : input;
   } else if (input instanceof Uint8Array) {
     if (input.byteLength > maxFileBytes) {
       throw new BbmodelError('FILE_TOO_LARGE', '$', `${input.byteLength} bytes, the limit is ${maxFileBytes}`);

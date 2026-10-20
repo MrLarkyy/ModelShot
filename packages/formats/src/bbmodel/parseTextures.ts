@@ -20,6 +20,8 @@ import { quoteValue } from './quoteValue';
 export interface TextureEntry {
   readonly path: string;
   readonly name: string;
+  /** Texture uuid, `''` when absent. */
+  readonly sourceId: string;
   /** Embedded or external `source`, `''` when absent. */
   readonly source: string;
   /** Lower-cased base names to look up in the picked files, in order of preference. */
@@ -33,18 +35,39 @@ export interface UvSize {
   readonly height: number;
 }
 
-/** Reads texture metadata and checks the texture count; decodes nothing. */
-export function readTextureEntries(root: JsonObject, resolution: UvSize, limits: BbmodelLimits): TextureEntry[] {
+/**
+ * Reads texture metadata and checks the texture count; decodes nothing. With `perTextureUvSize` (Blockbench's `free`
+ * format) a texture's `uv_width`/`uv_height` set its UV space; otherwise every texture uses the project resolution.
+ */
+export function readTextureEntries(
+  root: JsonObject,
+  resolution: UvSize,
+  perTextureUvSize: boolean,
+  limits: BbmodelLimits,
+): TextureEntry[] {
   const value = field(root, 'textures');
   if (value === undefined) return [];
   const list = readArray(value, '$.textures', { max: limits.maxTextures, code: 'TOO_MANY_TEXTURES', what: 'textures' });
-  return list.map((item, index) => readTextureEntry(item, childPath('$.textures', index), index, resolution, limits));
+  return list.map((item, index) => {
+    const path = childPath('$.textures', index);
+    return readTextureEntry(item, path, index, perTextureUvSize ? undefined : resolution, resolution, limits);
+  });
+}
+
+/** Texture index by uuid; the first texture with a uuid wins. */
+export function textureIdIndex(entries: readonly TextureEntry[]): Map<string, number> {
+  const ids = new Map<string, number>();
+  entries.forEach((entry, index) => {
+    if (entry.sourceId !== '' && !ids.has(entry.sourceId)) ids.set(entry.sourceId, index);
+  });
+  return ids;
 }
 
 function readTextureEntry(
   value: unknown,
   path: string,
   index: number,
+  fixedUvSize: UvSize | undefined,
   resolution: UvSize,
   limits: BbmodelLimits,
 ): TextureEntry {
@@ -64,18 +87,24 @@ function readTextureEntry(
     .map((key) => readOptionalString(texture, key, path, limits.maxStringChars, ''))
     .map(baseName)
     .filter((key) => key !== '');
-  const uvWidthValue = field(texture, 'uv_width');
-  const uvHeightValue = field(texture, 'uv_height');
+  const uvSize = fixedUvSize ?? {
+    width: readOptionalPositive(texture, 'uv_width', path, resolution.width),
+    height: readOptionalPositive(texture, 'uv_height', path, resolution.height),
+  };
   return {
     path,
     name,
+    sourceId: readOptionalString(texture, 'uuid', path, limits.maxStringChars, ''),
     source,
     fileKeys,
-    uvWidth:
-      uvWidthValue === undefined ? resolution.width : readPositiveNumber(uvWidthValue, childPath(path, 'uv_width')),
-    uvHeight:
-      uvHeightValue === undefined ? resolution.height : readPositiveNumber(uvHeightValue, childPath(path, 'uv_height')),
+    uvWidth: uvSize.width,
+    uvHeight: uvSize.height,
   };
+}
+
+function readOptionalPositive(texture: JsonObject, key: string, path: string, fallback: number): number {
+  const value = field(texture, key);
+  return value === undefined ? fallback : readPositiveNumber(value, childPath(path, key));
 }
 
 function baseName(fileName: string): string {

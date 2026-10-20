@@ -101,7 +101,7 @@ describe('toFaceRotation', () => {
   });
 
   it('a 45° face rotation in a file is INVALID_FIELD at the face', () => {
-    const faces = { north: { uv: [0, 0, 1, 1], texture: null, rotation: 45 } };
+    const faces = { north: { uv: [0, 0, 1, 1], rotation: 45 } };
     const error = catchError(() => loadBbmodel(JSON.stringify(model({ elements: [cube({ faces })] }))));
     expect(error.code).toBe('INVALID_FIELD');
     expect(error.path).toBe('$.elements[0].faces.north.rotation');
@@ -132,7 +132,7 @@ describe('boxUvLayout', () => {
   });
 
   it('is used for box-UV faces without uv; size is floored and ignores inflate', () => {
-    const faces = { north: { texture: null }, up: { texture: null } };
+    const faces = { north: {}, up: {} };
     const element = cube({ from: [0, 0, 0], to: [4.5, 6, 2], inflate: 1, faces, box_uv: true, uv_offset: [1, 1] });
     const { scene } = loadBbmodel(
       JSON.stringify(model({ elements: [element], resolution: { width: 32, height: 16 } })),

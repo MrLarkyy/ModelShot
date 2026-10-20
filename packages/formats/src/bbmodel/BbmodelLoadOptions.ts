@@ -31,7 +31,7 @@ export const DEFAULT_BBMODEL_LIMITS: BbmodelLimits = Object.freeze({
 });
 
 export interface BbmodelLoadOptions {
-  /** Overrides for some of `DEFAULT_BBMODEL_LIMITS`. */
+  /** Overrides for some of `DEFAULT_BBMODEL_LIMITS`: positive integers or `Infinity`, else a `RangeError`. */
   readonly limits?: Partial<BbmodelLimits>;
   /**
    * Files the user picked next to the model, keyed by file name. A texture without an embedded image is matched by
@@ -40,12 +40,22 @@ export interface BbmodelLoadOptions {
   readonly textureFiles?: ReadonlyMap<string, Uint8Array>;
 }
 
+/**
+ * Defaults with the caller's overrides applied. An override must be a positive integer or `Infinity`; anything else
+ * is a programming error and throws a `RangeError` (it is not a problem of the model file).
+ */
 export function resolveBbmodelLimits(overrides: Partial<BbmodelLimits> | undefined): BbmodelLimits {
   const limits: Record<keyof BbmodelLimits, number> = { ...DEFAULT_BBMODEL_LIMITS };
   if (!overrides) return limits;
   for (const key of Object.keys(DEFAULT_BBMODEL_LIMITS) as (keyof BbmodelLimits)[]) {
-    const value = overrides[key];
-    if (typeof value === 'number') limits[key] = value;
+    const value: unknown = overrides[key];
+    if (value === undefined) continue;
+    const valid = typeof value === 'number' && value > 0 && (Number.isInteger(value) || value === Infinity);
+    if (!valid)
+      throw new RangeError(
+        `limit ${key} must be a positive integer or Infinity, got ${typeof value === 'number' ? String(value) : typeof value}`,
+      );
+    limits[key] = value;
   }
   return limits;
 }

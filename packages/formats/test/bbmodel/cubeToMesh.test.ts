@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { cubeToMesh } from '../../src/bbmodel/cubeToMesh';
-import { readCube } from '../../src/bbmodel/CubeSpec';
+import { cubeTriangleCount, readCube } from '../../src/bbmodel/CubeSpec';
 import type { ConverterContext } from '../../src/bbmodel/ElementConverter';
 import { BbmodelError, loadBbmodel } from '../../src/index';
 import { cube, model } from './fixtures';
 
 const context: ConverterContext = {
   textureUvSizes: [{ width: 16, height: 16 }],
+  textureIds: new Map([['tex-uuid', 0]]),
   resolution: { width: 16, height: 16 },
   boxUv: false,
+  boxUvFloatSize: false,
   maxStringChars: 1024,
 };
 
@@ -92,18 +94,56 @@ describe('cubeToMesh', () => {
     expect([...mesh.normals.slice(12, 15)].map((x) => x || 0)).toEqual([0, -1, 0]);
   });
 
-  it('texture false drops a face, null keeps it with material −1', () => {
+  it('texture null removes a face; false or no texture key draws it blank (material −1)', () => {
     const faces = {
       ...allFaces(textured([0, 0, 1, 1])),
+      north: { uv: [0, 0, 1, 1], texture: null },
       east: { uv: [0, 0, 1, 1], texture: false },
-      up: { uv: [0, 0, 1, 1], texture: null },
+      up: { uv: [0, 0, 1, 1] },
     };
     const mesh = meshOf(cube({ faces }));
     expect(mesh.indices).toHaveLength(5 * 6);
     expect(mesh.groups).toEqual([
-      { material: -1, start: 0, count: 6 },
-      { material: 0, start: 6, count: 24 },
+      { material: -1, start: 0, count: 12 },
+      { material: 0, start: 12, count: 18 },
     ]);
+  });
+
+  it('a removed face is not validated further and adds no triangles to the pre-count', () => {
+    const spec = readCube(cube({ faces: { up: { texture: null, uv: 'nonsense', rotation: 45 } } }), '$', context);
+    expect(spec.faces).toEqual([]);
+    expect(cubeTriangleCount(spec)).toBe(0);
+  });
+
+  it('a texture uuid string resolves to its texture index; an unknown uuid is INVALID_FIELD', () => {
+    const mesh = meshOf(cube({ faces: { up: textured([0, 0, 1, 1], { texture: 'tex-uuid' }) } }));
+    expect(mesh.groups).toEqual([{ material: 0, start: 0, count: 6 }]);
+    expect(() => meshOf(cube({ faces: { up: textured([0, 0, 1, 1], { texture: 'other' }) } }))).toThrow(
+      expect.objectContaining({ code: 'INVALID_FIELD', path: '$.elements[0].faces.up.texture' }) as Error,
+    );
+  });
+
+  it('stretch scales the inflated box about its centre, not the UVs', () => {
+    // centre 1, half 1, inflate 0.5 → extent (1 + 0.5) · stretch.
+    const element = cube({
+      from: [0, 0, 0],
+      to: [2, 2, 2],
+      inflate: 0.5,
+      stretch: [2, 1, 0.5],
+      faces: allFaces(textured([0, 0, 1, 1])),
+    });
+    const mesh = meshOf(element);
+    expect(containsPoint(positions(mesh), [-2, -0.5, 0.25])).toBe(true);
+    expect(containsPoint(positions(mesh), [4, 2.5, 1.75])).toBe(true);
+    expect(mesh.uvs).toEqual(
+      meshOf(cube({ from: [0, 0, 0], to: [2, 2, 2], faces: allFaces(textured([0, 0, 1, 1])) })).uvs,
+    );
+  });
+
+  it('stretch must be three finite numbers', () => {
+    expect(() => meshOf(cube({ stretch: [1, 1] }))).toThrow(
+      expect.objectContaining({ code: 'INVALID_FIELD', path: '$.elements[0].stretch' }) as Error,
+    );
   });
 
   it('a texture index outside the textures is INVALID_FIELD', () => {

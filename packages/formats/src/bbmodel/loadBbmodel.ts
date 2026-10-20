@@ -18,7 +18,7 @@ import {
   readString,
   type JsonObject,
 } from './JsonFields';
-import { readTextureEntries, resolveTextures, type UvSize } from './parseTextures';
+import { readTextureEntries, resolveTextures, textureIdIndex, type UvSize } from './parseTextures';
 import { quoteValue } from './quoteValue';
 import { readJson } from './readJson';
 
@@ -33,7 +33,8 @@ interface PlacedElement {
 /**
  * Loads a Blockbench `.bbmodel` (format 3.x–5.x): cubes, groups and PNG textures. Synchronous and bounded: every
  * count, size and depth is checked against `limits` before anything proportional to it is allocated or decoded, and
- * the result does not depend on the clock or randomness. Throws only `BbmodelError`; recoverable problems are warnings.
+ * the result does not depend on the clock or randomness. A bad file throws only `BbmodelError`; recoverable problems
+ * are warnings. Invalid `options.limits` throw a `RangeError`.
  */
 export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOptions = {}): BbmodelLoadResult {
   const limits = resolveBbmodelLimits(options.limits);
@@ -56,14 +57,17 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
           what: 'elements',
         });
   const resolution = readResolution(root);
-  const textureEntries = readTextureEntries(root, resolution, limits);
+  // Blockbench formats with per-texture UV size: only `free` (bedrock's multi-file ruleset is runtime-only state).
+  const textureEntries = readTextureEntries(root, resolution, modelFormat === 'free', limits);
   const elementObjects = elements.map((item, index) => readObject(item, childPath('$.elements', index)));
   const hierarchy = buildHierarchy(root, elementIds(elementObjects, limits), elements.length, limits, warnings);
 
   const context: ConverterContext = {
     textureUvSizes: textureEntries.map((entry) => ({ width: entry.uvWidth, height: entry.uvHeight })),
     resolution,
+    textureIds: textureIdIndex(textureEntries),
     boxUv: readOptionalBoolean(meta, 'box_uv', '$.meta', false),
+    boxUvFloatSize: modelFormat === 'modded_entity',
     maxStringChars: limits.maxStringChars,
   };
   const placed = prepareElements(elementObjects, hierarchy.placements, context, limits, warnings);

@@ -17,15 +17,20 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
 ## Supported (v0)
 
 - Format versions 3.x, 4.x and 5.x (`meta.format_version`); any project format (`free`, `bedrock`, `java_block`, …).
-- **Cubes**: `from`/`to` (either order), `origin` (pivot), `rotation` (any angles), `inflate` (also negative), per-face
-  `uv` with `rotation` (0, 90, 180, 270) and mirroring (u1 > u2 or v1 > v2), per-face `texture`, `visibility`.
+- **Cubes**: `from`/`to` (either order), `origin` (pivot), `rotation` (any angles), `inflate` (also negative),
+  `stretch`, per-face `uv` with `rotation` (0, 90, 180, 270) and mirroring (u1 > u2 or v1 > v2), per-face `texture`
+  (index or texture uuid), `visibility`.
 - **Box UV** (`meta.box_uv` or the cube's `box_uv`): faces without a `uv` get Blockbench's box layout from
-  `uv_offset`, the cube size floored to whole units (inflate ignored) and `mirror_uv`.
+  `uv_offset`, the cube size and `mirror_uv`. The size is `to − from` of the plain cube (inflate and stretch ignored),
+  floored as `floor(to − from + 1e-7)`, except in `modded_entity` where Blockbench keeps fractional box-UV sizes.
 - **Groups / bones**: `name`, `origin` (pivot), `rotation`, `visibility`; inline in the outliner (format ≤ 4.x) or in the
   top-level `groups` array referenced by uuid from the outliner (format 5.x). Both give the same node tree.
 - **Textures**: PNG only. Embedded `data:image/png;base64,…` sources are decoded; any other texture is matched by the
   case-insensitive base name of its `relative_path`, then `path`, then `name` against `options.textureFiles`.
-  `uv_width`/`uv_height` set the texture's UV space, else the project `resolution` (default 16×16).
+  In the `free` format (Blockbench's only format with per-texture UV size) `uv_width`/`uv_height` set a texture's UV
+  space; in every other format, and when absent, the project `resolution` (default 16×16) does. Bedrock's per-texture
+  UV size exists only with a multi-file ruleset, which is Blockbench runtime state not saved in the file, so bedrock
+  models use the project resolution.
 
 ## Not yet supported
 
@@ -40,16 +45,20 @@ image.
 - Group nodes keep `pivot` and `rotation`; meshes are placed by the node's world matrix (see the scene format).
 - Order: nodes and meshes follow the outliner (depth first); elements the outliner does not reference follow at the
   root in file order. An outliner entry for an unknown uuid is skipped with an `UNKNOWN_REFERENCE` warning.
-- Faces: `texture: false` or an absent face produces no triangles; `texture: null` (or no `texture` key) produces an
-  untextured face (material −1, UVs normalised by the project resolution). A face with zero area produces no triangles,
-  so a flat cube keeps only its two large faces. A negative inflate larger than half a side collapses that axis to its
-  centre.
+- Cube box: per axis `centre ∓ (half + inflate) · stretch`, as Blockbench. A negative inflate larger than half a side
+  collapses that axis to its centre; a negative stretch counts as its magnitude. Stretch and inflate change geometry
+  only, never UVs.
+- Faces: `texture: null` removes the face (no triangles, its other fields are not read, it does not count towards
+  `maxTriangles`); no `texture` key or `texture: false` is a blank face drawn untextured (material −1, UVs normalised
+  by the project resolution); a number is a texture index and a string a texture uuid (unknown → `INVALID_FIELD`).
+  A face object missing from `faces` produces no triangles. A face with zero area produces no triangles, so a flat
+  cube keeps only its two large faces (Blockbench pads it by 0.001 and draws all six, which looks the same).
 - One material per texture, same index.
 
 ### Blockbench conventions assumed
 
-These are pinned by tests (`packages/formats/test/bbmodel`); they follow Blockbench's three.js scene and Minecraft's
-model format.
+These are pinned by tests (`packages/formats/test/bbmodel`) and were checked against Blockbench's source (rotation
+order, face uv rotation, face `texture`, `stretch`, per-texture UV size, box-UV size and layout).
 
 1. **Rotation order and sign**: degrees, three.js Euler order `'ZYX'` (X applied first), right-handed: +90° about Y
    takes +X to −Z. Cube and group rotations use the same convention.
@@ -59,15 +68,18 @@ model format.
    This is Minecraft's automatic UV layout. Face `rotation` turns the image **clockwise** on the face.
 3. **Format 5.x groups**: group data (name, origin, rotation, visibility) lives in `groups`, the outliner holds
    `{ uuid, children }`; an outliner object whose uuid is not in `groups` is read as an inline group.
-4. **`texture: null` vs `false`**: `null` is "no texture" (drawn untextured), `false` is a disabled face (not drawn).
-5. **Box UV layout** (w, h, d = floored size x, y, z): east at (0, d) d×h, north at (d, d) w×h, west at (d + w, d)
+4. **Face `texture`**: in a saved file `null` is a removed face (Blockbench does not draw it); an absent key is a blank
+   face (in memory `false`) drawn without texture; an integer is a texture index, a string a texture uuid from older
+   saves.
+5. **Box UV layout** (w, h, d = box-UV size x, y, z): east at (0, d) d×h, north at (d, d) w×h, west at (d + w, d)
    d×h, south at (2d + w, d) w×h, up in (d, 0)–(d + w, d) stored turned 180° (`[d + w, d, d, 0]`), down in
    (d + w, 0)–(d + 2w, d) stored mirrored horizontally (`[d + 2w, 0, d + w, d]`), all shifted by `uv_offset`;
    `mirror_uv` flips every face horizontally and swaps east and west.
 
 ## Limits
 
-Checked before allocating or decoding; override per call with `options.limits`.
+Checked before allocating or decoding; override per call with `options.limits`. An override must be a positive integer
+or `Infinity`; anything else throws a `RangeError` (a caller error, not a `BbmodelError`).
 
 | limit              | default    | error                                                               |
 | ------------------ | ---------- | ------------------------------------------------------------------- |
@@ -96,7 +108,7 @@ bounded by `maxNesting`, not by the call stack.
 | `NOT_JSON`            | empty, not UTF-8, or not JSON                                                                                                                           |
 | `NOT_BBMODEL`         | not an object, or no `meta` / `meta.format_version`                                                                                                     |
 | `UNSUPPORTED_VERSION` | format version not 3.x–5.x                                                                                                                              |
-| `INVALID_FIELD`       | a field has the wrong type, a non-finite number, a face rotation that is not a quarter turn, a texture index out of range                               |
+| `INVALID_FIELD`       | a field has the wrong type, a non-finite number, a face rotation that is not a quarter turn, a texture index out of range or an unknown texture uuid    |
 | `TOO_MANY_ELEMENTS`   | elements, groups or outliner entries over their limit                                                                                                   |
 | `TOO_MANY_TRIANGLES`  | triangles over `maxTriangles`                                                                                                                           |
 | `TOO_MANY_TEXTURES`   | textures over `maxTextures`                                                                                                                             |
