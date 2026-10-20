@@ -194,6 +194,21 @@ describe('OrbitController', () => {
     expect(fromOptions.camera().position.every(Number.isFinite)).toBe(true);
   });
 
+  it('uses the default damping time for a non-finite, zero or negative dampingMs', () => {
+    const settle = (dampingMs?: number): string => {
+      const c = new OrbitController(dampingMs === undefined ? { damping: true } : { damping: true, dampingMs });
+      c.reset(bounds);
+      c.rotate(40, 10);
+      c.update(16);
+      return JSON.stringify(c.camera());
+    };
+    const reference = settle();
+    for (const bad of [NaN, Infinity, -Infinity, 0, -80]) {
+      expect(settle(bad), String(bad)).toBe(reference);
+    }
+    expect(settle(160)).not.toBe(reference);
+  });
+
   it('frames an empty scene with a default sphere', () => {
     const c = new OrbitController({ damping: false });
     c.reset(null);

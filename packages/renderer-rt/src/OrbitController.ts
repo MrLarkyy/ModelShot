@@ -18,7 +18,7 @@ export interface OrbitControllerOptions {
   readonly projection?: 'perspective' | 'orthographic';
   /** Exponential smoothing of every change; `false` applies input at once. Default `true`. */
   readonly damping?: boolean;
-  /** Time constant of the damping in milliseconds. Default 80. */
+  /** Time constant of the damping in milliseconds; a non-finite, zero or negative value means the default 80. */
   readonly dampingMs?: number;
 }
 
@@ -86,7 +86,8 @@ export class OrbitController {
     this.fovYDeg = clamp(finiteOr(options.fovYDeg, DEFAULT_FOV_DEG), MIN_FOV_DEG, MAX_FOV_DEG);
     this.orthographic = options.projection === 'orthographic';
     this.damping = options.damping ?? true;
-    this.dampingMs = options.dampingMs ?? DEFAULT_DAMPING_MS;
+    const dampingMs = finiteOr(options.dampingMs, DEFAULT_DAMPING_MS);
+    this.dampingMs = dampingMs > 0 ? dampingMs : DEFAULT_DAMPING_MS;
     this.goal = this.fittedState(this.initialYaw, this.initialPitch);
     this.current = copy(this.goal);
   }
