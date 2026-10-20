@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '../src/harnessTest';
-import { checkBudgets, loadBudgets, type Measured } from '../src/budgets';
+import { budgetReport, checkBudgets, loadBudgets, type Measured } from '../src/budgets';
 import { measureBundle } from '../src/bundleSize';
 import { openFixture } from '../src/expectGolden';
 import { median } from '../src/measure';
@@ -35,6 +35,11 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
   writeFileSync(join(testInfo.project.outputDir, 'budgets-measured.json'), json);
   await testInfo.attach('budgets-measured', { body: json, contentType: 'application/json' });
 
-  const violations = checkBudgets(loadBudgets(), measured);
+  const budgets = loadBudgets();
+  for (const line of budgetReport(budgets, measured)) {
+    console.log(`[budget] ${line}`);
+    testInfo.annotations.push({ type: 'budget', description: line });
+  }
+  const violations = checkBudgets(budgets, measured);
   expect(violations.map((v) => v.message)).toEqual([]);
 });

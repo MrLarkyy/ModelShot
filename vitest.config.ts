@@ -25,5 +25,7 @@ export default defineConfig({
       },
     ],
     passWithNoTests: false,
+    // Measured values (bundle size vs budget) are printed by passing tests too, so a build log shows the numbers.
+    silent: false,
   },
 });

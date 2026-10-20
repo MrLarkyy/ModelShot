@@ -18,6 +18,12 @@ export const MODEL_VIEW_LOOK = Object.freeze({
   lightHalfExtent: 32,
   lightDistance: 80,
   shadowMapSize: 1024,
+  /**
+   * Both renderers move a shadow receiver this far along its geometric normal (toward the viewer) before testing the
+   * light: 1.5 shadow-map texels (2 · 32 / 1024 units each), enough to keep a curved or grazing surface from shadowing
+   * itself in the shadow map, and far below the size of a texel of any fixture model.
+   */
+  shadowNormalOffset: 1.5 * ((2 * 32) / 1024),
   background: [0.1, 0.11, 0.14] as Point3,
   untextured: [0.78, 0.78, 0.76] as Point3,
   ambient: 0.35,

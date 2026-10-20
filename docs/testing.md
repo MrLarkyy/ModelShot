@@ -57,11 +57,14 @@ shading include:
 
 - `raster`: an orthographic depth-only pass from the light (DEPTH_COMPONENT24, 1024², alpha-tested, slope polygon
   offset, back faces of single-sided runs culled as seen from the light), then the camera pass with the same culling,
-  alpha discard, a `gl_FrontFacing` normal flip, a hard shadow-map lookup, and runs drawn in ascending render order
-  with `LEQUAL` and a per-order polygon offset (factor −1, units −4 per order step).
+  alpha discard, a `gl_FrontFacing` normal flip and a hard shadow-map lookup, into its own RGBA8 +
+  DEPTH_COMPONENT24 target (blitted to the canvas; the default depth buffer may have only 16 bits). Its fragment depth
+  is the render-order key of the scene format, computed from the pixel's ray and the triangle's plane by
+  `shaders/include/cameraRay.glsl`, the same code the raycast uses, with a `LESS` test; no polygon offset.
 - `raycast`: per pixel centre, a camera ray to the nearest triangle whose texel passes the alpha test
   (single-sided triangles only from the front; hits within `RENDER_ORDER_TIE_DISTANCE` go to the higher render
-  order), shaded with the barycentric vertex normal, then one shadow ray toward the light that an alpha-passing
+  order, the same key), shaded with the barycentric vertex normal, then one shadow ray toward the light that an
+  alpha-passing
   triangle blocks (a single-sided one only if its front faces the light). Triangles and their vertex normals live in
   an RGBA32F data texture (at most 256, checked against `MAX_TEXTURE_SIZE`).
 
@@ -70,7 +73,8 @@ uploaded unflipped and unpremultiplied into a NEAREST `TEXTURE_2D_ARRAY` without
 partially transparent texel under a blended material fails the page with a clear error (partial alpha is drawn by the
 product renderers, MS-14 and MS-17). Shaders are static `.glsl` files joined by `fixtures/src/shaderSource.ts`
 (`#version` line, then `#define`s, then includes from `shaders/include/`, then the stage). Every constant the
-shaders share with TypeScript (`MAX_MATERIALS`, `MODE_*`, `RENDER_ORDER_TIE`) is such a `#define` from
+shaders share with TypeScript (`MAX_MATERIALS`, `MODE_*`, `RENDER_ORDER_TIE`, `SHADOW_NORMAL_OFFSET`,
+`DEPTH_RANGE`) is such a `#define` from
 `fixtures/src/modelShaderDefines.ts`, so it has one source; a model with more materials or textures than the tables
 hold fails with a clear error.
 
@@ -90,28 +94,43 @@ and under the opaque one shadowed, the back side shows the same texel at its mir
 (two coincident single-sided faces) light through a hole of the face toward the light reaches the ground while an
 opaque texel of it shadows it. In `render-order`, two pairs of coincident quads (split along different diagonals, so
 their depths differ by rounding only) show the higher order's texel: `in_front` over `default`, `default` over
-`behind`.
+`behind`; two more pairs face the eye with the `in_front` quad farther along the view by 2 × and 0.5 ×
+`RENDER_ORDER_TIE_DISTANCE`: at 2 × the nearer `default` quad shows, at 0.5 × the `in_front` one.
+
+Shadow receivers: both renderers move the receiving point `SHADOW_NORMAL_OFFSET` (1.5 shadow-map texels, 0.094
+units) along its geometric normal toward the viewer before testing the light (shadow-map lookup or shadow-ray
+origin). Without it the shadow map's own depth error made a dithered acne band on the grazing-lit smooth arch of
+`mesh-shapes` (about 45 pixels, raster only); the offset is far below a texel of any fixture model, and the alpha-plane
+shadow probes still pass.
 
 **Pair tests**: the raster and raycast images of each model are compared with its `MODEL_VIEW_PAIR_TOLERANCE`
-entry (`threshold 0.1` throughout). Measured on SwiftShader (local Windows dev machine, deterministic, same on
-re-runs), differing pixels of 65 536, all on silhouette, texel and shadow edges:
+entry (`threshold 0.1` throughout); the test prints `[model-view pair] <model>: … px differ, ratio … / max …, mean
+delta … / max …` into the build log and attaches it. Measured on SwiftShader (local Windows dev machine,
+deterministic, same on re-runs), differing pixels of 65 536:
 
 | model          | measured: pixels, ratio, mean delta | limit: `maxDiffRatio`, `maxMeanDelta` |
 | -------------- | ----------------------------------- | ------------------------------------- |
-| `alpha-plane`  | 124, 0.00189, 0.133                 | 0.0025, 0.25                          |
-| `mesh-shapes`  | 62, 0.00095, 0.066                  | 0.00125, 0.1                          |
-| `render-order` | 28, 0.00043, 0.032                  | 0.0006, 0.05                          |
+| `alpha-plane`  | 115, 0.00175, 0.119                 | 0.0025, 0.25                          |
+| `mesh-shapes`  | 50, 0.00076, 0.046                  | 0.001, 0.07                           |
+| `render-order` | 40, 0.00061, 0.040                  | 0.0008, 0.06                          |
 
-The measured values of a run are in `tools/harness/test-results/model-view-pair-<model>.json`. Dropping the alpha test
-from the shadow pass alone changes about 2 000 pixels of `alpha-plane`, dropping the render-order polygon offset about
-2 200 of `render-order`; a tolerance is never widened to make a pair pass.
+The differing pixels are isolated: pixels whose centre lies within a rounding error of a silhouette, of a shadow edge
+(shadow-map texels against exact shadow rays; the longest is the straight edge of the arch's shadow on the checker
+quad in `mesh-shapes`), or of a texel boundary on a gradient texture (the raster interpolates UVs per pixel, the
+raycast takes exact barycentrics; adjacent `uv-grid.png` texels differ by about 13 levels after lighting). No region
+differs as a whole. The measured values of a run are also in
+`tools/harness/test-results/model-view-pair-<model>.json`. Dropping the alpha test from the shadow pass alone changes
+about 2 000 pixels of `alpha-plane`, dropping the render-order term from the raster depth about 3 400 of
+`render-order`; a tolerance is never widened to make a pair pass.
 
 ## Budgets
 
 `budgets.json` (root, `"version": 1`) holds `max` values for frame time, time to 64 samples and gzip bundle size of
 `app` and `embed`. `pnpm test` measures them (`bench.spec.ts`; the bundle is built fresh into a temporary directory, so
 it does not depend on `pnpm -r build`) and fails when a value exceeds its `max`, when a budget has no measurement, or
-a measurement has no budget. The measured values are in `tools/harness/test-results/budgets-measured.json`.
+a measurement has no budget. The measured values are in `tools/harness/test-results/budgets-measured.json`, and
+every run prints each one against its max (`[budget] <group>.<key>: measured … / max …`, from `bench.spec.ts` and
+`test/bundleSize.test.ts`; Vitest runs with `silent: false` so passing tests print too).
 
 Measured on the local Windows dev machine (SwiftShader, 3 runs) when the budgets were set: frame time median 0.3, 0.3,
 0.4 ms; time to 64 samples median 23.8, 23, 25.8 ms; gzip app 437 B, embed 115 B.

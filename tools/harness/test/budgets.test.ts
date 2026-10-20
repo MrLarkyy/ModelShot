@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkBudgets, loadBudgets, parseBudgets, type Measured } from '../src/budgets';
+import { budgetReport, checkBudgets, loadBudgets, parseBudgets, type Measured } from '../src/budgets';
 
 const valid = {
   version: 1,
@@ -56,5 +56,17 @@ describe('checkBudgets', () => {
   it('fails a measurement without a budget', () => {
     const violations = checkBudgets(budgets, { ...measured, frameTimeMs: { a: 1, z: 1 } });
     expect(violations.map((v) => v.message)).toEqual(['frameTimeMs.z: measurement has no budget']);
+  });
+});
+
+describe('budgetReport', () => {
+  it('prints every budget with its measurement and max', () => {
+    const budgets = parseBudgets(JSON.stringify(valid));
+    const values = { ...measured, frameTimeMs: { a: 0.29999999701976776 }, bundleGzipBytes: {} };
+    expect(budgetReport(budgets, values)).toEqual([
+      'frameTimeMs.a: measured 0.3 / max 10',
+      'timeToSamplesMs.b: measured 5 / max 20',
+      'bundleGzipBytes.c: measured nothing / max 30',
+    ]);
   });
 });

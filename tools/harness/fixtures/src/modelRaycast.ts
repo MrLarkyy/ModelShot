@@ -1,3 +1,4 @@
+import cameraRaySource from '../shaders/include/cameraRay.glsl?raw';
 import shadeSource from '../shaders/include/shade.glsl?raw';
 import precisionSource from '../shaders/include/precision.glsl?raw';
 import texelAlphaSource from '../shaders/include/texelAlpha.glsl?raw';
@@ -34,7 +35,11 @@ export function renderRaycast(
     );
   }
   const vertex = buildShader(vertexSource, []);
-  const fragment = buildShader(raycastSource, [precisionSource, texelAlphaSource, shadeSource], MODEL_SHADER_DEFINES);
+  const fragment = buildShader(
+    raycastSource,
+    [precisionSource, texelAlphaSource, shadeSource, cameraRaySource],
+    MODEL_SHADER_DEFINES,
+  );
   const program = createProgram(gl, vertex, fragment);
   const data = createTriangleTexture(gl, triangles);
   const viewProjection = cameraViewProjection(1);

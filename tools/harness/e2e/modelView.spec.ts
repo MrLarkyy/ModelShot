@@ -17,31 +17,31 @@ const orderRaster = variant('render-order-raster');
 const orderRaycast = variant('render-order-raycast');
 
 /**
- * Raster (shadow map, rasterised edges) and raycast (exact rays) renders of the same model differ only where a pixel
- * centre sits within a rounding error of a silhouette, a texel edge or a shadow edge. Each limit is the measured
+ * Raster (shadow map, rasterised edges, interpolated UVs) and raycast (exact rays) renders of the same model differ
+ * where a pixel centre sits within a rounding error of a silhouette, a texel boundary or a shadow edge. Each limit is the measured
  * difference on SwiftShader (docs/testing.md) with headroom for that count only. Never widened to make a pair pass: a
  * real difference (a cutout texel shown or casting a shadow in one path only, a lost tie) changes hundreds of pixels.
  */
 const MODEL_VIEW_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions & { reason: string }>> = {
-  // Measured 124 of 65 536 pixels (ratio 0.00189), mean delta 0.133.
+  // Measured 115 of 65 536 pixels (ratio 0.00175), mean delta 0.119.
   'alpha-plane': {
     threshold: 0.1,
     maxDiffRatio: 0.0025,
     maxMeanDelta: 0.25,
     reason: 'edge pixels only (shadow-map texels, rasterisation rules)',
   },
-  // Measured 62 pixels (ratio 0.00095), mean delta 0.066.
+  // Measured 50 pixels (ratio 0.00076), mean delta 0.046 (receiver normal offset, round 3).
   'mesh-shapes': {
     threshold: 0.1,
-    maxDiffRatio: 0.00125,
-    maxMeanDelta: 0.1,
+    maxDiffRatio: 0.001,
+    maxMeanDelta: 0.07,
     reason: 'edge pixels only (shadow-map texels, rasterisation rules)',
   },
-  // Measured 28 pixels (ratio 0.00043), mean delta 0.032.
+  // Measured 40 pixels (ratio 0.00061), mean delta 0.040 (with the facing gap pairs, round 3).
   'render-order': {
     threshold: 0.1,
-    maxDiffRatio: 0.0006,
-    maxMeanDelta: 0.05,
+    maxDiffRatio: 0.0008,
+    maxMeanDelta: 0.06,
     reason: 'edge pixels only (shadow-map texels, rasterisation rules)',
   },
 };
@@ -127,12 +127,16 @@ test.describe('model-view fixture', () => {
   }
 
   for (const spec of [orderRaster, orderRaycast]) {
-    test(`${spec.name}: the higher render order wins on coincident faces`, async ({ page }) => {
+    test(`${spec.name}: the higher render order wins within the tie distance, the nearer face beyond it`, async ({
+      page,
+    }) => {
       const { png, probes } = await render(page, spec);
       const at = (name: string) => probes.find((p) => p.name === name);
       for (const [winner, loser] of [
         ['in-front', 'under-in-front'],
         ['over-behind', 'behind'],
+        ['gap-near', 'gap-far-in-front'],
+        ['tie-far-in-front', 'tie-near'],
       ] as const) {
         const shown = pixel(png, at(winner));
         const winnerTexel = at(winner)?.texel ?? [];
@@ -157,6 +161,11 @@ test.describe('model-view fixture', () => {
         ratio: result.ratio,
         meanDelta: result.meanDelta,
       });
+      const line =
+        `${model}: ${result.diffPixels} px differ, ratio ${result.ratio.toFixed(5)} / max ${tolerance.maxDiffRatio}, ` +
+        `mean delta ${result.meanDelta.toFixed(3)} / max ${tolerance.maxMeanDelta}`;
+      console.log(`[model-view pair] ${line}`);
+      testInfo.annotations.push({ type: 'model-view pair', description: line });
       await testInfo.attach(`${model}-pair`, { body: measured, contentType: 'application/json' });
       writeFileSync(join(testInfo.project.outputDir, `model-view-pair-${model}.json`), measured);
       if (!result.pass) {

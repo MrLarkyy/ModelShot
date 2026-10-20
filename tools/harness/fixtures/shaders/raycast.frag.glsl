@@ -4,16 +4,12 @@
 // uv0 + uv1, uv2, face UV rectangle, n0, n1, n2 (vertex normals).
 uniform sampler2D u_triangles;
 uniform int u_triangleCount;
-uniform mat4 u_inverseViewProjection;
-uniform vec3 u_eye;
-uniform vec2 u_viewportSize;
 uniform vec3 u_background;
 
 out vec4 outColor;
 
 const float DET_EPSILON = 1e-9;
 const float MIN_T = 1e-4;
-const float SHADOW_OFFSET = 1e-3;
 // Which side of a triangle a ray may hit: its front as seen along the ray, its back (the front as seen by a ray
 // travelling the other way), or either.
 const int SIDE_FRONT = 1;
@@ -41,7 +37,7 @@ bool intersect(int triangle, vec3 origin, vec3 dir, int side, out float t, out v
   vec3 qv = cross(tv, e1);
   float v = dot(dir, qv) * inv;
   if (v < 0.0 || u + v > 1.0) return false;
-  t = dot(e2, qv) * inv;
+  t = planeDistance(origin, dir, p0, e1, e2);
   bary = vec2(u, v);
   return t > MIN_T;
 }
@@ -82,24 +78,21 @@ bool shadowed(vec3 origin) {
 }
 
 void main() {
-  vec2 ndc = gl_FragCoord.xy / u_viewportSize * 2.0 - 1.0;
-  vec4 far = u_inverseViewProjection * vec4(ndc, 1.0, 1.0);
-  vec3 dir = normalize(far.xyz / far.w - u_eye);
+  vec3 dir = cameraRayDirection(gl_FragCoord.xy);
 
-  float best = 1e30;
-  float bestOrder = 0.0;
+  // The smallest renderOrderKey wins, the first hit at an exactly equal key; the raster's depth is the same key.
+  float bestKey = 1e30;
+  float best = 0.0;
   int hit = -1;
   vec2 hitBary = vec2(0.0);
   for (int i = 0; i < u_triangleCount; i++) {
     float t;
     vec2 bary;
     if (!intersect(i, u_eye, dir, singleSided(i) ? SIDE_FRONT : SIDE_ANY, t, bary)) continue;
-    float order = fetchRow(i, 2).w;
-    // RENDER_ORDER_TIE (#define, RENDER_ORDER_TIE_DISTANCE of @modelshot/scene): coincident hits go to the higher order.
-    bool wins = t < best - RENDER_ORDER_TIE || (t <= best + RENDER_ORDER_TIE && order > bestOrder);
-    if (!wins || !opaqueAt(i, bary)) continue;
+    float key = renderOrderKey(t, fetchRow(i, 2).w);
+    if (key >= bestKey || !opaqueAt(i, bary)) continue;
+    bestKey = key;
     best = t;
-    bestOrder = order;
     hit = i;
     hitBary = bary;
   }
@@ -118,6 +111,6 @@ void main() {
     normal = -normal;
   }
   vec3 point = u_eye + dir * best;
-  float lit = shadowed(point + geometric * SHADOW_OFFSET) ? 0.0 : 1.0;
+  float lit = shadowed(point + geometric * SHADOW_NORMAL_OFFSET) ? 0.0 : 1.0;
   outColor = vec4(shade(texelAt(hit, hitBary).rgb, normal, lit), 1.0);
 }

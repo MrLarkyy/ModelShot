@@ -2,12 +2,16 @@
 
 uniform sampler2DShadow u_shadowMap;
 uniform mat4 u_lightViewProjection;
+uniform float u_renderOrder;
 
 in vec3 v_world;
 in vec3 v_normal;
 in vec2 v_uv;
 flat in vec4 v_rect;
 flat in int v_material;
+flat in vec3 v_corner0;
+flat in vec3 v_corner1;
+flat in vec3 v_corner2;
 
 out vec4 outColor;
 
@@ -26,5 +30,16 @@ void main() {
   if (texelInvisible(v_material, texel.a)) discard;
   // Back faces only reach here for double-sided groups (single-sided ones are culled): face the viewer.
   vec3 normal = normalize(gl_FrontFacing ? v_normal : -v_normal);
-  outColor = vec4(shade(texel.rgb, normal, shadowTerm(v_world)), 1.0);
+  vec3 dir = cameraRayDirection(gl_FragCoord.xy);
+  vec3 e1 = v_corner1 - v_corner0;
+  vec3 e2 = v_corner2 - v_corner0;
+  // The receiver moves along its geometric normal (toward the viewer), as in the raycast.
+  vec3 geometric = normalize(cross(e1, e2));
+  if (dot(geometric, dir) > 0.0) geometric = -geometric;
+  float lit = shadowTerm(v_world + geometric * SHADOW_NORMAL_OFFSET);
+  outColor = vec4(shade(texel.rgb, normal, lit), 1.0);
+  // The depth test compares the raycast's key, computed the same way from the pixel's ray and the triangle's plane
+  // (interpolated positions are not precise enough for RENDER_ORDER_TIE).
+  float key = renderOrderKey(planeDistance(u_eye, dir, v_corner0, e1, e2), u_renderOrder);
+  gl_FragDepth = clamp(key / DEPTH_RANGE, 0.0, 1.0);
 }

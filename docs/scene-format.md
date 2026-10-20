@@ -76,12 +76,20 @@ A group `{ material, start, count, doubleSided? }` is a run of `count` indices f
 - `doubleSided: true`: both sides, for every ray. The back shows the same texels, mirrored as seen from behind (the
   UVs are the front's), and the normal is flipped toward the viewer or ray before shading.
 
-`renderOrder` (an integer, absent: 0) only breaks ties between coincident surfaces: two hits whose distances along
-the ray differ by at most `RENDER_ORDER_TIE_DISTANCE` (0.001 units, exported by `@modelshot/scene`) go to the higher
-order; at equal order, and for any hits farther apart, the nearer one wins. It never shows a surface through a
-nearer opaque one. A ray tracer applies the distance as is; a rasteriser draws in ascending order with a `LEQUAL`
-depth test and a per-order polygon offset, which separates coincident surfaces by much less than that distance. The
-realtime renderer and the path tracer use this one rule.
+`renderOrder` (an integer, absent: 0) breaks ties between (nearly) coincident surfaces. Every renderer compares, per
+pixel ray, the same key:
+
+```
+key = distance along the ray − renderOrder × RENDER_ORDER_TIE_DISTANCE      (0.001 units, from @modelshot/scene)
+```
+
+The smallest key is shown (the first one at an exactly equal key). So for orders one step apart (Blockbench's
+`behind` −1, `default` 0, `in_front` 1) the higher order wins when it is at most 0.001 units farther along the ray,
+and the nearer surface wins when they are farther apart; `in_front` over `behind` (two steps) gets 0.002. Surfaces of
+equal order resolve by distance alone. A ray tracer computes the key from the hit distance; a rasteriser computes it
+per fragment from the pixel's ray and the triangle's plane (not from interpolated positions, which are less precise
+than 0.001 units) and writes it as the fragment depth with a `LESS` test and at least 24 depth bits. Neither uses a
+polygon offset.
 
 Vertices are in **model rest space**: the source element's own rotation is already applied, the owning node's world
 matrix is not. To draw a mesh, transform its vertices by `worldMatrices(nodes)[mesh.node]` (identity for −1).

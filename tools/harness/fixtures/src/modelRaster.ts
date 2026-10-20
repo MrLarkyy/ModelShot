@@ -1,3 +1,4 @@
+import cameraRaySource from '../shaders/include/cameraRay.glsl?raw';
 import shadeSource from '../shaders/include/shade.glsl?raw';
 import precisionSource from '../shaders/include/precision.glsl?raw';
 import texelAlphaSource from '../shaders/include/texelAlpha.glsl?raw';
@@ -7,23 +8,17 @@ import shadowSource from '../shaders/shadowDepth.frag.glsl?raw';
 import { createProgram } from './context';
 import { MODEL_SHADER_DEFINES } from './modelShaderDefines';
 import { buildShader } from './shaderSource';
-import { MODEL_VIEW_LOOK, cameraViewProjection, lightViewProjection } from './modelViewCamera';
+import { MODEL_VIEW_LOOK, cameraViewProjection, invert, lightViewProjection } from './modelViewCamera';
 import { setMaterialUniforms, setShadeUniforms } from './modelUniforms';
 import type { SceneTriangles } from './sceneTriangles';
 import type { UploadedTextures } from './sceneUpload';
 
 /**
- * Polygon offset per render-order step: pulls a higher order in front of a coincident surface without moving it
- * visibly (far below `RENDER_ORDER_TIE_DISTANCE` at the fixture's depths).
- */
-const RENDER_ORDER_OFFSET = { factor: -1, units: -4 } as const;
-
-/**
  * Rasterises the scene into the default framebuffer: a depth-only pass from the light, alpha-tested, culling back
  * faces of single-sided runs as seen from the light (so only the opaque texels of a face whose front faces the light
- * cast a shadow); then the camera pass with the same per-run culling, alpha discard, a hard shadow-map lookup and,
- * per render order, a polygon offset so a higher order wins at coincident depth (runs are drawn in ascending order
- * with LEQUAL, so equal depth also goes to the later run).
+ * cast a shadow); then the camera pass with the same per-run culling, alpha discard, a hard shadow-map lookup from
+ * the receiver moved along its normal, and a depth of its own: the ray distance minus `renderOrder ·
+ * RENDER_ORDER_TIE_DISTANCE`, the key the raycast compares, so both resolve render order identically.
  */
 export function renderRaster(
   gl: WebGL2RenderingContext,
@@ -57,7 +52,8 @@ export function renderRaster(
   }
   gl.disable(gl.POLYGON_OFFSET_FILL);
 
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  const target = createCameraTarget(gl, size);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, target);
   gl.viewport(0, 0, size, size);
   const [r, g, b] = MODEL_VIEW_LOOK.background;
   gl.clearColor(r, g, b, 1);
@@ -65,20 +61,55 @@ export function renderRaster(
   gl.useProgram(cameraProgram);
   gl.uniformMatrix4fv(gl.getUniformLocation(cameraProgram, 'u_viewProjection'), false, cameraViewProjection(1));
   gl.uniformMatrix4fv(gl.getUniformLocation(cameraProgram, 'u_lightViewProjection'), false, light);
+  gl.uniform3fv(gl.getUniformLocation(cameraProgram, 'u_eye'), MODEL_VIEW_LOOK.eye);
+  gl.uniformMatrix4fv(
+    gl.getUniformLocation(cameraProgram, 'u_inverseViewProjection'),
+    false,
+    invert(cameraViewProjection(1)),
+  );
+  gl.uniform2f(gl.getUniformLocation(cameraProgram, 'u_viewportSize'), size, size);
   setMaterialUniforms(gl, cameraProgram, textures, 0);
   setShadeUniforms(gl, cameraProgram);
   gl.activeTexture(gl.TEXTURE1);
   gl.bindTexture(gl.TEXTURE_2D, shadow.texture);
   gl.uniform1i(gl.getUniformLocation(cameraProgram, 'u_shadowMap'), 1);
-  gl.enable(gl.POLYGON_OFFSET_FILL);
+  // LESS: at an exactly equal key the first triangle drawn stays, as the raycast keeps the first hit.
+  gl.depthFunc(gl.LESS);
+  const renderOrder = gl.getUniformLocation(cameraProgram, 'u_renderOrder');
   for (const run of triangles.runs) {
     setCulling(gl, run.doubleSided);
-    gl.polygonOffset(RENDER_ORDER_OFFSET.factor * run.renderOrder, RENDER_ORDER_OFFSET.units * run.renderOrder);
+    gl.uniform1f(renderOrder, run.renderOrder);
     gl.drawArrays(gl.TRIANGLES, run.first * 3, run.count * 3);
   }
-  gl.disable(gl.POLYGON_OFFSET_FILL);
   gl.disable(gl.CULL_FACE);
   gl.bindVertexArray(null);
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, target);
+  gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+  gl.blitFramebuffer(0, 0, size, size, 0, 0, size, size, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+
+/**
+ * The camera pass draws into its own RGBA8 + DEPTH_COMPONENT24 target: the default framebuffer may have a 16-bit
+ * depth buffer (WebGL guarantees only that), whose step over DEPTH_RANGE (about 0.003 units) is coarser than
+ * RENDER_ORDER_TIE_DISTANCE; 24 bits give about 1.2e-5 units.
+ */
+function createCameraTarget(gl: WebGL2RenderingContext, size: number): WebGLFramebuffer {
+  const framebuffer = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+  for (const [format, attachment] of [
+    [gl.RGBA8, gl.COLOR_ATTACHMENT0],
+    [gl.DEPTH_COMPONENT24, gl.DEPTH_ATTACHMENT],
+  ] as const) {
+    const buffer = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, buffer);
+    gl.renderbufferStorage(gl.RENDERBUFFER, format, size, size);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, attachment, gl.RENDERBUFFER, buffer);
+  }
+  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+    throw new Error('RGBA8 + DEPTH_COMPONENT24 camera target is incomplete');
+  }
+  return framebuffer;
 }
 
 /** Single-sided runs show only their front (counter-clockwise) side, to the camera and to the light alike. */
@@ -93,7 +124,7 @@ function buildVertex(stage: string): string {
 
 function buildFragment(stage: string, shaded: boolean): string {
   const includes = [precisionSource, texelAlphaSource];
-  return buildShader(stage, shaded ? [...includes, shadeSource] : includes, MODEL_SHADER_DEFINES);
+  return buildShader(stage, shaded ? [...includes, shadeSource, cameraRaySource] : includes, MODEL_SHADER_DEFINES);
 }
 
 /** Attribute `index` of this list is `layout(location = index)` in model.vert.glsl. */
@@ -101,10 +132,14 @@ function createVertexArray(gl: WebGL2RenderingContext, triangles: SceneTriangles
   const n = triangles.count * 3;
   const rects = new Float32Array(n * 4);
   const materials = new Int32Array(n);
+  const corners = [0, 1, 2].map(() => new Float32Array(n * 3));
   for (let t = 0; t < triangles.count; t++) {
     for (let c = 0; c < 3; c++) {
       rects.set(triangles.rects.subarray(t * 4, t * 4 + 4), (t * 3 + c) * 4);
       materials[t * 3 + c] = triangles.materials[t] ?? 0;
+      corners.forEach((array, k) =>
+        array.set(triangles.positions.subarray(t * 9 + k * 3, t * 9 + k * 3 + 3), (t * 3 + c) * 3),
+      );
     }
   }
   const vao = gl.createVertexArray();
@@ -115,6 +150,7 @@ function createVertexArray(gl: WebGL2RenderingContext, triangles: SceneTriangles
     [triangles.uvs, 2],
     [rects, 4],
     [materials, 1],
+    ...corners.map((array): [Float32Array, number] => [array, 3]),
   ];
   attributes.forEach(([data, components], index) => {
     const buffer = gl.createBuffer();

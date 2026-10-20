@@ -42,6 +42,11 @@ const PROBES: Readonly<Record<ModelViewModel, readonly ProbeRequest[]>> = {
     { name: 'under-in-front', mesh: 'under-in-front', uv: [3.5, 1.5] },
     { name: 'over-behind', mesh: 'over-behind', uv: [3.5, 1.5] },
     { name: 'behind', mesh: 'behind', uv: [3.5, 1.5] },
+    // Facing the eye, in_front farther by 2 x RENDER_ORDER_TIE_DISTANCE (the nearer shows) and by 0.5 x (in_front shows).
+    { name: 'gap-near', mesh: 'gap-near', uv: [3.5, 1.5] },
+    { name: 'gap-far-in-front', mesh: 'gap-far-in-front', uv: [3.5, 1.5] },
+    { name: 'tie-near', mesh: 'tie-near', uv: [3.5, 1.5] },
+    { name: 'tie-far-in-front', mesh: 'tie-far-in-front', uv: [3.5, 1.5] },
   ],
 };
 
@@ -60,7 +65,7 @@ window.__msFixture = api;
 
 async function start(): Promise<void> {
   const variant = parseModelViewVariant(location.search);
-  const ctx = createContext(SIZE, { depth: variant.mode === 'raster' });
+  const ctx = createContext(SIZE);
   const { gl } = ctx;
   api.renderer = ctx.renderer;
   api.floatRenderTargets = ctx.floatRenderTargets;

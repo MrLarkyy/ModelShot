@@ -4,6 +4,7 @@ import alphaPlane from '../../../packages/formats/test/fixtures/bbmodel/alpha-pl
 import meshShapes from '../../../packages/formats/test/fixtures/bbmodel/mesh-shapes.bbmodel?raw';
 import precision from '../fixtures/shaders/include/precision.glsl?raw';
 import {
+  MODEL_VIEW_LOOK,
   invert,
   lightViewProjection,
   cameraViewProjection,
@@ -15,6 +16,8 @@ import { sceneTriangles } from '../fixtures/src/sceneTriangles';
 import { RENDER_ORDER_TIE_DISTANCE } from '@modelshot/scene';
 import texelAlpha from '../fixtures/shaders/include/texelAlpha.glsl?raw';
 import raycast from '../fixtures/shaders/raycast.frag.glsl?raw';
+import cameraRay from '../fixtures/shaders/include/cameraRay.glsl?raw';
+import modelFragment from '../fixtures/shaders/model.frag.glsl?raw';
 import { MODEL_SHADER_DEFINES } from '../fixtures/src/modelShaderDefines';
 import { checkTableLimits, MAX_MATERIALS, MODE_CODES } from '../fixtures/src/sceneUpload';
 import { buildShader } from '../fixtures/src/shaderSource';
@@ -58,14 +61,18 @@ describe('buildShader', () => {
       MODE_MASK: { int: MODE_CODES.mask },
       MODE_BLEND: { int: MODE_CODES.blend },
       RENDER_ORDER_TIE: { float: RENDER_ORDER_TIE_DISTANCE },
+      SHADOW_NORMAL_OFFSET: { float: MODEL_VIEW_LOOK.shadowNormalOffset },
+      DEPTH_RANGE: { float: MODEL_VIEW_LOOK.far },
     });
-    for (const source of [texelAlpha, raycast]) {
+    for (const source of [texelAlpha, raycast, modelFragment, cameraRay]) {
       for (const name of Object.keys(MODEL_SHADER_DEFINES)) {
         expect(source, name).not.toMatch(new RegExp(`(const\\s+\\w+\\s+${name}\\b|#define\\s+${name}\\b)`));
       }
     }
     expect(texelAlpha).toMatch(/MAX_MATERIALS/);
-    expect(raycast).toMatch(/RENDER_ORDER_TIE/);
+    expect(cameraRay).toMatch(/RENDER_ORDER_TIE/);
+    expect(modelFragment).toMatch(/SHADOW_NORMAL_OFFSET/);
+    expect(raycast).toMatch(/SHADOW_NORMAL_OFFSET/);
   });
 
   it('rejects a stage without the version line and an include that declares one', () => {

@@ -1,7 +1,7 @@
 /**
- * Two surfaces whose distances along a ray differ by at most this many model units (1/16 000 of a block) are
- * coincident: the one with the higher `SceneMesh.renderOrder` wins; at equal order the nearer one. Farther apart, the
- * nearer surface always wins. A rasteriser realises the same rule with a per-order polygon offset, which separates
- * coincident surfaces by far less than this distance.
+ * Each render-order step pulls a surface this many model units (1/16 000 of a block) nearer along the ray: every
+ * renderer shows the smallest `distance − renderOrder × RENDER_ORDER_TIE_DISTANCE`, so for orders one step apart the
+ * higher one wins within this distance and the nearer one beyond it. Ray tracers apply it to the hit distance,
+ * rasterisers to a per-fragment ray distance written as depth (see docs/scene-format.md).
  */
 export const RENDER_ORDER_TIE_DISTANCE = 1e-3;
