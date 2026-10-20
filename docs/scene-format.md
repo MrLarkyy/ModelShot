@@ -36,8 +36,14 @@ import type { SceneDocument } from '@modelshot/scene';
 | `pose?`         | `ScenePose`                                                                        | last `poseScene` pose; absent: none applied |
 | `attachments?`  | `SceneAttachment[]`                                                                | models merged under a bone; absent: none    |
 
-`source.format` is `'player'` for a document built by `createPlayerModel` ([player.md](player.md)); its
-`formatVersion` is the skin layout (`'64x64'` or `'64x32'`) and `modelFormat` the arms (`'classic'` or `'slim'`).
+`source` per format (`SceneSourceFormat`):
+
+| `format`    | from                                               | `formatVersion`                      | `modelFormat`                                               |
+| ----------- | -------------------------------------------------- | ------------------------------------ | ----------------------------------------------------------- |
+| `'bbmodel'` | `loadBbmodel` ([bbmodel.md](bbmodel.md))           | `meta.format_version`, e.g. `'4.10'` | Blockbench project format (`'free'`, …), `'unknown'` absent |
+| `'gltf'`    | `loadGltf`, `.gltf` or `.glb` ([gltf.md](gltf.md)) | `asset.version`, e.g. `'2.0'`        | the container, `'gltf'` or `'glb'`                          |
+| `'obj'`     | `loadObj` ([obj.md](obj.md))                       | `''` (OBJ has no version)            | `'obj'`                                                     |
+| `'player'`  | `createPlayerModel` ([player.md](player.md))       | skin layout, `'64x64'` or `'64x32'`  | the arms, `'classic'` or `'slim'`                           |
 
 ### `SceneNode`
 
@@ -137,10 +143,6 @@ from the PNG header. UVs were normalised by `uvWidth` × `uvHeight`, the model's
 covers `width / uvWidth` pixels (a 32×32 image on a 16×16 UV space has 2×2 pixels per unit). A texture the model
 references but whose image was neither embedded nor supplied has `missing: true`, `bytes: null` and size 0; renderers
 show a placeholder.
-
-`source.formatVersion` is the source file's version: `meta.format_version` of a `.bbmodel` (e.g. `"4.10"`),
-`asset.version` of a glTF (`"2.0"`), `""` for OBJ. `source.modelFormat` is the Blockbench project format (`"free"`,
-`"bedrock"`, …, `"unknown"` when absent), the glTF container (`"gltf"` or `"glb"`), or `"obj"`.
 
 ## Poses
 

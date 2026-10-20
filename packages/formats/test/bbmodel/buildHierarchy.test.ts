@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildHierarchy } from '../../src/bbmodel/buildHierarchy';
 import { DEFAULT_BBMODEL_LIMITS } from '../../src/bbmodel/BbmodelLoadOptions';
 import { BbmodelWarningList } from '../../src/bbmodel/BbmodelWarning';
-import type { JsonObject } from '../../src/bbmodel/JsonFields';
+import type { JsonObject } from '../../src/json/JsonObject';
 
 const ids = new Map([
   ['a', 0],

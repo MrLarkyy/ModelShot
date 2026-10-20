@@ -2,16 +2,14 @@ import type { Vec3 } from '@modelshot/scene';
 import { BbmodelError } from './BbmodelError';
 import type { BbmodelLimits } from './BbmodelLoadOptions';
 import type { BbmodelWarningList } from './BbmodelWarning';
+import { childPath, field, type JsonObject } from '../json/JsonObject';
 import {
-  childPath,
-  field,
   readArray,
   readObject,
   readOptionalBoolean,
   readOptionalString,
   readOptionalVec3,
   readString,
-  type JsonObject,
 } from './JsonFields';
 import { quoteValue } from '../text/quoteValue';
 

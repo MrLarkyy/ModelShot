@@ -3,12 +3,10 @@ import { BbmodelError, type BbmodelErrorCode } from './BbmodelError';
 import { childPath, field, isJsonObject, type JsonObject } from '../json/JsonObject';
 import { quoteValue } from '../text/quoteValue';
 
-/**
+/*
  * Path-aware readers for parsed, untrusted Blockbench JSON; every bad value is a `BbmodelError` naming its JSON path.
- * The format-neutral helpers (`JsonObject`, `isJsonObject`, `field`, `childPath`) come from `json/JsonObject.ts` and
- * are re-exported for the Blockbench modules.
+ * The format-neutral helpers (`JsonObject`, `isJsonObject`, `field`, `childPath`) live in `json/JsonObject.ts`.
  */
-export { childPath, field, isJsonObject, type JsonObject };
 
 /** Coordinates beyond this are rejected: they would overflow Float32 maths or hide an Infinity. */
 export const MAX_ABS_NUMBER = 1e7;

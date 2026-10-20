@@ -1,6 +1,6 @@
 import { BbmodelError } from './BbmodelError';
 import type { ConverterContext } from './ElementConverter';
-import { childPath, field, type JsonObject } from './JsonFields';
+import { childPath, field, type JsonObject } from '../json/JsonObject';
 import { quoteValue } from '../text/quoteValue';
 
 /**
