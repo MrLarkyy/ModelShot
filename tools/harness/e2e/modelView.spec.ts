@@ -6,6 +6,7 @@ import { compareImages, type CompareOptions } from '../src/compareImages';
 import { expectGolden, openFixture, renderFixture } from '../src/expectGolden';
 import type { RasterGoldenSpec } from '../src/goldenSpec';
 import { expect, test } from '../src/harnessTest';
+import { hueMatch, luminance } from '../src/imageMetrics';
 import type { ModelViewProbe } from '../fixtures/src/fixtureApi';
 
 const variant = (name: string): RasterGoldenSpec => ({ kind: 'raster', fixture: 'model-view', name, variant: name });
@@ -69,14 +70,6 @@ function pixel(png: PNG, probe: ModelViewProbe | undefined): [number, number, nu
   expect(probe.x >= 0 && probe.x < png.width && probe.y >= 0 && probe.y < png.height, probe.name).toBe(true);
   const i = (probe.y * png.width + probe.x) * 4;
   return [png.data[i] ?? 0, png.data[i + 1] ?? 0, png.data[i + 2] ?? 0];
-}
-
-const luminance = ([r, g, b]: readonly number[]): number => 0.2126 * (r ?? 0) + 0.7152 * (g ?? 0) + 0.0722 * (b ?? 0);
-
-/** Cosine between two RGB colours: lighting scales a texel's colour, so its direction stays. */
-function hueMatch(a: readonly number[], b: readonly number[]): number {
-  const dot = [0, 1, 2].reduce((s, k) => s + (a[k] ?? 0) * (b[k] ?? 0), 0);
-  return dot / (Math.hypot(a[0] ?? 0, a[1] ?? 0, a[2] ?? 0) * Math.hypot(b[0] ?? 0, b[1] ?? 0, b[2] ?? 0));
 }
 
 test.describe('model-view fixture', () => {

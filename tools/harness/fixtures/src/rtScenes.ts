@@ -87,7 +87,8 @@ export type RtLook =
   | 'cube-grazing-1'
   | 'cube-grazing-5'
   | 'cube-inside'
-  | 'ramp';
+  | 'ramp'
+  | 'flat-shadow';
 
 /** Fixed cameras: the model-view fixture's (same image positions as its probes) and two views of a horizontal pair. */
 const LOOKS: Readonly<Record<RtLook, { eye: Point3; target: Point3; near: number; far: number }>> = {
@@ -111,6 +112,8 @@ const LOOKS: Readonly<Record<RtLook, { eye: Point3; target: Point3; near: number
     near: 5,
     far: 40,
   },
+  // From the north, above: the ground north of alpha-plane's flat cube, where the key light casts its shadow.
+  'flat-shadow': { eye: [10, 40, -30], target: [10, 0, 6], near: 5, far: 120 },
 };
 
 export const DEFAULT_RT_VIEW: RtView = {
@@ -141,6 +144,10 @@ export const RT_VARIANTS: Readonly<Record<string, Partial<RtView>>> = {
   far: { yawDeg: 30, zoom: 3 },
   fallback: { yawDeg: 30, fallback: true },
   'fit-flat-cube': { scene: 'flat', yawDeg: 30, pitchDeg: 20 },
+  // The model-view scenes and the alpha ramp under their fixed cameras (path-tracer goldens and preview pairs).
+  'alpha-plane': { scene: 'alpha-plane', look: 'model-view' },
+  'render-order': { scene: 'render-order', look: 'model-view' },
+  'alpha-ramp-blend': { scene: 'alpha-ramp-blend', look: 'ramp' },
 };
 
 function load(source: string): SceneDocument {
