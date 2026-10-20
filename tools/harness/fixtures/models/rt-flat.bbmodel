@@ -1,0 +1,104 @@
+{
+  "meta": {
+    "format_version": "4.10",
+    "model_format": "free",
+    "box_uv": false
+  },
+  "name": "rt-flat",
+  "resolution": {
+    "width": 32,
+    "height": 32
+  },
+  "elements": [
+    {
+      "name": "plate",
+      "type": "cube",
+      "uuid": "e-plate",
+      "from": [
+        -8,
+        0,
+        -8
+      ],
+      "to": [
+        8,
+        0,
+        8
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "texture": null
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "texture": null
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "texture": null
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "texture": null
+        },
+        "up": {
+          "uv": [
+            9,
+            1,
+            15,
+            7
+          ],
+          "texture": 0
+        },
+        "down": {
+          "uv": [
+            1,
+            9,
+            7,
+            15
+          ],
+          "texture": 0
+        }
+      }
+    }
+  ],
+  "outliner": [
+    "e-plate"
+  ],
+  "textures": [
+    {
+      "name": "rt-atlas.png",
+      "uuid": "t-atlas",
+      "width": 32,
+      "height": 32,
+      "uv_width": 32,
+      "uv_height": 32,
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAACo0lEQVR4AcXBP4jbVgDA4d97eDA3HKKIoEGYGzzcCaqhpId4hDQYx9DFU4eUtkunxNCtwxEouiMQMnQruBkL/Zch0y2BSzFpCUK4mRxQTfFwGA3GGCM6HDf1VaJSUA85oYWevk9otKZGDVJP9/fI2N0GZXv3X5L5cPges8mKtmuSmU1WtF2THwc/k/nig3epcu/xr2S+Hn5FJghClPIo3Bl8hiTnPLDY7ppsd022uyav8+JhJCiJ5gnRPCGaJ0TzhGieEM0TLlLKIxMEIQVJyu42KNidZ4IKbdfky11J5tbwuqbEaRk4LQOnZZBxWgZOy6AQBCFlSnkUJCV255mIRzc0FR4NfhGfT/8kM5us2MRpGVyklEchCELKGpTEoxuaDW4Nr2tSs8mKtmtSFs0T3iQIQpTyUMqjrEHuj59WFH74vQk0ucffZpMVbdck03ZNMp9+s6TgtAyieYLTMviHMa8o5VF2bO9yBxAaramRpGYNUp98/BFVvv3uezICIUid7O9qUr3xVJDSaE1KIER8OtGU2Duu0GhN6re7b1Nl7/5LGuSU8giCkE1O9ne188Aic3KA7o2nglx8OtHHiytHlMSnE80Or7xlG0eUrOPEJyXJBUFIQSmPi3rjqYgOFkQHC3rjqeA/sAbPD63B80NKJBWCIKRKbzwVd9+RbNK3lj7/kqREKY9Nrt52NG9wvLhyxGsshtcOF8Nrh5RISoIgZJMXDyNx9bajqWDvuKJvLf2+tfT71tLvW0vf3nEFJes48ddx4q/jxF/HiU9OaLSmRpKaNUi9f/yUKk/6N/m/SXLnoy0K56MtLosk1+ycUWh2zrgskppJcuejLQrnoy0uiyTX7JxRaHbOuCwNUk/6N6mLpGaSmklqJqmZpGaSmklqJqnZX8NS4U23u6lMAAAAAElFTkSuQmCC"
+    }
+  ]
+}

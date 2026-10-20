@@ -8,6 +8,31 @@ export interface MsFixture {
   readRGBA: () => string;
   renderFrames?: (count: number) => number[];
   timeToSamples?: (samples: number) => number;
+  rt?: RtControls;
+}
+
+/** Extra controls of the realtime renderer fixture (rt.html). */
+export interface RtControls {
+  readonly path: 'float' | 'fallback';
+  readonly msaaSamples: number;
+  readonly warnings: readonly { readonly code: string; readonly texture: number }[];
+  readonly contextLost: boolean;
+  /** Live WebGL objects and open ImageBitmaps; -1 unless the page was opened with track=1. */
+  liveGlObjects: () => number;
+  openBitmaps: () => number;
+  render: () => void;
+  /** WEBGL_lose_context: resolves once the context is lost, or restored and redrawn. */
+  lose: () => Promise<void>;
+  restore: () => Promise<void>;
+  dispose: () => void;
+  /** Calls setScene for every name at once; resolves with which calls were applied. */
+  setScenes: (names: string[]) => Promise<boolean[]>;
+  /** Starts a setScene, disposes the renderer before it finishes; resolves with whether it was applied. */
+  disposeDuringDecode: () => Promise<boolean>;
+  /** Image position (pixels, top-left origin) of a world point under the current camera. */
+  project: (x: number, y: number, z: number) => [number, number];
+  /** Sets the canvas CSS size; resolves after the resize observer resized the backing store and redrew. */
+  setCssSize: (width: number, height: number) => Promise<void>;
 }
 
 declare global {
