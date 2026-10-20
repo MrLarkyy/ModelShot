@@ -1,4 +1,4 @@
-import { worldMatrices, type SceneDocument } from '@modelshot/scene';
+import { meshVisible, nodeVisibility, worldMatrices, type SceneDocument } from '@modelshot/scene';
 import { batchScene, type BatchAlpha, type SceneBatch } from './batchScene';
 import { hasPartialCoverage, type AlphaLevels } from './textureUpload';
 
@@ -15,6 +15,14 @@ export interface DrawItem {
   /** Single-sided: back faces culled in every pass. */
   readonly cull: boolean;
   readonly renderOrder: number;
+  /** The batch's geometry, kept to build the de-indexed copy of the exact depth key on first use. */
+  readonly batch: SceneBatch;
+}
+
+/** De-indexed geometry with per-vertex triangle corners, built only when a frame needs the exact depth key. */
+export interface ExactGeometry {
+  readonly vaos: ReadonlyMap<SceneBatch, WebGLVertexArrayObject>;
+  readonly buffers: readonly WebGLBuffer[];
 }
 
 export interface GpuScene {
@@ -24,6 +32,9 @@ export interface GpuScene {
   readonly opaque: readonly DrawItem[];
   /** Batches with a partially covered texel under their alpha rule, drawn again by the transparency pass. */
   readonly partial: readonly DrawItem[];
+  /** Some visible mesh has a non-zero renderOrder: every frame uses the exact depth key. */
+  readonly hasRenderOrder: boolean;
+  exact: ExactGeometry | null;
 }
 
 /** Attribute locations of `mesh.vert.glsl`. */
@@ -80,6 +91,7 @@ export function uploadScene(
       alpha: batch.alpha,
       cull: !batch.doubleSided,
       renderOrder: batch.renderOrder,
+      batch,
     };
     opaque.push(item);
     const levels = batch.texture >= 0 ? alphaLevels[batch.texture] : null;
@@ -88,10 +100,64 @@ export function uploadScene(
   gl.bindBuffer(gl.ARRAY_BUFFER, null);
   // Stable: within one render order the document order stays.
   const byOrder = (a: DrawItem, b: DrawItem) => b.renderOrder - a.renderOrder;
-  return { vaos, buffers, opaque: opaque.sort(byOrder), partial: partial.sort(byOrder) };
+  const visibility = nodeVisibility(doc);
+  const hasRenderOrder = doc.meshes.some(
+    (mesh, index) => (mesh.renderOrder ?? 0) !== 0 && meshVisible(doc, index, visibility),
+  );
+  return { vaos, buffers, opaque: opaque.sort(byOrder), partial: partial.sort(byOrder), hasRenderOrder, exact: null };
+}
+
+/** Corner attribute locations of `mesh.vert.glsl`. */
+const CORNER_LOCATIONS = [4, 5, 6] as const;
+
+/**
+ * Uploads every batch again without indices, each vertex carrying its triangle's three corners, for the exact depth
+ * key; drawn with `drawArrays`. Built once per scene, on the first frame that needs it.
+ */
+export function uploadExactGeometry(gl: WebGL2RenderingContext, scene: GpuScene): ExactGeometry {
+  const vaos = new Map<SceneBatch, WebGLVertexArrayObject>();
+  const buffers: WebGLBuffer[] = [];
+  for (const { batch } of scene.opaque) {
+    if (vaos.has(batch)) continue;
+    const n = batch.indices.length;
+    const arrays: Record<(typeof ATTRIBUTES)[number]['key'], Float32Array> = {
+      positions: new Float32Array(n * 3),
+      normals: new Float32Array(n * 3),
+      uvs: new Float32Array(n * 2),
+      uvRects: new Float32Array(n * 4),
+    };
+    const corners = CORNER_LOCATIONS.map(() => new Float32Array(n * 3));
+    for (let i = 0; i < n; i++) {
+      const v = batch.indices[i] ?? 0;
+      for (const { size, key } of ATTRIBUTES) arrays[key].set(batch[key].subarray(v * size, v * size + size), i * size);
+      const first = i - (i % 3);
+      corners.forEach((corner, c) => {
+        const cv = batch.indices[first + c] ?? 0;
+        corner.set(batch.positions.subarray(cv * 3, cv * 3 + 3), i * 3);
+      });
+    }
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    const attribute = (location: number, size: number, data: Float32Array): void => {
+      const buffer = gl.createBuffer();
+      buffers.push(buffer);
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(location);
+      gl.vertexAttribPointer(location, size, gl.FLOAT, false, 0, 0);
+    };
+    for (const { location, size, key } of ATTRIBUTES) attribute(location, size, arrays[key]);
+    CORNER_LOCATIONS.forEach((location, c) => attribute(location, 3, corners[c] ?? new Float32Array(0)));
+    gl.bindVertexArray(null);
+    vaos.set(batch, vao);
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, null);
+  return { vaos, buffers };
 }
 
 export function disposeGpuScene(gl: WebGL2RenderingContext, scene: GpuScene): void {
   for (const vao of scene.vaos) gl.deleteVertexArray(vao);
   for (const buffer of scene.buffers) gl.deleteBuffer(buffer);
+  for (const vao of scene.exact?.vaos.values() ?? []) gl.deleteVertexArray(vao);
+  for (const buffer of scene.exact?.buffers ?? []) gl.deleteBuffer(buffer);
 }

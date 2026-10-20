@@ -1,7 +1,9 @@
 import { linkShader, lookShaderChunks, type ShaderChunks } from '@modelshot/looks';
 import type { DepthKeyMode } from './depthKeyMode';
 import backdropFrag from './shaders/backdrop.frag.glsl?raw';
-import depthKeyLinear from './shaders/depthKeyLinear.glsl?raw';
+import depthKeyExact from './shaders/depthKeyExact.glsl?raw';
+import depthKeyVertexExact from './shaders/depthKeyVertexExact.glsl?raw';
+import depthKeyVertexRaster from './shaders/depthKeyVertexRaster.glsl?raw';
 import depthKeyRaster from './shaders/depthKeyRaster.glsl?raw';
 import fallbackFrag from './shaders/fallback.frag.glsl?raw';
 import fullscreenVert from './shaders/fullscreen.vert.glsl?raw';
@@ -29,10 +31,10 @@ export const RENDERER_SHADER_CHUNKS: ShaderChunks = Object.freeze({
   hashAlpha,
 });
 
-/** `#include "depthKey"` per depth-key variant of the mesh passes. */
+/** `#include "depthKey"` (fragment) and `#include "depthKeyVertex"` per depth-key variant of the mesh passes. */
 const DEPTH_KEY_CHUNKS: Readonly<Record<DepthKeyMode, ShaderChunks>> = {
-  raster: Object.freeze({ ...RENDERER_SHADER_CHUNKS, depthKey: depthKeyRaster }),
-  linear: Object.freeze({ ...RENDERER_SHADER_CHUNKS, depthKey: depthKeyLinear }),
+  raster: Object.freeze({ ...RENDERER_SHADER_CHUNKS, depthKey: depthKeyRaster, depthKeyVertex: depthKeyVertexRaster }),
+  exact: Object.freeze({ ...RENDERER_SHADER_CHUNKS, depthKey: depthKeyExact, depthKeyVertex: depthKeyVertexExact }),
 };
 
 const PROGRAMS: Readonly<Record<ShaderProgramName, readonly [string, string]>> = {
@@ -44,7 +46,7 @@ const PROGRAMS: Readonly<Record<ShaderProgramName, readonly [string, string]>> =
   backdrop: [fullscreenVert, backdropFrag],
 };
 
-/** Linked GLSL of one program; mesh passes come in a `raster` (default) and a `linear` depth-key variant. */
+/** Linked GLSL of one program; mesh passes come in a `raster` (default) and an `exact` depth-key variant. */
 export function shaderProgramSource(name: ShaderProgramName, depthKey: DepthKeyMode = 'raster'): ShaderProgramSource {
   const [vertex, fragment] = PROGRAMS[name];
   const chunks = DEPTH_KEY_CHUNKS[depthKey];

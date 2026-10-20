@@ -43,7 +43,7 @@ export interface RtControls {
   setScenes: (names: string[]) => Promise<boolean[]>;
   /** Starts a setScene, disposes the renderer before it finishes; resolves with whether it was applied. */
   disposeDuringDecode: () => Promise<boolean>;
-  /** Depth-key variant (`raster` or `linear`) the renderer uses for the current camera and path. */
+  /** Depth-key variant (`raster` or `exact`) of the last frame, `none` before one. */
   depthKeyMode: () => string;
   /** Image position (pixels, top-left origin) of a world point under the current camera. */
   project: (x: number, y: number, z: number) => [number, number];

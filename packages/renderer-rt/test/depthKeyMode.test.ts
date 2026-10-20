@@ -9,6 +9,7 @@ import {
 } from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
 import { depthKeyMode, depthPull, depthStepAtFar } from '../src/depthKeyMode';
+import { invertMat4 } from '../src/invertMat4';
 
 const perspective = (near: number, far: number): SceneCamera => ({
   position: [0, 0, 60],
@@ -35,13 +36,35 @@ describe('depthKeyMode', () => {
       radius: 20,
     });
     expect(inside.near).toBeCloseTo(inside.far * 1e-4, 9);
-    expect(depthKeyMode(perspective(inside.near, inside.far), 24)).toBe('linear');
+    expect(depthKeyMode(perspective(inside.near, inside.far), 24)).toBe('exact');
   });
 
   it('an orthographic camera rasterises; a 16-bit depth buffer needs linear', () => {
     const ortho = { ...perspective(1, 120), projection: { kind: 'orthographic', height: 40 } } as const;
     expect(depthKeyMode(ortho, 24)).toBe('raster');
-    expect(depthKeyMode(perspective(40, 80), 16)).toBe('linear');
+    expect(depthKeyMode(perspective(40, 80), 16)).toBe('exact');
+  });
+
+  it('a scene with a non-zero render order always gets the exact key, framed or not', () => {
+    expect(depthKeyMode(perspective(40, 80), 24, true)).toBe('exact');
+    expect(depthKeyMode(perspective(40, 80), 24, false)).toBe('raster');
+  });
+
+  it('invertMat4 inverts perspective and orthographic projections', () => {
+    for (const camera of [
+      perspective(0.01, 120),
+      { ...perspective(1, 50), projection: { kind: 'orthographic', height: 9 } } as const,
+    ]) {
+      const p = cameraProjection(camera, 1.3);
+      const inverse = invertMat4(p);
+      for (let col = 0; col < 4; col++) {
+        for (let row = 0; row < 4; row++) {
+          let sum = 0;
+          for (let k = 0; k < 4; k++) sum += (p[k * 4 + row] ?? 0) * (inverse[col * 4 + k] ?? 0);
+          expect(sum).toBeCloseTo(col === row ? 1 : 0, 6);
+        }
+      }
+    }
   });
 
   it('the step at the far plane follows the projection', () => {

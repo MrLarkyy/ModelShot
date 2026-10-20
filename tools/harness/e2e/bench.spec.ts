@@ -28,6 +28,16 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
     return fixture.renderFrames(30);
   });
 
+  // The same scene with one mesh at render order 1: every frame uses the exact depth key (gl_FragDepth).
+  await openFixture(page, '/rt.html?scene=bench-order&size=512');
+  expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('exact');
+  const rtOrderFrames = await page.evaluate(() => {
+    const fixture = window.__msFixture;
+    if (!fixture?.renderFrames) throw new Error('frame bench missing');
+    fixture.renderFrames(5);
+    return fixture.renderFrames(30);
+  });
+
   await openFixture(page, '/progressive.html?seed=7&samples=64');
   const runs = await page.evaluate(() => {
     const fixture = window.__msFixture;
@@ -38,7 +48,11 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
   const [app, embed] = await Promise.all([measureBundle('app'), measureBundle('embed')]);
 
   const measured: Measured = {
-    frameTimeMs: { 'gradient-256': median(frames), 'rt-bench-512': median(rtFrames) },
+    frameTimeMs: {
+      'gradient-256': median(frames),
+      'rt-bench-512': median(rtFrames),
+      'rt-bench-order-512': median(rtOrderFrames),
+    },
     timeToSamplesMs: { 'progressive-256-n64': median(runs) },
     bundleGzipBytes: { app: app.gzipBytes, embed: embed.gzipBytes },
   };

@@ -10,6 +10,8 @@ export interface MeshProgram {
   readonly depthPull: WebGLUniformLocation | null;
   readonly orderPull: WebGLUniformLocation | null;
   readonly far: WebGLUniformLocation | null;
+  readonly inverseProjection: WebGLUniformLocation | null;
+  readonly viewportSize: WebGLUniformLocation | null;
   readonly texture: WebGLUniformLocation | null;
   readonly texelAntialias: WebGLUniformLocation | null;
   readonly alphaMode: WebGLUniformLocation | null;
@@ -37,7 +39,7 @@ const FULLSCREEN_UNIFORMS: Readonly<Record<'oitComposite' | 'present' | 'backdro
   backdrop: ['u_background'],
 };
 
-const DEPTH_KEY_MODES: readonly DepthKeyMode[] = ['raster', 'linear'];
+const DEPTH_KEY_MODES: readonly DepthKeyMode[] = ['raster', 'exact'];
 
 export function createRendererPrograms(gl: WebGL2RenderingContext, floatPath: boolean): RendererPrograms {
   const all: WebGLProgram[] = [];
@@ -59,6 +61,8 @@ export function createRendererPrograms(gl: WebGL2RenderingContext, floatPath: bo
         depthPull: at('u_depthPull'),
         orderPull: at('u_orderPull'),
         far: at('u_far'),
+        inverseProjection: at('u_inverseProjection'),
+        viewportSize: at('u_viewportSize'),
         texture: at('u_texture'),
         texelAntialias: at('u_texelAntialias'),
         alphaMode: at('u_alphaMode'),
@@ -75,8 +79,8 @@ export function createRendererPrograms(gl: WebGL2RenderingContext, floatPath: bo
     const passes = (names: readonly MeshPassName[]): RendererPrograms['meshPasses'] => {
       const variant = (depthKey: DepthKeyMode) =>
         Object.fromEntries(names.map((name) => [name, meshProgram(name, depthKey)]));
-      const [raster, linear] = DEPTH_KEY_MODES.map(variant);
-      return { raster: raster ?? {}, linear: linear ?? {} };
+      const [raster, exact] = DEPTH_KEY_MODES.map(variant);
+      return { raster: raster ?? {}, exact: exact ?? {} };
     };
     if (floatPath) {
       return {

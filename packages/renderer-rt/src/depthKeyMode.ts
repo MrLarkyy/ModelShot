@@ -1,11 +1,12 @@
 import { RENDER_ORDER_TIE_DISTANCE, type Mat4, type SceneCamera } from '@modelshot/scene';
 
 /**
- * How a frame realises the render-order key (view depth − order × RENDER_ORDER_TIE_DISTANCE): `raster` pulls each
- * vertex along the view axis and lets the depth buffer compare (early-z, MSAA edges intact); `linear` writes the key
- * as the fragment depth, for frames whose depth buffer cannot resolve the tie distance.
+ * How a frame realises the scene format's render-order key (view depth − order × RENDER_ORDER_TIE_DISTANCE):
+ * `raster` pulls each vertex along the view axis and lets the depth buffer compare (early depth testing and per-sample
+ * MSAA depth intact, but only as exact as the rasteriser's depth interpolation); `exact` computes the key per fragment
+ * from the pixel's ray and the triangle's plane and writes it as the fragment depth.
  */
-export type DepthKeyMode = 'raster' | 'linear';
+export type DepthKeyMode = 'raster' | 'exact';
 
 /** Model units between two adjacent depth-buffer values at the far plane, the coarsest point of the range. */
 export function depthStepAtFar(camera: Pick<SceneCamera, 'near' | 'far' | 'projection'>, depthBits: number): number {
@@ -16,15 +17,18 @@ export function depthStepAtFar(camera: Pick<SceneCamera, 'near' | 'far' | 'proje
 }
 
 /**
- * `raster` while the depth step at the far plane stays within a quarter of the tie distance (a framed camera), else
- * `linear` (a camera inside the model's bounding sphere, near = far × 1e-4, or a 16-bit depth buffer). Pure: the same
- * camera and depth bits always pick the same mode.
+ * `exact` when the scene has a mesh with a non-zero render order (decided once per scene upload: interpolated depth
+ * cannot hold the tie between coincident surfaces of different triangulation), or when the depth buffer cannot
+ * resolve the tie distance at the far plane (step above a quarter of it: a camera inside the model's bounding sphere,
+ * near = far × 1e-4, or a 16-bit depth buffer); else `raster`. Pure: the same inputs always pick the same mode.
  */
 export function depthKeyMode(
   camera: Pick<SceneCamera, 'near' | 'far' | 'projection'>,
   depthBits: number,
+  sceneHasRenderOrder = false,
 ): DepthKeyMode {
-  return depthStepAtFar(camera, depthBits) > RENDER_ORDER_TIE_DISTANCE / 4 ? 'linear' : 'raster';
+  if (sceneHasRenderOrder) return 'exact';
+  return depthStepAtFar(camera, depthBits) > RENDER_ORDER_TIE_DISTANCE / 4 ? 'exact' : 'raster';
 }
 
 /**

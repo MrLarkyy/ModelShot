@@ -1,4 +1,4 @@
-import { depthKeyMode, observeCanvasSize, RealtimeRenderer, type RendererWarning } from '@modelshot/renderer-rt';
+import { observeCanvasSize, RealtimeRenderer, type RendererWarning } from '@modelshot/renderer-rt';
 import { cameraProjection, cameraView, mat4Multiply, type SceneDocument } from '@modelshot/scene';
 import { installFrameBench, installFrameReadout } from './bench';
 import { readDrawingBufferBase64 } from './context';
@@ -164,12 +164,7 @@ async function start(): Promise<void> {
       renderer.dispose();
       return (await pending).applied;
     },
-    depthKeyMode: () => {
-      const camera = rtCamera(doc, view, canvas.width / canvas.height);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      const bits = renderer.capabilities?.path === 'float' ? 24 : Number(gl.getParameter(gl.DEPTH_BITS));
-      return depthKeyMode(camera, bits);
-    },
+    depthKeyMode: () => renderer.depthKeyMode ?? 'none',
     project: (x, y, z) => {
       const aspect = canvas.width / canvas.height;
       const camera = rtCamera(doc, view, aspect);

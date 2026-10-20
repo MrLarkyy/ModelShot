@@ -16,6 +16,7 @@ export const RT_SCENE_NAMES = [
   'showcase',
   'flat',
   'bench',
+  'bench-order',
   'hostile-corrupt',
   'hostile-corrupt-data',
   'hostile-missing',
@@ -57,13 +58,16 @@ export interface RtView {
   readonly depth: 'framed' | 'inside';
 }
 
-export type RtLook = 'model-view' | 'above' | 'below';
+export type RtLook = 'model-view' | 'above' | 'below' | 'grazing-above' | 'grazing-below';
 
 /** Fixed cameras: the model-view fixture's (same image positions as its probes) and two views of a horizontal pair. */
 const LOOKS: Readonly<Record<RtLook, { eye: Point3; target: Point3; near: number; far: number }>> = {
   'model-view': { eye: MODEL_VIEW_LOOK.eye, target: MODEL_VIEW_LOOK.target, near: 20, far: 120 },
   above: { eye: [0, 10, 14], target: [0, 0, 0], near: 5, far: 40 },
   below: { eye: [0, -10, 14], target: [0, 0, 0], near: 5, far: 40 },
+  // About 8 degrees above and below the quads: depth changes fast across a pixel, the hard case for interpolated depth.
+  'grazing-above': { eye: [-4, 3, 20], target: [-4, 0, 0], near: 5, far: 40 },
+  'grazing-below': { eye: [-4, -3, 20], target: [-4, 0, 0], near: 5, far: 40 },
 };
 
 export const DEFAULT_RT_VIEW: RtView = {
@@ -125,6 +129,10 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return load(flatSource);
     case 'bench':
       return benchScene(load(showcaseSource));
+    case 'bench-order': {
+      const bench = benchScene(load(showcaseSource));
+      return { ...bench, meshes: bench.meshes.map((mesh, i) => (i === 0 ? { ...mesh, renderOrder: 1 } : mesh)) };
+    }
     case 'hostile-corrupt': {
       // A PNG signature followed by bytes that are no valid chunk: rejected at the header check, never decoded.
       const bytes = new Uint8Array(64).map((_, i) => (i < 8 ? [137, 80, 78, 71, 13, 10, 26, 10][i]! : (i * 37) & 255));

@@ -12,12 +12,13 @@ import { canvasSize, type CanvasCssSize, type CanvasSize } from './canvasSize';
 import { DEFAULT_MAX_TEXTURE_PIXELS_TOTAL, decodeTextures, type TextureLimits } from './decodeTextures';
 import { queryGlLimits, type GlLimits } from './glLimits';
 import { depthKeyMode, depthPull, type DepthKeyMode } from './depthKeyMode';
+import { invertMat4 } from './invertMat4';
 import { createRendererPrograms, type MeshPassName, type RendererPrograms } from './rendererPrograms';
 import { RendererError } from './RendererError';
 import type { RendererWarning } from './RendererWarning';
 import { RenderTargets } from './RenderTargets';
 import { PLACEHOLDER_IMAGE, UNTEXTURED_IMAGE, readAlphaLevels, uploadTexture, type AlphaLevels } from './textureUpload';
-import { disposeGpuScene, uploadScene, type DrawItem, type GpuScene } from './uploadScene';
+import { disposeGpuScene, uploadExactGeometry, uploadScene, type DrawItem, type GpuScene } from './uploadScene';
 import { validateScene } from './validateScene';
 
 export interface RendererOptions {
@@ -70,6 +71,7 @@ interface LoadedScene {
 interface FrameView {
   readonly view: Float32Array;
   readonly projection: Mat4;
+  readonly inverseProjection: Float32Array;
   readonly viewProjection: Float32Array;
   readonly far: number;
   readonly mode: DepthKeyMode;
@@ -99,6 +101,7 @@ export class RealtimeRenderer {
   private lost = false;
   private disposed = false;
   private dirty = true;
+  private frameDepthKey: DepthKeyMode | null = null;
   private readonly restoredListeners = new Set<() => void>();
   private readonly background: readonly [number, number, number];
 
@@ -139,6 +142,11 @@ export class RealtimeRenderer {
 
   get contextLost(): boolean {
     return this.lost;
+  }
+
+  /** Depth-key variant of the last drawn frame (`depthKeyMode`), `null` before a frame with a camera. */
+  get depthKeyMode(): DepthKeyMode | null {
+    return this.frameDepthKey;
   }
 
   /** Something changed since the last `render()`. */
@@ -208,22 +216,27 @@ export class RealtimeRenderer {
     const height = this.canvas.height;
     if (gpu.targets && !gpu.targets.ensure(width, height)) this.switchToFallback(gpu);
     const frame = this.frameView(gpu, width / height);
+    this.frameDepthKey = frame?.mode ?? null;
     if (gpu.targets) this.drawFloatPath(gpu, gpu.targets, frame);
     else this.drawFallbackPath(gpu, frame);
   }
 
-  /** The camera of this frame, and the depth-key variant its depth range needs on this path's depth buffer. */
+  /** The camera of this frame, and the depth-key variant the scene and this depth range need (`depthKeyMode`). */
   private frameView(gpu: GpuResources, aspect: number): FrameView | null {
     const camera = this.camera;
     if (!camera) return null;
     const projection = cameraProjection(camera, aspect);
     const view = cameraView(camera);
+    const depthBits = gpu.targets ? FLOAT_PATH_DEPTH_BITS : this.defaultDepthBits();
+    const mode = depthKeyMode(camera, depthBits, gpu.scene?.hasRenderOrder ?? false);
+    if (mode === 'exact' && gpu.scene && !gpu.scene.exact) gpu.scene.exact = uploadExactGeometry(this.gl, gpu.scene);
     return {
       view: new Float32Array(view),
       projection,
+      inverseProjection: new Float32Array(invertMat4(projection)),
       viewProjection: new Float32Array(mat4Multiply(projection, view)),
       far: camera.far,
-      mode: depthKeyMode(camera, gpu.targets ? FLOAT_PATH_DEPTH_BITS : this.defaultDepthBits()),
+      mode,
     };
   }
 
@@ -374,19 +387,29 @@ export class RealtimeRenderer {
     gl.uniformMatrix4fv(pass.view, false, frame.view);
     gl.uniformMatrix4fv(pass.viewProjection, false, frame.viewProjection);
     gl.uniform1f(pass.far, frame.far);
+    gl.uniformMatrix4fv(pass.inverseProjection, false, frame.inverseProjection);
+    gl.uniform2f(pass.viewportSize, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    const exact = frame.mode === 'exact' ? gpu.scene?.exact : null;
+    const noPull = new Float32Array(4);
     gl.uniform1i(pass.texture, 0);
     gl.uniform1i(pass.texelAntialias, this.options.texelAntialias === false ? 0 : 1);
     gl.activeTexture(gl.TEXTURE0);
     gl.enable(gl.CULL_FACE);
     const draw = (item: DrawItem, order: number): void => {
-      gl.uniform4fv(pass.depthPull, depthPull(frame.projection, order));
+      gl.uniform4fv(pass.depthPull, exact ? noPull : depthPull(frame.projection, order));
       gl.uniform1f(pass.orderPull, order * RENDER_ORDER_TIE_DISTANCE);
       gl.uniform1i(pass.alphaMode, item.alpha.modeId);
       gl.uniform1i(pass.alphaCutoffByte, item.alpha.cutoffByte);
       gl.bindTexture(gl.TEXTURE_2D, this.textureFor(gpu, item.texture));
       gl.uniformMatrix4fv(pass.model, false, item.model);
-      gl.bindVertexArray(item.vao);
-      gl.drawElements(gl.TRIANGLES, item.count, gl.UNSIGNED_INT, item.offset);
+      const exactVao = exact?.vaos.get(item.batch);
+      if (exactVao) {
+        gl.bindVertexArray(exactVao);
+        gl.drawArrays(gl.TRIANGLES, 0, item.count);
+      } else {
+        gl.bindVertexArray(item.vao);
+        gl.drawElements(gl.TRIANGLES, item.count, gl.UNSIGNED_INT, item.offset);
+      }
     };
     for (let first = 0; first < items.length;) {
       const order = items[first]?.renderOrder ?? 0;
