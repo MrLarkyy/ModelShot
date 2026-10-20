@@ -329,12 +329,24 @@ export class RealtimeRenderer {
     gl.uniform1i(pass.texture, 0);
     gl.uniform1i(pass.texelAntialias, this.options.texelAntialias === false ? 0 : 1);
     gl.activeTexture(gl.TEXTURE0);
-    for (const item of items) {
-      gl.bindTexture(gl.TEXTURE_2D, this.textureFor(gpu, item.texture));
-      gl.uniformMatrix4fv(pass.model, false, item.model);
-      gl.bindVertexArray(item.vao);
-      gl.drawElements(gl.TRIANGLES, item.count, gl.UNSIGNED_INT, item.offset);
+    // Double-sided, front faces first: back faces are drawn in a second pass pushed back by a polygon offset, so of
+    // two coincident faces (a zero-thickness element) the one facing the camera always wins, on any GPU.
+    gl.enable(gl.CULL_FACE);
+    for (const side of [gl.BACK, gl.FRONT]) {
+      gl.cullFace(side);
+      if (side === gl.FRONT) {
+        gl.enable(gl.POLYGON_OFFSET_FILL);
+        gl.polygonOffset(1, 1);
+      }
+      for (const item of items) {
+        gl.bindTexture(gl.TEXTURE_2D, this.textureFor(gpu, item.texture));
+        gl.uniformMatrix4fv(pass.model, false, item.model);
+        gl.bindVertexArray(item.vao);
+        gl.drawElements(gl.TRIANGLES, item.count, gl.UNSIGNED_INT, item.offset);
+      }
     }
+    gl.disable(gl.POLYGON_OFFSET_FILL);
+    gl.disable(gl.CULL_FACE);
     gl.bindVertexArray(null);
   }
 
