@@ -1,4 +1,4 @@
-import { cameraBasis } from './cameraMatrices';
+import { cameraBasis, checkCameraProjection } from './cameraMatrices';
 import type { SceneCamera } from './SceneCamera';
 
 export interface CameraRay {
@@ -11,9 +11,11 @@ export interface CameraRay {
  * The primary ray through normalised device coordinates (`ndcX`, `ndcY` in −1..1, y up) of a viewport with
  * `aspect` = width / height. Every point on it projects back to the same ndc through `cameraProjection` ×
  * `cameraView`; a path tracer that shoots these rays frames exactly like the preview. Perspective rays start at the
- * camera position, orthographic rays on the plane through it.
+ * camera position, orthographic rays on the plane through it. An invalid projection or aspect throws a `RangeError`
+ * (`checkCameraProjection`).
  */
 export function cameraRay(camera: SceneCamera, aspect: number, ndcX: number, ndcY: number): CameraRay {
+  checkCameraProjection(camera.projection, aspect);
   const { forward, right, up } = cameraBasis(camera);
   const p = camera.position;
   if (camera.projection.kind === 'perspective') {

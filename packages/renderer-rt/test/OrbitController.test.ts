@@ -1,5 +1,7 @@
 import {
   cameraBasis,
+  cameraProjection,
+  cameraRay,
   fitDistance,
   fitOrthoHeight,
   frameToFit,
@@ -207,6 +209,24 @@ describe('OrbitController', () => {
       expect(settle(bad), String(bad)).toBe(reference);
     }
     expect(settle(160)).not.toBe(reference);
+  });
+
+  it('only ever produces a camera that projects', () => {
+    const c = controller();
+    for (const projection of ['perspective', 'orthographic'] as const) {
+      c.setProjection(projection);
+      for (const [fov, zoom] of [
+        [0, 1e-12],
+        [179.99, 1e12],
+        [-5, 0.5],
+      ] as const) {
+        c.setFov(fov);
+        c.zoom(zoom);
+        const camera = c.camera();
+        expect(() => cameraProjection(camera, 1.5)).not.toThrow();
+        expect(() => cameraRay(camera, 1.5, 0.3, -0.2)).not.toThrow();
+      }
+    }
   });
 
   it('frames an empty scene with a default sphere', () => {

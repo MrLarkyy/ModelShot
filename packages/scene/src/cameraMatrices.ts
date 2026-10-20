@@ -1,5 +1,5 @@
 import type { Mat4 } from './Mat4';
-import type { SceneCamera } from './SceneCamera';
+import type { SceneCamera, SceneProjection } from './SceneCamera';
 import type { Vec3 } from './Vec3';
 
 /** Orthonormal camera frame: `forward` from position to target, `right` and `up` spanning the image plane. */
@@ -61,13 +61,33 @@ export function cameraView(camera: SceneCamera): Mat4 {
 }
 
 /**
+ * Throws a `RangeError` unless `aspect` is finite and positive and the projection is usable: perspective
+ * `0 < fovYDeg < 180`, orthographic `height > 0`, both finite. Shared by `cameraProjection` and `cameraRay`, so an
+ * invalid camera fails instead of producing Infinity or NaN.
+ */
+export function checkCameraProjection(projection: SceneProjection, aspect: number): void {
+  if (!(aspect > 0) || !Number.isFinite(aspect)) throw new RangeError(`aspect must be positive, got ${aspect}`);
+  if (projection.kind === 'perspective') {
+    const fov = projection.fovYDeg;
+    if (!(fov > 0 && fov < 180)) throw new RangeError(`perspective fovYDeg must be in (0, 180), got ${fov}`);
+  } else {
+    const height = projection.height;
+    if (!(height > 0) || !Number.isFinite(height)) {
+      throw new RangeError(`orthographic height must be positive and finite, got ${height}`);
+    }
+  }
+}
+
+/**
  * View to clip matrix for a viewport of `aspect` = width / height (OpenGL clip space, z in −1..1). Orthographic:
  * `projection.height` tall, `height × aspect` wide.
  */
 export function cameraProjection(camera: SceneCamera, aspect: number): Mat4 {
-  if (!(aspect > 0) || !Number.isFinite(aspect)) throw new RangeError(`aspect must be positive, got ${aspect}`);
   const { near, far, projection } = camera;
-  if (!(near > 0 && far > near)) throw new RangeError(`camera needs 0 < near < far, got ${near}, ${far}`);
+  checkCameraProjection(projection, aspect);
+  if (!(near > 0 && far > near && Number.isFinite(far))) {
+    throw new RangeError(`camera needs 0 < near < far, both finite, got ${near}, ${far}`);
+  }
   const m = new Float64Array(16);
   if (projection.kind === 'perspective') {
     const f = 1 / Math.tan((projection.fovYDeg * Math.PI) / 360);

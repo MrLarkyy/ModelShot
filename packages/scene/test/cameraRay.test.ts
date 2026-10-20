@@ -84,6 +84,31 @@ describe('cameraRay', () => {
     expect(cameraView(cam).every(Number.isFinite)).toBe(true);
   });
 
+  it('rejects an unusable field of view, ortho height or aspect in projection and ray alike', () => {
+    const cam = camera(projections[0]!);
+    const invalid: [SceneProjection, number][] = [
+      [{ kind: 'perspective', fovYDeg: 0 }, 1],
+      [{ kind: 'perspective', fovYDeg: -10 }, 1],
+      [{ kind: 'perspective', fovYDeg: 180 }, 1],
+      [{ kind: 'perspective', fovYDeg: 270 }, 1],
+      [{ kind: 'perspective', fovYDeg: NaN }, 1],
+      [{ kind: 'orthographic', height: 0 }, 1],
+      [{ kind: 'orthographic', height: -4 }, 1],
+      [{ kind: 'orthographic', height: NaN }, 1],
+      [{ kind: 'orthographic', height: Infinity }, 1],
+      [{ kind: 'perspective', fovYDeg: 35 }, 0],
+      [{ kind: 'perspective', fovYDeg: 35 }, NaN],
+      [{ kind: 'orthographic', height: 10 }, Infinity],
+    ];
+    for (const [projection, aspect] of invalid) {
+      const label = `${JSON.stringify(projection)} aspect ${aspect}`;
+      expect(() => cameraProjection({ ...cam, projection }, aspect), label).toThrow(RangeError);
+      expect(() => cameraRay({ ...cam, projection }, aspect, 0, 0), label).toThrow(RangeError);
+    }
+    expect(() => cameraProjection({ ...cam, far: Infinity }, 1)).toThrow(RangeError);
+    expect(() => cameraRay({ ...cam, projection: { kind: 'perspective', fovYDeg: 179.9 } }, 1, 0.5, 0.5)).not.toThrow();
+  });
+
   it('rejects a degenerate camera and aspect', () => {
     const cam = camera(projections[0]!);
     expect(() => cameraBasis({ ...cam, target: cam.position })).toThrow(RangeError);

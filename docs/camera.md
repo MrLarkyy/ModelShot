@@ -5,12 +5,12 @@
 `SceneCamera` (`@modelshot/scene`) is the only camera definition; the realtime preview and the path tracer both
 read it, so they frame a model identically.
 
-| field                | meaning                                                                                                                           |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `position`, `target` | world space of the scene format: model units (1 = 1/16 block), y up, right-handed                                                 |
-| `up`                 | approximate up; need not be orthogonal to the view direction (a parallel one falls back to +z, then +x)                           |
-| `projection`         | `{ kind: 'perspective', fovYDeg }` (vertical field of view) or `{ kind: 'orthographic', height }` (visible height in model units) |
-| `near`, `far`        | clip distances along the view direction, `0 < near < far`                                                                         |
+| field                | meaning                                                                                                                                                                                                                                                                                     |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `position`, `target` | world space of the scene format: model units (1 = 1/16 block), y up, right-handed                                                                                                                                                                                                           |
+| `up`                 | approximate up; need not be orthogonal to the view direction (a parallel one falls back to +z, then +x)                                                                                                                                                                                     |
+| `projection`         | `{ kind: 'perspective', fovYDeg }` (vertical field of view, 0 < fovYDeg < 180) or `{ kind: 'orthographic', height }` (visible height in model units, finite, > 0); anything else, or an aspect that is not finite and positive, throws a `RangeError` in `cameraProjection` and `cameraRay` |
+| `near`, `far`        | clip distances along the view direction, `0 < near < far`                                                                                                                                                                                                                                   |
 
 The horizontal extent follows from the viewport aspect (width / height). The camera is not part of
 `SceneDocument`; the scene format version is unchanged.

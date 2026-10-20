@@ -16,7 +16,7 @@ export type { SceneNode } from './SceneNode';
 export type { SceneTexture } from './SceneTexture';
 export type { Vec3 } from './Vec3';
 export { worldMatrices } from './worldMatrices';
-export { cameraBasis, cameraProjection, cameraView, type CameraBasis } from './cameraMatrices';
+export { cameraBasis, cameraProjection, cameraView, checkCameraProjection, type CameraBasis } from './cameraMatrices';
 export { cameraRay, type CameraRay } from './cameraRay';
 export {
   DEFAULT_FIT_MARGIN,
