@@ -464,23 +464,34 @@ function differingPixels(a: Image, b: Image): number {
   return count;
 }
 
-test.describe('closed double-sided cube: no back side on silhouettes, at any sample', () => {
-  for (const [label, scene, query, mode] of [
-    ['float, raster key', 'closed-cube', '&depth=framed', 'raster'],
-    ['float, exact key (inside the sphere)', 'closed-cube', '&depth=inside', 'exact'],
-    ['float, exact key (render order)', 'closed-cube-order', '&depth=framed', 'exact'],
-    ['fallback, raster key', 'closed-cube', '&depth=framed&fallback=1', 'raster'],
-    ['fallback, exact key (inside the sphere)', 'closed-cube', '&depth=inside&fallback=1', 'exact'],
-    ['fallback, exact key (render order)', 'closed-cube-order', '&depth=framed&fallback=1', 'exact'],
+test.describe('closed double-sided boxes: no hidden face at any sample', () => {
+  const modes = [
+    ['float, raster key', '', '&depth=framed', 'raster'],
+    ['float, exact key (inside the sphere)', '', '&depth=inside', 'exact'],
+    ['float, exact key (render order)', '-order', '&depth=framed', 'exact'],
+    ['fallback, raster key', '', '&depth=framed&fallback=1', 'raster'],
+    ['fallback, exact key (inside the sphere)', '', '&depth=inside&fallback=1', 'exact'],
+    ['fallback, exact key (render order)', '-order', '&depth=framed&fallback=1', 'exact'],
+  ] as const;
+  for (const [shape, looks] of [
+    ['closed-cube', ['cube', 'cube-grazing-1', 'cube-grazing-5']],
+    ['step', ['cube', 'cube-grazing-5']],
   ] as const) {
-    test(label, async ({ page }) => {
-      // The hidden (blue) faces must not change a single pixel: the open cube has only the three faces in view.
-      const closed = await render(page, `scene=${scene}${query}&look=cube`);
-      expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe(mode);
-      expect(modelBox(closed.image).x1 - modelBox(closed.image).x0, 'the cube is drawn').toBeGreaterThan(50);
-      const open = await render(page, `scene=${scene}-open${query}&look=cube`);
-      expect(differingPixels(closed.image, open.image), 'pixels touched by a hidden face').toBe(0);
-    });
+    for (const [label, order, query, mode] of modes) {
+      test(`${shape}, ${label}: the hidden faces change no pixel (${looks.join(', ')})`, async ({ page }) => {
+        const scene = shape === 'closed-cube' && order ? 'closed-cube-order' : `${shape}${order}`;
+        // The raster key keeps MSAA; at a face within a few degrees of edge-on its samples next to the silhouette
+        // still let a hidden face through (docs/realtime-renderer.md, deviation), so it is held to the framed look.
+        for (const look of mode === 'raster' ? (['cube'] as const) : looks) {
+          // The open variant has only the faces in view; the hidden (blue) faces must not change a single pixel.
+          const closed = await render(page, `scene=${scene}${query}&look=${look}`);
+          expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe(mode);
+          expect(modelBox(closed.image).x1 - modelBox(closed.image).x0, `${look}: drawn`).toBeGreaterThan(20);
+          const open = await render(page, `scene=${scene}-open${query}&look=${look}`);
+          expect(differingPixels(closed.image, open.image), `${look}: pixels touched by a hidden face`).toBe(0);
+        }
+      });
+    }
   }
 });
 

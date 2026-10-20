@@ -49,6 +49,19 @@ describe('shader sources', () => {
     expect(shaderProgramSource('fallback').fragment).toContain('vec3 agxToneMap(vec3 linearColor)');
   });
 
+  it('takes the depth key derivatives before the first discard in every mesh pass', () => {
+    for (const name of ['opaque', 'oitAccum', 'fallback'] as const) {
+      for (const depthKey of ['raster', 'exact'] as const) {
+        const { fragment } = shaderProgramSource(name, depthKey);
+        const body = fragment.slice(fragment.indexOf('void main()'));
+        const prepare = body.indexOf('prepareDepthKey();');
+        const discard = body.indexOf('discard');
+        expect(prepare, `${name} ${depthKey}`).toBeGreaterThan(-1);
+        expect(prepare, `${name} ${depthKey}`).toBeLessThan(discard);
+      }
+    }
+  });
+
   it('surfaces a compile error with the info log as RendererError', () => {
     const { gl, deleted } = fakeGl();
     const { vertex } = shaderProgramSource('opaque');

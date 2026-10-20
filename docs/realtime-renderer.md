@@ -78,22 +78,24 @@ The rules are the scene format's ([scene-format.md](scene-format.md): `SceneMate
     far below the rasteriser's depth interpolation error; with (1, 1) back sides leak at MSAA samples next to a
     silhouette, see the closed-cube test). Deviation of this variant: a back side that really lies in front of a front
     face by less than about four pixels' worth of its own depth slope (e.g. about 0.3–0.5 units for a face at 45° in the
-    turntable framing) is drawn behind it.
+    turntable framing) is drawn behind it; and next to the silhouette of a face within a few degrees of edge-on, MSAA
+    samples of a hidden back side can still show (closed cube at 1°: 74 pixels; a step at 5°: 23; none without MSAA).
   - `exact`: every mesh pass computes the key per fragment and writes it as `gl_FragDepth`, with the key range
     `[−(1024 + 1) × TIE, far + (1024 + 1) × TIE]` mapped to `[0, 1]` (`exactDepthRange`), so no order is clamped at
-    the near or far plane. The depth is the view depth where the pixel centre's ray meets the triangle's plane (three
-    corners in view space, from a de-indexed copy of the geometry), so any two triangles of one plane, coincident
-    faces of any triangulation included, key a pixel alike. At an edge pixel (MSAA) where that hit lies outside an
-    outline edge of a back-facing triangle (an edge not shared with a coplanar triangle of the batch: per-triangle flags
-    computed at upload), the hit moves to the nearest point of those edges and the back face yields two pixels' worth
-    of its depth change, so a back side never wins a sample beside the front face it meets at a silhouette. Front faces
-    keep the centre ray at their outlines (a coincident partner keys the same pixel identically). Derivatives are taken
-    at the top of `main`, before any discard. Costs early depth testing and gives per-pixel MSAA depth. Used for every
-    draw of a frame when the scene has a visible mesh with render order ≠ 0 (decided at scene upload, which then builds
-    the de-indexed geometry: about 515 ms for load and first frame at the loader's 200 000 triangles on SwiftShader,
-    `rt-load-first-frame-200k-order`) or when the depth buffer cannot resolve the tie at the far plane (24-bit step
-    `(f − n)·f / (n·2²⁴)` above a quarter of it: a camera inside the bounding sphere, which builds the de-indexed
-    geometry once, on the first such frame).
+    the near or far plane. Exact frames draw single-sampled (no MSAA on the float path): one key per pixel can only be
+    right for every sample when the pixel centre is the only sample, since a grazing face spans a large depth range
+    inside one pixel. The key is the view depth where the pixel centre's ray meets the triangle's plane (three corners
+    in view space, from a de-indexed copy of the geometry), so any two triangles of one plane, coincident faces of any
+    triangulation included, key a pixel alike. Where that hit lies on or past an outline edge (an edge not shared with
+    a coplanar triangle of the batch: per-triangle flags computed at upload; past it because the rasteriser covers
+    with snapped vertices, which at a grazing angle is far along the plane) a front face keys at the nearer of the hit
+    and the nearest point of the outline, and a back face keys at that outline point plus two pixels' worth of its
+    depth change; shared edges keep the plain hit. Costs early depth testing and MSAA edge smoothing in those frames.
+    Used for every draw of a frame when the scene has a visible mesh with render order ≠ 0 (decided at scene upload,
+    which then builds the de-indexed geometry and its flags: about 440 ms for load and first frame at the loader's
+    200 000 triangles on SwiftShader, `rt-load-first-frame-200k-order`) or when the depth buffer cannot resolve the
+    tie at the far plane (24-bit step `(f − n)·f / (n·2²⁴)` above a quarter of it: a camera inside the bounding
+    sphere, which builds the de-indexed geometry once, on the first such frame).
   - Limit: on a 16-bit depth buffer (the fallback path's default framebuffer may have only 16 bits) neither variant
     resolves the tie: the exact key is stored in steps of about `(far + 2.05) / 65536` (0.0013 units at far 80), so
     surfaces closer than a step fall to draw order (higher render order first, then document order).

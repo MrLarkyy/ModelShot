@@ -79,9 +79,16 @@ void writeDepthKey() {
     hit = v_viewPosition;
   } else {
     int outline = edgesCrossed(hit, n) & ~int(v_sharedEdges + 0.5);
-    if (outline != 0 && !gl_FrontFacing) {
-      hit = nearestOnEdges(hit, outline);
-      edgeBias = 2.0 * depthPerPixel;
+    if (outline != 0) {
+      vec3 snapped = nearestOnEdges(hit, outline);
+      if (gl_FrontFacing) {
+        // Capped at the outline: a sample the rasteriser gives this face just past its true edge (vertices are snapped
+        // to the subpixel grid; at a grazing angle that is far along the plane) never keys deeper than the edge.
+        if (-snapped.z < -hit.z) hit = snapped;
+      } else {
+        hit = snapped;
+        edgeBias = 2.0 * depthPerPixel;
+      }
     }
   }
   gl_FragDepth = clamp((-hit.z + edgeBias - u_orderPull + u_depthRange.x) * u_depthRange.y, 0.0, 1.0);

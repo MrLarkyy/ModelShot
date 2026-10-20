@@ -77,11 +77,12 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
   `look=above|below|grazing-above|grazing-below`: of two coincident double-sided quads split along different
   diagonals the one facing the camera wins, at about 8° with no pixel of the other colour; a single-sided quad seen
   from behind shows the backdrop).
-- Closed double-sided cube (`closed-cube`, `look=cube`: the faces in view red, the hidden ones blue) against the same
-  cube without its hidden faces (`closed-cube-open`): not one pixel may differ, on float and fallback, with the raster
-  key, the exact key inside the sphere and the exact key from render order 1 (`closed-cube-order`), so a single MSAA
-  sample of a back side beside a silhouette fails it (the raster back pass at `polygonOffset(1, 1)` differs in 117
-  pixels).
+- Closed double-sided boxes against the same boxes without their hidden faces (`closed-cube` / `closed-cube-open`, and
+  `step` / `step-open`: a tall box beside a low one, with a T-junction and a hidden face coincident with a visible one
+  facing the other way; visible faces red, hidden blue): not one pixel may differ, on float and fallback, with the
+  exact key inside the sphere and from render order 1 (`-order` scenes), seen from `cube`, `cube-grazing-1` (the east
+  face about 1° from edge-on) and `cube-grazing-5`; the raster key from `cube` (its grazing MSAA deviation is
+  documented in realtime-renderer.md). The raster back pass at `polygonOffset(1, 1)` differs in 117 pixels.
 - Render-order tie at sample level: a red `in_front` quad over a coincident blue default quad split along the other
   diagonal (`tie-pair`) against the red quad alone (`tie-single`): not one pixel may differ, exact key, float and
   fallback, seen `above`, `grazing-above` (about 8°) and `model-view`; the double-sided pair seen `below` and
@@ -211,12 +212,13 @@ stand in for a laptop GPU: the 60 fps criterion is evidenced by a manual run of 
 `frameTimeMs.rt-load-first-frame-200k-order` times `setScene` plus the first frame of a generated scene at the
 loader's limits (100 000 quads, 200 000 triangles, 400 000 vertices) at render order 1, which builds the exact key's
 de-indexed geometry and its shared-edge flags at upload: local SwiftShader 348, 344 and 354 ms before the flags, 506
-and 527 ms with them; max 3500 ms (10x of the first measurement).
+and 527 ms with them; since round 7 436 and 447 ms; max 3500 ms (10x of the first measurement).
 
 `frameTimeMs.rt-bench-order-512` is the same scene with one mesh at render order 1, so every frame uses the exact
 depth key (fragment depth, de-indexed geometry); max 750 ms like the raster bench. MS-12 local SwiftShader medians:
 `rt-bench-512` 92, 118 and 120 ms (raster key, cubes double-sided as the loader marks free-format faces, coverage per
-texel tap), `rt-bench-order-512` 117, 145 and 148 ms.
+texel tap), `rt-bench-order-512` 117, 145 and 148 ms with MSAA, 83 and 107 ms since exact frames draw single-sampled
+(MS-12 round 7).
 
 - `frameTimeMs` max 5: the median is below 1 ms and `performance.now` is coarsened to 0.1 ms without cross-origin
   isolation, so 5x the median (2 ms) would be 20 ticks and one GC pause from flaking on a shared runner. 5 ms is 12-16x the

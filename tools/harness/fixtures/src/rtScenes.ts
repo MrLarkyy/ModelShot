@@ -39,6 +39,10 @@ export const RT_SCENE_NAMES = [
   'tie-single',
   'tie-pair-double',
   'tie-single-double',
+  'step',
+  'step-open',
+  'step-order',
+  'step-order-open',
 ] as const;
 export type RtSceneName = (typeof RT_SCENE_NAMES)[number];
 
@@ -71,7 +75,16 @@ export interface RtView {
   readonly depth: 'framed' | 'inside';
 }
 
-export type RtLook = 'model-view' | 'above' | 'below' | 'grazing-above' | 'grazing-below' | 'cube' | 'ramp';
+export type RtLook =
+  | 'model-view'
+  | 'above'
+  | 'below'
+  | 'grazing-above'
+  | 'grazing-below'
+  | 'cube'
+  | 'cube-grazing-1'
+  | 'cube-grazing-5'
+  | 'ramp';
 
 /** Fixed cameras: the model-view fixture's (same image positions as its probes) and two views of a horizontal pair. */
 const LOOKS: Readonly<Record<RtLook, { eye: Point3; target: Point3; near: number; far: number }>> = {
@@ -83,6 +96,9 @@ const LOOKS: Readonly<Record<RtLook, { eye: Point3; target: Point3; near: number
   'grazing-below': { eye: [-4, -3, 20], target: [-4, 0, 0], near: 5, far: 40 },
   // Sees the south, east and up faces of a cube around the origin.
   cube: { eye: [10, 8, 14], target: [0, 0, 0], near: 5, far: 40 },
+  // The east face (x = 4) about 1 and 5 degrees from edge-on: its extended plane runs far behind the box.
+  'cube-grazing-1': { eye: [4.5, 3, 30], target: [0, 0, 0], near: 20, far: 40 },
+  'cube-grazing-5': { eye: [6.6, 3, 30], target: [0, 0, 0], near: 20, far: 40 },
   // Square onto the 16 x 16 alpha ramp at z = 0 with a backdrop border: one texel is about 15 pixels at 256 px.
   ramp: {
     eye: [0, 0, 8.5 / Math.tan((MODEL_VIEW_LOOK.fovYDegrees * Math.PI) / 360)],
@@ -197,6 +213,14 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return closedCube(0, true);
     case 'closed-cube-order-open':
       return closedCube(1, true);
+    case 'step':
+      return step(0, false);
+    case 'step-open':
+      return step(0, true);
+    case 'step-order':
+      return step(1, false);
+    case 'step-order-open':
+      return step(1, true);
     case 'tie-pair':
       return tiePair(load(alphaPlaneSource), true);
     case 'tie-single':
@@ -349,27 +373,65 @@ export function parseRtView(params: URLSearchParams): RtView {
  * not change, at any sample.
  */
 function closedCube(renderOrder: number, open: boolean): SceneDocument {
+  return boxes(
+    [
+      [
+        [-4, -4, -4],
+        [4, 4, 4],
+      ],
+    ],
+    renderOrder,
+    open,
+  );
+}
+
+/**
+ * A step: a tall box (x −4..0) beside a low one (x 0..4, y −4..0), both closed and double-sided like `closedCube`.
+ * The low box's up face ends at the tall box's east face (a T-junction), and its west face coincides with the lower
+ * half of that east face, facing the other way: hidden blue faces at a T-junction and behind a coincident pair.
+ */
+function step(renderOrder: number, open: boolean): SceneDocument {
+  return boxes(
+    [
+      [
+        [-4, -4, -4],
+        [0, 4, 4],
+      ],
+      [
+        [0, -4, -4],
+        [4, 0, 4],
+      ],
+    ],
+    renderOrder,
+    open,
+  );
+}
+
+/**
+ * Closed boxes with every face double-sided (free format, render_sides auto): the faces the `cube` looks see (south,
+ * east, up) red, the others blue; the first box at render order 1 when `renderOrder` is 1. `open` leaves the blue
+ * faces out: the image must not change at any sample.
+ */
+function boxes(extents: readonly (readonly [number[], number[]])[], renderOrder: number, open: boolean): SceneDocument {
   const texture = (JSON.parse(alphaPlaneSource) as { textures: unknown[] }).textures[0];
   const red = { uv: [0, 0, 4, 4], texture: 0 };
   const blue = { uv: [8, 0, 12, 4], texture: 0 };
   const model = {
     meta: { format_version: '4.10', model_format: 'free', box_uv: false },
     resolution: { width: 16, height: 16 },
-    elements: [
-      {
-        name: 'cube',
-        type: 'cube',
-        uuid: 'c',
-        from: [-4, -4, -4],
-        to: [4, 4, 4],
-        origin: [0, 0, 0],
-        ...(renderOrder === 1 ? { render_order: 'in_front' } : {}),
-        faces: open
-          ? { east: red, south: red, up: red }
-          : { north: blue, east: red, south: red, west: blue, up: red, down: blue },
-      },
-    ],
-    outliner: ['c'],
+    elements: extents.map(([from, to], i) => ({
+      name: `box ${i}`,
+      type: 'cube',
+      uuid: `b${i}`,
+      from,
+      to,
+      origin: [0, 0, 0],
+      ...(renderOrder === 1 && i === 0 ? { render_order: 'in_front' } : {}),
+      faces: open
+        ? { east: red, south: red, up: red }
+        : { north: blue, east: red, south: red, west: blue, up: red, down: blue },
+    })),
+    outliner: extents.map((_, i) => `b${i}`),
     textures: [texture],
   };
   return load(JSON.stringify(model));

@@ -449,7 +449,11 @@ export class RealtimeRenderer {
     const { oitComposite, present } = gpu.programs.fullscreen;
     if (!oitComposite || !present) return;
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, targets.msaaFramebuffer ?? targets.resolveFramebuffer);
+    // Exact frames draw single-sampled: their per-fragment key is the depth at the pixel centre, which is the only
+    // sample there; with MSAA it would stand for every covered sample, wrongly for a face whose depth changes a lot
+    // inside one pixel (grazing angles), letting a hidden face win samples.
+    const msaa = frame?.mode === 'exact' ? null : targets.msaaFramebuffer;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, msaa ?? targets.resolveFramebuffer);
     gl.viewport(0, 0, width, height);
     gl.disable(gl.BLEND);
     gl.disable(gl.CULL_FACE);
@@ -460,8 +464,8 @@ export class RealtimeRenderer {
     gl.clearBufferfv(gl.DEPTH, 0, [1]);
     if (scene && frame) this.drawItems(gpu, 'opaque', scene.opaque, frame);
 
-    if (targets.msaaFramebuffer) {
-      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, targets.msaaFramebuffer);
+    if (msaa) {
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, msaa);
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, targets.resolveFramebuffer);
       gl.blitFramebuffer(
         0,
