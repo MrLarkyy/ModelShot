@@ -1,18 +1,10 @@
-import { quoteValue } from '../bbmodel/quoteValue';
+import { quoteValue } from '../text/quoteValue';
 import { decodeDataUri } from '../dataUri/decodeDataUri';
 import type { ResourceFiles } from '../resources/ResourceFiles';
 import { GltfError } from './GltfError';
 import type { GltfLimits } from './GltfLoadOptions';
-import {
-  childPath,
-  field,
-  readInteger,
-  readList,
-  readObjects,
-  readOptionalString,
-  readString,
-  type JsonObject,
-} from './gltfFields';
+import { childPath, field, type JsonObject } from '../json/JsonObject';
+import { readInteger, readList, readObjects, readOptionalString, readString } from './gltfFields';
 
 export interface GltfBufferSources {
   readonly bin: Uint8Array | null;

@@ -17,7 +17,7 @@ import {
   readVec3,
   type JsonObject,
 } from './JsonFields';
-import { quoteValue } from './quoteValue';
+import { quoteValue } from '../text/quoteValue';
 import { readRenderOrder } from './RenderOrder';
 
 export interface CubeFaceSpec {

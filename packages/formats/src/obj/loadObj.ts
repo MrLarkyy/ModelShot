@@ -8,8 +8,8 @@ import {
   type Vec3,
 } from '@modelshot/scene';
 import { BLEND_ALPHA_CUTOFF } from '../alpha/blendAlphaCutoff';
-import { quoteValue } from '../bbmodel/quoteValue';
-import { triangulateFace } from '../bbmodel/triangulateFace';
+import { quoteValue } from '../text/quoteValue';
+import { triangulateFace } from '../geometry/triangulateFace';
 import { resolveUnitScale } from '../limits/resolveLimits';
 import { encodeSolidPng } from '../png/encodeSolidPng';
 import { readPngSize } from '../png/readPngSize';
@@ -44,9 +44,10 @@ export function loadObj(input: string | Uint8Array, options: ObjLoadOptions = {}
   const fileName = options.fileName ?? 'model.obj';
   const warnings = new ObjWarningList();
   const files = new ResourceFiles(options.files);
-  const data = parseObj(readObjText(input, fileName, limits.maxFileBytes), fileName, limits, warnings);
+  const data = parseObj(readObjText(input, fileName, limits.maxFileBytes), fileName, limits, unitScale, warnings);
 
   const library = new Map<string, MtlMaterial>();
+  const parsed = new Set<string>();
   for (const { name, path } of data.materialLibraries) {
     const found = files.resolve(name);
     if (!found.ok) {
@@ -57,6 +58,9 @@ export function loadObj(input: string | Uint8Array, options: ObjLoadOptions = {}
       );
       continue;
     }
+    // Two names (`a.mtl`, `./a.mtl`) can resolve to one picked file: it is parsed once.
+    if (parsed.has(found.fileName)) continue;
+    parsed.add(found.fileName);
     parseMtl(readObjText(found.bytes, found.fileName, limits.maxFileBytes), found.fileName, limits, warnings, library);
   }
   const converted = convertMaterials(data, library, files, limits, warnings);
@@ -107,10 +111,12 @@ function convertMaterials(
 ): ConvertedMaterials {
   const result: ConvertedMaterials = { materials: [], textures: [], bySlot: [], textured: [] };
   const byKey = new Map<string, number>();
+  let imageCount = 0;
   const texture = (key: string, make: () => SceneTexture, path: string): number => {
     const known = byKey.get(key);
     if (known !== undefined) return known;
-    if (result.textures.length >= limits.maxTextures) {
+    // Only picked images count: generated colour textures are bounded by the materials (one each), as in glTF.
+    if (!key.startsWith('colour:') && imageCount++ >= limits.maxTextures) {
       throw new ObjError('TOO_MANY_TEXTURES', path, `more than ${limits.maxTextures} textures`);
     }
     result.textures.push(make());

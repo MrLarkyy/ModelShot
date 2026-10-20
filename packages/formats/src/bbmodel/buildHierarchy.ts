@@ -13,7 +13,7 @@ import {
   readString,
   type JsonObject,
 } from './JsonFields';
-import { quoteValue } from './quoteValue';
+import { quoteValue } from '../text/quoteValue';
 
 export interface HierarchyNode {
   readonly name: string;

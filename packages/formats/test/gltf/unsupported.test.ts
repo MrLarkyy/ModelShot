@@ -212,8 +212,8 @@ describe('reported glTF features', () => {
   });
 
   it('a skipped primitive draws nothing; skins and vertex colours keep the plain geometry', () => {
-    expect(loadGltf(json(ROWS['lines and points']!.doc())).scene.meshes[0]!.indices).toHaveLength(0);
-    expect(loadGltf(json(ROWS['sparse accessor']!.doc())).scene.meshes[0]!.indices).toHaveLength(0);
+    expect(loadGltf(json(ROWS['lines and points']!.doc())).scene.meshes).toEqual([]);
+    expect(loadGltf(json(ROWS['sparse accessor']!.doc())).scene.meshes).toEqual([]);
     expect(loadGltf(json(ROWS['joint attributes']!.doc())).scene.meshes[0]!.indices).toHaveLength(3);
     expect(loadGltf(json(ROWS['vertex colours']!.doc())).scene.meshes[0]!.indices).toHaveLength(3);
   });

@@ -2,9 +2,8 @@ import { mat4Identity, mat4Multiply, type Mat4, type SceneNode } from '@modelsho
 import { GltfError } from './GltfError';
 import type { GltfLimits } from './GltfLoadOptions';
 import type { GltfWarningList } from './GltfWarning';
+import { childPath, field, type JsonObject } from '../json/JsonObject';
 import {
-  childPath,
-  field,
   readIndex,
   readList,
   readNumbers,
@@ -12,7 +11,6 @@ import {
   readOptionalIndex,
   readOptionalNumbers,
   readOptionalString,
-  type JsonObject,
 } from './gltfFields';
 
 /** A node of the active scene, in the order its `SceneNode` was emitted (parents first). */

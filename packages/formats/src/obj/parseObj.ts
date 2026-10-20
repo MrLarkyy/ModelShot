@@ -1,7 +1,8 @@
-import { quoteValue } from '../bbmodel/quoteValue';
+import { quoteValue } from '../text/quoteValue';
 import { ObjError } from './ObjError';
 import type { ObjLimits } from './ObjLoadOptions';
 import type { ObjWarningList } from './ObjWarning';
+import { KeywordTally } from './KeywordTally';
 import { forEachStatement, type ObjStatement } from './objText';
 
 /** One face: corner indices (0-based; −1 for an absent `vt` or `vn`), three per corner, and its material slot. */
@@ -30,46 +31,19 @@ export interface ObjData {
   readonly materialLibraries: { readonly name: string; readonly path: string }[];
 }
 
-/** Statements of geometry kinds the loader does not draw (curves, surfaces, lines, points, render attributes). */
-const KNOWN_UNSUPPORTED = new Set([
-  'l',
-  'p',
-  'vp',
-  'curv',
-  'curv2',
-  'surf',
-  'cstype',
-  'deg',
-  'bmat',
-  'step',
-  'parm',
-  'trim',
-  'hole',
-  'scrv',
-  'sp',
-  'end',
-  'con',
-  'mg',
-  'bevel',
-  'c_interp',
-  'd_interp',
-  'lod',
-  'usemap',
-  'maplib',
-  'shadow_obj',
-  'trace_obj',
-  'ctech',
-  'stech',
-  'call',
-  'csh',
-]);
-
 /**
  * Parses an OBJ file into indexed corners, objects and material runs. Every count is checked against `limits` as it
  * grows (vertices, objects, materials, face size, triangles), so a hostile file fails before the geometry is built.
- * Unsupported statements are counted per keyword and reported once each with their first line.
+ * Unsupported statements are counted per keyword and reported once each with their first line. Positions times
+ * `unitScale`, and UVs, must stay finite in float32 (`NON_FINITE_DATA`). `mtllib` names are kept once each.
  */
-export function parseObj(text: string, fileName: string, limits: ObjLimits, warnings: ObjWarningList): ObjData {
+export function parseObj(
+  text: string,
+  fileName: string,
+  limits: ObjLimits,
+  unitScale: number,
+  warnings: ObjWarningList,
+): ObjData {
   const data: ObjData = {
     positions: [],
     texcoords: [],
@@ -79,7 +53,8 @@ export function parseObj(text: string, fileName: string, limits: ObjLimits, warn
     materialLibraries: [],
   };
   const materialIndex = new Map<string, number>();
-  const unsupported = new Map<string, { count: number; path: string }>();
+  const unsupported = new KeywordTally();
+  const libraries = new Set<string>();
   let current: ObjObject | null = null;
   let material = -1;
   let triangles = 0;
@@ -103,19 +78,19 @@ export function parseObj(text: string, fileName: string, limits: ObjLimits, warn
       case 'v': {
         if (args.length < 3) throw invalid(statement, 'expected x y z');
         if (args.length >= 6 && vertexColourPath === '') vertexColourPath = path;
-        pushNumbers(data.positions, args.slice(0, 3), path, limits.maxVertices * 3, 'v');
+        pushNumbers(data.positions, args.slice(0, 3), path, limits.maxVertices * 3, 'v', unitScale);
         return;
       }
       case 'vt': {
         if (args.length < 1) throw invalid(statement, 'expected u [v]');
-        const [u = 0, v = 0] = [readNumber(args[0], path), args.length > 1 ? readNumber(args[1], path) : 0];
+        const [u = 0, v = 0] = [readNumber(args[0], path, 1), args.length > 1 ? readNumber(args[1], path, 1) : 0];
         if (data.texcoords.length + 2 > limits.maxVertices * 2) throw tooMany('vt', path, limits.maxVertices);
         data.texcoords.push(u, 1 - v);
         return;
       }
       case 'vn': {
         if (args.length < 3) throw invalid(statement, 'expected x y z');
-        pushNumbers(data.normals, args.slice(0, 3), path, limits.maxVertices * 3, 'vn');
+        pushNumbers(data.normals, args.slice(0, 3), path, limits.maxVertices * 3, 'vn', 1);
         return;
       }
       case 'f': {
@@ -158,19 +133,21 @@ export function parseObj(text: string, fileName: string, limits: ObjLimits, warn
         material = index;
         return;
       }
-      case 'mtllib':
-        if (args.length > 0)
-          data.materialLibraries.push({ name: statement.rest(0).slice(0, limits.maxStringChars), path });
+      case 'mtllib': {
+        const name = statement.rest(0).slice(0, limits.maxStringChars);
+        if (name === '' || libraries.has(name)) return;
+        if (libraries.size >= limits.maxMaterials) {
+          throw new ObjError('TOO_MANY_MATERIALS', path, `more than ${limits.maxMaterials} material libraries`);
+        }
+        libraries.add(name);
+        data.materialLibraries.push({ name, path });
         return;
+      }
       case 's':
         if (smoothingPath === '' && args[0] !== 'off' && args[0] !== '0') smoothingPath = path;
         return;
-      default: {
-        const key = KNOWN_UNSUPPORTED.has(keyword) ? keyword : keyword.slice(0, 32);
-        const seen = unsupported.get(key);
-        if (seen) seen.count++;
-        else unsupported.set(key, { count: 1, path });
-      }
+      default:
+        unsupported.add(keyword, path);
     }
   });
 
@@ -180,13 +157,7 @@ export function parseObj(text: string, fileName: string, limits: ObjLimits, warn
   if (smoothingPath !== '' && data.normals.length === 0) {
     warnings.add('SMOOTHING_IGNORED', smoothingPath, 'the file has no vn normals; faces are drawn flat');
   }
-  for (const [keyword, { count, path }] of unsupported) {
-    warnings.add(
-      'UNSUPPORTED_STATEMENT',
-      path,
-      `${quoteValue(keyword)} (${count} line${count === 1 ? '' : 's'}) is not drawn`,
-    );
-  }
+  unsupported.report(warnings, 'is not drawn');
   return data;
 }
 
@@ -198,17 +169,25 @@ function tooMany(kind: string, path: string, max: number): ObjError {
   return new ObjError('TOO_MANY_VERTICES', path, `more than ${max} ${kind} statements`);
 }
 
-function readNumber(token: string | undefined, path: string): number {
+/** A number that stays finite once stored as float32 after multiplying by `scale`. */
+function readNumber(token: string | undefined, path: string, scale: number): number {
   const value = Number(token);
-  if (token === undefined || token === '' || !Number.isFinite(value)) {
-    throw new ObjError('NON_FINITE_DATA', path, `expected a finite number, got ${quoteValue(token)}`);
+  if (token === undefined || token === '' || !Number.isFinite(Math.fround(value * scale))) {
+    throw new ObjError('NON_FINITE_DATA', path, `expected a finite float32 number, got ${quoteValue(token)}`);
   }
   return value;
 }
 
-function pushNumbers(target: number[], tokens: readonly string[], path: string, max: number, kind: string): void {
+function pushNumbers(
+  target: number[],
+  tokens: readonly string[],
+  path: string,
+  max: number,
+  kind: string,
+  scale: number,
+): void {
   if (target.length + tokens.length > max) throw tooMany(kind, path, max / 3);
-  for (const token of tokens) target.push(readNumber(token, path));
+  for (const token of tokens) target.push(readNumber(token, path, scale));
 }
 
 /** `v`, `v/vt`, `v//vn` or `v/vt/vn`; 1-based, negative counts back from the latest; 0 or beyond is an error. */

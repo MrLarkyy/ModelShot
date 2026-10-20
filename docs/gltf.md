@@ -51,6 +51,7 @@ against the full schema key list and that each reported property has a test row.
 | such an extension in `extensionsRequired` (`KHR_draco_mesh_compression`, `EXT_meshopt_compression`, `KHR_mesh_quantization`, `KHR_texture_basisu`, …) | error `UNSUPPORTED_REQUIRED_EXTENSION`                                    |
 | `metallicFactor` / `roughnessFactor` ≠ 1, `metallicRoughnessTexture`, `normalTexture`, `occlusionTexture`, `emissiveTexture`, `emissiveFactor` ≠ 0    | warning `UNSUPPORTED_MATERIAL_FEATURE`, one per material listing them     |
 | `COLOR_n` vertex colours                                                                                                                              | warning `UNSUPPORTED_ATTRIBUTE`; not drawn                                |
+| a strip, fan or list with no triangle (fewer than 3 elements)                                                                                         | warning `EMPTY_PRIMITIVE`; the primitive is skipped                       |
 | `POINTS`, `LINES`, `LINE_LOOP`, `LINE_STRIP`                                                                                                          | warning `UNSUPPORTED_PRIMITIVE_MODE`; the primitive is skipped            |
 | a `sparse` accessor used by a primitive                                                                                                               | warning `UNSUPPORTED_SPARSE_ACCESSOR`; the primitive is skipped           |
 | more than one scene                                                                                                                                   | warning `EXTRA_SCENES_IGNORED`; only the active scene is drawn            |
@@ -75,7 +76,8 @@ maps, which are reported) and `TEXCOORD_n` sets no material reads.
 - **Transforms are baked**: a `SceneNode` holds a pivot, Euler angles and a translation, so it cannot carry scale,
   shear or mirroring. Each node's world matrix (`parent · T · R · S`, or its `matrix`) is baked into the vertices of
   its mesh; the scene nodes keep the hierarchy and names with identity transforms. One `SceneMesh` per (node, glTF
-  mesh), one `SceneMeshGroup` per drawn primitive, in depth-first order of the active scene.
+  mesh), one `SceneMeshGroup` per drawn primitive, in depth-first order of the active scene. Each primitive's
+  accessors are decoded once, however many nodes draw it; a mesh whose primitives were all skipped adds no `SceneMesh`.
 - **Normals** go through the inverse transpose of the world matrix and are renormalised; a missing, zero or
   non-finite normal takes the face normal of the first triangle using it. A primitive without `NORMAL` is de-indexed
   and flat-shaded, as the glTF specification asks.
@@ -86,7 +88,9 @@ maps, which are reported) and `TEXCOORD_n` sets no material reads.
   texture gets a generated 1×1 PNG of `baseColorFactor`, converted from linear to sRGB bytes (0.5 → 188), alpha × 255;
   equal colours share one texture. Preview and render show the colour through the same texture path, with no material
   field of their own. A primitive without a material keeps material −1 (the renderers' default).
-- **UVs**: `KHR_texture_transform` is applied (`T · R · S`, rotation as three.js applies it) and the result stored;
+- **UVs**: `KHR_texture_transform` is applied as the extension's matrix `T · R · S` (rotation rows `(cos, sin)` and
+  `(−sin, cos)`: the UVs turn counter-clockwise in UV space, v down; the Khronos Sample Viewer builds the same matrix)
+  and the result stored;
   each vertex's `uvRects` entry is the union of the UV bounding boxes of the triangles using it, which is the face's
   region for per-face atlas exports, so texel anti-aliasing never reaches a neighbouring region. Untextured groups use
   the centre (0.5, 0.5) and the whole image.
@@ -100,23 +104,24 @@ maps, which are reported) and `TEXCOORD_n` sets no material reads.
 Checked before allocating or decoding; override per call with `options.limits` (a positive integer or `Infinity`,
 else a `RangeError`).
 
-| limit              | default    | error                                                                                 |
-| ------------------ | ---------- | ------------------------------------------------------------------------------------- |
-| `maxFileBytes`     | 64 MiB     | `FILE_TOO_LARGE` (bytes of the file, UTF-8 bytes of text), checked before parsing     |
-| `maxNodes`         | 10 000     | `TOO_MANY_NODES` (also children of one node, scenes, root nodes of a scene)           |
-| `maxMeshes`        | 10 000     | `TOO_MANY_MESHES`                                                                     |
-| `maxPrimitives`    | 10 000     | `TOO_MANY_PRIMITIVES` (all meshes together)                                           |
-| `maxAccessors`     | 50 000     | `TOO_MANY_ACCESSORS` (accessors, and separately buffer views)                         |
-| `maxBuffers`       | 256        | `TOO_MANY_BUFFERS`                                                                    |
-| `maxMaterials`     | 256        | `TOO_MANY_MATERIALS`                                                                  |
-| `maxTextures`      | 64         | `TOO_MANY_TEXTURES` (textures, and separately images and samplers)                    |
-| `maxTriangles`     | 200 000    | `TOO_MANY_TRIANGLES` (every instance counted, before any geometry is decoded)         |
-| `maxVertices`      | 400 000    | `TOO_MANY_VERTICES` (every instance; primitives without normals count 3 per triangle) |
-| `maxNesting`       | 64         | `NESTING_TOO_DEEP` (node hierarchy depth)                                             |
-| `maxTextureSide`   | 4096 px    | `TEXTURE_TOO_LARGE` (from the PNG header)                                             |
-| `maxTexturePixels` | 16 777 216 | `TEXTURE_TOO_LARGE`                                                                   |
-| `maxDataUriChars`  | 64 Mi      | `INVALID_FIELD` (length of a buffer or image `uri`)                                   |
-| `maxStringChars`   | 1024       | `INVALID_FIELD` (names)                                                               |
+| limit                | default    | error                                                                                                                                                     |
+| -------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `maxFileBytes`       | 64 MiB     | `FILE_TOO_LARGE` (bytes of the file, UTF-8 bytes of text), checked before parsing                                                                         |
+| `maxNodes`           | 10 000     | `TOO_MANY_NODES` (also children of one node, scenes, root nodes of a scene)                                                                               |
+| `maxMeshes`          | 10 000     | `TOO_MANY_MESHES`                                                                                                                                         |
+| `maxPrimitives`      | 10 000     | `TOO_MANY_PRIMITIVES` (all meshes together)                                                                                                               |
+| `maxDrawnPrimitives` | 100 000    | `TOO_MANY_PRIMITIVES` (primitives drawn, every instance counted)                                                                                          |
+| `maxAccessors`       | 50 000     | `TOO_MANY_ACCESSORS` (accessors, and separately buffer views)                                                                                             |
+| `maxBuffers`         | 256        | `TOO_MANY_BUFFERS`                                                                                                                                        |
+| `maxMaterials`       | 256        | `TOO_MANY_MATERIALS`                                                                                                                                      |
+| `maxTextures`        | 64         | `TOO_MANY_TEXTURES` (textures, and separately images and samplers)                                                                                        |
+| `maxTriangles`       | 200 000    | `TOO_MANY_TRIANGLES` (every instance counted, before any geometry is decoded)                                                                             |
+| `maxVertices`        | 400 000    | `TOO_MANY_VERTICES` (every instance; primitives without normals count 3 per triangle; and, separately, the POSITION vertices decoded, once per primitive) |
+| `maxNesting`         | 64         | `NESTING_TOO_DEEP` (node hierarchy depth)                                                                                                                 |
+| `maxTextureSide`     | 4096 px    | `TEXTURE_TOO_LARGE` (from the PNG header)                                                                                                                 |
+| `maxTexturePixels`   | 16 777 216 | `TEXTURE_TOO_LARGE`                                                                                                                                       |
+| `maxDataUriChars`    | 64 Mi      | `INVALID_FIELD` (length of a buffer or image `uri`)                                                                                                       |
+| `maxStringChars`     | 1024       | `INVALID_FIELD` (names)                                                                                                                                   |
 
 Every accessor is bounds-checked from the JSON (offset + stride × (count − 1) + element size within its buffer view,
 the view within its buffer's declared length, in exact float64 arithmetic) before any data is read; reads go through
@@ -145,7 +150,7 @@ GLB container) and a message `<what> at <path>: <detail>` quoting at most 32 cha
 | `NESTING_TOO_DEEP`               | the hierarchy is deeper than `maxNesting`                                                                                                                                                                                                                                                                                                         |
 | `TOO_MANY_*`                     | a count over its limit (see Limits)                                                                                                                                                                                                                                                                                                               |
 | `TEXTURE_TOO_LARGE`              | a PNG over the side or pixel limit                                                                                                                                                                                                                                                                                                                |
-| `NON_FINITE_DATA`                | a NaN or infinite position or UV in a buffer, or a vertex or world transform that overflows                                                                                                                                                                                                                                                       |
+| `NON_FINITE_DATA`                | a NaN or infinite position or UV in a buffer, a world transform that overflows, or a placed position or transformed UV beyond the float32 range                                                                                                                                                                                                   |
 
 ## Warnings
 

@@ -1,8 +1,9 @@
-import { quoteValue } from '../bbmodel/quoteValue';
+import { quoteValue } from '../text/quoteValue';
 import { GltfError } from './GltfError';
 import type { GltfLimits } from './GltfLoadOptions';
 import type { GltfWarningList } from './GltfWarning';
-import { childPath, field, isJsonObject, readList, readString, type JsonObject } from './gltfFields';
+import { childPath, field, isJsonObject, type JsonObject } from '../json/JsonObject';
+import { readList, readString } from './gltfFields';
 
 /** Extensions the loader implements; any other in `extensionsUsed` warns, in `extensionsRequired` fails. */
 export const SUPPORTED_GLTF_EXTENSIONS: readonly string[] = ['KHR_texture_transform'];

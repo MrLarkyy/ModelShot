@@ -1,6 +1,6 @@
 import type { Vec3 } from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
-import { triangulateFace } from '../../src/bbmodel/triangulateFace';
+import { triangulateFace } from '../../src/geometry/triangulateFace';
 
 type Point = readonly [number, number];
 

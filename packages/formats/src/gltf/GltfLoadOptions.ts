@@ -8,6 +8,8 @@ export interface GltfLimits {
   readonly maxMeshes: number;
   /** Primitives of all meshes together. */
   readonly maxPrimitives: number;
+  /** Primitives drawn, every instance of a mesh counted (one `SceneMeshGroup` each). */
+  readonly maxDrawnPrimitives: number;
   /** Accessors, and separately buffer views. */
   readonly maxAccessors: number;
   readonly maxBuffers: number;
@@ -16,7 +18,10 @@ export interface GltfLimits {
   readonly maxTextures: number;
   /** Triangles drawn, every instance of a mesh counted. */
   readonly maxTriangles: number;
-  /** Vertices loaded, every instance counted, primitives without normals counted de-indexed (3 per triangle). */
+  /**
+   * Vertices loaded, every instance counted, primitives without normals counted de-indexed (3 per triangle); and,
+   * separately, the source vertices decoded (each primitive's POSITION count, once).
+   */
   readonly maxVertices: number;
   /** Depth of the node hierarchy. */
   readonly maxNesting: number;
@@ -34,6 +39,7 @@ export const DEFAULT_GLTF_LIMITS: GltfLimits = Object.freeze({
   maxNodes: 10_000,
   maxMeshes: 10_000,
   maxPrimitives: 10_000,
+  maxDrawnPrimitives: 100_000,
   maxAccessors: 50_000,
   maxBuffers: 256,
   maxMaterials: 256,

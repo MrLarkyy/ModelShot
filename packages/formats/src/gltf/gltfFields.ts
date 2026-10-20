@@ -1,12 +1,10 @@
-import { childPath, field, isJsonObject, type JsonObject } from '../bbmodel/JsonFields';
-import { quoteValue } from '../bbmodel/quoteValue';
+import { childPath, field, isJsonObject, type JsonObject } from '../json/JsonObject';
+import { quoteValue } from '../text/quoteValue';
 import { GltfError, type GltfErrorCode } from './GltfError';
 
-/**
+/*
  * Path-aware readers for the parsed, untrusted glTF JSON; every bad value is a `GltfError` naming its JSON path.
- * Fields are read as own properties only, so `__proto__` or `constructor` keys are inert.
  */
-export { childPath, field, isJsonObject, type JsonObject };
 
 function invalid(path: string, expected: string, value: unknown): GltfError {
   return new GltfError('INVALID_FIELD', path, `expected ${expected}, got ${quoteValue(value)}`);

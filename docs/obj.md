@@ -23,24 +23,25 @@ scan over the text, limits checked as counts grow) and reads nothing but the fil
 
 - `v` (x y z; a fourth `w` is ignored), `vt` (u [v]), `vn`; `f` with `v`, `v/vt`, `v//vn` or `v/vt/vn` corners,
   1-based or negative (relative) indices; polygons of 3 to `maxFaceVertices` (64) vertices, concave ones included.
-- `o` and `g` (each starts an object), `usemtl`, `mtllib`; `#` comments, blank lines, CRLF line ends, a byte-order
+- `o` and `g` (each starts an object), `usemtl`, `mtllib` (each distinct name read once; names resolving to the same
+  picked file parse it once); `#` comments, blank lines, CRLF line ends, a byte-order
   mark, and lines continued with a trailing backslash. The text is decoded as UTF-8 with invalid bytes replaced.
 - MTL: `newmtl`, `Kd` (r g b, or one grey value), `d`, `Tr` (when there is no `d`), `map_Kd` (PNG).
 
 ## Not supported (reported)
 
-| feature                                                                                                               | result                                                                         |
-| --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `l`, `p`, curves and surfaces (`curv`, `curv2`, `surf`, `cstype`, `deg`, `vp`, …), `lod`, `usemap`, any other keyword | warning `UNSUPPORTED_STATEMENT`, one per keyword with its count and first line |
-| colour components after `v x y z`                                                                                     | warning `UNSUPPORTED_VERTEX_COLOR` once; positions load                        |
-| `s` smoothing groups in a file without `vn`                                                                           | warning `SMOOTHING_IGNORED` once; faces are flat                               |
-| a `mtllib` file not picked, or a URL                                                                                  | warning `MISSING_RESOURCE`; its materials' faces are drawn plain (−1)          |
-| a `usemtl` name no loaded library defines                                                                             | warning `UNKNOWN_MATERIAL`; drawn plain (−1)                                   |
-| `map_Kd` options (`-o`, `-s`, `-t`, `-clamp`, `-bm`, `-mm`, …)                                                        | warning `UNSUPPORTED_MAP_OPTION`, one per material; the file is still read     |
-| other maps (`map_Ka`, `map_Ks`, `map_Bump`, `map_d`, `bump`, `norm`, `disp`, `decal`, `refl`, …)                      | warning `UNSUPPORTED_MATERIAL_FEATURE`, one per material listing them          |
-| `Ka`, `Ks`, `Ke`, `Ns`, `Ni`, `illum`, `Tf`, PBR parameters (`Pr`, `Pm`, …), `Kd spectral` / `Kd xyz`                 | warning `MATERIAL_PARAMS_IGNORED`, one per material listing them               |
-| `Kd` ≠ white or `d` < 1 beside `map_Kd`                                                                               | warning `BASE_COLOR_FACTOR_IGNORED`; the texture is drawn as it is             |
-| a `map_Kd` file not picked, a URL, or not a PNG                                                                       | warning `MISSING_RESOURCE` or `UNSUPPORTED_IMAGE`; the texture is `missing`    |
+| feature                                                                                                               | result                                                                                                                                                      |
+| --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `l`, `p`, curves and surfaces (`curv`, `curv2`, `surf`, `cstype`, `deg`, `vp`, …), `lod`, `usemap`, any other keyword | warning `UNSUPPORTED_STATEMENT`, one per keyword with its count and first line, for the first 64 distinct keywords; one more counts the lines of all others |
+| colour components after `v x y z`                                                                                     | warning `UNSUPPORTED_VERTEX_COLOR` once; positions load                                                                                                     |
+| `s` smoothing groups in a file without `vn`                                                                           | warning `SMOOTHING_IGNORED` once; faces are flat                                                                                                            |
+| a `mtllib` file not picked, or a URL                                                                                  | warning `MISSING_RESOURCE`; its materials' faces are drawn plain (−1)                                                                                       |
+| a `usemtl` name no loaded library defines                                                                             | warning `UNKNOWN_MATERIAL`; drawn plain (−1)                                                                                                                |
+| `map_Kd` options (`-o`, `-s`, `-t`, `-clamp`, `-bm`, `-mm`, …)                                                        | warning `UNSUPPORTED_MAP_OPTION`, one per material; the file is still read                                                                                  |
+| other maps (`map_Ka`, `map_Ks`, `map_Bump`, `map_d`, `bump`, `norm`, `disp`, `decal`, `refl`, …)                      | warning `UNSUPPORTED_MATERIAL_FEATURE`, one per material listing them                                                                                       |
+| `Ka`, `Ks`, `Ke`, `Ns`, `Ni`, `illum`, `Tf`, PBR parameters (`Pr`, `Pm`, …), `Kd spectral` / `Kd xyz`                 | warning `MATERIAL_PARAMS_IGNORED`, one per material listing them                                                                                            |
+| `Kd` ≠ white or `d` < 1 beside `map_Kd`                                                                               | warning `BASE_COLOR_FACTOR_IGNORED`; the texture is drawn as it is                                                                                          |
+| a `map_Kd` file not picked, a URL, or not a PNG                                                                       | warning `MISSING_RESOURCE` or `UNSUPPORTED_IMAGE`; the texture is `missing`                                                                                 |
 
 ## Conversion
 
@@ -65,19 +66,19 @@ scan over the text, limits checked as counts grow) and reads nothing but the fil
 
 Override per call with `options.limits` (a positive integer or `Infinity`, else a `RangeError`).
 
-| limit              | default    | error                                                                            |
-| ------------------ | ---------- | -------------------------------------------------------------------------------- |
-| `maxFileBytes`     | 64 MiB     | `FILE_TOO_LARGE` (the `.obj`, and each `.mtl`), checked before decoding          |
-| `maxLineChars`     | 4096       | `LINE_TOO_LONG` (a logical line, continuations joined), checked before splitting |
-| `maxFaceVertices`  | 64         | `TOO_MANY_FACE_VERTICES`                                                         |
-| `maxTriangles`     | 200 000    | `TOO_MANY_TRIANGLES` (n − 2 per face, counted while parsing)                     |
-| `maxVertices`      | 400 000    | `TOO_MANY_VERTICES` (`v`, `vt`, `vn` statements each, and built vertices)        |
-| `maxObjects`       | 10 000     | `TOO_MANY_OBJECTS` (`o` and `g` statements)                                      |
-| `maxMaterials`     | 256        | `TOO_MANY_MATERIALS` (`usemtl` names, `newmtl` definitions)                      |
-| `maxTextures`      | 64         | `TOO_MANY_TEXTURES`                                                              |
-| `maxTextureSide`   | 4096 px    | `TEXTURE_TOO_LARGE`                                                              |
-| `maxTexturePixels` | 16 777 216 | `TEXTURE_TOO_LARGE`                                                              |
-| `maxStringChars`   | 1024       | names and file references are cut to this length                                 |
+| limit              | default    | error                                                                                                     |
+| ------------------ | ---------- | --------------------------------------------------------------------------------------------------------- |
+| `maxFileBytes`     | 64 MiB     | `FILE_TOO_LARGE` (the `.obj`, and each `.mtl`), checked before decoding                                   |
+| `maxLineChars`     | 4096       | `LINE_TOO_LONG` (a logical line, continuations joined), checked before splitting                          |
+| `maxFaceVertices`  | 64         | `TOO_MANY_FACE_VERTICES`                                                                                  |
+| `maxTriangles`     | 200 000    | `TOO_MANY_TRIANGLES` (n − 2 per face, counted while parsing)                                              |
+| `maxVertices`      | 400 000    | `TOO_MANY_VERTICES` (`v`, `vt`, `vn` statements each, and built vertices)                                 |
+| `maxObjects`       | 10 000     | `TOO_MANY_OBJECTS` (`o` and `g` statements)                                                               |
+| `maxMaterials`     | 256        | `TOO_MANY_MATERIALS` (`usemtl` names, distinct `newmtl` names, distinct `mtllib` names)                   |
+| `maxTextures`      | 64         | `TOO_MANY_TEXTURES` (`map_Kd` images; generated colour textures are bounded by the materials, as in glTF) |
+| `maxTextureSide`   | 4096 px    | `TEXTURE_TOO_LARGE`                                                                                       |
+| `maxTexturePixels` | 16 777 216 | `TEXTURE_TOO_LARGE`                                                                                       |
+| `maxStringChars`   | 1024       | names and file references are cut to this length                                                          |
 
 Ear clipping is O(n³) per face; at the defaults a file of 64-vertex concave faces up to the triangle limit loads in
 well under a second on the dev machine (`bounded.test.ts`).
@@ -93,7 +94,7 @@ file) and a message quoting at most 32 characters of file content.
 | `LINE_TOO_LONG`      | a logical line exceeds `maxLineChars`                                                                                                    |
 | `INVALID_STATEMENT`  | too few numbers for `v`, `vt` or `vn`; a face of fewer than 3 corners; a malformed corner or index; input that is neither text nor bytes |
 | `INDEX_OUT_OF_RANGE` | index 0, or an index beyond the `v`, `vt` or `vn` statements read so far                                                                 |
-| `NON_FINITE_DATA`    | a number that is not finite (`NaN`, `Infinity`, `1e999`)                                                                                 |
+| `NON_FINITE_DATA`    | a number that is not finite (`NaN`, `Infinity`, `1e999`), or not finite in float32 (a position times `unitScale`, a `vt` or `vn` value)  |
 | `TOO_MANY_*`         | a count over its limit (see Limits)                                                                                                      |
 | `TEXTURE_TOO_LARGE`  | a `map_Kd` PNG over the side or pixel limit                                                                                              |
 

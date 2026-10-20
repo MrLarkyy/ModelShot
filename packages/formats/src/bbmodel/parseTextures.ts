@@ -14,7 +14,7 @@ import {
   readString,
   type JsonObject,
 } from './JsonFields';
-import { quoteValue } from './quoteValue';
+import { quoteValue } from '../text/quoteValue';
 import { RENDER_SIDES, type RenderSides } from './RenderSides';
 
 /** What the loader knows about a texture before any bytes are decoded. */

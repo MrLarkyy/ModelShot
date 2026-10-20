@@ -14,7 +14,7 @@ import {
   readVec3,
   type JsonObject,
 } from './JsonFields';
-import { quoteValue } from './quoteValue';
+import { quoteValue } from '../text/quoteValue';
 import { readRenderOrder } from './RenderOrder';
 
 /** One drawable face (3 or more vertices) of a mesh element. */

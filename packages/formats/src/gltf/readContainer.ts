@@ -1,7 +1,8 @@
-import { quoteValue } from '../bbmodel/quoteValue';
+import { quoteValue } from '../text/quoteValue';
 import { utf8LengthExceeds } from '../text/utf8LengthExceeds';
 import { GltfError } from './GltfError';
-import { field, isJsonObject, readString, type JsonObject } from './gltfFields';
+import { field, isJsonObject, type JsonObject } from '../json/JsonObject';
+import { readString } from './gltfFields';
 
 /** The glTF JSON and, for a GLB, its binary chunk (buffer 0 when that buffer has no `uri`). */
 export interface GltfContainer {

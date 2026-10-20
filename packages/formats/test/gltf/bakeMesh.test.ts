@@ -1,15 +1,23 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import * as bake from '../../src/gltf/bakePrimitive';
+import * as bake from '../../src/gltf/bakeMesh';
+import * as decode from '../../src/gltf/decodePrimitive';
 import { loadGltf, type GltfLoadOptions } from '../../src/index';
 import { expectGltfError, json } from './expectGltfError';
-import { gltfDoc, TRIANGLE, type DocOptions } from './gltfBuilder';
+import { gltfDoc, TRIANGLE, type DocOptions, type Json } from './gltfBuilder';
 
-vi.mock('../../src/gltf/bakePrimitive', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../../src/gltf/bakePrimitive')>();
+vi.mock('../../src/gltf/bakeMesh', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../src/gltf/bakeMesh')>();
   return { ...original, bakeMesh: vi.fn(original.bakeMesh) };
 });
+vi.mock('../../src/gltf/decodePrimitive', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../src/gltf/decodePrimitive')>();
+  return { ...original, decodePrimitive: vi.fn(original.decodePrimitive) };
+});
 
-afterEach(() => vi.mocked(bake.bakeMesh).mockClear());
+afterEach(() => {
+  vi.mocked(bake.bakeMesh).mockClear();
+  vi.mocked(decode.decodePrimitive).mockClear();
+});
 
 function load(options: DocOptions, loadOptions: GltfLoadOptions = { unitScale: 1 }) {
   return loadGltf(json(gltfDoc(options)), loadOptions);
@@ -121,5 +129,88 @@ describe('bakeMesh', () => {
       NORMAL: 1,
     };
     expectGltfError(json(doc), 'INVALID_FIELD', '$.meshes[0].primitives[0].attributes');
+  });
+});
+
+describe('instances (review round 2)', () => {
+  it('decodes a primitive once however many nodes draw it', () => {
+    const nodes = Array.from({ length: 1000 }, (_, i) => ({ mesh: 0, translation: [i, 0, 0] }));
+    const { scene } = load({ meshes: [[{ ...TRIANGLE, indices: [0, 1, 2] }]], nodes });
+    expect(scene.meshes).toHaveLength(1000);
+    expect(decode.decodePrimitive).toHaveBeenCalledTimes(1);
+    expect([...scene.meshes[999]!.positions.slice(0, 3)]).toEqual([999, 0, 0]);
+  });
+
+  it('counts the vertices an index list addresses, once per primitive, before decoding', () => {
+    const huge = (count: number) => {
+      const doc = gltfDoc({
+        meshes: [[{ positions: TRIANGLE.positions, indices: [0, 1, 2] }]],
+        nodes: Array.from({ length: 1000 }, () => ({ mesh: 0 })),
+      });
+      (doc.accessors as Json[])[0] = { componentType: 5126, count, type: 'VEC3' };
+      return json(doc);
+    };
+    const start = performance.now();
+    // 300 000 addressed, 3 drawn per node: decoded once, baked 1000 times.
+    expect(loadGltf(huge(300_000)).scene.meshes).toHaveLength(1000);
+    expect(performance.now() - start).toBeLessThan(2000);
+    expect(decode.decodePrimitive).toHaveBeenCalledTimes(1);
+    vi.mocked(decode.decodePrimitive).mockClear();
+    expectGltfError(huge(400_001), 'TOO_MANY_VERTICES', '$.nodes[0]');
+    expectGltfError(huge(2 ** 31), 'TOO_MANY_VERTICES', '$.nodes[0]');
+    expect(decode.decodePrimitive).not.toHaveBeenCalled();
+  });
+
+  it('skips a strip or fan without a triangle, with a warning, and no empty mesh or group', () => {
+    const { scene, warnings } = load({
+      meshes: [
+        [
+          { positions: [0, 0, 0, 1, 0, 0], mode: 5 },
+          { ...TRIANGLE, positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], indices: [0], mode: 6 },
+        ],
+        [TRIANGLE],
+      ],
+      nodes: [...Array.from({ length: 3 }, () => ({ mesh: 0 })), { mesh: 1 }],
+    });
+    expect(scene.meshes.map((m) => [m.node, m.groups.length])).toEqual([[3, 1]]);
+    expect(warnings.map((w) => [w.code, w.path])).toEqual([
+      ['EMPTY_PRIMITIVE', '$.meshes[0].primitives[0]'],
+      ['EMPTY_PRIMITIVE', '$.meshes[0].primitives[1]'],
+    ]);
+  });
+
+  it('counts drawn primitives over every instance against maxDrawnPrimitives', () => {
+    const doc = json(
+      gltfDoc({ meshes: [[TRIANGLE, TRIANGLE, TRIANGLE]], nodes: Array.from({ length: 4 }, () => ({ mesh: 0 })) }),
+    );
+    expect(loadGltf(doc, { limits: { maxDrawnPrimitives: 12 } }).scene.meshes).toHaveLength(4);
+    vi.mocked(bake.bakeMesh).mockClear();
+    expectGltfError(doc, 'TOO_MANY_PRIMITIVES', '$.nodes[3]', { limits: { maxDrawnPrimitives: 11 } });
+    expect(bake.bakeMesh).not.toHaveBeenCalled();
+  });
+
+  it('rejects positions and UVs that overflow float32 once placed or transformed', () => {
+    expect(load({ nodes: [{ mesh: 0, scale: [1e35, 1e35, 1e35] }] }).scene.meshes).toHaveLength(1);
+    expectGltfError(
+      json(gltfDoc({ nodes: [{ mesh: 0, scale: [1e38, 1e38, 1e38] }] })),
+      'NON_FINITE_DATA',
+      '$.accessors[0]',
+      {
+        unitScale: 16,
+      },
+    );
+    const transformed = gltfDoc({
+      meshes: [[{ ...TRIANGLE, uvs: [0, 0, 10, 0, 0, 10], material: 0 }]],
+      materials: [
+        {
+          pbrMetallicRoughness: {
+            baseColorTexture: { index: 0, extensions: { KHR_texture_transform: { scale: [1e38, 1e38] } } },
+          },
+        },
+      ],
+      textures: [{ source: 0 }],
+      images: [{ uri: 'data:image/png;base64,' }],
+    });
+    expectGltfError(json(transformed), 'NON_FINITE_DATA', '$.accessors[2]');
   });
 });

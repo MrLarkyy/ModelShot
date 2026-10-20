@@ -1,10 +1,9 @@
-import { quoteValue } from '../bbmodel/quoteValue';
+import { quoteValue } from '../text/quoteValue';
 import type { GltfBuffers } from './GltfBuffers';
 import { GltfError } from './GltfError';
 import type { GltfLimits } from './GltfLoadOptions';
+import { childPath, field, type JsonObject } from '../json/JsonObject';
 import {
-  childPath,
-  field,
   readIndex,
   readInteger,
   readList,
@@ -13,7 +12,6 @@ import {
   readOptionalIndex,
   readOptionalInteger,
   readString,
-  type JsonObject,
 } from './gltfFields';
 
 /** What an accessor is read as; each allows only the layouts glTF 2.0 allows for that attribute. */

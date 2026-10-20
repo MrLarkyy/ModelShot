@@ -1,4 +1,4 @@
-import { shortenPath } from '../bbmodel/quoteValue';
+import { shortenPath } from '../text/quoteValue';
 
 export type ObjErrorCode =
   | 'FILE_TOO_LARGE'

@@ -1,6 +1,6 @@
 import type { SceneMaterial, SceneTexture } from '@modelshot/scene';
 import { BLEND_ALPHA_CUTOFF } from '../alpha/blendAlphaCutoff';
-import { quoteValue } from '../bbmodel/quoteValue';
+import { quoteValue } from '../text/quoteValue';
 import { decodeDataUri } from '../dataUri/decodeDataUri';
 import { encodeSolidPng } from '../png/encodeSolidPng';
 import { readPngSize } from '../png/readPngSize';
@@ -9,9 +9,8 @@ import type { GltfAccessors } from './GltfAccessors';
 import { GltfError } from './GltfError';
 import type { GltfLimits } from './GltfLoadOptions';
 import type { GltfWarningList } from './GltfWarning';
+import { childPath, field, type JsonObject } from '../json/JsonObject';
 import {
-  childPath,
-  field,
   readList,
   readNumber,
   readObject,
@@ -24,7 +23,6 @@ import {
   readOptionalObject,
   readOptionalString,
   readString,
-  type JsonObject,
 } from './gltfFields';
 import { readTextureTransform, type TextureTransform } from './TextureTransform';
 

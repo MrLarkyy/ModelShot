@@ -20,7 +20,7 @@ import {
   type JsonObject,
 } from './JsonFields';
 import { readTextureEntries, resolveTextures, textureIdIndex, type UvSize } from './parseTextures';
-import { quoteValue } from './quoteValue';
+import { quoteValue } from '../text/quoteValue';
 import { readJson } from './readJson';
 import { formatDoubleSided, isDoubleSided } from './RenderSides';
 

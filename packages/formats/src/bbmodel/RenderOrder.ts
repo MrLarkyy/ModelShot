@@ -1,7 +1,7 @@
 import { BbmodelError } from './BbmodelError';
 import type { BbmodelWarningList } from './BbmodelWarning';
 import { childPath, field, type JsonObject } from './JsonFields';
-import { quoteValue } from './quoteValue';
+import { quoteValue } from '../text/quoteValue';
 
 // Blockbench's element `render_order` and the three.js renderOrder it sets (outliner.js updateRenderOrder).
 const RENDER_ORDERS: ReadonlyMap<string, number> = new Map([

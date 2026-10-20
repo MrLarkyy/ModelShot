@@ -1,4 +1,4 @@
-import { shortenPath } from '../bbmodel/quoteValue';
+import { shortenPath } from '../text/quoteValue';
 
 export type GltfWarningCode =
   | 'UNSUPPORTED_SKIN'
@@ -9,6 +9,7 @@ export type GltfWarningCode =
   | 'UNSUPPORTED_MATERIAL_FEATURE'
   | 'UNSUPPORTED_ATTRIBUTE'
   | 'UNSUPPORTED_PRIMITIVE_MODE'
+  | 'EMPTY_PRIMITIVE'
   | 'UNSUPPORTED_SPARSE_ACCESSOR'
   | 'UNSUPPORTED_IMAGE'
   | 'EXTRA_SCENES_IGNORED'
@@ -40,6 +41,7 @@ const TITLES: Readonly<Record<GltfWarningCode, string>> = {
   UNSUPPORTED_MATERIAL_FEATURE: 'Material features ignored',
   UNSUPPORTED_ATTRIBUTE: 'Attribute ignored',
   UNSUPPORTED_PRIMITIVE_MODE: 'Primitive skipped',
+  EMPTY_PRIMITIVE: 'Empty primitive skipped',
   UNSUPPORTED_SPARSE_ACCESSOR: 'Primitive with a sparse accessor skipped',
   UNSUPPORTED_IMAGE: 'Image not usable',
   EXTRA_SCENES_IGNORED: 'Other scenes ignored',

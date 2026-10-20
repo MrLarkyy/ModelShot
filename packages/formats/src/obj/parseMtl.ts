@@ -1,7 +1,8 @@
-import { quoteValue } from '../bbmodel/quoteValue';
+import { quoteValue } from '../text/quoteValue';
 import { ObjError } from './ObjError';
 import type { ObjLimits } from './ObjLoadOptions';
 import type { ObjWarningList } from './ObjWarning';
+import { KeywordTally, MAX_TRACKED_KEYWORDS } from './KeywordTally';
 import { forEachStatement } from './objText';
 
 /** What the loader uses of an MTL material. */
@@ -75,7 +76,7 @@ export function parseMtl(
   into: Map<string, MtlMaterial>,
 ): void {
   let pending: Pending | null = null;
-  const unsupported = new Map<string, { count: number; path: string }>();
+  const unsupported = new KeywordTally();
   const finish = (): void => {
     if (!pending) return;
     const { name, path, diffuse, opacity, diffuseMap, options, maps, params } = pending;
@@ -98,11 +99,12 @@ export function parseMtl(
     const { keyword, args, path } = statement;
     if (keyword === 'newmtl') {
       finish();
-      if (into.size >= limits.maxMaterials) {
+      const name = statement.rest(0).slice(0, limits.maxStringChars);
+      if (!into.has(name) && into.size >= limits.maxMaterials) {
         throw new ObjError('TOO_MANY_MATERIALS', path, `more than ${limits.maxMaterials} materials`);
       }
       pending = {
-        name: statement.rest(0).slice(0, limits.maxStringChars),
+        name,
         path,
         diffuse: [1, 1, 1],
         opacity: 1,
@@ -116,9 +118,7 @@ export function parseMtl(
     }
     const material: Pending | null = pending;
     if (!material) {
-      const seen = unsupported.get(keyword.slice(0, 32));
-      if (seen) seen.count++;
-      else unsupported.set(keyword.slice(0, 32), { count: 1, path });
+      unsupported.add(keyword, path);
       return;
     }
     if (keyword === 'Kd') {
@@ -149,23 +149,15 @@ export function parseMtl(
       }
       material.diffuseMap = statement.rest(index).slice(0, limits.maxStringChars);
     } else if (keyword.startsWith('map_') || UNSUPPORTED_MAPS.has(keyword)) {
-      material.maps.add(keyword.slice(0, 32));
+      if (material.maps.size < MAX_TRACKED_KEYWORDS) material.maps.add(keyword.slice(0, 32));
     } else if (IGNORED_PARAMS.has(keyword)) {
       material.params.add(keyword);
     } else {
-      const seen = unsupported.get(keyword.slice(0, 32));
-      if (seen) seen.count++;
-      else unsupported.set(keyword.slice(0, 32), { count: 1, path });
+      unsupported.add(keyword, path);
     }
   });
   finish();
-  for (const [keyword, { count, path }] of unsupported) {
-    warnings.add(
-      'UNSUPPORTED_STATEMENT',
-      path,
-      `${quoteValue(keyword)} (${count} line${count === 1 ? '' : 's'}) ignored`,
-    );
-  }
+  unsupported.report(warnings, 'ignored');
 }
 
 function readNumber(token: string | undefined, path: string): number {

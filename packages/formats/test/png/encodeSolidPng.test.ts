@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { adler32, crc32, encodeSolidPng } from '../../src/png/encodeSolidPng';
+import { adler32, crc32 } from '../../src/png/checksums';
+import { encodeSolidPng } from '../../src/png/encodeSolidPng';
 import { readPngSize } from '../../src/png/readPngSize';
 
 describe('encodeSolidPng', () => {

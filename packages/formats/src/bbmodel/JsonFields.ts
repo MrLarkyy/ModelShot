@@ -1,27 +1,17 @@
 import type { Vec3 } from '@modelshot/scene';
 import { BbmodelError, type BbmodelErrorCode } from './BbmodelError';
-import { quoteValue } from './quoteValue';
+import { childPath, field, isJsonObject, type JsonObject } from '../json/JsonObject';
+import { quoteValue } from '../text/quoteValue';
 
 /**
- * Path-aware readers for parsed, untrusted JSON. Values are only read, never spread or assigned into our objects, and
- * fields are read as own properties, so `__proto__` or `constructor` keys in a file are inert.
+ * Path-aware readers for parsed, untrusted Blockbench JSON; every bad value is a `BbmodelError` naming its JSON path.
+ * The format-neutral helpers (`JsonObject`, `isJsonObject`, `field`, `childPath`) come from `json/JsonObject.ts` and
+ * are re-exported for the Blockbench modules.
  */
-export type JsonObject = { readonly [key: string]: unknown };
+export { childPath, field, isJsonObject, type JsonObject };
 
 /** Coordinates beyond this are rejected: they would overflow Float32 maths or hide an Infinity. */
 export const MAX_ABS_NUMBER = 1e7;
-
-export function isJsonObject(value: unknown): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-export function field(object: JsonObject, key: string): unknown {
-  return Object.hasOwn(object, key) ? object[key] : undefined;
-}
-
-export function childPath(path: string, key: string | number): string {
-  return typeof key === 'number' ? `${path}[${key}]` : `${path}.${key}`;
-}
 
 function invalid(path: string, expected: string, value: unknown): BbmodelError {
   return new BbmodelError('INVALID_FIELD', path, `expected ${expected}, got ${quoteValue(value)}`);
