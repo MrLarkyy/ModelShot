@@ -1,6 +1,6 @@
 import { observeCanvasSize, RealtimeRenderer, type RendererWarning } from '@modelshot/renderer-rt';
 import { cameraProjection, cameraView, mat4Multiply, type SceneDocument } from '@modelshot/scene';
-import { installFrameBench, installFrameReadout } from './bench';
+import { installFrameBench, installFrameReadout, installSceneBench } from './bench';
 import { readDrawingBufferBase64 } from './context';
 import type { MsFixture, RtControls } from './fixtureApi';
 import { breakFramebuffers } from './breakFramebuffers';
@@ -89,6 +89,11 @@ async function start(): Promise<void> {
   });
 
   installFrameBench(api, gl, () => renderer.render());
+  installSceneBench(api, gl, async () => {
+    doc = sceneOf('large-order');
+    warnings = (await renderer.setScene(doc)).warnings;
+    frame();
+  });
   if (continuous) {
     const output = document.createElement('output');
     document.body.appendChild(output);

@@ -104,7 +104,16 @@ export function uploadScene(
   const hasRenderOrder = doc.meshes.some(
     (mesh, index) => (mesh.renderOrder ?? 0) !== 0 && meshVisible(doc, index, visibility),
   );
-  return { vaos, buffers, opaque: opaque.sort(byOrder), partial: partial.sort(byOrder), hasRenderOrder, exact: null };
+  const scene: GpuScene = {
+    vaos,
+    buffers,
+    opaque: opaque.sort(byOrder),
+    partial: partial.sort(byOrder),
+    hasRenderOrder,
+    exact: null,
+  };
+  if (hasRenderOrder) scene.exact = uploadExactGeometry(gl, scene);
+  return scene;
 }
 
 /** Corner attribute locations of `mesh.vert.glsl`. */
@@ -112,7 +121,8 @@ const CORNER_LOCATIONS = [4, 5, 6] as const;
 
 /**
  * Uploads every batch again without indices, each vertex carrying its triangle's three corners, for the exact depth
- * key; drawn with `drawArrays`. Built once per scene, on the first frame that needs it.
+ * key; drawn with `drawArrays`. Built once per scene: at upload for a scene with render order, else on the first frame
+ * that needs it (a camera inside the bounding sphere).
  */
 export function uploadExactGeometry(gl: WebGL2RenderingContext, scene: GpuScene): ExactGeometry {
   const vaos = new Map<SceneBatch, WebGLVertexArrayObject>();
@@ -127,14 +137,27 @@ export function uploadExactGeometry(gl: WebGL2RenderingContext, scene: GpuScene)
       uvRects: new Float32Array(n * 4),
     };
     const corners = CORNER_LOCATIONS.map(() => new Float32Array(n * 3));
+    const { indices, positions, normals, uvs, uvRects } = batch;
+    // Plain index loops: this runs once per scene on up to the loader's 200 000 triangles.
     for (let i = 0; i < n; i++) {
-      const v = batch.indices[i] ?? 0;
-      for (const { size, key } of ATTRIBUTES) arrays[key].set(batch[key].subarray(v * size, v * size + size), i * size);
-      const first = i - (i % 3);
-      corners.forEach((corner, c) => {
-        const cv = batch.indices[first + c] ?? 0;
-        corner.set(batch.positions.subarray(cv * 3, cv * 3 + 3), i * 3);
-      });
+      const v = indices[i] ?? 0;
+      for (let k = 0; k < 3; k++) {
+        arrays.positions[i * 3 + k] = positions[v * 3 + k] ?? 0;
+        arrays.normals[i * 3 + k] = normals[v * 3 + k] ?? 0;
+      }
+      arrays.uvs[i * 2] = uvs[v * 2] ?? 0;
+      arrays.uvs[i * 2 + 1] = uvs[v * 2 + 1] ?? 0;
+      for (let k = 0; k < 4; k++) arrays.uvRects[i * 4 + k] = uvRects[v * 4 + k] ?? 0;
+    }
+    for (let t = 0; t < n; t += 3) {
+      for (let c = 0; c < 3; c++) {
+        const corner = corners[c];
+        const v = indices[t + c] ?? 0;
+        if (!corner) continue;
+        for (let i = t; i < t + 3; i++) {
+          for (let k = 0; k < 3; k++) corner[i * 3 + k] = positions[v * 3 + k] ?? 0;
+        }
+      }
     }
     const vao = gl.createVertexArray();
     gl.bindVertexArray(vao);

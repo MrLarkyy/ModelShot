@@ -38,6 +38,15 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
     return fixture.renderFrames(30);
   });
 
+  // Load and first frame of a scene at the loader's limits with render order: decode, upload, the exact key's
+  // de-indexed geometry, one frame.
+  await openFixture(page, '/rt.html?scene=empty&size=512');
+  const loadMs = await page.evaluate(async () => {
+    const fixture = window.__msFixture;
+    if (!fixture?.timeScene) throw new Error('scene bench missing');
+    return fixture.timeScene();
+  });
+
   await openFixture(page, '/progressive.html?seed=7&samples=64');
   const runs = await page.evaluate(() => {
     const fixture = window.__msFixture;
@@ -52,6 +61,7 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
       'gradient-256': median(frames),
       'rt-bench-512': median(rtFrames),
       'rt-bench-order-512': median(rtOrderFrames),
+      'rt-load-first-frame-200k-order': loadMs,
     },
     timeToSamplesMs: { 'progressive-256-n64': median(runs) },
     bundleGzipBytes: { app: app.gzipBytes, embed: embed.gzipBytes },

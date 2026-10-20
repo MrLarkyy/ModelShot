@@ -9,9 +9,9 @@ export interface MeshProgram {
   readonly viewProjection: WebGLUniformLocation | null;
   readonly depthPull: WebGLUniformLocation | null;
   readonly orderPull: WebGLUniformLocation | null;
-  readonly far: WebGLUniformLocation | null;
   readonly inverseProjection: WebGLUniformLocation | null;
   readonly viewportSize: WebGLUniformLocation | null;
+  readonly depthRange: WebGLUniformLocation | null;
   readonly texture: WebGLUniformLocation | null;
   readonly texelAntialias: WebGLUniformLocation | null;
   readonly alphaMode: WebGLUniformLocation | null;
@@ -60,9 +60,9 @@ export function createRendererPrograms(gl: WebGL2RenderingContext, floatPath: bo
         viewProjection: at('u_viewProjection'),
         depthPull: at('u_depthPull'),
         orderPull: at('u_orderPull'),
-        far: at('u_far'),
         inverseProjection: at('u_inverseProjection'),
         viewportSize: at('u_viewportSize'),
+        depthRange: at('u_depthRange'),
         texture: at('u_texture'),
         texelAntialias: at('u_texelAntialias'),
         alphaMode: at('u_alphaMode'),

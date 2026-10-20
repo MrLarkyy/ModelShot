@@ -371,7 +371,6 @@ function hueMatch(a: readonly number[], b: readonly number[]): number {
   return dot / (Math.hypot(a[0] ?? 0, a[1] ?? 0, a[2] ?? 0) * Math.hypot(b[0] ?? 0, b[1] ?? 0, b[2] ?? 0));
 }
 
-/** Path and clip planes; the mode is the depth key an order-0 scene gets (a scene with render order is always exact). */
 /** Pixels of the opposite quad colour (red: r > 1.5 b; blue: b > 1.5 r) where `expected` must show alone. */
 function wrongColourPixels(image: Image, expected: 'red' | 'blue'): number {
   let count = 0;
@@ -383,6 +382,7 @@ function wrongColourPixels(image: Image, expected: 'red' | 'blue'): number {
   return count;
 }
 
+/** Path and clip planes; the mode is the depth key an order-0 scene gets (a scene with render order is always exact). */
 const RT_MODES = [
   ['float, framed', '&depth=framed', 'raster'],
   ['float, inside the sphere', '&depth=inside', 'exact'],
@@ -452,5 +452,67 @@ test.describe('coincident double-sided faces and single-sided backs', () => {
         else expect(single, 'single-sided back is not drawn').toEqual(backdrop);
       }
     });
+  }
+});
+
+/** Pixels where blue clearly dominates red: the blue (hidden) faces of the closed cube. */
+function bluePixels(image: Image): number {
+  let count = 0;
+  for (let i = 0; i < image.data.length; i += 4) {
+    if ((image.data[i + 2] ?? 0) > (image.data[i] ?? 0) + 24) count++;
+  }
+  return count;
+}
+
+test.describe('closed double-sided cube: no back side on silhouettes', () => {
+  for (const [label, query, mode] of [
+    ['float, raster key', 'scene=closed-cube&depth=framed', 'raster'],
+    ['float, exact key (inside the sphere)', 'scene=closed-cube&depth=inside', 'exact'],
+    ['float, exact key (render order)', 'scene=closed-cube-order&depth=framed', 'exact'],
+    ['fallback, raster key', 'scene=closed-cube&depth=framed&fallback=1', 'raster'],
+    ['fallback, exact key (inside the sphere)', 'scene=closed-cube&depth=inside&fallback=1', 'exact'],
+    ['fallback, exact key (render order)', 'scene=closed-cube-order&depth=framed&fallback=1', 'exact'],
+  ] as const) {
+    test(label, async ({ page }) => {
+      const { image } = await render(page, `${query}&look=cube`);
+      expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe(mode);
+      expect(modelBox(image).x1 - modelBox(image).x0, 'the cube is drawn').toBeGreaterThan(50);
+      expect(bluePixels(image), 'pixels of a hidden (back-side) face').toBe(0);
+    });
+  }
+});
+
+test.describe('texel alpha bytes in the shaders (alpha ramp, no texel anti-aliasing)', () => {
+  for (const [scene, invisibleBelow] of [
+    ['alpha-ramp-blend', 3],
+    ['alpha-ramp-mask', 128],
+    ['alpha-ramp-opaque', 0],
+  ] as const) {
+    for (const extra of ['', '&fallback=1']) {
+      test(`${scene}${extra}: bytes below ${invisibleBelow} show only the backdrop, the others do not`, async ({
+        page,
+      }) => {
+        const { image } = await render(page, `scene=${scene}&look=ramp&aa=0${extra}`);
+        const backdrop = pixel(image, 0, 0);
+        const invisible: number[] = [];
+        for (let k = 0; k < 256; k++) {
+          const [x, y] = await page.evaluate(
+            ([col, row]) => window.__msFixture!.rt!.project(-8 + col + 0.5, 8 - row - 0.5, 0),
+            [k % 16, Math.floor(k / 16)] as const,
+          );
+          let allBackdrop = true;
+          for (let dy = -5; dy <= 5 && allBackdrop; dy++) {
+            for (let dx = -5; dx <= 5; dx++) {
+              if (!near(pixel(image, x + dx, y + dy), backdrop, 0)) {
+                allBackdrop = false;
+                break;
+              }
+            }
+          }
+          if (allBackdrop) invisible.push(k);
+        }
+        expect(invisible).toEqual(Array.from({ length: invisibleBelow }, (_, k) => k));
+      });
+    }
   }
 });

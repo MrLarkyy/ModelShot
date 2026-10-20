@@ -64,7 +64,7 @@ function validateMesh(mesh: SceneMesh, path: string, doc: SceneDocument): void {
 /**
  * Checks every cross reference and buffer length the renderer relies on, so a malformed document fails with a
  * `RendererError` `INVALID_SCENE` naming the path instead of reading out of bounds on the GPU; also `renderOrder`
- * (an integer in ±1024, so a pull never leaves the depth range) and `doubleSided` (a boolean). Material
+ * (an integer in ±1024, the range the exact depth key maps into depth, `exactDepthRange`) and `doubleSided` (a boolean). Material
  * `alphaMode` / `alphaCutoff` are not checked: `resolveMaterialAlpha` turns any value into a valid rule.
  */
 export function validateScene(doc: SceneDocument): void {

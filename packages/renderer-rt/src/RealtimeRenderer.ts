@@ -11,7 +11,7 @@ import {
 import { canvasSize, type CanvasCssSize, type CanvasSize } from './canvasSize';
 import { DEFAULT_MAX_TEXTURE_PIXELS_TOTAL, decodeTextures, type TextureLimits } from './decodeTextures';
 import { queryGlLimits, type GlLimits } from './glLimits';
-import { depthKeyMode, depthPull, type DepthKeyMode } from './depthKeyMode';
+import { depthKeyMode, depthPull, exactDepthRange, type DepthKeyMode } from './depthKeyMode';
 import { invertMat4 } from './invertMat4';
 import { createRendererPrograms, type MeshPassName, type RendererPrograms } from './rendererPrograms';
 import { RendererError } from './RendererError';
@@ -75,6 +75,8 @@ interface FrameView {
   readonly viewProjection: Float32Array;
   readonly far: number;
   readonly mode: DepthKeyMode;
+  /** Viewport of every mesh pass (the float targets and the fallback both draw at the canvas size). */
+  readonly viewport: readonly [number, number];
 }
 
 interface GpuResources {
@@ -215,20 +217,22 @@ export class RealtimeRenderer {
     const width = this.canvas.width;
     const height = this.canvas.height;
     if (gpu.targets && !gpu.targets.ensure(width, height)) this.switchToFallback(gpu);
-    const frame = this.frameView(gpu, width / height);
+    const frame = this.frameView(gpu, width, height);
     this.frameDepthKey = frame?.mode ?? null;
     if (gpu.targets) this.drawFloatPath(gpu, gpu.targets, frame);
     else this.drawFallbackPath(gpu, frame);
   }
 
   /** The camera of this frame, and the depth-key variant the scene and this depth range need (`depthKeyMode`). */
-  private frameView(gpu: GpuResources, aspect: number): FrameView | null {
+  private frameView(gpu: GpuResources, width: number, height: number): FrameView | null {
     const camera = this.camera;
     if (!camera) return null;
-    const projection = cameraProjection(camera, aspect);
+    const projection = cameraProjection(camera, width / height);
     const view = cameraView(camera);
     const depthBits = gpu.targets ? FLOAT_PATH_DEPTH_BITS : this.defaultDepthBits();
     const mode = depthKeyMode(camera, depthBits, gpu.scene?.hasRenderOrder ?? false);
+    // A scene with render order got its exact geometry at upload; an order-0 scene builds it once, on the first frame
+    // inside its bounding sphere.
     if (mode === 'exact' && gpu.scene && !gpu.scene.exact) gpu.scene.exact = uploadExactGeometry(this.gl, gpu.scene);
     return {
       view: new Float32Array(view),
@@ -237,6 +241,7 @@ export class RealtimeRenderer {
       viewProjection: new Float32Array(mat4Multiply(projection, view)),
       far: camera.far,
       mode,
+      viewport: [width, height],
     };
   }
 
@@ -375,9 +380,10 @@ export class RealtimeRenderer {
   /**
    * Draws `items` (sorted by render order, descending) with the frame's variant of `passName`. Per render order: the
    * front faces of every item (back faces culled), then the back faces of double-sided items (front faces culled).
-   * Each draw is pulled `order × RENDER_ORDER_TIE_DISTANCE` towards the camera along the view axis, a back face with
-   * `order + BACK_SIDE_RENDER_ORDER`, so the depth test resolves the scene format's render-order key; there is no
-   * polygon offset. The depth test is set by the caller.
+   * Exact frames key each fragment by `order` (a back face `order + BACK_SIDE_RENDER_ORDER`) in the shader. Raster
+   * frames carry only order 0: the front pass is drawn as is and the back pass gets `polygonOffset(4, 4)`, a
+   * slope-scaled push that keeps a back side behind the front face it meets at a silhouette (the −1/16 order is below
+   * the interpolation error there). The depth test is set by the caller.
    */
   private drawItems(gpu: GpuResources, passName: MeshPassName, items: readonly DrawItem[], frame: FrameView): void {
     const pass = gpu.programs.meshPasses[frame.mode][passName];
@@ -386,9 +392,10 @@ export class RealtimeRenderer {
     gl.useProgram(pass.program);
     gl.uniformMatrix4fv(pass.view, false, frame.view);
     gl.uniformMatrix4fv(pass.viewProjection, false, frame.viewProjection);
-    gl.uniform1f(pass.far, frame.far);
     gl.uniformMatrix4fv(pass.inverseProjection, false, frame.inverseProjection);
-    gl.uniform2f(pass.viewportSize, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    gl.uniform2f(pass.viewportSize, frame.viewport[0], frame.viewport[1]);
+    const [depthOffset, depthScale] = exactDepthRange(frame.far);
+    gl.uniform2f(pass.depthRange, depthOffset, depthScale);
     const exact = frame.mode === 'exact' ? gpu.scene?.exact : null;
     const noPull = new Float32Array(4);
     gl.uniform1i(pass.texture, 0);
@@ -419,7 +426,16 @@ export class RealtimeRenderer {
       gl.cullFace(gl.BACK);
       for (const item of level) draw(item, order);
       gl.cullFace(gl.FRONT);
-      for (const item of level) if (!item.cull) draw(item, order + BACK_SIDE_RENDER_ORDER);
+      if (exact) {
+        for (const item of level) if (!item.cull) draw(item, order + BACK_SIDE_RENDER_ORDER);
+      } else {
+        gl.enable(gl.POLYGON_OFFSET_FILL);
+        // Slope factor 4: MSAA samples next to a silhouette compare against the front face's depth up to about a
+        // pixel away; factors 1 and 2 still let back sides through there (closed-cube test).
+        gl.polygonOffset(4, 4);
+        for (const item of level) if (!item.cull) draw(item, order);
+        gl.disable(gl.POLYGON_OFFSET_FILL);
+      }
       first = end;
     }
     gl.disable(gl.CULL_FACE);

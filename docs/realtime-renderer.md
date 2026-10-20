@@ -70,21 +70,28 @@ The rules are the scene format's ([scene-format.md](scene-format.md): `SceneMate
 - **Sides**: single-sided groups are drawn with back faces culled in every pass. Double-sided groups are drawn twice
   per render order: front faces, then back faces (front faces culled), the back lit with the flipped normal.
 - **Render order**: draws are sorted by render order, descending; per order the front pass, then the back pass of
-  double-sided items (back = −1/16). The scene format's key is realised in one of two depth-key variants, picked per
-  frame by `depthKeyMode` (both linked at start-up; `RealtimeRenderer.depthKeyMode` reports the last frame's):
-  - `raster`: each draw is pulled `(order + back) × RENDER_ORDER_TIE_DISTANCE` towards the camera along the view axis
-    (that distance times the projection's third column added to `gl_Position`) and the depth buffer compares; early
-    depth testing and per-sample MSAA depth stay. Only as exact as the rasteriser's depth interpolation: two coincident
-    faces split along different diagonals at a grazing angle differ by several times the tie distance (about 5× on
-    SwiftShader), so it is used only where every visible mesh has render order 0. There the only ties are the back
-    side's −1/16 against the coincident front of a double-sided pair, which the front-then-back draw order with a
-    `LESS` test resolves (tested at a grazing angle).
-  - `exact`: every mesh pass computes the key per fragment from the pixel's ray and the triangle's plane (three corners
-    in view space, from a de-indexed copy of the geometry built on first use) and writes `gl_FragDepth = (view depth −
-pull) / far`; costs early depth testing and gives per-pixel MSAA depth. Used for every draw of a frame when the
-    scene has a visible mesh with render order ≠ 0 (decided once per scene upload) or when the depth buffer cannot
-    resolve the tie at the far plane (24-bit step `(f − n)·f / (n·2²⁴)` above a quarter of it: a camera inside the
-    bounding sphere, or a 16-bit default depth buffer on the fallback path).
+  double-sided items. The scene format's key is realised in one of two depth-key variants, picked per frame by
+  `depthKeyMode` (both linked at start-up; `RealtimeRenderer.depthKeyMode` reports the last frame's):
+  - `raster`, used only where every visible mesh has render order 0: the depth buffer compares the projected depth;
+    early depth testing and per-sample MSAA depth stay. The back pass gets `polygonOffset(4, 4)`, a slope-scaled push
+    that keeps a back side behind the front face it meets at a silhouette or coincides with (the −1/16 order step is
+    far below the rasteriser's depth interpolation error; slope factors 1 and 2 still let back sides through at MSAA
+    samples next to a silhouette, see the closed-cube test). No render-order pull is needed there.
+  - `exact`: every mesh pass computes the key per fragment and writes it as `gl_FragDepth`, with the key range
+    `[−(1024 + 1) × TIE, far + (1024 + 1) × TIE]` mapped to `[0, 1]` (`exactDepthRange`), so no order is clamped at
+    the near or far plane. The depth is the view depth where a ray meets the triangle's plane (three corners in view
+    space, from a de-indexed copy of the geometry); the ray is the pixel centre's, or, at an edge pixel whose centre
+    lies outside the triangle (MSAA), the ray through the centroid-sampled view position, where a back face also
+    yields two pixels' worth of its depth change. Two triangulations of one plane therefore agree to float precision.
+    Costs early depth testing and gives per-pixel MSAA depth. Used for every draw of a frame when the scene has a
+    visible mesh with render order ≠ 0 (decided at scene upload, which then builds the de-indexed geometry: about
+    350 ms for load and first frame at the loader's 200 000 triangles on SwiftShader, `rt-load-first-frame-200k-order`)
+    or when the depth buffer cannot resolve the tie at the far plane (24-bit step `(f − n)·f / (n·2²⁴)` above a
+    quarter of it: a camera inside the bounding sphere, which builds the de-indexed geometry once, on the first such
+    frame).
+  - Limit: on a 16-bit depth buffer (the fallback path's default framebuffer may have only 16 bits) neither variant
+    resolves the tie: the exact key is stored in steps of about `(far + 2.05) / 65536` (0.0013 units at far 80), so
+    surfaces closer than a step fall to draw order (higher render order first, then document order).
 
 ## Lighting and tone mapping
 

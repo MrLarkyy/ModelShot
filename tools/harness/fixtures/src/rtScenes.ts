@@ -4,6 +4,7 @@ import { sceneBounds, type SceneCamera, type SceneDocument, type SceneMesh } fro
 import alphaPlaneSource from '../../../../packages/formats/test/fixtures/bbmodel/alpha-plane.bbmodel?raw';
 import renderOrderSource from '../../../../packages/formats/test/fixtures/bbmodel/render-order.bbmodel?raw';
 import flatSource from '../models/rt-flat.bbmodel?raw';
+import alphaRampUri from '../models/rt-alpha-ramp.png?inline';
 import showcaseSource from '../models/rt-showcase.bbmodel?raw';
 import { benchScene } from './benchScene';
 import { MODEL_VIEW_LOOK, type Point3 } from './modelViewCamera';
@@ -26,6 +27,12 @@ export const RT_SCENE_NAMES = [
   'alpha-plane',
   'render-order',
   'coincident-double',
+  'closed-cube',
+  'closed-cube-order',
+  'alpha-ramp-blend',
+  'alpha-ramp-mask',
+  'alpha-ramp-opaque',
+  'large-order',
 ] as const;
 export type RtSceneName = (typeof RT_SCENE_NAMES)[number];
 
@@ -58,7 +65,7 @@ export interface RtView {
   readonly depth: 'framed' | 'inside';
 }
 
-export type RtLook = 'model-view' | 'above' | 'below' | 'grazing-above' | 'grazing-below';
+export type RtLook = 'model-view' | 'above' | 'below' | 'grazing-above' | 'grazing-below' | 'cube' | 'ramp';
 
 /** Fixed cameras: the model-view fixture's (same image positions as its probes) and two views of a horizontal pair. */
 const LOOKS: Readonly<Record<RtLook, { eye: Point3; target: Point3; near: number; far: number }>> = {
@@ -68,6 +75,15 @@ const LOOKS: Readonly<Record<RtLook, { eye: Point3; target: Point3; near: number
   // About 8 degrees above and below the quads: depth changes fast across a pixel, the hard case for interpolated depth.
   'grazing-above': { eye: [-4, 3, 20], target: [-4, 0, 0], near: 5, far: 40 },
   'grazing-below': { eye: [-4, -3, 20], target: [-4, 0, 0], near: 5, far: 40 },
+  // Sees the south, east and up faces of a cube around the origin.
+  cube: { eye: [10, 8, 14], target: [0, 0, 0], near: 5, far: 40 },
+  // Square onto the 16 x 16 alpha ramp at z = 0 with a backdrop border: one texel is about 15 pixels at 256 px.
+  ramp: {
+    eye: [0, 0, 8.5 / Math.tan((MODEL_VIEW_LOOK.fovYDegrees * Math.PI) / 360)],
+    target: [0, 0, 0],
+    near: 5,
+    far: 40,
+  },
 };
 
 export const DEFAULT_RT_VIEW: RtView = {
@@ -167,6 +183,18 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return load(renderOrderSource);
     case 'coincident-double':
       return coincidentDouble(load(alphaPlaneSource));
+    case 'closed-cube':
+      return closedCube(0);
+    case 'closed-cube-order':
+      return closedCube(1);
+    case 'alpha-ramp-blend':
+      return alphaRamp({ alphaMode: 'blend', alphaCutoff: 0.01 });
+    case 'alpha-ramp-mask':
+      return alphaRamp({ alphaMode: 'mask', alphaCutoff: 128 / 255 });
+    case 'alpha-ramp-opaque':
+      return alphaRamp({ alphaMode: 'opaque' });
+    case 'large-order':
+      return largeOrderScene(load(showcaseSource));
   }
 }
 
@@ -294,4 +322,113 @@ export function parseRtView(params: URLSearchParams): RtView {
     view.depth = depth;
   }
   return view;
+}
+
+/**
+ * A closed 8-unit cube around the origin, every face double-sided (free format, render_sides auto): the faces the
+ * `cube` look sees (south, east, up) are red, the others blue, so any blue pixel is a back side shown through a front
+ * face. `renderOrder` 1 makes the renderer use the exact depth key.
+ */
+function closedCube(renderOrder: number): SceneDocument {
+  const texture = (JSON.parse(alphaPlaneSource) as { textures: unknown[] }).textures[0];
+  const red = { uv: [0, 0, 4, 4], texture: 0 };
+  const blue = { uv: [8, 0, 12, 4], texture: 0 };
+  const model = {
+    meta: { format_version: '4.10', model_format: 'free', box_uv: false },
+    resolution: { width: 16, height: 16 },
+    elements: [
+      {
+        name: 'cube',
+        type: 'cube',
+        uuid: 'c',
+        from: [-4, -4, -4],
+        to: [4, 4, 4],
+        origin: [0, 0, 0],
+        ...(renderOrder === 1 ? { render_order: 'in_front' } : {}),
+        faces: { north: blue, east: red, south: red, west: blue, up: red, down: blue },
+      },
+    ],
+    outliner: ['c'],
+    textures: [texture],
+  };
+  return load(JSON.stringify(model));
+}
+
+/**
+ * A 16 x 16 quad at z = 0 facing +z with `rt-alpha-ramp.png`: white texels whose alpha byte is their index
+ * (row-major, 0 top-left to 255 bottom-right), under the given alpha rule.
+ */
+function alphaRamp(alpha: Pick<SceneDocument['materials'][number], 'alphaMode' | 'alphaCutoff'>): SceneDocument {
+  const base = load(showcaseSource);
+  const bytes = Uint8Array.from(atob(alphaRampUri.slice(alphaRampUri.indexOf(',') + 1)), (c) => c.charCodeAt(0));
+  const mesh: SceneMesh = {
+    name: 'ramp',
+    sourceId: '',
+    node: -1,
+    visible: true,
+    positions: new Float32Array([-8, -8, 0, 8, -8, 0, 8, 8, 0, -8, 8, 0]),
+    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    uvs: new Float32Array([0, 1, 1, 1, 1, 0, 0, 0]),
+    uvRects: new Float32Array(Array.from({ length: 4 }, () => [0, 0, 1, 1]).flat()),
+    indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
+    groups: [{ material: 0, start: 0, count: 6 }],
+  };
+  return {
+    ...base,
+    nodes: [],
+    rootNodes: [],
+    meshes: [mesh],
+    materials: [{ name: 'ramp', texture: 0, ...alpha }],
+    textures: [
+      {
+        name: 'rt-alpha-ramp.png',
+        mimeType: 'image/png',
+        bytes,
+        width: 16,
+        height: 16,
+        uvWidth: 16,
+        uvHeight: 16,
+        missing: false,
+      },
+    ],
+  };
+}
+
+/**
+ * The loader's limits in one mesh: 100 000 quads (200 000 triangles, 400 000 vertices, each quad its own four, as the
+ * loader writes faces) on a 316-wide grid, at render order 1, so the renderer builds the exact key's de-indexed
+ * geometry at upload. For the load-and-first-frame budget.
+ */
+function largeOrderScene(showcase: SceneDocument): SceneDocument {
+  const quads = 100_000;
+  const side = 316;
+  const positions = new Float32Array(quads * 12);
+  const normals = new Float32Array(quads * 12);
+  const uvs = new Float32Array(quads * 8);
+  const uvRects = new Float32Array(quads * 16);
+  const indices = new Uint32Array(quads * 6);
+  for (let q = 0; q < quads; q++) {
+    const x = (q % side) - side / 2;
+    const z = Math.floor(q / side) - side / 2;
+    positions.set([x, 0, z + 0.9, x + 0.9, 0, z + 0.9, x + 0.9, 0, z, x, 0, z], q * 12);
+    normals.set([0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0], q * 12);
+    uvs.set([0, 0.25, 0.25, 0.25, 0.25, 0, 0, 0], q * 8);
+    for (let v = 0; v < 4; v++) uvRects.set([0, 0, 0.25, 0.25], q * 16 + v * 4);
+    const b = q * 4;
+    indices.set([b, b + 1, b + 2, b, b + 2, b + 3], q * 6);
+  }
+  const mesh: SceneMesh = {
+    name: 'grid',
+    sourceId: '',
+    node: -1,
+    visible: true,
+    renderOrder: 1,
+    positions,
+    normals,
+    uvs,
+    uvRects,
+    indices,
+    groups: [{ material: 0, start: 0, count: indices.length, doubleSided: true }],
+  };
+  return { ...showcase, nodes: [], rootNodes: [], meshes: [mesh] };
 }

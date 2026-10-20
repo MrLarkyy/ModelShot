@@ -8,6 +8,8 @@ export interface MsFixture {
   readRGBA: () => string;
   renderFrames?: (count: number) => number[];
   timeToSamples?: (samples: number) => number;
+  /** Load-and-first-frame bench (rt.html): milliseconds until the GPU finished. */
+  timeScene?: () => Promise<number>;
   /** Model-view fixture: pixels to check in the rendered image. */
   probes?: ModelViewProbe[];
   rt?: RtControls;

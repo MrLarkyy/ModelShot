@@ -18,6 +18,16 @@ export function installFrameBench(api: MsFixture, gl: WebGL2RenderingContext, dr
   };
 }
 
+/** Times one asynchronous step (a scene load and its first frame) until the GPU finished. */
+export function installSceneBench(api: MsFixture, gl: WebGL2RenderingContext, run: () => Promise<void>): void {
+  api.timeScene = async () => {
+    const start = performance.now();
+    await run();
+    finish(gl);
+    return performance.now() - start;
+  };
+}
+
 function median(values: readonly number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[sorted.length >> 1] ?? 0;

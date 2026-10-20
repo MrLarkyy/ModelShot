@@ -1,4 +1,5 @@
 import {
+  MAX_ABS_RENDER_ORDER,
   RENDER_ORDER_TIE_DISTANCE,
   cameraProjection,
   cameraView,
@@ -8,7 +9,7 @@ import {
   type SceneCamera,
 } from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
-import { depthKeyMode, depthPull, depthStepAtFar } from '../src/depthKeyMode';
+import { MAX_ORDER_PULL, depthKeyMode, depthPull, depthStepAtFar, exactDepthRange } from '../src/depthKeyMode';
 import { invertMat4 } from '../src/invertMat4';
 
 const perspective = (near: number, far: number): SceneCamera => ({
@@ -21,7 +22,7 @@ const perspective = (near: number, far: number): SceneCamera => ({
 });
 
 describe('depthKeyMode', () => {
-  it('a framed camera rasterises, a camera inside the bounding sphere writes linear depth', () => {
+  it('a framed camera rasterises, a camera inside the bounding sphere gets the exact key', () => {
     const framed = fitClipPlanes([0, 0, 60], [0, 0, -1], {
       min: [-20, -20, -20],
       max: [20, 20, 20],
@@ -39,7 +40,7 @@ describe('depthKeyMode', () => {
     expect(depthKeyMode(perspective(inside.near, inside.far), 24)).toBe('exact');
   });
 
-  it('an orthographic camera rasterises; a 16-bit depth buffer needs linear', () => {
+  it('an orthographic camera rasterises; a 16-bit depth buffer gets the exact key', () => {
     const ortho = { ...perspective(1, 120), projection: { kind: 'orthographic', height: 40 } } as const;
     expect(depthKeyMode(ortho, 24)).toBe('raster');
     expect(depthKeyMode(perspective(40, 80), 16)).toBe('exact');
@@ -65,6 +66,19 @@ describe('depthKeyMode', () => {
         }
       }
     }
+  });
+
+  it('the exact key range [−1024 × TIE, far + 1024 × TIE] (and a back side) maps into [0, 1]', () => {
+    const far = 80;
+    const [offset, scale] = exactDepthRange(far);
+    const depth = (key: number) => (key + offset) * scale;
+    const smallest = 0 - (MAX_ABS_RENDER_ORDER + 1) * RENDER_ORDER_TIE_DISTANCE;
+    const largest = far + (MAX_ABS_RENDER_ORDER + 1) * RENDER_ORDER_TIE_DISTANCE;
+    expect(depth(smallest)).toBeGreaterThanOrEqual(-1e-12);
+    expect(depth(largest)).toBeLessThanOrEqual(1 + 1e-12);
+    expect(MAX_ORDER_PULL).toBeCloseTo(1.025, 12);
+    // Order −1024 just in front of the far plane stays below the 1.0 the depth buffer is cleared to.
+    expect(depth(far - 1e-3 + 1024 * RENDER_ORDER_TIE_DISTANCE)).toBeLessThan(1);
   });
 
   it('the step at the far plane follows the projection', () => {
