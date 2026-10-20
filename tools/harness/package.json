@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@modelshot/formats": "workspace:*",
+    "@modelshot/looks": "workspace:*",
+    "@modelshot/pathtracer": "workspace:*",
     "@modelshot/renderer-rt": "workspace:*",
     "@modelshot/scene": "workspace:*"
   },
