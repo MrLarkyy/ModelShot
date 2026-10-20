@@ -200,7 +200,11 @@ importers:
 
   packages/export: {}
 
-  packages/formats: {}
+  packages/formats:
+    dependencies:
+      '@modelshot/scene':
+        specifier: workspace:*
+        version: link:../scene
 
   packages/looks: {}
 
@@ -230,26 +234,6 @@ importers:
       vite:
         specifier: ^8.3.4
         version: 8.3.4(@types/node@22.20.5)
-
-  packages/app: {}
-
-  packages/embed: {}
-
-  packages/export: {}
-
-  packages/formats:
-    dependencies:
-      '@modelshot/scene':
-        specifier: workspace:*
-        version: link:../scene
-
-  packages/looks: {}
-
-  packages/pathtracer: {}
-
-  packages/renderer-rt: {}
-
-  packages/scene: {}
 
 packages:
 
