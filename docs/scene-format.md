@@ -24,19 +24,24 @@ import type { SceneDocument } from '@modelshot/scene';
 
 ## `SceneDocument`
 
-| field           | type                                                                | meaning                                     |
-| --------------- | ------------------------------------------------------------------- | ------------------------------------------- |
-| `formatVersion` | `1`                                                                 | `SCENE_FORMAT_VERSION`                      |
-| `source`        | `{ format: 'bbmodel', formatVersion: string, modelFormat: string }` | where the scene came from                   |
-| `nodes`         | `SceneNode[]`                                                       | groups / bones, **parents before children** |
-| `rootNodes`     | `number[]`                                                          | nodes without a parent, in source order     |
-| `meshes`        | `SceneMesh[]`                                                       | triangle meshes                             |
-| `materials`     | `SceneMaterial[]`                                                   | see [SceneMaterial](#scenematerial)         |
-| `textures`      | `SceneTexture[]`                                                    | PNG images                                  |
+| field           | type                                                                            | meaning                                     |
+| --------------- | ------------------------------------------------------------------------------- | ------------------------------------------- |
+| `formatVersion` | `1`                                                                             | `SCENE_FORMAT_VERSION`                      |
+| `source`        | `{ format: 'bbmodel' \| 'player', formatVersion: string, modelFormat: string }` | where the scene came from                   |
+| `nodes`         | `SceneNode[]`                                                                   | groups / bones, **parents before children** |
+| `rootNodes`     | `number[]`                                                                      | nodes without a parent, in source order     |
+| `meshes`        | `SceneMesh[]`                                                                   | triangle meshes                             |
+| `materials`     | `SceneMaterial[]`                                                               | see [SceneMaterial](#scenematerial)         |
+| `textures`      | `SceneTexture[]`                                                                | PNG images                                  |
+| `pose?`         | `ScenePose`                                                                     | last `poseScene` pose; absent: none applied |
+| `attachments?`  | `SceneAttachment[]`                                                             | models merged under a bone; absent: none    |
+
+`source.format` is `'player'` for a document built by `createPlayerModel` ([player.md](player.md)); its
+`formatVersion` is the skin layout (`'64x64'` or `'64x32'`) and `modelFormat` the arms (`'classic'` or `'slim'`).
 
 ### `SceneNode`
 
-`{ name, sourceId, parent, children, pivot, rotation, translation, visible, meshes }`
+`{ name, sourceId, parent, children, pivot, rotation, restRotation?, translation, visible, meshes }`
 
 Nodes use Blockbench's rest-space convention: `pivot` is an absolute point in model space (not relative to the parent),
 and
@@ -48,7 +53,8 @@ world = parent.world · local          (a root node: world = local)
 
 `translation` is the pose offset and 0 at rest. `visible: false` hides the node and its whole subtree. `parent` is
 always lower than the node's own index, so `worldMatrices(nodes)` computes every world matrix in one pass. `sourceId`
-is the identifier in the source file (a Blockbench uuid) or `''`.
+is the identifier in the source file (a Blockbench uuid) or `''`. `restRotation`, absent unless `poseScene` or
+`attachModel` set it, is the rotation without the pose; absent means `rotation` is the rest rotation.
 
 ### `SceneMesh`
 
@@ -132,6 +138,48 @@ covers `width / uvWidth` pixels (a 32×32 image on a 16×16 UV space has 2×2 pi
 references but whose image was neither embedded nor supplied has `missing: true`, `bytes: null` and size 0; renderers
 show a placeholder.
 
+## Poses
+
+`poseScene(doc, pose)` returns `{ document, unmatchedBones }`. A `ScenePose` is `{ name, bones }` with bones
+`{ bone, rotation, translation? }`: `bone` is a node name (the first node with that name is posed), `rotation` Euler
+degrees added to the rest rotation, `translation` the pose offset. Every node of the result gets
+
+```
+rotation     = rest + pose rotation        (rest = restRotation ?? rotation; a node not in the pose: rest)
+translation  = pose translation ?? 0
+restRotation = rest
+```
+
+so a pose always applies to rest: posing B after A gives exactly B, and `poseScene(doc, null)` restores rest and
+removes `pose`. `pose` records the pose `poseScene` last applied to this document; the nodes already carry it, so a
+consumer that ignores `pose` draws the posed model correctly. An absent `pose` does not mean every node is at rest: a
+model merged in by `attachModel` keeps its own posed rotations (its `pose` record is dropped) until the next
+`poseScene`. Limits, each a `RangeError` naming the path (`pose.bones[2].rotation[1]`): at most 1024
+bones, names strings of at most 1024 characters, no bone twice, rotations finite with |v| ≤ 360, translations
+finite with |v| ≤ 4096. Bone names are looked up in a `Map`, so `__proto__` or `constructor` are ordinary names.
+`PLAYER_POSE_PRESETS` (`idle`, `walk`, `hold`, `wave`) are frozen poses for the player rig; `playerPosePreset(name)`
+looks one up by own key.
+
+## Attachments
+
+`attachModel(host, item, { bone, name?, offset?, rotation?, scale? })` returns `host` with `item` merged under the
+node `bone` (an index, or the first node with that name). It appends an attachment node (child of `bone`, `pivot` =
+the bone's pivot, rest rotation `rotation`, no meshes but the item's root meshes), then the item's nodes, meshes,
+materials and textures with every index remapped (the item's root nodes become children of the attachment node). The
+item's positions, pivots and translations become `scale · x + offset + pivot`, so an attached vertex lands at
+
+```
+world(bone) · T(pivot) · R(rotation) · (scale · x + offset)
+```
+
+in every pose of the host; posing the merged document again keeps it attached, and the item's own nodes go back to
+their rest rotation. `scale` is uniform in (0, 16] (normals stay unit length), `offset` and `rotation` follow the pose
+limits; bad options throw a `RangeError` naming the path. The record `{ name, bone, node, offset, rotation, scale,
+source }` is appended to `attachments` (the item's own records follow, remapped). The host's `pose` record is kept, the
+item's dropped while its nodes keep their posed rotation and `restRotation`; the next `poseScene` of the merged
+document returns them to rest. The renderers read only the merged nodes and
+meshes, so the realtime preview and the path tracer cannot disagree on where an attachment is.
+
 ## Versioning
 
 `formatVersion` is 1. A change that only adds **optional** fields with a defined default keeps version 1 (consumers
@@ -144,6 +192,12 @@ exports `resolveMaterialAlpha`, `texelCoverage`, `DEFAULT_ALPHA_CUTOFF` and `REN
 consumer that ignores them draws every material opaque, every face single-sided and ignores render order, which is
 what a version-1 document meant before.
 
+Added within version 1 (MS-20), each optional: `SceneNode.restRotation` (absent: `rotation`),
+`SceneDocument.pose` (absent: no `poseScene` pose recorded) and `SceneDocument.attachments` (absent: none); `SceneSource.format` gains
+`'player'`. Poses and attachments are already applied to the nodes and meshes, so a consumer that ignores the new
+fields draws a posed or attached scene correctly; no migration.
+
 ## Loaders
 
 - Blockbench `.bbmodel`: [bbmodel.md](bbmodel.md).
+- Player skins (`loadSkin`, `createPlayerModel`): [player.md](player.md).

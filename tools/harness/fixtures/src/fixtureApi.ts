@@ -49,6 +49,8 @@ export interface RtControls {
   depthKeyMode: () => string;
   /** Image position (pixels, top-left origin) of a world point under the current camera. */
   project: (x: number, y: number, z: number) => [number, number];
+  /** World position of a model-space point under the first node named `name` (its world matrix in the shown pose). */
+  nodePoint: (name: string, x: number, y: number, z: number) => [number, number, number];
   /** Sets the canvas CSS size; resolves after the resize observer resized the backing store and redrew. */
   setCssSize: (width: number, height: number) => Promise<void>;
 }

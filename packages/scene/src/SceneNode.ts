@@ -14,6 +14,8 @@ export interface SceneNode {
   readonly pivot: Vec3;
   /** Euler angles in degrees, applied X first, then Y, then Z (matrix `Rz · Ry · Rx`). */
   readonly rotation: Vec3;
+  /** Rotation without the pose, set by `poseScene`; absent: `rotation` is the rest rotation. */
+  readonly restRotation?: Vec3;
   /** Pose offset; 0 at rest. */
   readonly translation: Vec3;
   /** `false` hides this node and its whole subtree. */

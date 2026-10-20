@@ -1,14 +1,29 @@
 import { observeCanvasSize, RealtimeRenderer, type RendererWarning } from '@modelshot/renderer-rt';
-import { cameraProjection, cameraView, mat4Multiply, type SceneDocument } from '@modelshot/scene';
+import {
+  cameraProjection,
+  cameraView,
+  mat4Multiply,
+  mat4TransformPoint,
+  worldMatrices,
+  type SceneDocument,
+} from '@modelshot/scene';
 import { installFrameBench, installFrameReadout, installSceneBench } from './bench';
 import { readDrawingBufferBase64 } from './context';
 import type { MsFixture, RtControls } from './fixtureApi';
 import { breakFramebuffers } from './breakFramebuffers';
 import { installGlTracker } from './glTracker';
-import { isRtSceneName, parseRtView, reverseMeshOrder, rtCamera, rtScene, type RtSceneName } from './rtScenes';
+import {
+  hideMeshes,
+  isRtSceneName,
+  parseRtView,
+  reverseMeshOrder,
+  rtCamera,
+  rtScene,
+  type RtSceneName,
+} from './rtScenes';
 
 // URL parameters: variant (a preset of rtScenes.ts) or scene, yaw, pitch, proj=persp|ortho, fov, zoom, iso=0|1,
-// aa=0|1, fallback=1, reverse=1, look=model-view|above|below with depth=framed|inside; size (CSS pixels, default 256), maxTextureSide, track=1 (count GL objects),
+// aa=0|1, fallback=1, reverse=1, look=model-view|above|below with depth=framed|inside, hide=<mesh name>; size (CSS pixels, default 256), maxTextureSide, track=1 (count GL objects),
 // fps=1 (continuous drawing with a frame-time readout, for a manual run on real hardware).
 const params = new URLSearchParams(location.search);
 
@@ -65,14 +80,20 @@ async function start(): Promise<void> {
   api.floatRenderTargets = capabilities.limits.colorBufferFloat;
   api.readRGBA = () => readDrawingBufferBase64(gl, canvas.width, canvas.height);
 
+  // The camera frames the scene as loaded, so hiding a mesh (hide=) leaves the view unchanged.
+  const framing = new WeakMap<SceneDocument, SceneDocument>();
   const sceneOf = (name: RtSceneName): SceneDocument => {
-    const doc = rtScene(name);
-    return view.reverse ? reverseMeshOrder(doc) : doc;
+    const loaded = rtScene(name);
+    const shown = view.hide === null ? loaded : hideMeshes(loaded, view.hide);
+    const doc = view.reverse ? reverseMeshOrder(shown) : shown;
+    framing.set(doc, loaded);
+    return doc;
   };
+  const cameraOf = (aspect: number) => rtCamera(framing.get(doc) ?? doc, view, aspect);
   let doc = sceneOf(view.scene);
   let warnings: readonly RendererWarning[] = [];
   const frame = (): void => {
-    renderer.setCamera(rtCamera(doc, view, canvas.width / canvas.height));
+    renderer.setCamera(cameraOf(canvas.width / canvas.height));
     renderer.render();
   };
 
@@ -172,11 +193,17 @@ async function start(): Promise<void> {
     depthKeyMode: () => renderer.depthKeyMode ?? 'none',
     project: (x, y, z) => {
       const aspect = canvas.width / canvas.height;
-      const camera = rtCamera(doc, view, aspect);
+      const camera = cameraOf(aspect);
       const m = mat4Multiply(cameraProjection(camera, aspect), cameraView(camera));
       const row = (r: number): number => (m[r] ?? 0) * x + (m[4 + r] ?? 0) * y + (m[8 + r] ?? 0) * z + (m[12 + r] ?? 0);
       const w = row(3);
       return [((row(0) / w) * 0.5 + 0.5) * canvas.width, (0.5 - (row(1) / w) * 0.5) * canvas.height];
+    },
+    nodePoint: (name, x, y, z) => {
+      const index = doc.nodes.findIndex((node) => node.name === name);
+      const world = worldMatrices(doc.nodes)[index];
+      if (!world) throw new Error(`no node "${name}"`);
+      return mat4TransformPoint(world, [x, y, z]);
     },
     setCssSize: (width, height) =>
       new Promise((resolve) => {

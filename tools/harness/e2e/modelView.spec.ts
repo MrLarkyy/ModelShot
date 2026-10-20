@@ -15,6 +15,8 @@ const meshRaster = variant('mesh-shapes-raster');
 const meshRaycast = variant('mesh-shapes-raycast');
 const orderRaster = variant('render-order-raster');
 const orderRaycast = variant('render-order-raycast');
+const playerRaster = variant('player-raster');
+const playerRaycast = variant('player-raycast');
 
 /**
  * Raster (shadow map, rasterised edges, interpolated UVs) and raycast (exact rays) renders of the same model differ
@@ -44,12 +46,22 @@ const MODEL_VIEW_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions & { reas
     maxMeanDelta: 0.06,
     reason: 'edge pixels only (shadow-map texels, rasterisation rules)',
   },
+  // Measured 111 pixels (ratio 0.00169), mean delta 0.063. About 80 are 1-px strips just inside the outer layer's holes
+  // (arms, legs), where the raycast draws the opaque ring's contact shadow on the base layer 0.15 units behind and the
+  // shadow map (0.0625-unit texels, 0.094 receiver offset) cannot resolve it; the rest are edge pixels.
+  player: {
+    threshold: 0.1,
+    maxDiffRatio: 0.0025,
+    maxMeanDelta: 0.095,
+    reason: 'contact-shadow strips inside outer-layer holes (shadow-map resolution) and edge pixels',
+  },
 };
 
 const PAIRS: readonly [string, RasterGoldenSpec, RasterGoldenSpec][] = [
   ['alpha-plane', alphaRaster, alphaRaycast],
   ['mesh-shapes', meshRaster, meshRaycast],
   ['render-order', orderRaster, orderRaycast],
+  ['player', playerRaster, playerRaycast],
 ];
 
 async function render(
@@ -80,7 +92,16 @@ function hueMatch(a: readonly number[], b: readonly number[]): number {
 }
 
 test.describe('model-view fixture', () => {
-  for (const spec of [alphaRaster, alphaRaycast, meshRaster, meshRaycast, orderRaster, orderRaycast]) {
+  for (const spec of [
+    alphaRaster,
+    alphaRaycast,
+    meshRaster,
+    meshRaycast,
+    orderRaster,
+    orderRaycast,
+    playerRaster,
+    playerRaycast,
+  ]) {
     test(`${spec.name} matches its golden`, async ({ page }, testInfo) => {
       await expectGolden(page, testInfo, spec);
     });
@@ -143,6 +164,23 @@ test.describe('model-view fixture', () => {
         const loserTexel = at(loser)?.texel ?? [];
         expect(hueMatch(winnerTexel, loserTexel), 'the two faces differ there').toBeLessThan(0.8);
         expect(hueMatch(shown, winnerTexel), `${winner} is shown`).toBeGreaterThan(0.995);
+      }
+    });
+  }
+
+  for (const spec of [playerRaster, playerRaycast]) {
+    test(`${spec.name}: the skin's base layer is opaque, the hat shows the head through its holes, the cube is held`, async ({
+      page,
+    }) => {
+      const { png, probes } = await render(page, spec);
+      const at = (name: string) => probes.find((p) => p.name === name);
+      expect(probes.map((p) => p.name)).toEqual(['face-probe', 'hat-hole', 'hat-ring', 'held-cube']);
+      // skin-classic.png: an alpha-0 cyan texel on the opaque head, the red head front, a green hat ring texel.
+      expect(at('face-probe')?.texel).toEqual([0, 200, 200, 0]);
+      expect(at('hat-hole')?.texel).toEqual([255, 64, 64, 255]);
+      for (const name of ['face-probe', 'hat-hole', 'hat-ring', 'held-cube']) {
+        const texel = at(name)?.texel ?? [];
+        expect(hueMatch(pixel(png, at(name)), texel), `${name} shows its texel`).toBeGreaterThan(0.98);
       }
     });
   }
