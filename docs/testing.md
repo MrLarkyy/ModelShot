@@ -37,6 +37,8 @@ image code uses no clock or random source (lint rule; timing lives in `fixtures/
   example `pnpm golden:update golden.spec` (Playwright `--update-snapshots=changed`; the pattern selects spec files, not
   golden names); the command is refused when `CI` is set. Review every changed image as an image before
   committing.
+- Data goldens (JSON file snapshots of loader output, `__goldens__/*.json` next to the Vitest tests) are written only by
+  `pnpm golden:update:data [test file pattern]` (`vitest run --update`); review the JSON diff before committing.
 - A per-golden tolerance override (`threshold`, `maxDiffRatio`, `maxMeanDelta`, each range-checked) needs a non-empty `reason` in the spec, and GPU-variance evidence (the CI diff
   artefact) in the commit.
 
