@@ -1,4 +1,11 @@
-import { PLAYER_BONES, worldMatrices, mat4TransformPoint, type SceneDocument } from '@modelshot/scene';
+import {
+  mat4Identity,
+  mat4TransformDirection,
+  mat4TransformPoint,
+  PLAYER_BONES,
+  worldMatrices,
+  type SceneDocument,
+} from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
 import { createPlayerModel, loadSkin, type PlayerArms } from '../../src/index';
 import { serializeResult } from '../bbmodel/serializeScene';
@@ -155,6 +162,52 @@ describe('createPlayerModel', () => {
       left_pants: 3,
     });
   });
+
+  it.each([
+    ['classic', 'classic'],
+    ['slim', 'slim'],
+    ['legacy', 'classic'],
+  ] as const)(
+    '%s: every pair of coplanar same-facing faces of two meshes that overlap differs in render order',
+    (skin, arms) => {
+      const doc = player(skin, arms);
+      const world = worldMatrices(doc.nodes);
+      // Axis-aligned world-space quads (four vertices per face, as cubeToMesh writes them): normal, bounds.
+      const faces = doc.meshes.flatMap((mesh, m) => {
+        const w = world[mesh.node] ?? mat4Identity();
+        return Array.from({ length: mesh.positions.length / 12 }, (_, f) => {
+          const at = (array: Float32Array, v: number) =>
+            [0, 1, 2].map((k) => array[v * 3 + k] ?? NaN) as [number, number, number];
+          const corners = [0, 1, 2, 3].map((c) => mat4TransformPoint(w, at(mesh.positions, f * 4 + c)));
+          const normal = mat4TransformDirection(w, at(mesh.normals, f * 4));
+          const axis = normal.findIndex((n) => Math.abs(Math.abs(n) - 1) < 1e-6);
+          const min = [0, 1, 2].map((k) => Math.min(...corners.map((c) => c[k] ?? NaN)));
+          const max = [0, 1, 2].map((k) => Math.max(...corners.map((c) => c[k] ?? NaN)));
+          return { m, normal, axis, min, max };
+        });
+      });
+      let ties = 0;
+      for (const a of faces) {
+        expect(a.axis, doc.meshes[a.m]?.name).toBeGreaterThanOrEqual(0);
+        for (const b of faces) {
+          if (b.m <= a.m || a.normal.some((n, k) => Math.abs(n - (b.normal[k] ?? NaN)) > 1e-6)) continue;
+          if (Math.abs((a.min[a.axis] ?? 0) - (b.min[a.axis] ?? 0)) > 1e-6) continue;
+          const inPlane = [0, 1, 2].filter((k) => k !== a.axis);
+          const overlap = inPlane.every(
+            (k) => Math.min(a.max[k] ?? 0, b.max[k] ?? 0) - Math.max(a.min[k] ?? 0, b.min[k] ?? 0) > 1e-6,
+          );
+          if (!overlap) continue;
+          ties++;
+          const [ma, mb] = [doc.meshes[a.m], doc.meshes[b.m]];
+          expect(ma?.renderOrder, `${ma?.name} and ${mb?.name} overlap in the plane ${a.min[a.axis]}`).not.toBe(
+            mb?.renderOrder,
+          );
+        }
+      }
+      // Without render orders these models would have coincident overlapping faces (the legs at least).
+      expect(ties).toBeGreaterThan(0);
+    },
+  );
 
   it('hides only the outer layer when showOuterLayer is false', () => {
     const doc = player('classic', 'classic', false);
