@@ -1,0 +1,20 @@
+{
+  "name": "@modelshot/harness",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test:browser": "playwright test",
+    "golden:update": "playwright test --update-snapshots=changed",
+    "browsers": "playwright install --only-shell chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/node": "~22.20.0",
+    "@types/pngjs": "^6.0.5",
+    "pixelmatch": "^8.0.0",
+    "pngjs": "^7.0.0",
+    "vite": "^8.3.4"
+  }
+}

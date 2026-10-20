@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "frameTimeMs": {
+    "gradient-256": { "max": 5 }
+  },
+  "timeToSamplesMs": {
+    "progressive-256-n64": { "max": 150 }
+  },
+  "bundleGzipBytes": {
+    "app": { "max": 2500 },
+    "embed": { "max": 2200 }
+  }
+}
