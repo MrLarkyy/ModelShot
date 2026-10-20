@@ -4,7 +4,8 @@
 // orientation. Texels outside every face region are the sentinel magenta (255, 0, 255). Outer-layer faces are an
 // opaque one-texel ring around alpha-0 holes. Probes: head front texels (2..3, 2..3) are alpha 0 with RGB (0, 200, 200)
 // (the base layer must still show them opaque); in skin-slim.png hat front texels (4..5, 4..5) and jacket front texels
-// (3..4, 5..6) are green at alpha 128.
+// (3..4, 5..6) are green at alpha 128. skin-legacy-opaque-hat.png is skin-legacy.png with the whole hat area
+// (32..64, 0..16) opaque sentinel magenta: Minecraft drops such a hat, so a frame that shows any of it is wrong.
 import { writeFileSync } from 'node:fs';
 import { URL } from 'node:url';
 import { crc32, deflateSync } from 'node:zlib';
@@ -67,7 +68,7 @@ function parts(arms, legacy) {
   ];
 }
 
-function skinPixels(arms, legacy, partial) {
+function skinPixels(arms, legacy, partial, opaqueHat = false) {
   const width = 64;
   const height = legacy ? 32 : 64;
   const pixels = new Uint8Array(width * height * 4);
@@ -117,6 +118,9 @@ function skinPixels(arms, legacy, partial) {
     ])
       put(jacket[0] + i, jacket[1] + j, PARTIAL);
   }
+  if (opaqueHat) {
+    for (let y = 0; y < 16; y++) for (let x = 32; x < 64; x++) put(x, y, SENTINEL);
+  }
   return { width, height, pixels };
 }
 
@@ -161,5 +165,6 @@ const skins = {
   'skin-classic.png': skinPixels('classic', false, false),
   'skin-slim.png': skinPixels('slim', false, true),
   'skin-legacy.png': skinPixels('classic', true, false),
+  'skin-legacy-opaque-hat.png': skinPixels('classic', true, false, true),
 };
 for (const [name, skin] of Object.entries(skins)) writeFileSync(new URL(name, import.meta.url), encodePng(skin));
