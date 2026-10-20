@@ -75,6 +75,7 @@ describe('createPlayerModel', () => {
     ['player-classic', 'classic', 'classic'],
     ['player-slim', 'slim', 'slim'],
     ['player-legacy', 'legacy', 'classic'],
+    ['player-legacy-opaque-hat', 'legacy-opaque-hat', 'classic'],
   ] as const)('%s matches its data golden', async (golden, skin, arms) => {
     const scene = player(skin, arms);
     await expect(serializeResult({ scene, warnings: [] })).toMatchFileSnapshot(`__goldens__/${golden}.json`);
@@ -276,6 +277,35 @@ describe('createPlayerModel', () => {
         }
       }
     }
+  });
+
+  it.each([true, false])(
+    'drops the hat of a legacy skin with an opaque hat area (showOuterLayer %s)',
+    (showOuterLayer) => {
+      const doc = player('legacy-opaque-hat', 'classic', showOuterLayer);
+      expect(doc.meshes.map((m) => m.name)).toEqual(['head', 'body', 'right_arm', 'left_arm', 'right_leg', 'left_leg']);
+      const head = doc.nodes.find((n) => n.name === 'head');
+      expect(head?.meshes).toEqual([0]);
+      doc.nodes.forEach((node) =>
+        node.meshes.forEach((m) => expect(doc.meshes[m]?.node).toBe(doc.nodes.indexOf(node))),
+      );
+    },
+  );
+
+  it('keeps the hat when legacyHatOpaque is false, absent, or set on a modern skin', () => {
+    const legacy = loadSkin(skinBytes('legacy'));
+    expect(legacy.legacyHatOpaque).toBe(false);
+    const absent = { texture: legacy.texture, layout: legacy.layout };
+    expect(createPlayerModel(absent, { arms: 'classic' }).meshes.map((m) => m.name)).toContain('hat');
+    const modern = { ...loadSkin(skinBytes('classic')), legacyHatOpaque: true };
+    const doc = createPlayerModel(modern, { arms: 'classic' });
+    expect(doc.meshes.map((m) => m.name)).toContain('hat');
+    expect(doc.meshes).toHaveLength(12);
+  });
+
+  it.each(['yes', null, 1])('rejects legacyHatOpaque %s', (value) => {
+    const skin = { ...loadSkin(skinBytes('legacy')), legacyHatOpaque: value as unknown as boolean };
+    expect(() => createPlayerModel(skin, { arms: 'classic' })).toThrow(RangeError);
   });
 
   it('rejects unknown arms', () => {

@@ -1,9 +1,15 @@
 import classicUri from '../fixtures/skins/skin-classic.png?inline';
+import legacyOpaqueHatUri from '../fixtures/skins/skin-legacy-opaque-hat.png?inline';
 import legacyUri from '../fixtures/skins/skin-legacy.png?inline';
 import slimUri from '../fixtures/skins/skin-slim.png?inline';
 import { base64Bytes } from '../bbmodel/fixtures';
 
-const URIS = { classic: classicUri, slim: slimUri, legacy: legacyUri } as const;
+const URIS = {
+  classic: classicUri,
+  slim: slimUri,
+  legacy: legacyUri,
+  'legacy-opaque-hat': legacyOpaqueHatUri,
+} as const;
 
 export type SkinFixture = keyof typeof URIS;
 

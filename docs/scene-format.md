@@ -138,7 +138,8 @@ texel stops every ray. A `partial` texel is drawn order-independently (never by 
 
 `{ name, mimeType: 'image/png', bytes, width, height, uvWidth, uvHeight, missing }`
 
-`bytes` is the encoded PNG (never decoded by a loader; only its header is checked). `width` × `height` is the pixel size
+`bytes` is the encoded PNG as the file had it; model loaders only check its header, and `loadSkin` decodes a legacy
+skin's pixels once to set `legacyHatOpaque` ([player.md](player.md#legacy-hat)). `width` × `height` is the pixel size
 from the PNG header. UVs were normalised by `uvWidth` × `uvHeight`, the model's texture space; one UV unit therefore
 covers `width / uvWidth` pixels (a 32×32 image on a 16×16 UV space has 2×2 pixels per unit). A texture the model
 references but whose image was neither embedded nor supplied has `missing: true`, `bytes: null` and size 0; renderers

@@ -22,6 +22,7 @@ const PLAYER = [
   'player-classic-back',
   'player-slim-34',
   'player-legacy-34',
+  'player-legacy-opaque-hat-34',
   'player-hold-34',
   'player-walk-hold-34',
   'player-slim-fallback',

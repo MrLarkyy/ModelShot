@@ -23,7 +23,9 @@ const OUTER_MATERIAL = 1;
  * The standard player model for a skin from `loadSkin`: one mesh per box (named `head`, `hat`, `body`, `jacket`,
  * `right_arm`, `right_sleeve`, …), nodes named after `PLAYER_BONES`. The base layer is opaque whatever the texel alpha;
  * the outer layer is double-sided, alpha below 0.1 is a hole and other alpha blends order-independently. A legacy
- * 64 × 32 skin gets mirrored left limbs and a hat as its only outer layer. Invalid options throw a `RangeError`.
+ * 64 × 32 skin gets mirrored left limbs and a hat as its only outer layer, and no `hat` mesh at all when
+ * `skin.legacyHatOpaque` is `true` (whatever `showOuterLayer` says); that field is ignored for a modern skin. Invalid
+ * options, or a `legacyHatOpaque` that is neither absent nor a boolean, throw a `RangeError`.
  */
 export function createPlayerModel(skin: SkinLoadResult, options: PlayerModelOptions): SceneDocument {
   const { arms } = options;
@@ -32,10 +34,16 @@ export function createPlayerModel(skin: SkinLoadResult, options: PlayerModelOpti
   if (typeof showOuterLayer !== 'boolean') throw new RangeError('options.showOuterLayer must be a boolean');
   if (skin.layout !== 'modern' && skin.layout !== 'legacy')
     throw new RangeError('skin.layout must be modern or legacy');
+  const hatOpaque: unknown = skin.legacyHatOpaque;
+  if (hatOpaque !== undefined && typeof hatOpaque !== 'boolean') {
+    throw new RangeError('skin.legacyHatOpaque must be a boolean when present');
+  }
+  const noHat = skin.layout === 'legacy' && hatOpaque === true;
 
   const bones = playerBones(arms);
   const boneIndex = new Map(bones.map((bone, index) => [bone.name, index]));
-  const parts = playerParts(arms, skin.layout);
+  // Omitted rather than hidden, so no outer-layer toggle can bring a hat back that Minecraft never draws.
+  const parts = playerParts(arms, skin.layout).filter((part) => !(noHat && part.name === 'hat'));
   const meshes = parts.map((part) =>
     cubeToMesh(
       {

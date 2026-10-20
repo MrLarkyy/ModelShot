@@ -56,6 +56,7 @@ export const RT_SCENE_NAMES = [
   'player-classic',
   'player-slim',
   'player-legacy',
+  'player-legacy-opaque-hat',
   'player-hold',
   'player-walk-hold',
   'player-wave',
@@ -185,6 +186,7 @@ export const RT_VARIANTS: Readonly<Record<string, Partial<RtView>>> = {
   'player-classic-back': { scene: 'player-classic', yawDeg: 0, pitchDeg: 10 },
   'player-slim-34': { scene: 'player-slim', yawDeg: 210, pitchDeg: 20 },
   'player-legacy-34': { scene: 'player-legacy', yawDeg: 210, pitchDeg: 20 },
+  'player-legacy-opaque-hat-34': { scene: 'player-legacy-opaque-hat', yawDeg: 210, pitchDeg: 20 },
   'player-hold-34': { scene: 'player-hold', yawDeg: 210, pitchDeg: 20 },
   'player-walk-hold-34': { scene: 'player-walk-hold', yawDeg: 210, pitchDeg: 20 },
   'player-slim-fallback': { scene: 'player-slim', yawDeg: 210, pitchDeg: 20, fallback: true },
@@ -324,6 +326,8 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return playerScene('slim', 'slim');
     case 'player-legacy':
       return playerScene('legacy', 'classic');
+    case 'player-legacy-opaque-hat':
+      return playerScene('legacy-opaque-hat', 'classic');
     case 'player-hold':
       return holdingCube(playerScene('classic', 'classic'), 'hold');
     case 'player-walk-hold':

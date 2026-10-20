@@ -126,7 +126,8 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
 - Framing: the fit and isometric views keep a 2 px backdrop border around the model.
 - Player skins (`player-*` scenes, built by `fixtures/src/playerScenes.ts` from the generated skins below):
   goldens `rt-player-classic-front` (yaw 180°, pitch 10°), `rt-player-classic-back` (yaw 0°), `rt-player-slim-34`,
-  `rt-player-legacy-34`, `rt-player-hold-34` (classic in the `hold` preset with `single-cube.bbmodel` at half size
+  `rt-player-legacy-34`, `rt-player-legacy-opaque-hat-34` (`skin-legacy-opaque-hat.png`: no hat, so no magenta),
+  `rt-player-hold-34` (classic in the `hold` preset with `single-cube.bbmodel` at half size
   attached to `right_hand`), `rt-player-walk-hold-34` (the same in `walk`) (yaw 210°, pitch 20°) and
   `rt-player-slim-fallback`, and `rt-player-wave-front` (classic in the `wave` preset, yaw 180°, pitch 10°; `idle` is
   the rest pose of the other frames); default tolerance. No player frame has a magenta sentinel pixel (the held cube's own
@@ -369,13 +370,23 @@ part has its own colour (hues 0–75° for the base layer, 90–165° for the ou
 reads as the sentinel), its top-left texel darker to show orientation; every texel outside the face regions is the
 magenta sentinel. Outer-layer faces are an opaque one-texel ring around alpha-0 holes. Head front texels (2..3, 2..3)
 are alpha 0 with RGB (0, 200, 200); in `skin-slim.png` hat front texels (4..5, 4..5) and jacket front texels
-(3..4, 5..6) are green at alpha 128. Run it again after changing it and commit the images with it.
+(3..4, 5..6) are green at alpha 128. `skin-legacy-opaque-hat.png` (64 x 32) is `skin-legacy.png` with the whole hat
+area (32..64, 0..16) opaque sentinel magenta, so any drawn hat texel trips the sentinel check. Run it again after
+changing it and commit the images with it.
 
 Unit tests: `formats/test/player/loadSkin.test.ts` (accepted sizes, every error code, the order of the checks, no copy
-before the size rule passes), `createPlayerModel.test.ts` (box-UV corners, slim and legacy geometry, materials, render
-orders, hand anchors, every face rectangle inside its part's skin region) with the data goldens
-`formats/test/player/__goldens__/player-{classic,slim,legacy}.json` (`serializeScene.ts`; update with
-`pnpm golden:update:data`), `scene/test/poseScene.test.ts`, `playerPosePresets.test.ts`, `attachModel.test.ts` (the
+before the size rule passes, `legacyHatOpaque` of every fixture, modern skins never decoded, undecodable legacy data
+keeping the hat, a seeded fuzz of 2000 corrupted legacy skins throwing nothing but `SkinError`, a 1024 x 512 16-bit
+legacy skin decoded in under a second, a 2048 x 1024 one and a 2^31 x 2^30 header keeping the hat undecoded, a cut-short
+IDAT and a zlib bomb in IDAT keeping the hat, 2 MiB of minimal dynamic deflate blocks walked in under a second), `legacyHatOpaque.test.ts` (the area, HD scaling, the alpha-128 threshold, 8-
+and 16-bit), `createPlayerModel.test.ts` (box-UV corners, slim and legacy geometry, materials, render orders, hand
+anchors, every face rectangle inside its part's skin region, no `hat` mesh for an opaque legacy hat whatever
+`showOuterLayer`, the `RangeError` for a non-boolean `legacyHatOpaque`) with the data goldens
+`formats/test/player/__goldens__/player-{classic,slim,legacy,legacy-opaque-hat}.json` (`serializeScene.ts`; update with
+`pnpm golden:update:data`); `formats/test/png/inflateZlib.test.ts` (equal to `node:zlib` for levels 0, 1, 6, 9 and the
+fixed, Huffman-only and RLE strategies; hostile streams, a 64 MiB zlib bomb against an 8 KiB expected length) and
+`decodePngRgba.test.ts` (every colour type and bit depth, filters 0–4, Adam7, `tRNS`, hostile files; PNGs built by
+`test/support/buildPng.ts`); `scene/test/poseScene.test.ts`, `playerPosePresets.test.ts`, `attachModel.test.ts` (the
 attached vertex formula in four poses, re-posing, nesting, index remapping, every `RangeError` path) and
 `renderer-rt/test/validateScene.test.ts` (a posed document with nested attachments is a valid scene).
 
