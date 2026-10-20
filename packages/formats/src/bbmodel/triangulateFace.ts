@@ -18,10 +18,15 @@ const DEGENERATE_AREA = 1e-12;
  * becomes a simple loop) split along the 0–2 diagonal as Blockbench does, or along 1–3 when that one stays inside a
  * concave quad; a concave quad that Blockbench's order turns into a bow-tie is split as Blockbench draws it. 5 or more: ear clipping in the plane of the dominant normal axis; a polygon without ears (self-intersecting)
  * falls back to a fan. Fewer than 3 points or a zero area: no triangles. Pure and bounded: O(n³) for n points.
+ * `quadOrder: 'loop'` takes 4 points as the polygon loop they are (OBJ), without Blockbench's reordering.
  */
-export function triangulateFace(points: readonly Vec3[]): FaceTriangulation {
+export function triangulateFace(
+  points: readonly Vec3[],
+  quadOrder: 'blockbench' | 'loop' = 'blockbench',
+): FaceTriangulation {
   if (points.length < 3) return NONE;
-  const loop = points.length === 4 ? blockbenchQuadOrder(points) : points.map((_, i) => i);
+  const loop =
+    points.length === 4 && quadOrder === 'blockbench' ? blockbenchQuadOrder(points) : points.map((_, i) => i);
   const newell = newellNormal(points, loop);
   const length = Math.hypot(newell[0], newell[1], newell[2]);
   const extent = boundingExtent(points);

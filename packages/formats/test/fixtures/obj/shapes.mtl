@@ -1,0 +1,15 @@
+# ModelShot test fixture (hand-written)
+newmtl grey
+Ka 0.1 0.1 0.1
+Kd 0.6 0.6 0.6
+Ks 0 0 0
+illum 1
+
+newmtl cutout
+Kd 1 1 1
+map_Kd shapes.png
+
+newmtl glass
+Kd 0.3 0.5 0.9
+d 0.5
+Ns 10

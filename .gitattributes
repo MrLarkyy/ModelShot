@@ -7,4 +7,5 @@
 *.woff binary
 *.woff2 binary
 *.glb binary
+*.bin binary
 *.bbmodel text eol=lf
