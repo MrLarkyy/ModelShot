@@ -1,7 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SKIN_LIMITS, loadSkin, SkinError, type SkinErrorCode, type SkinLoadOptions } from '../../src/index';
+import * as decodeModule from '../../src/png/decodePngRgba';
 import { pngHeader } from '../bbmodel/fixtures';
+import { buildPng } from '../support/buildPng';
+import { seededRandom } from '../support/seededRandom';
 import { skinBytes } from './skins';
+
+// Pass-through, so the tests can see whether loadSkin decoded the pixels at all.
+vi.mock('../../src/png/decodePngRgba', async (importOriginal) => {
+  const original = await importOriginal<typeof decodeModule>();
+  return { ...original, decodePngRgba: vi.fn(original.decodePngRgba) };
+});
+const decodeSpy = vi.mocked(decodeModule.decodePngRgba);
 
 function failure(bytes: Uint8Array, options?: SkinLoadOptions): SkinError {
   try {
@@ -73,8 +83,73 @@ describe('loadSkin', () => {
     expect(texture.bytes?.buffer).not.toBe(input.buffer);
   });
 
-  it('accepts a valid header over undecodable data (pixels are never decoded here)', () => {
-    expect(loadSkin(headerOver(64, 64, 500)).texture.bytes).toHaveLength(533);
+  it('accepts a valid header over undecodable data, keeping the hat of a legacy skin', () => {
+    const modern = loadSkin(headerOver(64, 64, 500));
+    expect(modern.texture.bytes).toHaveLength(533);
+    expect(modern.legacyHatOpaque).toBe(false);
+    const legacy = loadSkin(headerOver(64, 32, 500));
+    expect(legacy.texture.bytes).toHaveLength(533);
+    expect(legacy.legacyHatOpaque).toBe(false);
+  });
+
+  it('decodes a legacy skin to find an opaque hat area, never a modern skin', () => {
+    decodeSpy.mockClear();
+    expect(loadSkin(skinBytes('legacy-opaque-hat')).legacyHatOpaque).toBe(true);
+    expect(loadSkin(skinBytes('legacy')).legacyHatOpaque).toBe(false);
+    expect(decodeSpy).toHaveBeenCalledTimes(2);
+    // Bounded by the header size: no more pixels than the header declares.
+    expect(decodeSpy).toHaveBeenLastCalledWith(expect.any(Uint8Array), 64 * 32);
+    decodeSpy.mockClear();
+    expect(loadSkin(skinBytes('classic')).legacyHatOpaque).toBe(false);
+    expect(loadSkin(skinBytes('slim')).legacyHatOpaque).toBe(false);
+    expect(decodeSpy).not.toHaveBeenCalled();
+  });
+
+  it('throws nothing but a SkinError for corrupted legacy skins (seeded fuzz)', () => {
+    const random = seededRandom(36);
+    const sources = [skinBytes('legacy'), skinBytes('legacy-opaque-hat')];
+    const outcomes = { error: 0, opaque: 0, kept: 0 };
+    for (let k = 0; k < 2000; k++) {
+      let bytes = Uint8Array.from(sources[k % 2] ?? []);
+      if (random() < 0.3) bytes = bytes.subarray(0, Math.floor(random() * bytes.length));
+      const flips = Math.floor(random() * 4) + (bytes.length ? 1 : 0);
+      for (let f = 0; f < flips; f++) {
+        const at = Math.floor(random() * bytes.length);
+        bytes[at] = (bytes[at] ?? 0) ^ (1 << Math.floor(random() * 8));
+      }
+      try {
+        const { legacyHatOpaque } = loadSkin(bytes);
+        expect(typeof legacyHatOpaque).toBe('boolean');
+        outcomes[legacyHatOpaque ? 'opaque' : 'kept']++;
+      } catch (error) {
+        expect(error).toBeInstanceOf(SkinError);
+        outcomes.error++;
+      }
+    }
+    // The mutations reach every outcome, so the loop exercised the decoder and not only the header check.
+    expect(Math.min(outcomes.error, outcomes.opaque, outcomes.kept)).toBeGreaterThan(20);
+  });
+
+  it('decodes a 1024 x 512 16-bit RGBA legacy skin within a second', () => {
+    const width = 1024;
+    const height = 512;
+    const samples = new Uint16Array(width * height * 4);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const at = (y * width + x) * 4;
+        samples[at] = ((x * 37 + y * 11) & 0xff) * 257;
+        samples[at + 1] = ((x ^ y) & 0xff) << 8;
+        samples[at + 2] = (x * y) & 0xffff;
+        samples[at + 3] = 0xffff;
+      }
+    }
+    const png = buildPng({ width, height, colourType: 6, depth: 16, samples, filter: (row) => row % 5 });
+    expect(png.length).toBeLessThan(DEFAULT_SKIN_LIMITS.maxFileBytes);
+    const start = performance.now();
+    const skin = loadSkin(png);
+    const elapsed = performance.now() - start;
+    expect(skin.legacyHatOpaque).toBe(true);
+    expect(elapsed).toBeLessThan(1000);
   });
 
   it.each([

@@ -9,10 +9,16 @@ import {
 } from '@modelshot/scene';
 import singleCubeSource from '../../../../packages/formats/test/fixtures/bbmodel/single-cube.bbmodel?raw';
 import classicUri from '../../../../packages/formats/test/fixtures/skins/skin-classic.png?inline';
+import legacyOpaqueHatUri from '../../../../packages/formats/test/fixtures/skins/skin-legacy-opaque-hat.png?inline';
 import legacyUri from '../../../../packages/formats/test/fixtures/skins/skin-legacy.png?inline';
 import slimUri from '../../../../packages/formats/test/fixtures/skins/skin-slim.png?inline';
 
-const SKINS = { classic: classicUri, slim: slimUri, legacy: legacyUri } as const;
+const SKINS = {
+  classic: classicUri,
+  slim: slimUri,
+  legacy: legacyUri,
+  'legacy-opaque-hat': legacyOpaqueHatUri,
+} as const;
 
 export type PlayerSkin = keyof typeof SKINS;
 

@@ -1,4 +1,6 @@
+import { decodePngRgba } from '../png/decodePngRgba';
 import { readPngSize } from '../png/readPngSize';
+import { isLegacyHatOpaque } from './legacyHatOpaque';
 import { SkinError } from './SkinError';
 import { resolveSkinLimits, type SkinLimits } from './SkinLimits';
 import type { SkinLayout, SkinLoadResult } from './SkinLoadResult';
@@ -16,8 +18,10 @@ const SKIN_UV_WIDTH = 64;
 /**
  * A Minecraft skin from PNG bytes the user picked: 64 · 2^k pixels wide (up to `limits.maxSide`), and as high (modern
  * 64 × 64 layout) or half as high (legacy 64 × 32). Checks, in order and before copying anything: the name, the file
- * length, the PNG signature and header, the size rule; only the header is read, pixels are never decoded here.
- * Throws only `SkinError` for a bad file; invalid `limits` throw a `RangeError`.
+ * length, the PNG signature and header, the size rule. Then the pixels of a legacy skin, at most as many as its header
+ * declares, are decoded to set `legacyHatOpaque`; pixel data that does not decode leaves it `false` (the hat is kept)
+ * and is no error here. A modern skin is never decoded. Throws only `SkinError` for a bad file; invalid `limits` throw a
+ * `RangeError`.
  */
 export function loadSkin(bytes: Uint8Array, options: SkinLoadOptions = {}): SkinLoadResult {
   const limits = resolveSkinLimits(options.limits);
@@ -43,12 +47,18 @@ export function loadSkin(bytes: Uint8Array, options: SkinLoadOptions = {}): Skin
         `${size.width} × ${size.height}`,
     );
   }
+  // Not bytes.slice(): Buffer overrides it to return a view of the same memory; the typed-array slice copies.
+  const copy = Uint8Array.prototype.slice.call(bytes);
+  let legacyHatOpaque = false;
+  if (layout === 'legacy') {
+    const image = decodePngRgba(copy, size.width * size.height);
+    legacyHatOpaque = image ? isLegacyHatOpaque(image) : false;
+  }
   return {
     texture: {
       name,
       mimeType: 'image/png',
-      // Not bytes.slice(): Buffer overrides it to return a view of the same memory; the typed-array slice copies.
-      bytes: Uint8Array.prototype.slice.call(bytes),
+      bytes: copy,
       width: size.width,
       height: size.height,
       uvWidth: SKIN_UV_WIDTH,
@@ -56,6 +66,7 @@ export function loadSkin(bytes: Uint8Array, options: SkinLoadOptions = {}): Skin
       missing: false,
     },
     layout,
+    legacyHatOpaque,
   };
 }
 

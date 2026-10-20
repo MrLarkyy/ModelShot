@@ -16,8 +16,11 @@ const holding = attachModel(posed, sword, { bone: 'right_hand', scale: 0.5, rota
 
 ## Skins
 
-`loadSkin(bytes, { name?, limits? })` returns `{ texture, layout }`. Only the PNG header is read; the bytes are copied
-into the texture and decoded by the renderer, like any model texture.
+`loadSkin(bytes, { name?, limits? })` returns `{ texture, layout, legacyHatOpaque }`. The bytes are copied into the
+texture and decoded by the renderer, like any model texture. A modern skin's pixels are never decoded while loading; a
+legacy skin's pixels are, once, to set `legacyHatOpaque` (see [Legacy hat](#legacy-hat)). That decoder is
+synchronous and bounded: at most as many pixels as the header declares (so at most 1024 × 512 under the default
+limits), image data inflated to exactly the size the header implies and no further; it never throws.
 
 | image size (pixels)          | `layout` | UV space | outer layer                   |
 | ---------------------------- | -------- | -------- | ----------------------------- |
@@ -38,15 +41,16 @@ failure throws `SkinError` with a `code`; the message names the rule, never file
 | `BAD_SIZE`       | not 64 · 2^k wide, wider than `maxSide`, not square or 2:1, or a zero size |
 | `INVALID_NAME`   | `name` is not a string of at most 1024 characters                          |
 
-A valid header over image data that does not decode passes `loadSkin`; the renderer then shows its placeholder for a
-texture that fails to decode, with a warning. Skins come only from bytes the caller hands over: nothing is fetched,
+A valid header over image data that does not decode passes `loadSkin` (a legacy skin then gets
+`legacyHatOpaque: false`, keeping its hat); the renderer shows its placeholder for a texture that fails to decode, with
+a warning. Skins come only from bytes the caller hands over: nothing is fetched,
 and fetching a skin by user name is not offered (it would send the name to a third party).
 
 ## API
 
 | export                                                                | package              | what                                       |
 | --------------------------------------------------------------------- | -------------------- | ------------------------------------------ |
-| `loadSkin`, `SkinLoadOptions`, `SkinLoadResult`, `SkinLayout`         | `@modelshot/formats` | skin bytes → texture and layout            |
+| `loadSkin`, `SkinLoadOptions`, `SkinLoadResult`, `SkinLayout`         | `@modelshot/formats` | skin bytes → texture, layout, hat rule     |
 | `SkinError`, `SkinErrorCode`                                          | `@modelshot/formats` | the error `loadSkin` throws                |
 | `SkinLimits`, `DEFAULT_SKIN_LIMITS`, `MAX_SKIN_NAME_CHARS`            | `@modelshot/formats` | limits (2 MiB, 1024 px wide, 1024 chars)   |
 | `createPlayerModel`, `PlayerModelOptions`, `PlayerArms`               | `@modelshot/formats` | the player scene document                  |
@@ -60,7 +64,9 @@ and fetching a skin by user name is not offered (it would send the name to a thi
 ## Model
 
 `createPlayerModel(skin, { arms, showOuterLayer? })`: `arms` is `'classic'` (4-pixel arms) or `'slim'` (3-pixel
-arms); `showOuterLayer: false` hides the outer-layer meshes (they stay in the document). Units are skin pixels
+arms); `showOuterLayer: false` hides the outer-layer meshes (they stay in the document). `skin.legacyHatOpaque`
+`true` on a legacy skin leaves the `hat` mesh out of the document; the field is ignored for a modern skin, absent means
+`false`, and any other value than a boolean throws a `RangeError`. Units are skin pixels
 (1/16 block, the scene format's unit), y up, the player facing −Z (north) with its right side at +X, feet at y = 0.
 Seen from the front, the player's right arm is on the viewer's left.
 
@@ -98,10 +104,14 @@ Overlapping coplanar faces never depend on draw order: the legs overlap by 0.2 (
 outer boxes touch along strips, so the jacket has order 0, the sleeves 1, the right pants 2 and the left pants 3, and
 the scene format's tie rule decides ([scene-format.md](scene-format.md)).
 
-**Deviation from Minecraft**: Minecraft draws the hat of a legacy 64 × 32 skin without transparency when the skin has
-no transparent pixel in its hat area (the "notch hack" for old skins that filled the hat area with an opaque colour).
-ModelShot does not decode pixels while loading, so a legacy hat is always the cut-out blend layer; an old skin with an
-opaque hat area shows that colour as a box around the head.
+### Legacy hat
+
+Old 64 × 32 skins often filled the hat area with an opaque colour. Minecraft clears that area when it has no
+transparent texel (`doNotchTransparencyHack`), and so does ModelShot: `loadSkin` sets `legacyHatOpaque` when every
+texel in x 32..64, y 0..32 of the 64 × 32 UV space (scaled for HD skins: x 32s..64s, y 0..32s with s = width / 64) has
+alpha ≥ 128 (16-bit alpha: its high byte), and `createPlayerModel` then builds no `hat` mesh at all, whatever
+`showOuterLayer` says. One texel below alpha 128 anywhere in that area keeps the hat as the usual cut-out blend layer.
+A legacy skin whose pixel data does not decode keeps its hat. Modern 64 × 64 skins always keep theirs.
 
 ## Poses
 
