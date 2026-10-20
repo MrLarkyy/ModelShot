@@ -1,4 +1,5 @@
 import type { SceneTexture } from '@modelshot/scene';
+import { pngHeaderSize } from './pngHeaderSize';
 import type { RendererWarning } from './RendererWarning';
 
 export interface TextureLimits {
@@ -23,8 +24,9 @@ export interface DecodedTextures {
 }
 
 /**
- * Decides from the header sizes alone, before anything is decoded, which textures stay within `limits`; the others
- * become placeholders with a warning. Textures are admitted in order until the total pixel budget is spent.
+ * Decides from the PNG header in the bytes alone (never the size the document declares), before anything is decoded,
+ * which textures may be decoded: a PNG header within `limits` that agrees with the declared size. The others become
+ * placeholders with a warning. Textures are admitted in order until the total pixel budget is spent.
  */
 export function planTextureDecode(textures: readonly SceneTexture[], limits: TextureLimits): TextureDecodePlan {
   const warnings: RendererWarning[] = [];
@@ -38,12 +40,29 @@ export function planTextureDecode(textures: readonly SceneTexture[], limits: Tex
       });
       return false;
     }
-    const { width, height } = texture;
+    const header = pngHeaderSize(texture.bytes);
+    if (!header) {
+      warnings.push({
+        code: 'TEXTURE_DECODE_FAILED',
+        texture: index,
+        message: `texture ${index} is not a PNG (no signature and IHDR header)`,
+      });
+      return false;
+    }
+    const { width, height } = header;
     if (width < 1 || height < 1 || width > limits.maxTextureSide || height > limits.maxTextureSide) {
       warnings.push({
         code: 'TEXTURE_TOO_LARGE',
         texture: index,
         message: `texture ${index} is ${width}x${height}; each side must be 1..${limits.maxTextureSide}`,
+      });
+      return false;
+    }
+    if (width !== texture.width || height !== texture.height) {
+      warnings.push({
+        code: 'TEXTURE_SIZE_MISMATCH',
+        texture: index,
+        message: `texture ${index} has a ${width}x${height} PNG header, the scene says ${texture.width}x${texture.height}`,
       });
       return false;
     }

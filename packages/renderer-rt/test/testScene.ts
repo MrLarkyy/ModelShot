@@ -37,11 +37,22 @@ export function quadScene(): SceneDocument {
   };
 }
 
+/** The first 24 bytes of a PNG: signature and an IHDR chunk header declaring `width` x `height`. */
+export function pngHeader(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(24);
+  bytes.set([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  return bytes;
+}
+
+/** A texture whose bytes carry a PNG header matching its declared size, unless `bytes` is overridden. */
 export function testTexture(overrides: Partial<SceneTexture> = {}): SceneTexture {
-  return {
+  const texture: SceneTexture = {
     name: 't.png',
     mimeType: 'image/png',
-    bytes: new Uint8Array([137, 80, 78, 71]),
+    bytes: null,
     width: 16,
     height: 16,
     uvWidth: 16,
@@ -49,4 +60,5 @@ export function testTexture(overrides: Partial<SceneTexture> = {}): SceneTexture
     missing: false,
     ...overrides,
   };
+  return 'bytes' in overrides ? texture : { ...texture, bytes: pngHeader(texture.width, texture.height) };
 }
