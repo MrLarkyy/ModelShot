@@ -60,7 +60,8 @@ DOM, no clock.
 Damping (default on, 80 ms time constant) eases the camera towards the input goal in `update(dtMs)`, which returns
 whether it is still moving; once within 1e-6 of the goal it snaps to it, so with no input the state stays
 bit-identical forever (tested over 10,000 steps). `update(0)` changes nothing. Non-finite input (NaN or infinite
-angles, deltas, zoom factors, field of view or options) is ignored, so the camera always stays defined.
+angles, deltas, zoom factors, field of view or options) is ignored, so the camera always stays defined; a
+non-finite, zero or negative `dampingMs` falls back to 80 ms.
 
 ## Input
 
