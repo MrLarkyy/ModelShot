@@ -109,17 +109,26 @@ function sameMap(a: readonly number[], b: readonly number[]): boolean {
   return true;
 }
 
-function finiteTriangle(mesh: SceneMesh, v: readonly number[]): boolean {
-  const corners = v.map((k) => [0, 1, 2].map((axis) => mesh.positions[k * 3 + axis] ?? NaN));
-  if (!corners.flat().every(Number.isFinite)) return false;
-  const [a, b, c] = corners as [number[], number[], number[]];
-  const e1 = [0, 1, 2].map((i) => (b[i] ?? 0) - (a[i] ?? 0));
-  const e2 = [0, 1, 2].map((i) => (c[i] ?? 0) - (a[i] ?? 0));
-  const area = Math.hypot(
-    (e1[1] ?? 0) * (e2[2] ?? 0) - (e1[2] ?? 0) * (e2[1] ?? 0),
-    (e1[2] ?? 0) * (e2[0] ?? 0) - (e1[0] ?? 0) * (e2[2] ?? 0),
-    (e1[0] ?? 0) * (e2[1] ?? 0) - (e1[1] ?? 0) * (e2[0] ?? 0),
-  );
+// Plain scalar code: this runs once per triangle of up to the loaders' 200 000 on the main thread.
+function finiteTriangle(mesh: SceneMesh, first: number): boolean {
+  const p = mesh.positions;
+  const a = (mesh.indices[first] ?? 0) * 3;
+  const b = (mesh.indices[first + 1] ?? 0) * 3;
+  const c = (mesh.indices[first + 2] ?? 0) * 3;
+  const ax = p[a] ?? NaN;
+  const ay = p[a + 1] ?? NaN;
+  const az = p[a + 2] ?? NaN;
+  const ux = (p[b] ?? NaN) - ax;
+  const uy = (p[b + 1] ?? NaN) - ay;
+  const uz = (p[b + 2] ?? NaN) - az;
+  const vx = (p[c] ?? NaN) - ax;
+  const vy = (p[c + 1] ?? NaN) - ay;
+  const vz = (p[c + 2] ?? NaN) - az;
+  if (![ux, uy, uz, vx, vy, vz].every(Number.isFinite)) return false;
+  const nx = uy * vz - uz * vy;
+  const ny = uz * vx - ux * vz;
+  const nz = ux * vy - uy * vx;
+  const area = nx * nx + ny * ny + nz * nz;
   return area > 0 && Number.isFinite(area);
 }
 
@@ -133,8 +142,7 @@ function meshTriangles(mesh: SceneMesh): MeshTriangle[] {
   const triangles: MeshTriangle[] = [];
   mesh.groups.forEach((group, g) => {
     for (let i = group.start; i + 2 < group.start + group.count; i += 3) {
-      const v = [mesh.indices[i] ?? 0, mesh.indices[i + 1] ?? 0, mesh.indices[i + 2] ?? 0];
-      if (finiteTriangle(mesh, v)) triangles.push({ first: i, group: g, doubleSided: group.doubleSided === true });
+      if (finiteTriangle(mesh, i)) triangles.push({ first: i, group: g, doubleSided: group.doubleSided === true });
     }
   });
   return triangles;
@@ -376,7 +384,14 @@ export function lightmapLayout(doc: SceneDocument): LightmapLayout {
     for (const chart of texel?.charts ?? vertexCharts(m, mesh, triangles)) protos.push(chart);
   });
 
+  // No packing fits fewer texels than the charts hold: start at the first downscale whose area could fit.
   let downscale = 1;
+  const area = (k: number) =>
+    protos.reduce((sum, proto) => {
+      const texels = proto.mode === 'texel' ? Math.ceil(proto.texels[0] / k) * Math.ceil(proto.texels[1] / k) : 1;
+      return sum + texels * (proto.back ? 2 : 1);
+    }, 0);
+  while (downscale < MAX_DOWNSCALE && area(downscale) > MAX_LIGHTMAP_TEXELS) downscale *= 2;
   let packing = pack(protos, downscale);
   while (!packing && downscale < MAX_DOWNSCALE) {
     downscale *= 2;
@@ -400,8 +415,15 @@ export function lightmapLayout(doc: SceneDocument): LightmapLayout {
   const charts = protos.map((proto, i): LightmapChart => {
     const [x = 0, y = 0, width = 1, height = 1] = places[i] ?? [];
     const data = vertexData[proto.mesh];
-    for (const v of proto.vertices) {
-      data?.set([x, y, proto.mode === 'texel' ? downscale : 0, proto.back ? width : 0], v * 4);
+    if (data) {
+      const k = proto.mode === 'texel' ? downscale : 0;
+      const back = proto.back ? width : 0;
+      for (const v of proto.vertices) {
+        data[v * 4] = x;
+        data[v * 4 + 1] = y;
+        data[v * 4 + 2] = k;
+        data[v * 4 + 3] = back;
+      }
     }
     return {
       mesh: proto.mesh,

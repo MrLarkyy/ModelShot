@@ -139,6 +139,40 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
   (`rt.nodePoint`) at 1.5 units below the anchor, in `hold` and in `walk`. Offsetting the hat's skin offset by one
   row puts 203 sentinel pixels into `rt-player-classic-front`.
 
+**Baked lighting** (MS-16, `test.describe('baked lighting')`; the fixture's `bake=<samples>` bakes with `LightBaker`
+before the first frame, `catcher=0|1`, `bakeSeed`, `bakeTile`, `pose=<player preset>`, `lag=1`; its `rt` controls
+bake, re-pose, lose the worker's context and hash the shown lighting). Every existing `rt-*` golden is drawn without
+lighting and stays byte-identical. New goldens, 64 samples, seed 1, catcher on, default tolerance:
+`rt-bake-cutout-checker` (and `-fallback`: the generated `cutout-checker` scene, an 8 x 8 checker of cut-out and
+opaque texels 1 unit each, bottom row 1 unit above the catcher, facing the key, half a unit in front of a grey box;
+textures generated in code, `look=checker` from behind the plane), `rt-bake-alpha-plane` (model-view camera) and
+`rt-bake-turntable-y030`.
+
+- Pixel-shaped shadows (probes of `ptProbes.ts` projected along the key from the document, as for the path tracer):
+  hole and opaque texel shadows on the catcher 48.8 levels apart with a 0.99 px step, on the box top 54.0 levels with
+  1.47 px (at least 40, at most 2; float path and fallback alike). The box top first sat 6.3 units below its
+  occluding texels: the cone's penumbra (2 · 0.04 · 6.3 = 0.5 units) measured 3.93 px there, so the box moved, the
+  threshold stayed.
+- Determinism: the same bake twice, in 32- and 64-texel tiles, and the 16-sample progress update of a 64-sample bake
+  against a 16-sample bake: identical lighting hashes; seed 2 differs. Progress comes after 4 and 16 of 64 samples.
+- Supersede: of two bakes started back to back the first resolves `applied: false`, and the shown lighting equals the
+  second baked alone.
+- Pose: `player-hold-34` baked, re-posed to `wave` (same layout key): the old lighting stays until the re-bake's
+  first update; the final image equals a fresh bake of the posed document (`pose=wave`), and differs from the old
+  light under the moved arm.
+- Exact depth key (`render-order`, always exact): baking with and without the catcher changes no model pixel.
+- Context loss: a lost and restored renderer re-uploads the light (same bytes); a lost and restored worker context
+  restarts the bake and reaches the reference hash and image.
+- `dispose()` with `track=1`: no WebGL object or ImageBitmap left on the page, the worker terminated.
+- `setLighting` refuses another layout key, size or data length and keeps the shown light.
+- Hostile: 10 000 coincident cubes bake a sample (node cap) without a lost context; `lightmap-overflow` (350 000
+  double-sided untextured triangles: 2.1 M vertex texels) is refused with `SCENE_TOO_LARGE` by the bake and by
+  `setScene`; a corrupt texture bakes with the placeholder and `TEXTURE_DECODE_FAILED`; an empty scene has no catcher
+  and its backdrop stays (0 levels).
+- Shimmer with baked light (`bake=4`): anti-aliased 0.00000 vs nearest 0.00020 (`far`), 0.00168 vs 0.01076
+  (`closeup`): light and albedo share the seam taps.
+- Local-first: every request of a baked page (the worker's modules included) goes to the page's origin.
+
 For a manual run on real hardware open `rt.html?scene=bench&size=512&fps=1`: it draws continuously and shows the
 median frame work (draw until the GPU finished) and display interval over the last 120 frames, with the renderer
 string.
@@ -165,6 +199,11 @@ put in the URL, not in the file name).
 | `pt-render-order.s1.n16`      | render-order.bbmodel, model-view camera         | golden; render-order probes                  |
 | `pt-emissive.s1.n64`          | showcase, bricks emitting (4, 2.2, 0.8)         | golden; the post beside the bricks brightens |
 | `pt-player-hold-34.s1.n64`    | MS-20 player, hold preset, cube in the hand     | golden; pair with `rt-player-hold-34`        |
+| `pt-cutout-checker.s1.n128`   | generated cut-out checker and box, `checker`    | golden; checker shadow probes; pair          |
+
+All eight earlier `pt-*` goldens were regenerated in MS-16 on purpose (same seeds, samples and size): the key became
+a 0.04 rad cone, the shadow catcher appeared under every model, and the random dimensions per path vertex grew from
+4 to 6. Their probes were measured again (below).
 
 - Tolerance: an override of `threshold 0` only (its reason in the spec); `maxDiffRatio 0.001` and `maxMeanDelta 1`
   stay the defaults. The tracer converges, so at the default threshold 0.1 another seed or one sample more or less
@@ -176,9 +215,13 @@ put in the URL, not in the file name).
   tolerant golden comparison reads); `samplesDone` is checked against the request (`assertSampleCount`).
 - Probes (`fixtures/src/ptProbes.ts`, from the document, never from a renderer; logged as `[pt probe] ...`): the cutout
   plane's hole (2, 14) and opaque texel (6, 14) followed along the key direction to the ground: lit 199.4, shadowed
-  146.6 levels (at least 40 apart), and the lit/shadowed step between them spans 0.49 px (at most 2); on the flat cube,
-  whose coincident single-sided faces the light meets from the south, the ground north of it, seen from the
-  `flat-shadow` look: 49.5 levels between the hole and the opaque texel (at least 40); from below, the single-sided
+  145.6 levels (at least 40 apart), and the lit/shadowed step between them spans 0.99 px (at most 2; 0.49 px with the
+  delta key of MS-17, 2.96 px with a 0.05 rad cone, so the cone is 0.04 rad); on the flat cube, whose coincident
+  single-sided faces the light meets from the south, the ground north of it, seen from the `flat-shadow` look: 49.7
+  levels between the hole and the opaque texel (at least 40); the cut-out checker's shadows on the catcher 55.1 levels
+  apart with a 1.24 px step and on the box 48.9 levels with 1.23 px (at least 40, at most 2); with the catcher off the
+  interior pixels of a closed cube are byte-identical (camera rays only) while over 100 backdrop pixels darken with
+  it; from below, the single-sided
   quad of `coincident-double` shows the backdrop exactly, and alpha-plane's double-sided back plane shows its texel
   mirrored (the model-view probe); the render-order pairs resolve as in the model-view fixture; each alpha-ramp texel's
   9 x 9-pixel mean is within 6 levels of AgX(a · lit white + (1 − a) · backdrop) (largest deviation 1.29); no
@@ -196,19 +239,24 @@ put in the URL, not in the file name).
   scene over the material limit (1.4 M materials) fails with `SCENE_TOO_LARGE` before decoding anything and the
   current scene keeps rendering the same bytes; `dispose()` leaves no WebGL object or ImageBitmap (`track=1`).
 
-**Pair tests** (preview vs render): `rt.html` and `pt.html` of the same view. Framing: the backdrop masks (within 2
-levels of the top-left pixel) must agree on every pixel off the silhouette (a pixel whose 3 x 3 neighbourhood in the
-preview holds both classes); 0 mismatches is the limit. Radiance: pixelmatch `threshold 0.1` with `maxDiffRatio` and
-`maxMeanDelta` = the first measured value x 1.25, never widened; the render differs where it has shadows,
-interreflection and noise. Logged as `[pt pair] <view>: ...`, values in `test-results/pt-pair-<view>.json`. Measured
-on SwiftShader (local Windows dev machine, deterministic):
+**Pair tests** (preview vs render): `rt.html` baked (`bake=64`) and `pt.html` of the same view. Framing, with the
+shadow catcher off on both sides (its edge fades into the backdrop): the backdrop masks (within 2 levels of the
+top-left pixel) must agree on every pixel off the silhouette (a pixel whose 3 x 3 neighbourhood in the preview holds
+both classes); 0 mismatches is the limit. Radiance, catcher on both: pixelmatch `threshold 0.1` with `maxDiffRatio`
+and `maxMeanDelta` = measured x 1.25 and never above the previous limit, never widened; the render differs where it
+has interreflection and noise. Logged as `[pt pair] <view>: ...`, values in `test-results/pt-pair-<view>.json`.
+Measured on SwiftShader (local Windows dev machine, deterministic), MS-16 (MS-17's unbaked values in brackets):
 
-| view             | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta | limit: `maxDiffRatio`, `maxMeanDelta` |
-| ---------------- | ----------------------------------- | ----------------------------------- | ------------------------------------- |
-| `turntable-y030` | 0 (1 606)                           | 715, 0.01091, 0.784                 | 0.0136, 0.98                          |
-| `iso`            | 0 (1 543)                           | 835, 0.01274, 1.049                 | 0.0159, 1.31                          |
-| `alpha-plane`    | 0 (689)                             | 2 158, 0.03293, 1.984               | 0.0412, 2.48                          |
-| `player-hold-34` | 0 (1 322)                           | 1 596, 0.02435, 1.443               | 0.0304, 1.80                          |
+| view             | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta           | limit: `maxDiffRatio`, `maxMeanDelta` |
+| ---------------- | ----------------------------------- | --------------------------------------------- | ------------------------------------- |
+| `turntable-y030` | 0 (1 606)                           | 185, 0.00282, 0.762 (715, 0.01091, 0.784)     | 0.00353, 0.953                        |
+| `iso`            | 0 (1 543)                           | 335, 0.00511, 0.942 (835, 0.01274, 1.049)     | 0.00639, 1.18                         |
+| `alpha-plane`    | 0 (689)                             | 2 083, 0.03178, 2.189 (2 158, 0.03293, 1.984) | 0.0398, 2.48 (2.189 x 1.25 is above)  |
+| `player-hold-34` | 0 (1 322)                           | 1 215, 0.01854, 1.295 (1 596, 0.02435, 1.443) | 0.0232, 1.62                          |
+| `cutout-checker` | 0 (3 310)                           | 275, 0.00420, 0.726                           | 0.00525, 0.908                        |
+
+alpha-plane's large ground is an untextured box, baked per vertex, so its preview shows no ground shadow (world-density
+charts for untextured meshes are not in MS-16); the catcher under it darkens its mean delta a little.
 
 For a manual run on real hardware open `pt.html?scene=bench&size=512&samples=256&timing=1`: one sample per animation
 frame with the elapsed time and the renderer string.
@@ -376,6 +424,13 @@ texel tap), `rt-bench-order-512` 117, 145 and 148 ms with MSAA, 83 and 107 ms si
   `rt-load-first-frame-200k-order` (validate, flatten, BVH build in JavaScript, upload) plus its first sample. Local
   SwiftShader 1554, 919 and 941 ms; max 10 000 ms (10x the middle run, rounded up).
 - `bundleGzipBytes` app 2500, embed 2200: measured plus about 2 kB, so a real dependency shows up while noise does not.
+- `bakeTimeMs.bake-bench-n16` (MS-16): `LightBaker.bake` of the benchmark scene in its worker, 16 samples with the
+  shadow catcher (lightmap 2048 wide, catcher 512 x 512), from the call to the final lighting, median of 3. Local
+  SwiftShader 22 873, 22 113 and 22 141 ms; max 222 000 ms (10x the middle run, rounded up).
+- `mainThreadBlockMs.bake-bench` (MS-16): the longest main-thread event-loop lag (`fixtures/src/eventLoopLag.ts`, a
+  10 ms heartbeat) over those three bakes, posting, progress uploads and redraws included. Local 27.4 ms; max 50 ms,
+  fixed (RAIL's 50 ms response budget), not derived from a measurement. In the same run
+  `rt-load-first-frame-200k-order` (now with the lightmap layout) measured 1109 ms of its 3500.
 
 First CI run (2026-10-20, ubuntu-latest): frame time 0.9 ms (max 5, 5.5x), time to 64 samples 80.6 ms (max 300), gzip app 437 B, embed 115 B.
 Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact, with the numbers in the commit.
