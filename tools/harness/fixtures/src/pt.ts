@@ -1,4 +1,11 @@
-import { MAX_SAMPLES, MAX_SEED, PathTracer, type PathTracerWarning, type SetSceneOptions } from '@modelshot/pathtracer';
+import {
+  MAX_SAMPLES,
+  MAX_SEED,
+  PathTracer,
+  PathTracerError,
+  type PathTracerWarning,
+  type SetSceneOptions,
+} from '@modelshot/pathtracer';
 import { cameraProjection, cameraView, mat4Multiply, type SceneDocument } from '@modelshot/scene';
 import { installSampleBench, installSampleReadout, installSceneBench } from './bench';
 import { readDrawingBufferBase64 } from './context';
@@ -203,6 +210,15 @@ async function start(): Promise<void> {
       tracer.setCamera(camera());
       render();
       return results.map((r) => r.applied);
+    },
+    tryHugeMaterials: async () => {
+      const material = doc.materials[0] ?? { name: 'm', texture: -1 };
+      try {
+        await tracer.setScene({ ...doc, materials: new Array<typeof material>(1_400_000).fill(material) });
+        return 'ok';
+      } catch (error) {
+        return error instanceof PathTracerError ? error.code : String(error);
+      }
     },
     tryStart: (trySeed, trySamples) => {
       try {

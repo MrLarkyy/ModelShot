@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 // The package index pulls in GLSL through Vite's ?raw, which Playwright cannot load: the two plain modules directly.
@@ -8,7 +8,6 @@ import type { ModelViewProbe, PtProbe } from '../fixtures/src/fixtureApi';
 import { compareImages, type CompareOptions } from '../src/compareImages';
 import { encodeFlipped, expectGolden, openFixture, renderFixture, type FixtureInfo } from '../src/expectGolden';
 import type { GoldenSpec, PathTracedGoldenSpec } from '../src/goldenSpec';
-import { goldenPath } from '../src/goldenStore';
 import { expect, test } from '../src/harnessTest';
 import {
   decodePng,
@@ -22,15 +21,14 @@ import {
 } from '../src/imageMetrics';
 
 /**
- * Path-traced images converge: at the default threshold another seed or one sample more or less stays within the
- * default tolerance (seed 2 at 64 samples: 7 of 65 536 pixels, mean delta 0.30). SwiftShader renders them
- * byte-identically, so they compare at threshold 0, where one sample less changes 7.5 % of the pixels by a level and
- * another seed 18 %.
+ * Path-traced images converge: at the default threshold 0.1 another seed or one sample more or less passes (seed 2 at
+ * 64 samples: 7 of 65 536 pixels, mean delta 0.30). At threshold 0 every changed level counts: one sample less changes
+ * 7.5 % of the pixels, another seed 18 %, far over the default maxDiffRatio 0.001, which stays as it is.
  */
 const PT_TOLERANCE = {
   threshold: 0,
-  maxDiffRatio: 0.01,
-  reason: 'tighter than the default: converged path-traced images tell seed and sample count apart only at threshold 0',
+  reason:
+    'threshold 0 only (default ratio and mean): a converged image tells seed and sample count apart by single levels',
 };
 
 const pt = (name: string, variant: string, samples: number): PathTracedGoldenSpec => ({
@@ -48,6 +46,8 @@ const ALPHA_PLANE = pt('alpha-plane', 'alpha-plane', 128);
 const RAMP = pt('alpha-ramp-blend', 'alpha-ramp-blend', 128);
 const RENDER_ORDER = pt('render-order', 'render-order', 16);
 const EMISSIVE = pt('emissive', 'emissive', 64);
+// The MS-20 player in the hold preset with a cube in its right hand, paired with rt-player-hold-34.
+const PLAYER_HOLD = pt('player-hold-34', 'player-hold-34', 64);
 const GOLDENS: readonly PathTracedGoldenSpec[] = [
   TURNTABLE,
   pt('iso', 'iso', 64),
@@ -56,6 +56,7 @@ const GOLDENS: readonly PathTracedGoldenSpec[] = [
   RAMP,
   RENDER_ORDER,
   EMISSIVE,
+  PLAYER_HOLD,
 ];
 
 async function render(page: Page, query: string): Promise<{ png: Buffer; image: Image; info: FixtureInfo }> {
@@ -74,7 +75,9 @@ async function readPng(page: Page, info: FixtureInfo): Promise<Buffer> {
   return encodeFlipped({ ...info, ...now });
 }
 
-const goldenPixels = (spec: GoldenSpec): Buffer => decodePng(readFileSync(goldenPath(spec))).data;
+/** The pixels of one pass of `spec` rendered now: the byte reference of the determinism checks (never the PNG). */
+const referencePixels = async (page: Page, spec: GoldenSpec): Promise<Buffer> =>
+  decodePng((await renderFixture(page, spec)).png).data;
 
 const probesOf = async (page: Page): Promise<readonly PtProbe[]> =>
   page.evaluate(() => window.__msFixture?.pt?.probes ?? []);
@@ -101,11 +104,11 @@ test.describe('determinism', () => {
   });
 
   test('batches of 7 samples, 64-pixel tiles and one pass of N give the same bytes', async ({ page }) => {
-    const golden = goldenPixels(TURNTABLE);
+    const reference = await referencePixels(page, TURNTABLE);
     for (const extra of ['batch=1', 'batch=7', 'tile=64', 'batch=7&tile=64']) {
       const { image, info } = await render(page, `variant=turntable-y030&seed=1&samples=64&${extra}`);
       expect(info.samplesDone, extra).toBe(64);
-      expect(image.data.equals(golden), extra).toBe(true);
+      expect(image.data.equals(reference), extra).toBe(true);
     }
   });
 
@@ -268,6 +271,7 @@ const PT_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions>> = {
   'turntable-y030': { threshold: 0.1, maxDiffRatio: 0.0136, maxMeanDelta: 0.98 },
   iso: { threshold: 0.1, maxDiffRatio: 0.0159, maxMeanDelta: 1.31 },
   'alpha-plane': { threshold: 0.1, maxDiffRatio: 0.0412, maxMeanDelta: 2.48 },
+  'player-hold-34': { threshold: 0.1, maxDiffRatio: 0.0304, maxMeanDelta: 1.8 },
 };
 
 test.describe('the render frames and lights like the preview', () => {
@@ -323,6 +327,20 @@ test.describe('limits and hostile input', () => {
     );
   });
 
+  test('10 000 coincident cubes finish a sample: the per-ray node cap bounds the work', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(String(error)));
+    const started = Date.now();
+    const { image, info } = await render(page, 'scene=coincident-cubes&seed=1&samples=1');
+    const elapsed = Date.now() - started;
+    console.log(`[pt probe] coincident cubes: 1 sample in ${elapsed} ms (page load included)`);
+    expect(info.samplesDone).toBe(1);
+    expect(await page.evaluate(() => window.__msFixture?.pt?.triangles)).toBe(120_000);
+    expect(await page.evaluate(() => window.__msFixture?.pt?.contextLost)).toBe(false);
+    expect(modelBox(image).x1 - modelBox(image).x0, 'the cubes are drawn').toBeGreaterThan(50);
+    expect(errors).toEqual([]);
+  });
+
   test('seed, sample count and projection out of range throw a RangeError', async ({ page }) => {
     await openFixture(page, '/pt.html?variant=turntable-y030&samples=1');
     const results = await page.evaluate(() => {
@@ -354,6 +372,7 @@ test.describe('lifetime', () => {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(String(error)));
     const info = await openFixture(page, '/pt.html?variant=turntable-y030&seed=1&samples=64');
+    const before = decodePng(await readPng(page, info)).data;
     const steps = await page.evaluate(async () => {
       const ptc = window.__msFixture!.pt!;
       await ptc.lose();
@@ -365,7 +384,7 @@ test.describe('lifetime', () => {
       return { whileLost, afterRestore, rendered: ptc.render() };
     });
     expect(steps).toEqual({ whileLost: 0, afterRestore: 0, rendered: 64 });
-    expect(decodePng(await readPng(page, info)).data.equals(goldenPixels(TURNTABLE))).toBe(true);
+    expect(decodePng(await readPng(page, info)).data.equals(before)).toBe(true);
     expect(errors).toEqual([]);
   });
 
@@ -376,10 +395,24 @@ test.describe('lifetime', () => {
   });
 
   test('of two quick setScene calls only the second is applied', async ({ page }) => {
+    const reference = await referencePixels(page, TURNTABLE);
     const info = await openFixture(page, '/pt.html?variant=turntable-y030&scene=flat&seed=1&samples=64');
     const applied = await page.evaluate(() => window.__msFixture!.pt!.setScenes(['flat', 'showcase']));
     expect(applied).toEqual([false, true]);
-    expect(decodePng(await readPng(page, info)).data.equals(goldenPixels(TURNTABLE))).toBe(true);
+    expect(decodePng(await readPng(page, info)).data.equals(reference)).toBe(true);
+  });
+
+  test('a scene that fails a limit keeps the current one and decodes nothing', async ({ page }) => {
+    const info = await openFixture(page, '/pt.html?variant=turntable-y030&seed=1&samples=16&track=1');
+    const before = decodePng(await readPng(page, info)).data;
+    const result = await page.evaluate(async () => {
+      const ptc = window.__msFixture!.pt!;
+      const bitmaps = ptc.openBitmaps();
+      const code = await ptc.tryHugeMaterials();
+      return { code, bitmaps, after: ptc.openBitmaps(), rendered: ptc.render() };
+    });
+    expect(result).toEqual({ code: 'SCENE_TOO_LARGE', bitmaps: 2, after: 2, rendered: 16 });
+    expect(decodePng(await readPng(page, info)).data.equals(before)).toBe(true);
   });
 
   test('dispose releases every GL object and image, a superseded scene included', async ({ page }) => {

@@ -52,6 +52,7 @@ export const RT_SCENE_NAMES = [
   'player-hold',
   'player-walk-hold',
   'player-wave',
+  'coincident-cubes',
 ] as const;
 export type RtSceneName = (typeof RT_SCENE_NAMES)[number];
 
@@ -278,6 +279,8 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return alphaRamp({ alphaMode: 'opaque' });
     case 'large-order':
       return largeOrderScene(load(showcaseSource));
+    case 'coincident-cubes':
+      return coincidentCubes(load(showcaseSource));
     case 'player-classic':
       return playerScene('classic', 'classic');
     case 'player-slim':
@@ -567,6 +570,61 @@ function alphaRamp(alpha: Pick<SceneDocument['materials'][number], 'alphaMode' |
  * loader writes faces) on a 316-wide grid, at render order 1, so the renderer builds the exact key's de-indexed
  * geometry at upload. For the load-and-first-frame budget.
  */
+/**
+ * 10 000 coincident untextured 8-unit cubes (the bbmodel loader's element limit, 120 000 triangles) in one mesh: every
+ * BVH node box is the same, so nothing prunes a traversal. The path tracer's per-ray node cap must keep a sample short.
+ */
+function coincidentCubes(showcase: SceneDocument): SceneDocument {
+  const cubes = 10_000;
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const cube: number[] = [];
+  for (const [axis, sign] of [
+    [0, 1],
+    [0, -1],
+    [1, 1],
+    [1, -1],
+    [2, 1],
+    [2, -1],
+  ] as const) {
+    const u = (axis + 1) % 3;
+    const v = (axis + 2) % 3;
+    const base = positions.length / 3;
+    for (const [a, b] of [
+      [-4, -4],
+      [4, -4],
+      [4, 4],
+      [-4, 4],
+    ] as const) {
+      const p = [0, 0, 0];
+      p[axis] = 4 * sign;
+      p[u] = a;
+      p[v] = b;
+      positions.push(...p);
+      const n = [0, 0, 0];
+      n[axis] = sign;
+      normals.push(...n);
+    }
+    // Counter-clockwise seen from outside.
+    cube.push(...(sign > 0 ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2]).map((i) => base + i));
+  }
+  const indices = new Uint32Array(cubes * cube.length);
+  for (let c = 0; c < cubes; c++) indices.set(cube, c * cube.length);
+  const mesh: SceneMesh = {
+    name: 'cubes',
+    sourceId: '',
+    node: -1,
+    visible: true,
+    positions: new Float32Array(positions),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array((positions.length / 3) * 2),
+    uvRects: new Float32Array((positions.length / 3) * 4),
+    indices,
+    groups: [{ material: -1, start: 0, count: indices.length }],
+  };
+  return { ...showcase, nodes: [], rootNodes: [], meshes: [mesh] };
+}
+
 function largeOrderScene(showcase: SceneDocument): SceneDocument {
   const quads = 100_000;
   const side = 316;

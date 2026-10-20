@@ -86,6 +86,8 @@ export interface PtControls {
   dispose: () => void;
   /** Calls setScene for every name at once; resolves with which calls were applied. */
   setScenes: (names: string[]) => Promise<boolean[]>;
+  /** setScene of the current scene with 1.4 M materials (over the material table): the error code, or `ok`. */
+  tryHugeMaterials: () => Promise<string>;
   /** The error `start` throws for this request (`name: message`), or `ok`. */
   tryStart: (seed: number, samples: number) => string;
   /** The error `setCamera` throws for the page's camera with this vertical field of view, or `ok`. */

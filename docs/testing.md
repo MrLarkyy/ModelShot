@@ -152,15 +152,16 @@ put in the URL, not in the file name).
 | `pt-alpha-ramp-blend.s1.n128` | the 16 x 16 alpha ramp (blend, cutoff 0.01)     | golden; stochastic transparency              |
 | `pt-render-order.s1.n16`      | render-order.bbmodel, model-view camera         | golden; render-order probes                  |
 | `pt-emissive.s1.n64`          | showcase, bricks emitting (4, 2.2, 0.8)         | golden; the post beside the bricks brightens |
+| `pt-player-hold-34.s1.n64`    | MS-20 player, hold preset, cube in the hand     | golden; pair with `rt-player-hold-34`        |
 
-- Tolerance: `threshold 0`, `maxDiffRatio 0.01` (an override with its reason in the spec), tighter than the default.
-  The tracer converges, so at the default threshold another seed or one sample more or less still passes (seed 2 at 64
-  samples: 7 of 65 536 pixels, mean delta 0.30; 63 samples: 0 pixels, mean delta 0.027). SwiftShader renders the same
-  request byte-identically; at threshold 0 another seed changes 12 023 pixels (18 %), 63 or 65 samples about 4 900
-  (7.5 %), so `seed 2`, `63 samples` and `65 samples` fail the comparison. A CI diff of more than 1 % of the pixels by
-  a level would be GPU variance and needs the diff artefact before anything is relaxed.
+- Tolerance: an override of `threshold 0` only (its reason in the spec); `maxDiffRatio 0.001` and `maxMeanDelta 1`
+  stay the defaults. The tracer converges, so at the default threshold 0.1 another seed or one sample more or less
+  still passes (seed 2 at 64 samples: 7 of 65 536 pixels, mean delta 0.30; 63 samples: 0 pixels, mean delta 0.027). At
+  threshold 0 every changed level counts: another seed changes 12 023 pixels (18 %), 63 or 65 samples about 4 900
+  (7.5 %), 75 times the allowed ratio, so `seed 2`, `63 samples` and `65 samples` fail the comparison.
 - Determinism: the same request twice, and the same 64 samples in batches of 1 and 7, in 64-pixel tiles and both, give
-  the golden's bytes; `samplesDone` is checked against the request (`assertSampleCount`).
+  the bytes of a reference rendered in the same run in one pass (never the bytes of the committed PNG, which only the
+  tolerant golden comparison reads); `samplesDone` is checked against the request (`assertSampleCount`).
 - Probes (`fixtures/src/ptProbes.ts`, from the document, never from a renderer; logged as `[pt probe] ...`): the cutout
   plane's hole (2, 14) and opaque texel (6, 14) followed along the key direction to the ground: lit 199.4, shadowed
   146.6 levels (at least 40 apart), and the lit/shadowed step between them spans 0.49 px (at most 2); on the flat cube,
@@ -173,9 +174,13 @@ put in the URL, not in the file name).
   least 10).
 - Limits and lifetime: an empty scene draws only the backdrop; corrupt, missing and size-lying textures draw the
   placeholder with the realtime renderer's warning; `maxTriangles=10` fails the page with `SCENE_TOO_LARGE`; seeds and
-  sample counts out of range and a field of view of 0 or 180 throw `RangeError`; a lost context draws nothing and,
-  restored, renders the golden's bytes again; `cancel()` after 5 samples stays at 5; of two quick `setScene` calls only
-  the second is applied; `dispose()` leaves no WebGL object or ImageBitmap (`track=1`).
+  sample counts out of range and a field of view of 0 or 180 throw `RangeError`; 10 000 coincident cubes
+  (`scene=coincident-cubes`, 120 000 triangles whose BVH nodes nothing prunes) render a sample without losing the
+  context (the per-ray node cap, path-tracer.md; about 1.2 s with page load on SwiftShader); a lost context draws
+  nothing and, restored, renders the same bytes as before the loss; `cancel()` after 5 samples stays at 5; of two
+  quick `setScene` calls only the second is applied (the bytes of a one-pass reference rendered in the same run); a
+  scene over the material limit (1.4 M materials) fails with `SCENE_TOO_LARGE` before decoding anything and the
+  current scene keeps rendering the same bytes; `dispose()` leaves no WebGL object or ImageBitmap (`track=1`).
 
 **Pair tests** (preview vs render): `rt.html` and `pt.html` of the same view. Framing: the backdrop masks (within 2
 levels of the top-left pixel) must agree on every pixel off the silhouette (a pixel whose 3 x 3 neighbourhood in the
@@ -189,6 +194,7 @@ on SwiftShader (local Windows dev machine, deterministic):
 | `turntable-y030` | 0 (1 606)                           | 715, 0.01091, 0.784                 | 0.0136, 0.98                          |
 | `iso`            | 0 (1 543)                           | 835, 0.01274, 1.049                 | 0.0159, 1.31                          |
 | `alpha-plane`    | 0 (689)                             | 2 158, 0.03293, 1.984               | 0.0412, 2.48                          |
+| `player-hold-34` | 0 (1 322)                           | 1 596, 0.02435, 1.443               | 0.0304, 1.80                          |
 
 For a manual run on real hardware open `pt.html?scene=bench&size=512&samples=256&timing=1`: one sample per animation
 frame with the elapsed time and the renderer string.
