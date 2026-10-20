@@ -53,9 +53,16 @@ describe('linkShader', () => {
   });
 
   it('links the shared look chunks', () => {
-    const out = linkShader('#version 300 es\n#include "agx"\n#include "texelAlpha"', lookShaderChunks);
+    const out = linkShader(
+      '#version 300 es\n#include "agx"\n#include "texelAlpha"\n#include "faceTexels"\n#include "lightRig"',
+      lookShaderChunks,
+    );
     expect(out).toContain('vec3 agxToneMap(vec3 linearColor)');
     expect(out).toContain('int texelCoverage(float alpha, int mode, int cutoffByte)');
+    expect(out).toContain('ivec4 faceTexelRange(vec4 uvRect, vec2 size)');
+    expect(out).toContain('vec3 hemisphereFill(vec3 n)');
+    expect(out).toContain('vec3 environmentRadiance(vec3 d)');
     expect(out.indexOf('#version')).toBe(0);
+    expect(out).not.toMatch(/#\s*include/);
   });
 });

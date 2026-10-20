@@ -48,7 +48,8 @@ per element (thousands for a large Blockbench model) draws in a few calls per pa
   atlas regions), without flipping or premultiplying; texel (0, 0) is the top-left pixel.
 - Texel anti-aliasing: four `texelFetch` taps (linear colour) blended only within one screen pixel of a texel seam
   (offset `clamp((p − seam) / fwidth(p), −0.5, 0.5)`), with premultiplied weights so a cut-out neighbour adds no dark
-  fringe. Every tap is clamped to the face's texel rectangle from `SceneMesh.uvRects`, so no texel of a neighbouring
+  fringe. Every tap is clamped to the face's texel rectangle from `SceneMesh.uvRects` (`faceTexelRange`, the
+  `faceTexels` chunk of `@modelshot/looks`, which the path tracer clamps with too), so no texel of a neighbouring
   atlas region is ever read, with any face UV rotation or mirroring.
 - Minified (more than one texel per pixel): the same clamped lookup at a rotated 2 × 2 grid inside the pixel, which
   keeps far views from shimmering.
@@ -116,8 +117,11 @@ The rules are the scene format's ([scene-format.md](scene-format.md): `SceneMate
 
 ## Lighting and tone mapping
 
-Lighting v0 is a constant sky/ground hemisphere fill plus one directional key (`shaders/shading.glsl`); light rigs
-become look data later. The HDR result goes through AgX (`#include "agx"` from `@modelshot/looks`, mirrored by
+Lighting v0 is a constant sky/ground hemisphere fill plus one directional key: the `lightRig` chunk of
+`@modelshot/looks` (`SKY_FILL`, `GROUND_FILL`, `KEY_DIRECTION`, `KEY_COLOR`, `hemisphereFill`), which the path tracer
+reads too, so an unoccluded surface converges there to the preview's value ([path-tracer.md](path-tracer.md#lighting));
+`shaders/shading.glsl` applies it. The default backdrop is `LIGHT_RIG_V0.background` of the same package. Light rigs
+become look presets later (MS-19). The HDR result goes through AgX (`#include "agx"` from `@modelshot/looks`, mirrored by
 `agxToneMap` for tests), whose output is already display-encoded and is written as is. The backdrop colour (option
 `background`, scene-linear) goes through the same transform on both paths.
 
@@ -130,7 +134,7 @@ ships in three.js `AgXToneMapping` (MIT) and Filament.
 
 GLSL ES 3.00 in `src/shaders/*.glsl`, composed by `linkShader` from static chunks only: the renderer's own
 (`texelSample`, `shading`, `hashAlpha`, `depthKey` and `depthKeyVertex` in a raster and an exact variant) and the shared look chunks
-(`agx`, `texelAlpha`). An unknown or cyclic
+(`agx`, `texelAlpha`, `faceTexels`, `lightRig`). An unknown or cyclic
 include throws; no shader text is built from user input. A compile or link failure throws `RendererError`
 (`SHADER_COMPILE` / `SHADER_LINK`) with the driver's info log.
 
