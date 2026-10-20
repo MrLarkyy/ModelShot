@@ -1,23 +1,8 @@
 /*
- * Matrices, log2 range and contrast polynomial from Benjamin Wrensch's minimal AgX implementation
- * ("Minimal AgX Implementation", iolite engine / Missing Deadlines blog), used under the MIT License:
- *
- * MIT License
- *
- * Copyright (c) 2024 Missing Deadlines (Benjamin Wrensch)
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
- * documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit
- * persons to whom the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
- * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * AgX by Troy Sobotka. The Rec.709 inset/outset matrices, the log2 range and the contrast polynomial fit follow
+ * Benjamin Wrensch, "Minimal AgX Implementation" (iolite engine blog, 2024,
+ * https://iolite-engine.com/blog_posts/minimal_agx_implementation); the same polynomial ships in three.js
+ * AgXToneMapping (MIT) and Filament.
  */
 
 // Column-major like a GLSL mat3: column c holds entries 3c..3c + 2.

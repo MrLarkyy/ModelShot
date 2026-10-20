@@ -74,9 +74,10 @@ become look data later. The HDR result goes through AgX (`#include "agx"` from `
 `agxToneMap` for tests), whose output is already display-encoded and is written as is. The backdrop colour (option
 `background`, scene-linear) goes through the same transform on both paths.
 
-Third-party: the AgX matrices, log2 range and contrast polynomial in `looks/src/glsl/agx.glsl` and
-`looks/src/agxToneMap.ts` come from Benjamin Wrensch's minimal AgX implementation (Missing Deadlines / iolite),
-MIT License; the notice is in both files.
+Credits: AgX by Troy Sobotka. The Rec.709 inset/outset matrices, the log2 range and the contrast polynomial fit in
+`looks/src/glsl/agx.glsl` and `looks/src/agxToneMap.ts` follow Benjamin Wrensch, "Minimal AgX Implementation"
+(iolite engine blog, 2024, https://iolite-engine.com/blog_posts/minimal_agx_implementation); the same polynomial
+ships in three.js `AgXToneMapping` (MIT) and Filament.
 
 ## Shaders
 
