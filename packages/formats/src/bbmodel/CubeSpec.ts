@@ -81,8 +81,9 @@ export function cubeTriangleCount(cube: CubeSpec): number {
 
 /**
  * Blockbench's geometry: `centre ∓ (half + inflate) · stretch` per axis. A negative inflate larger than half a side
- * collapses that axis to its centre instead of turning the box inside out; a negative stretch counts as its magnitude
- * (the box is the same, only Blockbench's winding would differ).
+ * collapses that axis to its centre instead of turning the box inside out. A negative stretch counts as its
+ * magnitude: Blockbench swaps that axis (the east face and its texture end up mirrored on the −X side), ModelShot does
+ * not mirror the cube.
  */
 function inflatedBox(from: Vec3, to: Vec3, inflate: number, stretch: Vec3): [Vec3, Vec3] {
   const [x0, x1] = inflatedAxis(from[0], to[0], inflate, stretch[0]);

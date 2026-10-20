@@ -46,8 +46,9 @@ image.
 - Order: nodes and meshes follow the outliner (depth first); elements the outliner does not reference follow at the
   root in file order. An outliner entry for an unknown uuid is skipped with an `UNKNOWN_REFERENCE` warning.
 - Cube box: per axis `centre ∓ (half + inflate) · stretch`, as Blockbench. A negative inflate larger than half a side
-  collapses that axis to its centre; a negative stretch counts as its magnitude. Stretch and inflate change geometry
-  only, never UVs.
+  collapses that axis to its centre. A negative stretch counts as its magnitude: Blockbench swaps that axis (the east
+  face and its texture end up mirrored on the −X side); ModelShot does not mirror the cube that way. Stretch and
+  inflate change geometry only, never UVs.
 - Faces: `texture: null` removes the face (no triangles, its other fields are not read, it does not count towards
   `maxTriangles`); no `texture` key or `texture: false` is a blank face drawn untextured (material −1, UVs normalised
   by the project resolution); a number is a texture index and a string a texture uuid (unknown → `INVALID_FIELD`).

@@ -84,7 +84,7 @@ describe('face texture by uuid', () => {
 describe('byte-order mark', () => {
   it('is accepted on text and on bytes', () => {
     const text = json(model());
-    expect(loadBbmodel('﻿' + text).scene.meshes).toHaveLength(1);
+    expect(loadBbmodel('\uFEFF' + text).scene.meshes).toHaveLength(1);
     const bytes = new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode(text)]);
     expect(loadBbmodel(bytes).scene.meshes).toHaveLength(1);
   });
