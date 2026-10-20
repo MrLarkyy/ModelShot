@@ -894,7 +894,7 @@ test.describe('baked lighting', () => {
       expect(result.warnings).toEqual([{ code: 'TEXTURE_DECODE_FAILED', texture: 0 }]);
     });
 
-    test('an empty scene bakes only an unshadowed catcher: the backdrop stays', async ({ page }) => {
+    test('an empty scene bakes without a catcher (nothing casts on it): the backdrop stays', async ({ page }) => {
       const plain = await render(page, 'scene=empty');
       const baked = await render(page, 'scene=empty&bake=64');
       let worst = 0;

@@ -11,7 +11,7 @@ const box = (min: [number, number, number], max: [number, number, number]) => ({
 
 describe('shadowCatcherPlane', () => {
   it('lies at the lowest point and covers footprint, shadow and margin', () => {
-    const plane = shadowCatcherPlane(box([-1, 2, -1], [1, 10, 1]), KEY, 0.5);
+    const plane = shadowCatcherPlane(box([-1, 2, -1], [1, 10, 1]), KEY, 0.5)!;
     expect(plane.y).toBe(2);
     // The top corners' shadow reaches 8 / 0.79808 along -key from above; margin 4 (half of the height 8).
     const drop = 8 / KEY[1];
@@ -22,17 +22,15 @@ describe('shadowCatcherPlane', () => {
   });
 
   it('has four texels per finest model texel and caps each side', () => {
-    const plane = shadowCatcherPlane(box([0, 0, 0], [2, 2, 2]), KEY, 1);
+    const plane = shadowCatcherPlane(box([0, 0, 0], [2, 2, 2]), KEY, 1)!;
     expect(plane.width).toBe(Math.ceil((plane.rect[2] - plane.rect[0]) / 0.25));
     expect(plane.height).toBe(Math.ceil((plane.rect[3] - plane.rect[1]) / 0.25));
-    const fine = shadowCatcherPlane(box([0, 0, 0], [2, 2, 2]), KEY, 1e-3);
+    const fine = shadowCatcherPlane(box([0, 0, 0], [2, 2, 2]), KEY, 1e-3)!;
     expect([fine.width, fine.height]).toEqual([MAX_CATCHER_SIDE, MAX_CATCHER_SIDE]);
     expect(fine.rect).toEqual(plane.rect);
   });
 
-  it('gives an empty scene a plane at the origin', () => {
-    const plane = shadowCatcherPlane(null, KEY, 1);
-    expect(plane.y).toBe(0);
-    expect(plane.rect).toEqual([-8, -8, 8, 8]);
+  it('gives an empty scene none', () => {
+    expect(shadowCatcherPlane(null, KEY, 1)).toBeNull();
   });
 });
