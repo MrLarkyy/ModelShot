@@ -1,4 +1,7 @@
 pnpm-lock.yaml
 **/dist
 coverage
+test-results
+playwright-report
+blob-report
 **/__goldens__
