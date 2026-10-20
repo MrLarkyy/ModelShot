@@ -5,7 +5,12 @@ import {
   worldMatrices,
   type SceneDocument,
 } from '@modelshot/scene';
-import type { BbmodelLoadResult } from '../../src/index';
+
+/** What every loader returns; warnings print as they are. */
+export interface LoadResult {
+  readonly scene: SceneDocument;
+  readonly warnings: readonly { readonly code: string; readonly path: string; readonly message: string }[];
+}
 
 /** Rounds to a fixed grid and turns −0 into 0, so float noise never changes a golden. */
 export function round(value: number, step: number): number {
@@ -55,7 +60,7 @@ function meshUvSize(scene: SceneDocument, index: number): { width: number; heigh
  * Golden form of a load result: node transforms (world matrix rounded to 1e-6), meshes in world space (1e-5) with
  * render order and group sidedness, materials with their alpha rule, textures without their bytes, warnings. Number arrays print on one line.
  */
-export function serializeResult(result: BbmodelLoadResult): string {
+export function serializeResult(result: LoadResult): string {
   const { scene } = result;
   const world = worldMatrices(scene.nodes);
   const data = {

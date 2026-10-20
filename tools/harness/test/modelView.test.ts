@@ -20,7 +20,8 @@ import raycast from '../fixtures/shaders/raycast.frag.glsl?raw';
 import cameraRay from '../fixtures/shaders/include/cameraRay.glsl?raw';
 import modelFragment from '../fixtures/shaders/model.frag.glsl?raw';
 import { MODEL_SHADER_DEFINES } from '../fixtures/src/modelShaderDefines';
-import { checkTableLimits, MAX_MATERIALS, MODE_CODES } from '../fixtures/src/sceneUpload';
+import { checkTableLimits, drawnMaterials, MAX_MATERIALS, MODE_CODES } from '../fixtures/src/sceneUpload';
+import { modelViewScene } from '../fixtures/src/modelViewScenes';
 import { buildShader } from '../fixtures/src/shaderSource';
 
 describe('buildShader', () => {
@@ -85,13 +86,15 @@ describe('buildShader', () => {
 });
 
 describe('parseModelViewVariant', () => {
-  it('knows the six variants', () => {
+  it('knows the eight variants', () => {
     expect(parseModelViewVariant('?variant=alpha-plane-raster')).toEqual({ model: 'alpha-plane', mode: 'raster' });
     expect(parseModelViewVariant('?variant=alpha-plane-raycast')).toEqual({ model: 'alpha-plane', mode: 'raycast' });
     expect(parseModelViewVariant('?variant=mesh-shapes-raster')).toEqual({ model: 'mesh-shapes', mode: 'raster' });
     expect(parseModelViewVariant('?variant=mesh-shapes-raycast')).toEqual({ model: 'mesh-shapes', mode: 'raycast' });
     expect(parseModelViewVariant('?variant=render-order-raster')).toEqual({ model: 'render-order', mode: 'raster' });
     expect(parseModelViewVariant('?variant=render-order-raycast')).toEqual({ model: 'render-order', mode: 'raycast' });
+    expect(parseModelViewVariant('?variant=gltf-nodes-raster')).toEqual({ model: 'gltf-nodes', mode: 'raster' });
+    expect(parseModelViewVariant('?variant=gltf-nodes-raycast')).toEqual({ model: 'gltf-nodes', mode: 'raycast' });
   });
 
   it.each(['?variant=constructor', '?variant=__proto__', '?variant=toString', '?variant=', '', '?model=alpha-plane'])(
@@ -174,6 +177,30 @@ describe('sceneTriangles', () => {
     });
     // e = (0, 19, −6) before the group's −20° about X: 19 cos 20°.
     expect(Math.max(...ys)).toBeCloseTo(19 * Math.cos(Math.PI / 9), 4);
+  });
+});
+
+describe('gltf-nodes model', () => {
+  const scene = modelViewScene('gltf-nodes');
+
+  it('fits the tables, hides only the 50 % glass plane, and draws no partial-alpha material', () => {
+    expect(() => checkTableLimits(scene)).not.toThrow();
+    expect(scene.meshes.filter((m) => !m.visible).map((m) => m.name)).toEqual(['glass-plane']);
+    const glass = scene.materials.findIndex((m) => m.name === 'glass');
+    expect(drawnMaterials(scene).has(glass)).toBe(false);
+    expect([...drawnMaterials(scene)].sort()).toEqual([0, 1, 3, 4, 5, 6]);
+  });
+
+  it('every visible triangle in world space, at half the default unit scale', () => {
+    const triangles = sceneTriangles(scene);
+    // ground 2, cube 12 twice, leaf 2, roof 4, cutout plane 2, panel 2.
+    expect(triangles.count).toBe(2 + 24 + 2 + 4 + 2 + 2);
+    expect(triangles.runs.map((r) => [r.doubleSided, r.count])).toEqual([
+      [false, 34],
+      [true, 2],
+    ]);
+    const ground = scene.meshes.find((m) => m.name === 'ground');
+    expect(Math.max(...(ground?.positions ?? []))).toBeCloseTo(1.3 * 8, 4);
   });
 });
 

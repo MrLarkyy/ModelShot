@@ -1,4 +1,4 @@
-import { shortenPath } from './quoteValue';
+import { shortenPath } from '../text/quoteValue';
 
 export type BbmodelWarningCode =
   'UNSUPPORTED_ELEMENT' | 'UNSUPPORTED_VALUE' | 'MISSING_TEXTURE' | 'UNKNOWN_REFERENCE' | 'SOURCE_NOT_FETCHED';

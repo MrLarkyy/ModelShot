@@ -4,17 +4,9 @@ import { readPngSize } from '../png/readPngSize';
 import { BbmodelError } from './BbmodelError';
 import type { BbmodelLimits } from './BbmodelLoadOptions';
 import type { BbmodelWarningList } from './BbmodelWarning';
-import {
-  childPath,
-  field,
-  readArray,
-  readObject,
-  readOptionalString,
-  readPositiveNumber,
-  readString,
-  type JsonObject,
-} from './JsonFields';
-import { quoteValue } from './quoteValue';
+import { childPath, field, type JsonObject } from '../json/JsonObject';
+import { readArray, readObject, readOptionalString, readPositiveNumber, readString } from './JsonFields';
+import { quoteValue } from '../text/quoteValue';
 import { RENDER_SIDES, type RenderSides } from './RenderSides';
 
 /** What the loader knows about a texture before any bytes are decoded. */

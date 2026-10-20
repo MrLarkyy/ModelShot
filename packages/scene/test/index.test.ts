@@ -14,4 +14,14 @@ describe('@modelshot/scene', () => {
     expect(scene.BACK_SIDE_RENDER_ORDER).toBe(-1 / 16);
     expect(scene.MAX_ABS_RENDER_ORDER).toBe(1024);
   });
+
+  it('accepts every loader format as a scene source', () => {
+    const sources: scene.SceneSource[] = [
+      { format: 'bbmodel', formatVersion: '4.10', modelFormat: 'free' },
+      { format: 'gltf', formatVersion: '2.0', modelFormat: 'glb' },
+      { format: 'obj', formatVersion: '', modelFormat: 'obj' },
+    ];
+    const formats: scene.SceneSourceFormat[] = sources.map((source) => source.format);
+    expect(formats).toEqual(['bbmodel', 'gltf', 'obj']);
+  });
 });

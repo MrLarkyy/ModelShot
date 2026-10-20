@@ -2,7 +2,7 @@ import type { SceneMesh } from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
 import { loadBbmodel } from '../../src/index';
 import { fixture, mesh, meshFace, model, type FixtureName } from './fixtures';
-import { worldVertices } from './serializeScene';
+import { worldVertices } from '../support/serializeScene';
 
 const json = (value: unknown): string => JSON.stringify(value);
 const MESH_FIXTURES: FixtureName[] = ['mesh-shapes', 'mesh-plane', 'alpha-plane', 'format5-groups', 'render-order'];

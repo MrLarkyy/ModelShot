@@ -2,9 +2,8 @@ import type { Vec3 } from '@modelshot/scene';
 import { BbmodelError } from './BbmodelError';
 import type { ConverterContext } from './ElementConverter';
 import { faceDoubleSided, readFaceTexture } from './FaceTexture';
+import { childPath, field, type JsonObject } from '../json/JsonObject';
 import {
-  childPath,
-  field,
   readArray,
   readNumbers,
   readObject,
@@ -12,9 +11,8 @@ import {
   readOptionalString,
   readOptionalVec3,
   readVec3,
-  type JsonObject,
 } from './JsonFields';
-import { quoteValue } from './quoteValue';
+import { quoteValue } from '../text/quoteValue';
 import { readRenderOrder } from './RenderOrder';
 
 /** One drawable face (3 or more vertices) of a mesh element. */

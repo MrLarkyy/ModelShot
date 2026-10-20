@@ -1,8 +1,12 @@
-import { loadBbmodel } from '@modelshot/formats';
+import { loadBbmodel, loadGltf, loadObj } from '@modelshot/formats';
 import { OrbitController } from '@modelshot/renderer-rt';
 import { sceneBounds, type SceneCamera, type SceneDocument, type SceneMesh } from '@modelshot/scene';
 import alphaPlaneSource from '../../../../packages/formats/test/fixtures/bbmodel/alpha-plane.bbmodel?raw';
 import renderOrderSource from '../../../../packages/formats/test/fixtures/bbmodel/render-order.bbmodel?raw';
+import sceneNodesSource from '../../../../packages/formats/test/fixtures/gltf/scene-nodes.gltf?raw';
+import shapesMtlSource from '../../../../packages/formats/test/fixtures/obj/shapes.mtl?raw';
+import shapesObjSource from '../../../../packages/formats/test/fixtures/obj/shapes.obj?raw';
+import shapesPngUri from '../../../../packages/formats/test/fixtures/obj/shapes.png?inline';
 import flatSource from '../models/rt-flat.bbmodel?raw';
 import alphaRampUri from '../models/rt-alpha-ramp.png?inline';
 import showcaseSource from '../models/rt-showcase.bbmodel?raw';
@@ -46,6 +50,8 @@ export const RT_SCENE_NAMES = [
   'step-open',
   'step-order',
   'step-order-open',
+  'gltf-nodes',
+  'obj-shapes',
   'player-classic',
   'player-slim',
   'player-legacy',
@@ -156,6 +162,8 @@ export const RT_VARIANTS: Readonly<Record<string, Partial<RtView>>> = {
   far: { yawDeg: 30, zoom: 3 },
   fallback: { yawDeg: 30, fallback: true },
   'fit-flat-cube': { scene: 'flat', yawDeg: 30, pitchDeg: 20 },
+  'gltf-nodes-y030': { scene: 'gltf-nodes', yawDeg: 30 },
+  'obj-shapes-y030': { scene: 'obj-shapes', yawDeg: 30 },
   // The model-view scenes and the alpha ramp under their fixed cameras (path-tracer goldens and preview pairs).
   'alpha-plane': { scene: 'alpha-plane', look: 'model-view' },
   'render-order': { scene: 'render-order', look: 'model-view' },
@@ -280,6 +288,10 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return alphaRamp({ alphaMode: 'opaque' });
     case 'large-order':
       return largeOrderScene(load(showcaseSource));
+    case 'gltf-nodes':
+      return loadGltf(sceneNodesSource).scene;
+    case 'obj-shapes':
+      return loadObj(shapesObjSource, { fileName: 'shapes.obj', files: shapesFiles() }).scene;
     case 'coincident-cubes':
       return coincidentCubes(load(showcaseSource));
     case 'grass-field':
@@ -297,6 +309,15 @@ export function rtScene(name: RtSceneName): SceneDocument {
     case 'player-wave':
       return posedPlayer(playerScene('classic', 'classic'), 'wave');
   }
+}
+
+/** The files a user picks next to `shapes.obj`: its material library and texture (static imports, nothing fetched). */
+function shapesFiles(): ReadonlyMap<string, Uint8Array> {
+  const png = Uint8Array.from(atob(shapesPngUri.slice(shapesPngUri.indexOf(',') + 1)), (c) => c.charCodeAt(0));
+  return new Map([
+    ['shapes.mtl', new TextEncoder().encode(shapesMtlSource)],
+    ['shapes.png', png],
+  ]);
 }
 
 /** A horizontal quad over x, z in [x0, x0 + 8] × [−4, 4] at y = 0, its front up (+y) or down, split along a or c. */

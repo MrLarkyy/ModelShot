@@ -1,0 +1,449 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "ModelShot test fixture (hand-built)"
+  },
+  "extensionsUsed": ["KHR_texture_transform"],
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "fixture",
+      "nodes": [0, 1]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "ground",
+      "mesh": 1
+    },
+    {
+      "name": "model",
+      "scale": [2, 2, 2],
+      "children": [2, 4, 5, 6, 7, 8]
+    },
+    {
+      "name": "parent",
+      "translation": [-0.45, 0.25, -0.35],
+      "rotation": [0, 0.25881904510252074, 0, 0.9659258262890683],
+      "scale": [0.5, 0.5, 0.5],
+      "mesh": 0,
+      "children": [3]
+    },
+    {
+      "name": "child",
+      "translation": [0, 0.85, 0],
+      "rotation": [0, 0, 0.3826834323650898, 0.9238795325112867],
+      "scale": [0.6, 0.3, 0.6],
+      "mesh": 0
+    },
+    {
+      "name": "matrix-leaf",
+      "matrix": [
+        0.8191520442889918, 0, 0.573576436351046, 0, 0, 1, 0, 0, -0.573576436351046, 0, 0.8191520442889918, 0, 0.45,
+        0.02, -0.4, 1
+      ],
+      "mesh": 4
+    },
+    {
+      "name": "mirrored-roof",
+      "translation": [0.3, 0, 0.45],
+      "scale": [-1, 1, 1],
+      "mesh": 6
+    },
+    {
+      "name": "cutout",
+      "translation": [-0.45, 0.03, 0.15],
+      "mesh": 2
+    },
+    {
+      "name": "glass",
+      "translation": [0.05, 0.02, -0.05],
+      "rotation": [0, 0.17364817766693033, 0, 0.984807753012208],
+      "mesh": 3
+    },
+    {
+      "name": "panel",
+      "translation": [-0.05, 0.1, -0.75],
+      "mesh": 5
+    }
+  ],
+  "meshes": [
+    {
+      "name": "cube",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0
+        }
+      ]
+    },
+    {
+      "name": "ground",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 4
+          },
+          "material": 3
+        }
+      ]
+    },
+    {
+      "name": "cutout-plane",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 5,
+            "NORMAL": 6,
+            "TEXCOORD_0": 7
+          },
+          "indices": 8,
+          "material": 1
+        }
+      ]
+    },
+    {
+      "name": "glass-plane",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 5,
+            "NORMAL": 6,
+            "TEXCOORD_0": 7
+          },
+          "indices": 9,
+          "material": 2
+        }
+      ]
+    },
+    {
+      "name": "leaf",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 5,
+            "NORMAL": 6,
+            "TEXCOORD_0": 7
+          },
+          "indices": 10,
+          "material": 4
+        }
+      ]
+    },
+    {
+      "name": "panel",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 5,
+            "NORMAL": 6,
+            "TEXCOORD_0": 11,
+            "TEXCOORD_1": 12
+          },
+          "indices": 10,
+          "material": 5
+        }
+      ]
+    },
+    {
+      "name": "roof",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 13
+          },
+          "mode": 5,
+          "material": 6
+        }
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "atlas",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0
+        }
+      }
+    },
+    {
+      "name": "cutout",
+      "alphaMode": "MASK",
+      "alphaCutoff": 0.5,
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 1
+        }
+      }
+    },
+    {
+      "name": "glass",
+      "alphaMode": "BLEND",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 2
+        }
+      }
+    },
+    {
+      "name": "ground",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [0.5, 0.5, 0.5, 1]
+      }
+    },
+    {
+      "name": "leaf",
+      "alphaMode": "MASK",
+      "doubleSided": true,
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 3
+        }
+      }
+    },
+    {
+      "name": "panel",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0,
+          "extensions": {
+            "KHR_texture_transform": {
+              "offset": [0.3888888888888889, 0.08333333333333333],
+              "scale": [0.2222222222222222, 0.3333333333333333],
+              "texCoord": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "red",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [0.8, 0.1, 0.05, 1]
+      }
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "source": 0
+    },
+    {
+      "sampler": 0,
+      "source": 1
+    },
+    {
+      "sampler": 0,
+      "source": 2
+    },
+    {
+      "sampler": 0,
+      "source": 1
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9728,
+      "minFilter": 9728,
+      "wrapS": 33071,
+      "wrapT": 33071
+    }
+  ],
+  "images": [
+    {
+      "name": "atlas",
+      "uri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAAMCAYAAABvEu28AAAAfklEQVR42s2QIQ6AMAxFd5LpavQ0mkOg0ehpNHp6eodAY7gB1/ikoj89QAWifclv+tI0IQERlbRdW8Z7CGlDqRNKn0nLryF470JS5CVKW/ASpeVeovzxRWHPDhPlvUJaJ22Y64C0h7R8XwTnWkiKvETJZzuJ0nIvUf74ooj6AJMAR98HlLunAAAAAElFTkSuQmCC"
+    },
+    {
+      "name": "cutout",
+      "uri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAKElEQVR42mO4Y6TxH4QZ/jMwgPDrZ5f+gzCMz0BQAYyBUyFBBYPADQD3MX1R1+V6egAAAABJRU5ErkJggg=="
+    },
+    {
+      "name": "glass",
+      "uri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAGUlEQVR42mOwOXHnPzJmcDvR04CMMQXQAQDg8BxN8+GclAAAAABJRU5ErkJggg=="
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 24,
+      "type": "VEC3",
+      "min": [-0.5, -0.5, -0.5],
+      "max": [0.5, 0.5, 0.5]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 24,
+      "type": "VEC3",
+      "min": [-1, -1, -1],
+      "max": [1, 1, 1]
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 24,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5123,
+      "count": 36,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5126,
+      "count": 6,
+      "type": "VEC3",
+      "min": [-1.2999999523162842, 0, -1.2999999523162842],
+      "max": [1.2999999523162842, 0, 1.2999999523162842]
+    },
+    {
+      "bufferView": 5,
+      "componentType": 5126,
+      "count": 4,
+      "type": "VEC3",
+      "min": [-0.25, 0, 0],
+      "max": [0.25, 0.5, 0]
+    },
+    {
+      "bufferView": 6,
+      "componentType": 5126,
+      "count": 4,
+      "type": "VEC3",
+      "min": [0, 0, 1],
+      "max": [0, 0, 1]
+    },
+    {
+      "bufferView": 7,
+      "componentType": 5126,
+      "count": 4,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 8,
+      "componentType": 5121,
+      "count": 6,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 9,
+      "componentType": 5125,
+      "count": 6,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 10,
+      "componentType": 5123,
+      "count": 6,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 11,
+      "componentType": 5126,
+      "count": 4,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 12,
+      "componentType": 5121,
+      "count": 4,
+      "type": "VEC2",
+      "normalized": true
+    },
+    {
+      "bufferView": 13,
+      "componentType": 5126,
+      "count": 6,
+      "type": "VEC3",
+      "min": [-0.30000001192092896, 0, -0.15000000596046448],
+      "max": [0.44999998807907104, 0.25, 0.15000000596046448]
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 288
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 288,
+      "byteLength": 288
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 576,
+      "byteLength": 192
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 768,
+      "byteLength": 72
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 840,
+      "byteLength": 72
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 912,
+      "byteLength": 48
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 960,
+      "byteLength": 48
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1008,
+      "byteLength": 32
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1040,
+      "byteLength": 6
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1048,
+      "byteLength": 24
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1072,
+      "byteLength": 12
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1084,
+      "byteLength": 32
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1116,
+      "byteLength": 8
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1124,
+      "byteLength": 72
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 1196,
+      "uri": "data:application/octet-stream;base64,AAAAPwAAAD8AAAA/AAAAPwAAAD8AAAC/AAAAPwAAAL8AAAC/AAAAPwAAAL8AAAA/AAAAvwAAAD8AAAC/AAAAvwAAAD8AAAA/AAAAvwAAAL8AAAA/AAAAvwAAAL8AAAC/AAAAvwAAAD8AAAC/AAAAPwAAAD8AAAC/AAAAPwAAAD8AAAA/AAAAvwAAAD8AAAA/AAAAvwAAAL8AAAA/AAAAPwAAAL8AAAA/AAAAPwAAAL8AAAC/AAAAvwAAAL8AAAC/AAAAvwAAAD8AAAA/AAAAPwAAAD8AAAA/AAAAPwAAAL8AAAA/AAAAvwAAAL8AAAA/AAAAPwAAAD8AAAC/AAAAvwAAAD8AAAC/AAAAvwAAAL8AAAC/AAAAPwAAAL8AAAC/AACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/OY5jPauqqj3kOI4+q6qqPeQ4jj5VVdU+OY5jPVVV1T5yHMc+q6qqPcdxHD+rqqo9x3EcP1VV1T5yHMc+VVXVPo7jOD+rqqo9HMdxP6uqqj0cx3E/VVXVPo7jOD9VVdU+OY5jPVVVFT/kOI4+VVUVP+Q4jj6rqmo/OY5jPauqaj9yHMc+VVUVP8dxHD9VVRU/x3EcP6uqaj9yHMc+q6pqP47jOD9VVRU/HMdxP1VVFT8cx3E/q6pqP47jOD+rqmo/AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4AEAASABEAEAATABIAFAAWABUAFAAXABYAZmamvwAAAABmZqa/ZmamvwAAAABmZqY/ZmamPwAAAABmZqY/ZmamvwAAAABmZqa/ZmamPwAAAABmZqY/ZmamPwAAAABmZqa/AACAvgAAAAAAAAAAAACAPgAAAAAAAAAAAACAPgAAAD8AAAAAAACAvgAAAD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAgD8AAIA/AACAPwAAgD8AAAAAAAAAAAAAAAAAAQIAAgMAAAAAAAABAAAAAgAAAAAAAAACAAAAAwAAAAAAAQACAAAAAgADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP////8AAACamZm+AAAAAJqZGb6amZm+AAAAAJqZGT4AAAAAAACAPpqZGb4AAAAAAACAPpqZGT5mZuY+AAAAAJqZGb5mZuY+AAAAAJqZGT4="
+    }
+  ]
+}

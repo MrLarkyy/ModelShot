@@ -1,4 +1,4 @@
-import { resolveMaterialAlpha, texelCoverage, type SceneDocument } from '@modelshot/scene';
+import { meshVisible, nodeVisibility, resolveMaterialAlpha, texelCoverage, type SceneDocument } from '@modelshot/scene';
 
 /** Slots of the shaders' material table and texture layers; the shaders get it as a `#define`. */
 export const MAX_MATERIALS = 8;
@@ -27,7 +27,8 @@ export interface UploadedTextures {
 /**
  * Decodes each scene texture without premultiplying or colour conversion (an alpha-0 texel keeps its RGB), uploads it
  * unflipped (row 0 is the top, as scene UVs expect), reads it back to see exactly what the shaders sample, and rejects
- * a partially transparent texel under a blended material: this fixture draws cutout alpha only.
+ * a partially transparent texel under a blended material that a visible mesh draws: this fixture draws cutout alpha
+ * only.
  */
 export async function uploadTextures(gl: WebGL2RenderingContext, scene: SceneDocument): Promise<UploadedTextures> {
   checkTableLimits(scene);
@@ -80,10 +81,11 @@ export async function uploadTextures(gl: WebGL2RenderingContext, scene: SceneDoc
   bitmaps.forEach((bitmap) => bitmap.close());
 
   const materials: DrawMaterial[] = [{ layer: -1, mode: 0, cutoff: 0.5 }];
-  scene.materials.forEach((material) => {
+  const drawn = drawnMaterials(scene);
+  scene.materials.forEach((material, index) => {
     const rule = resolveMaterialAlpha(material);
     const layerPixels = pixels[material.texture];
-    if (layerPixels && rule.mode === 'blend') {
+    if (layerPixels && rule.mode === 'blend' && drawn.has(index)) {
       for (let i = 3; i < layerPixels.length; i += 4) {
         if (texelCoverage((layerPixels[i] ?? 255) / 255, rule) === 'partial') {
           const name = scene.textures[material.texture]?.name ?? '';
@@ -96,6 +98,17 @@ export async function uploadTextures(gl: WebGL2RenderingContext, scene: SceneDoc
     materials.push({ layer: layerPixels ? material.texture : -1, mode: MODE_CODES[rule.mode], cutoff: rule.cutoff });
   });
   return { texture, sizes, pixels, materials };
+}
+
+/** Materials used by a group of a visible mesh. */
+export function drawnMaterials(scene: SceneDocument): Set<number> {
+  const visibility = nodeVisibility(scene);
+  const drawn = new Set<number>();
+  scene.meshes.forEach((mesh, index) => {
+    if (!meshVisible(scene, index, visibility)) return;
+    for (const group of mesh.groups) drawn.add(group.material);
+  });
+  return drawn;
 }
 
 /**

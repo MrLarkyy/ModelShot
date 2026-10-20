@@ -8,7 +8,7 @@ import {
 } from '@modelshot/scene';
 import { compareGroupKey } from './GroupKey';
 import type { MeshSpec } from './MeshSpec';
-import { blockbenchFaceNormal, triangulateFace } from './triangulateFace';
+import { blockbenchFaceNormal, triangulateFace } from '../geometry/triangulateFace';
 
 const NO_TRANSLATION = [0, 0, 0] as const;
 

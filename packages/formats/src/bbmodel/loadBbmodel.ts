@@ -7,20 +7,17 @@ import { BbmodelWarningList } from './BbmodelWarning';
 import { buildHierarchy, type ElementPlacement } from './buildHierarchy';
 import type { ConverterContext, PreparedElement } from './ElementConverter';
 import { ELEMENT_CONVERTERS } from './elementConverters';
+import { childPath, field, isJsonObject, type JsonObject } from '../json/JsonObject';
 import {
-  childPath,
-  field,
-  isJsonObject,
   readArray,
   readObject,
   readOptionalBoolean,
   readOptionalString,
   readPositiveNumber,
   readString,
-  type JsonObject,
 } from './JsonFields';
 import { readTextureEntries, resolveTextures, textureIdIndex, type UvSize } from './parseTextures';
-import { quoteValue } from './quoteValue';
+import { quoteValue } from '../text/quoteValue';
 import { readJson } from './readJson';
 import { formatDoubleSided, isDoubleSided } from './RenderSides';
 

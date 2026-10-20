@@ -16,6 +16,8 @@ const meshRaster = variant('mesh-shapes-raster');
 const meshRaycast = variant('mesh-shapes-raycast');
 const orderRaster = variant('render-order-raster');
 const orderRaycast = variant('render-order-raycast');
+const gltfRaster = variant('gltf-nodes-raster');
+const gltfRaycast = variant('gltf-nodes-raycast');
 const playerRaster = variant('player-raster');
 const playerRaycast = variant('player-raycast');
 
@@ -47,6 +49,13 @@ const MODEL_VIEW_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions & { reas
     maxMeanDelta: 0.06,
     reason: 'edge pixels only (shadow-map texels, rasterisation rules)',
   },
+  // Measured 57 pixels (ratio 0.00087), mean delta 0.050 (MS-13, glTF fixture at unit scale 8).
+  'gltf-nodes': {
+    threshold: 0.1,
+    maxDiffRatio: 0.0011,
+    maxMeanDelta: 0.08,
+    reason: 'edge pixels only (shadow-map texels, rasterisation rules)',
+  },
   // Measured 111 pixels (ratio 0.00169), mean delta 0.063. About 80 are 1-px strips just inside the outer layer's holes
   // (arms, legs), where the raycast draws the opaque ring's contact shadow on the base layer 0.15 units behind and the
   // shadow map (0.0625-unit texels, 0.094 receiver offset) cannot resolve it; the rest are edge pixels.
@@ -62,6 +71,7 @@ const PAIRS: readonly [string, RasterGoldenSpec, RasterGoldenSpec][] = [
   ['alpha-plane', alphaRaster, alphaRaycast],
   ['mesh-shapes', meshRaster, meshRaycast],
   ['render-order', orderRaster, orderRaycast],
+  ['gltf-nodes', gltfRaster, gltfRaycast],
   ['player', playerRaster, playerRaycast],
 ];
 
@@ -92,6 +102,8 @@ test.describe('model-view fixture', () => {
     meshRaycast,
     orderRaster,
     orderRaycast,
+    gltfRaster,
+    gltfRaycast,
     playerRaster,
     playerRaycast,
   ]) {
@@ -158,6 +170,25 @@ test.describe('model-view fixture', () => {
         expect(hueMatch(winnerTexel, loserTexel), 'the two faces differ there').toBeLessThan(0.8);
         expect(hueMatch(shown, winnerTexel), `${winner} is shown`).toBeGreaterThan(0.995);
       }
+    });
+  }
+
+  for (const spec of [gltfRaster, gltfRaycast]) {
+    test(`${spec.name}: a glTF MASK plane shows and shadows only its opaque texels`, async ({ page }) => {
+      const { png, probes } = await render(page, spec);
+      const at = (name: string) => probes.find((p) => p.name === name);
+      expect(at('opaque-texel')?.texel).toEqual([220, 50, 40, 255]);
+      expect(at('transparent-texel')?.texel).toEqual([0, 255, 0, 0]);
+      const [r, g, b] = pixel(png, at('opaque-texel'));
+      expect(r, 'the opaque texel shows the plane').toBeGreaterThan(2 * Math.max(g, b));
+      const seen = pixel(png, at('transparent-texel'));
+      expect(Math.max(...seen) - Math.min(...seen), 'the hole shows the grey ground (a factor texture)').toBeLessThan(
+        12,
+      );
+      const lit = pixel(png, at('shadow-of-transparent-texel'));
+      const dark = pixel(png, at('shadow-of-opaque-texel'));
+      expect(luminance(lit), 'light through the hole lights the ground').toBeGreaterThan(120);
+      expect(luminance(dark), 'the opaque texel shadows it').toBeLessThan(0.6 * luminance(lit));
     });
   }
 

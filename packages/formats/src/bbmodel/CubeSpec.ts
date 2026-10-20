@@ -4,9 +4,8 @@ import { FACE_DIRECTIONS, faceArea, type FaceDirection } from './CubeFace';
 import type { ConverterContext } from './ElementConverter';
 import { faceDoubleSided, readFaceTexture } from './FaceTexture';
 import { boxUvLayout, toFaceRotation, type FaceRotation, type FaceUv } from './faceUv';
+import { childPath, field, type JsonObject } from '../json/JsonObject';
 import {
-  childPath,
-  field,
   readFiniteNumber,
   readNumbers,
   readObject,
@@ -15,9 +14,8 @@ import {
   readOptionalString,
   readOptionalVec3,
   readVec3,
-  type JsonObject,
 } from './JsonFields';
-import { quoteValue } from './quoteValue';
+import { quoteValue } from '../text/quoteValue';
 import { readRenderOrder } from './RenderOrder';
 
 export interface CubeFaceSpec {

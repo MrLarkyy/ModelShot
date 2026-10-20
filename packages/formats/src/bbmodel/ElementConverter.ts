@@ -1,6 +1,6 @@
 import type { SceneMesh } from '@modelshot/scene';
 import type { BbmodelWarningList } from './BbmodelWarning';
-import type { JsonObject } from './JsonFields';
+import type { JsonObject } from '../json/JsonObject';
 import type { UvSize } from './parseTextures';
 
 /** What an element converter may know about the model besides the element itself. */

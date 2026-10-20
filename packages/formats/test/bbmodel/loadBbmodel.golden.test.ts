@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { loadBbmodel } from '../../src/index';
 import { FIXTURE_NAMES, fixture, fixtureTextureFiles, type FixtureName } from './fixtures';
-import { serializeResult, worldVertices } from './serializeScene';
+import { serializeResult, worldVertices } from '../support/serializeScene';
 
 function load(name: FixtureName) {
   const textureFiles = fixtureTextureFiles(name);

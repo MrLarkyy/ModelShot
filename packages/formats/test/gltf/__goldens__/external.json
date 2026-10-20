@@ -1,0 +1,68 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "format": "gltf",
+    "formatVersion": "2.0",
+    "modelFormat": "gltf"
+  },
+  "rootNodes": [0],
+  "nodes": [
+    {
+      "name": "sign",
+      "sourceId": "",
+      "parent": -1,
+      "children": [],
+      "pivot": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "translation": [0, 0, 0],
+      "visible": true,
+      "meshes": [0],
+      "world": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    }
+  ],
+  "meshes": [
+    {
+      "name": "sign",
+      "sourceId": "",
+      "node": 0,
+      "visible": true,
+      "groups": [
+        {
+          "material": 0,
+          "start": 0,
+          "count": 6,
+          "doubleSided": false
+        }
+      ],
+      "indices": [0, 1, 2, 0, 2, 3],
+      "vertexColumns": "x y z nx ny nz u v uMin vMin uMax vMax (uv in texture uv units; untextured: normalised)",
+      "vertices": [
+        [-8, 0, 0, 0, 0, 1, 0, 8, 0, 0, 8, 8],
+        [8, 0, 0, 0, 0, 1, 8, 8, 0, 0, 8, 8],
+        [8, 16, 0, 0, 0, 1, 8, 0, 0, 0, 8, 8],
+        [-8, 16, 0, 0, 0, 1, 0, 0, 0, 0, 8, 8]
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "sign",
+      "texture": 0,
+      "alphaMode": "mask",
+      "alphaCutoff": 0.5
+    }
+  ],
+  "textures": [
+    {
+      "name": "External.PNG",
+      "mimeType": "image/png",
+      "width": 8,
+      "height": 8,
+      "uvWidth": 8,
+      "uvHeight": 8,
+      "missing": false,
+      "byteLength": 97
+    }
+  ],
+  "warnings": []
+}

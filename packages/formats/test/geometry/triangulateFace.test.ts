@@ -1,6 +1,6 @@
 import type { Vec3 } from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
-import { triangulateFace } from '../../src/bbmodel/triangulateFace';
+import { triangulateFace } from '../../src/geometry/triangulateFace';
 
 type Point = readonly [number, number];
 
@@ -200,5 +200,22 @@ describe('triangulateFace', () => {
     ],
   ])('gives no triangles for %s', (_name, points) => {
     expect(triangulateFace(points)).toEqual({ normal: [0, 0, 0], triangles: [] });
+  });
+});
+
+describe('triangulateFace with quadOrder loop (OBJ)', () => {
+  it('keeps the given loop of a concave quad and covers exactly its area', () => {
+    const dart: Point[] = [
+      [0, 0],
+      [2, 1],
+      [4, 0],
+      [2, 3],
+    ];
+    const points = flat(dart);
+    const { normal, triangles } = triangulateFace(points, 'loop');
+    expect(normal).toEqual([0, 0, 1]);
+    const areas = triangleAreas(points, triangles, normal);
+    expect(areas.every((area) => area > 0)).toBe(true);
+    expect(areas.reduce((sum, area) => sum + area, 0)).toBeCloseTo(polygonArea(dart), 9);
   });
 });

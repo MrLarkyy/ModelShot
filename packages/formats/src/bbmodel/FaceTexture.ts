@@ -1,7 +1,7 @@
 import { BbmodelError } from './BbmodelError';
 import type { ConverterContext } from './ElementConverter';
-import { childPath, field, type JsonObject } from './JsonFields';
-import { quoteValue } from './quoteValue';
+import { childPath, field, type JsonObject } from '../json/JsonObject';
+import { quoteValue } from '../text/quoteValue';
 
 /**
  * Blockbench's face texture: `null` is returned for an explicit `null` (a cube drops that face, a mesh draws it

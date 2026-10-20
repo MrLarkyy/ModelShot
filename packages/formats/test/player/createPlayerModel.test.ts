@@ -8,7 +8,7 @@ import {
 } from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
 import { createPlayerModel, loadSkin, type PlayerArms } from '../../src/index';
-import { serializeResult } from '../bbmodel/serializeScene';
+import { serializeResult } from '../support/serializeScene';
 import { skinBytes, type SkinFixture } from './skins';
 
 function player(skin: SkinFixture, arms: PlayerArms, showOuterLayer?: boolean): SceneDocument {

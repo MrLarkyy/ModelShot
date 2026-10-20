@@ -11,12 +11,23 @@ import type { SceneTexture } from './SceneTexture';
  */
 export const SCENE_FORMAT_VERSION = 1;
 
+/**
+ * Where a scene came from: a loaded file (`gltf` covers `.gltf` and `.glb`; `gltf` and `obj` added within version 1,
+ * MS-13), or `player`, built by `createPlayerModel` from a skin.
+ */
+export type SceneSourceFormat = 'bbmodel' | 'gltf' | 'obj' | 'player';
+
 export interface SceneSource {
-  /** `player`: built by `createPlayerModel` from a skin. */
-  readonly format: 'bbmodel' | 'player';
-  /** Version string of the source file, e.g. `"4.10"`; for a player the skin layout, `"64x64"` or `"64x32"`. */
+  readonly format: SceneSourceFormat;
+  /**
+   * Version string of the source: `bbmodel` `meta.format_version` (e.g. `"4.10"`), `gltf` `asset.version` (`"2.0"`),
+   * `obj` `""` (OBJ has no version), `player` the skin layout (`"64x64"` or `"64x32"`).
+   */
   readonly formatVersion: string;
-  /** Blockbench project format, e.g. `"free"` or `"bedrock"`, `"unknown"` when absent; for a player its arms. */
+  /**
+   * `bbmodel`: the Blockbench project format, e.g. `"free"` or `"bedrock"`, `"unknown"` when absent; `gltf`: the
+   * container, `"gltf"` or `"glb"`; `obj`: `"obj"`; `player`: its arms.
+   */
   readonly modelFormat: string;
 }
 

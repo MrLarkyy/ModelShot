@@ -24,20 +24,26 @@ import type { SceneDocument } from '@modelshot/scene';
 
 ## `SceneDocument`
 
-| field           | type                                                                            | meaning                                     |
-| --------------- | ------------------------------------------------------------------------------- | ------------------------------------------- |
-| `formatVersion` | `1`                                                                             | `SCENE_FORMAT_VERSION`                      |
-| `source`        | `{ format: 'bbmodel' \| 'player', formatVersion: string, modelFormat: string }` | where the scene came from                   |
-| `nodes`         | `SceneNode[]`                                                                   | groups / bones, **parents before children** |
-| `rootNodes`     | `number[]`                                                                      | nodes without a parent, in source order     |
-| `meshes`        | `SceneMesh[]`                                                                   | triangle meshes                             |
-| `materials`     | `SceneMaterial[]`                                                               | see [SceneMaterial](#scenematerial)         |
-| `textures`      | `SceneTexture[]`                                                                | PNG images                                  |
-| `pose?`         | `ScenePose`                                                                     | last `poseScene` pose; absent: none applied |
-| `attachments?`  | `SceneAttachment[]`                                                             | models merged under a bone; absent: none    |
+| field           | type                                                                               | meaning                                     |
+| --------------- | ---------------------------------------------------------------------------------- | ------------------------------------------- |
+| `formatVersion` | `1`                                                                                | `SCENE_FORMAT_VERSION`                      |
+| `source`        | `{ format: 'bbmodel' \| 'gltf' \| 'obj' \| 'player', formatVersion, modelFormat }` | where the scene came from (below)           |
+| `nodes`         | `SceneNode[]`                                                                      | groups / bones, **parents before children** |
+| `rootNodes`     | `number[]`                                                                         | nodes without a parent, in source order     |
+| `meshes`        | `SceneMesh[]`                                                                      | triangle meshes                             |
+| `materials`     | `SceneMaterial[]`                                                                  | see [SceneMaterial](#scenematerial)         |
+| `textures`      | `SceneTexture[]`                                                                   | PNG images                                  |
+| `pose?`         | `ScenePose`                                                                        | last `poseScene` pose; absent: none applied |
+| `attachments?`  | `SceneAttachment[]`                                                                | models merged under a bone; absent: none    |
 
-`source.format` is `'player'` for a document built by `createPlayerModel` ([player.md](player.md)); its
-`formatVersion` is the skin layout (`'64x64'` or `'64x32'`) and `modelFormat` the arms (`'classic'` or `'slim'`).
+`source` per format (`SceneSourceFormat`):
+
+| `format`    | from                                               | `formatVersion`                      | `modelFormat`                                               |
+| ----------- | -------------------------------------------------- | ------------------------------------ | ----------------------------------------------------------- |
+| `'bbmodel'` | `loadBbmodel` ([bbmodel.md](bbmodel.md))           | `meta.format_version`, e.g. `'4.10'` | Blockbench project format (`'free'`, …), `'unknown'` absent |
+| `'gltf'`    | `loadGltf`, `.gltf` or `.glb` ([gltf.md](gltf.md)) | `asset.version`, e.g. `'2.0'`        | the container, `'gltf'` or `'glb'`                          |
+| `'obj'`     | `loadObj` ([obj.md](obj.md))                       | `''` (OBJ has no version)            | `'obj'`                                                     |
+| `'player'`  | `createPlayerModel` ([player.md](player.md))       | skin layout, `'64x64'` or `'64x32'`  | the arms, `'classic'` or `'slim'`                           |
 
 ### `SceneNode`
 
@@ -192,6 +198,11 @@ exports `resolveMaterialAlpha`, `texelCoverage`, `DEFAULT_ALPHA_CUTOFF` and `REN
 consumer that ignores them draws every material opaque, every face single-sided and ignores render order, which is
 what a version-1 document meant before.
 
+Added within version 1 (MS-13): `SceneSource.format` values `'gltf'` and `'obj'` (and the type
+`SceneSourceFormat`). Existing documents keep `'bbmodel'`; a consumer that switches over the format must handle the
+two new values (a TypeScript exhaustive `switch` gets a compile error until it does). Loaders of these formats use
+only the fields above: transforms that a node cannot carry are baked into the vertices, and colours without a texture
+are generated 1×1 PNG textures, so no renderer reads anything new.
 Added within version 1 (MS-20), each optional: `SceneNode.restRotation` (absent: `rotation`),
 `SceneDocument.pose` (absent: no `poseScene` pose recorded) and `SceneDocument.attachments` (absent: none); `SceneSource.format` gains
 `'player'`. Poses and attachments are already applied to the nodes and meshes, so a consumer that ignores the new
@@ -200,4 +211,6 @@ fields draws a posed or attached scene correctly; no migration.
 ## Loaders
 
 - Blockbench `.bbmodel`: [bbmodel.md](bbmodel.md).
+- glTF 2.0 `.gltf` / `.glb` (static meshes): [gltf.md](gltf.md).
+- Wavefront `.obj` with `.mtl`: [obj.md](obj.md).
 - Player skins (`loadSkin`, `createPlayerModel`): [player.md](player.md).
