@@ -200,7 +200,11 @@ importers:
 
   packages/export: {}
 
-  packages/formats: {}
+  packages/formats:
+    dependencies:
+      '@modelshot/scene':
+        specifier: workspace:*
+        version: link:../scene
 
   packages/looks: {}
 
