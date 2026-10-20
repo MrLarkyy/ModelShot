@@ -455,31 +455,72 @@ test.describe('coincident double-sided faces and single-sided backs', () => {
   }
 });
 
-/** Pixels where blue clearly dominates red: the blue (hidden) faces of the closed cube. */
-function bluePixels(image: Image): number {
+/** Pixels that differ at all between two images of the same size (a single MSAA sample changes a pixel). */
+function differingPixels(a: Image, b: Image): number {
   let count = 0;
-  for (let i = 0; i < image.data.length; i += 4) {
-    if ((image.data[i + 2] ?? 0) > (image.data[i] ?? 0) + 24) count++;
+  for (let i = 0; i < a.data.length; i += 4) {
+    if (a.data[i] !== b.data[i] || a.data[i + 1] !== b.data[i + 1] || a.data[i + 2] !== b.data[i + 2]) count++;
   }
   return count;
 }
 
-test.describe('closed double-sided cube: no back side on silhouettes', () => {
-  for (const [label, query, mode] of [
-    ['float, raster key', 'scene=closed-cube&depth=framed', 'raster'],
-    ['float, exact key (inside the sphere)', 'scene=closed-cube&depth=inside', 'exact'],
-    ['float, exact key (render order)', 'scene=closed-cube-order&depth=framed', 'exact'],
-    ['fallback, raster key', 'scene=closed-cube&depth=framed&fallback=1', 'raster'],
-    ['fallback, exact key (inside the sphere)', 'scene=closed-cube&depth=inside&fallback=1', 'exact'],
-    ['fallback, exact key (render order)', 'scene=closed-cube-order&depth=framed&fallback=1', 'exact'],
+test.describe('closed double-sided cube: no back side on silhouettes, at any sample', () => {
+  for (const [label, scene, query, mode] of [
+    ['float, raster key', 'closed-cube', '&depth=framed', 'raster'],
+    ['float, exact key (inside the sphere)', 'closed-cube', '&depth=inside', 'exact'],
+    ['float, exact key (render order)', 'closed-cube-order', '&depth=framed', 'exact'],
+    ['fallback, raster key', 'closed-cube', '&depth=framed&fallback=1', 'raster'],
+    ['fallback, exact key (inside the sphere)', 'closed-cube', '&depth=inside&fallback=1', 'exact'],
+    ['fallback, exact key (render order)', 'closed-cube-order', '&depth=framed&fallback=1', 'exact'],
   ] as const) {
     test(label, async ({ page }) => {
-      const { image } = await render(page, `${query}&look=cube`);
+      // The hidden (blue) faces must not change a single pixel: the open cube has only the three faces in view.
+      const closed = await render(page, `scene=${scene}${query}&look=cube`);
       expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe(mode);
-      expect(modelBox(image).x1 - modelBox(image).x0, 'the cube is drawn').toBeGreaterThan(50);
-      expect(bluePixels(image), 'pixels of a hidden (back-side) face').toBe(0);
+      expect(modelBox(closed.image).x1 - modelBox(closed.image).x0, 'the cube is drawn').toBeGreaterThan(50);
+      const open = await render(page, `scene=${scene}-open${query}&look=cube`);
+      expect(differingPixels(closed.image, open.image), 'pixels touched by a hidden face').toBe(0);
     });
   }
+});
+
+test.describe('render-order tie at MSAA sample level: coincident quads with different diagonals (exact key)', () => {
+  for (const [look, kind] of [
+    ['above', ''],
+    ['grazing-above', ''],
+    ['model-view', ''],
+    ['below', '-double'],
+    ['grazing-below', '-double'],
+  ] as const) {
+    for (const extra of ['', '&fallback=1']) {
+      const sides = kind ? 'back sides' : 'fronts';
+      test(`${look}${extra}: the in_front quad wins every sample (${sides}), along both diagonals`, async ({
+        page,
+      }) => {
+        const pair = await render(page, `scene=tie-pair${kind}&look=${look}${extra}`);
+        expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('exact');
+        const single = await render(page, `scene=tie-single${kind}&look=${look}${extra}`);
+        expect(modelBox(single.image).x1 - modelBox(single.image).x0, 'the quad is drawn').toBeGreaterThan(20);
+        expect(differingPixels(pair.image, single.image), 'pixels touched by the default quad').toBe(0);
+      });
+    }
+  }
+
+  test.describe('device pixel ratio 2, non-square viewport', () => {
+    test.use({ deviceScaleFactor: 2 });
+
+    test('the exact key uses the viewport the passes draw into (768 x 512)', async ({ page }) => {
+      const images: Image[] = [];
+      for (const scene of ['tie-pair', 'tie-single']) {
+        const { info } = await render(page, `scene=${scene}&look=grazing-above`);
+        await page.evaluate(() => window.__msFixture!.rt!.setCssSize(384, 256));
+        const image = decode(await readPng(page, info));
+        expect([image.width, image.height]).toEqual([768, 512]);
+        images.push(image);
+      }
+      expect(differingPixels(images[0]!, images[1]!)).toBe(0);
+    });
+  });
 });
 
 test.describe('texel alpha bytes in the shaders (alpha ramp, no texel anti-aliasing)', () => {

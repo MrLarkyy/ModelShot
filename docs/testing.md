@@ -77,9 +77,17 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
   `look=above|below|grazing-above|grazing-below`: of two coincident double-sided quads split along different
   diagonals the one facing the camera wins, at about 8° with no pixel of the other colour; a single-sided quad seen
   from behind shows the backdrop).
-- Closed double-sided cube (`closed-cube`, `look=cube`: the faces in view red, the hidden ones blue): no blue pixel on
-  float and fallback, with the raster key, the exact key inside the sphere and the exact key from render order 1
-  (`closed-cube-order`): a back side never shows through or beside a front face at a silhouette.
+- Closed double-sided cube (`closed-cube`, `look=cube`: the faces in view red, the hidden ones blue) against the same
+  cube without its hidden faces (`closed-cube-open`): not one pixel may differ, on float and fallback, with the raster
+  key, the exact key inside the sphere and the exact key from render order 1 (`closed-cube-order`), so a single MSAA
+  sample of a back side beside a silhouette fails it (the raster back pass at `polygonOffset(1, 1)` differs in 117
+  pixels).
+- Render-order tie at sample level: a red `in_front` quad over a coincident blue default quad split along the other
+  diagonal (`tie-pair`) against the red quad alone (`tie-single`): not one pixel may differ, exact key, float and
+  fallback, seen `above`, `grazing-above` (about 8°) and `model-view`; the double-sided pair seen `below` and
+  `grazing-below` ties two back sides (without the shared-edge flags 1–124 pixels differ); and at device pixel ratio 2
+  in a non-square 768 x 512 viewport (the exact key's ray uses the viewport the passes draw into; a drawing buffer
+  smaller than the canvas cannot be produced in this harness).
 - Texel alpha bytes in the shaders: a 16 x 16 quad with `fixtures/models/rt-alpha-ramp.png` (white texels whose alpha
   byte is their index, CC0) seen square on, `aa=0`, float and fallback: under blend 0.01 exactly the bytes 0–2 show
   only the backdrop, under mask 128/255 the bytes 0–127, under opaque none (so the cutoff byte and the bytes below it,
@@ -202,7 +210,8 @@ stand in for a laptop GPU: the 60 fps criterion is evidenced by a manual run of 
 
 `frameTimeMs.rt-load-first-frame-200k-order` times `setScene` plus the first frame of a generated scene at the
 loader's limits (100 000 quads, 200 000 triangles, 400 000 vertices) at render order 1, which builds the exact key's
-de-indexed geometry at upload: local SwiftShader 348, 344 and 354 ms; max 3500 ms (10x).
+de-indexed geometry and its shared-edge flags at upload: local SwiftShader 348, 344 and 354 ms before the flags, 506
+and 527 ms with them; max 3500 ms (10x of the first measurement).
 
 `frameTimeMs.rt-bench-order-512` is the same scene with one mesh at render order 1, so every frame uses the exact
 depth key (fragment depth, de-indexed geometry); max 750 ms like the raster bench. MS-12 local SwiftShader medians:

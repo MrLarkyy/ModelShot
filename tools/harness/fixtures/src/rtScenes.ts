@@ -33,6 +33,12 @@ export const RT_SCENE_NAMES = [
   'alpha-ramp-mask',
   'alpha-ramp-opaque',
   'large-order',
+  'closed-cube-open',
+  'closed-cube-order-open',
+  'tie-pair',
+  'tie-single',
+  'tie-pair-double',
+  'tie-single-double',
 ] as const;
 export type RtSceneName = (typeof RT_SCENE_NAMES)[number];
 
@@ -184,9 +190,21 @@ export function rtScene(name: RtSceneName): SceneDocument {
     case 'coincident-double':
       return coincidentDouble(load(alphaPlaneSource));
     case 'closed-cube':
-      return closedCube(0);
+      return closedCube(0, false);
     case 'closed-cube-order':
-      return closedCube(1);
+      return closedCube(1, false);
+    case 'closed-cube-open':
+      return closedCube(0, true);
+    case 'closed-cube-order-open':
+      return closedCube(1, true);
+    case 'tie-pair':
+      return tiePair(load(alphaPlaneSource), true);
+    case 'tie-single':
+      return tiePair(load(alphaPlaneSource), false);
+    case 'tie-pair-double':
+      return tiePair(load(alphaPlaneSource), true, true);
+    case 'tie-single-double':
+      return tiePair(load(alphaPlaneSource), false, true);
     case 'alpha-ramp-blend':
       return alphaRamp({ alphaMode: 'blend', alphaCutoff: 0.01 });
     case 'alpha-ramp-mask':
@@ -327,9 +345,10 @@ export function parseRtView(params: URLSearchParams): RtView {
 /**
  * A closed 8-unit cube around the origin, every face double-sided (free format, render_sides auto): the faces the
  * `cube` look sees (south, east, up) are red, the others blue, so any blue pixel is a back side shown through a front
- * face. `renderOrder` 1 makes the renderer use the exact depth key.
+ * face. `renderOrder` 1 makes the renderer use the exact depth key. `open` leaves the hidden faces out: the image must
+ * not change, at any sample.
  */
-function closedCube(renderOrder: number): SceneDocument {
+function closedCube(renderOrder: number, open: boolean): SceneDocument {
   const texture = (JSON.parse(alphaPlaneSource) as { textures: unknown[] }).textures[0];
   const red = { uv: [0, 0, 4, 4], texture: 0 };
   const blue = { uv: [8, 0, 12, 4], texture: 0 };
@@ -345,7 +364,9 @@ function closedCube(renderOrder: number): SceneDocument {
         to: [4, 4, 4],
         origin: [0, 0, 0],
         ...(renderOrder === 1 ? { render_order: 'in_front' } : {}),
-        faces: { north: blue, east: red, south: red, west: blue, up: red, down: blue },
+        faces: open
+          ? { east: red, south: red, up: red }
+          : { north: blue, east: red, south: red, west: blue, up: red, down: blue },
       },
     ],
     outliner: ['c'],
@@ -431,4 +452,17 @@ function largeOrderScene(showcase: SceneDocument): SceneDocument {
     groups: [{ material: 0, start: 0, count: indices.length, doubleSided: true }],
   };
   return { ...showcase, nodes: [], rootNodes: [], meshes: [mesh] };
+}
+
+/**
+ * A red `in_front` quad over a coincident blue default quad split along the other diagonal (both single-sided, facing
+ * up); `pair: false` keeps only the red quad. With the exact key the red quad wins every sample: the two images must be
+ * identical. `doubleSided`: both quads double-sided, so seen from below the tie is between two back sides.
+ */
+function tiePair(alphaPlane: SceneDocument, pair: boolean, doubleSided = false): SceneDocument {
+  const red: [number, number] = [2.5 / 16, 2.5 / 16];
+  const blue: [number, number] = [10.5 / 16, 2.5 / 16];
+  const front = { ...quad('in-front', -10, true, 'a', red, doubleSided), renderOrder: 1 };
+  const under = quad('default', -10, true, 'c', blue, doubleSided);
+  return { ...alphaPlane, nodes: [], rootNodes: [], meshes: pair ? [front, under] : [front] };
 }

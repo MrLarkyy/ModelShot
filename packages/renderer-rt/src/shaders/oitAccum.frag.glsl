@@ -34,6 +34,7 @@ float toHalf(float v) {
 
 // Weighted blended order-independent transparency (McGuire and Bavoil 2013, equation 10) for partial texels.
 void main() {
+  prepareDepthKey();
   TexelSample s = sampleTexels(u_texture, v_uv, v_uvRect, u_texelAntialias, u_alphaMode, u_alphaCutoffByte);
   if (s.coverage != COVERAGE_PARTIAL) discard;
   float alpha = 1.0 - toHalf(1.0 - s.nearestAlpha);

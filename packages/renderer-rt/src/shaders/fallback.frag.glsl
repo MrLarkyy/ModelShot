@@ -22,6 +22,7 @@ out vec4 outColor;
 
 // No float render targets: one pass into the default framebuffer, partial texels as hashed alpha, AgX in place.
 void main() {
+  prepareDepthKey();
   TexelSample s = sampleTexels(u_texture, v_uv, v_uvRect, u_texelAntialias, u_alphaMode, u_alphaCutoffByte);
   if (s.coverage == COVERAGE_INVISIBLE) discard;
   if (s.coverage == COVERAGE_PARTIAL) {
