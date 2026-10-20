@@ -42,6 +42,42 @@ image code uses no clock or random source (lint rule; timing lives in `fixtures/
 - A per-golden tolerance override (`threshold`, `maxDiffRatio`, `maxMeanDelta`, each range-checked) needs a non-empty `reason` in the spec, and GPU-variance evidence (the CI diff
   artefact) in the commit.
 
+## Realtime renderer goldens
+
+`e2e/realtime.spec.ts` renders `fixtures/rt.html` (the realtime renderer on SwiftShader, 256 x 256, no clock or
+random source; partial alpha on the fallback path uses an integer hash). Scenes and camera presets live in
+`fixtures/src/rtScenes.ts`, so the path-tracer fixture can render the same scene and camera for a paired golden. The
+fixture models in `fixtures/models/` are ours (CC0, `LICENSE` there); `rt-showcase.bbmodel` has an atlas whose 6 x 6
+face rectangles sit in a ring of magenta sentinel texels, opaque, cut-out and 50 % texels, a zero-thickness sprite,
+two overlapping partial-alpha planes in different meshes, rotated and mirrored face UVs and a 64 x 64 brick face.
+
+- Goldens: `rt-turntable-y000`, `-y030`, `-y060`, `-y090` (perspective 35°, pitch 20°), `rt-iso` (orthographic
+  isometric), `rt-closeup` (half the fit distance, atlas texels about 28 px), `rt-far` (three times the fit
+  distance, brick texels about 0.45 px), `rt-fallback` (no-float path), `rt-fit-flat-cube` (frame-to-fit of a plate
+  with zero height). Default tolerance.
+- Bleeding: no turntable frame has a pixel whose red and blue both exceed green by more than 24 levels (the magenta
+  sentinel after lighting and AgX). Without the face-rectangle clamp the 0° frame has 441 such pixels.
+- Shimmer: between yaw 30° and 30.25°, the share of pixels changing by more than 64 levels must be at most half of
+  the same share with nearest sampling (`aa=0`), in the `far` and `closeup` framings.
+- Order independence: reversing the mesh order gives a byte-identical image on the float path and on the fallback.
+- A cut-out texel over the backdrop shows exactly the backdrop colour.
+- Context loss through `WEBGL_lose_context`: the image after the restore matches `rt-turntable-y030`, without a
+  reload or a page error.
+- Device pixel ratio 2 doubles the backing store; an element resize reallocates and keeps the projection unstretched.
+- Two-sided drawing: the zero-height plate seen from above shows its grass face, from below only its stone face, on
+  both paths (with one unordered pass the first drawn face won from both sides).
+- Float targets the driver rejects at a new size (`breakFramebuffers()` makes every framebuffer report incomplete)
+  switch the renderer to the no-float path; `capabilities.path` reports it.
+- Hostile textures (corrupt bytes rejected at the header, a valid header with scrambled image data that fails to
+  decode, missing, header size lying, a 16384 x 16384 PNG header behind a declared 16 x 16,
+  over `maxTextureSide`) draw a placeholder with a warning, the oversized one without being decoded; two quick `setScene` calls show only the second; `dispose()` (also during decoding) leaves no live WebGL
+  object or open ImageBitmap (counted with `track=1`).
+- Framing: the fit and isometric views keep a 2 px backdrop border around the model.
+
+For a manual run on real hardware open `rt.html?scene=bench&size=512&fps=1`: it draws continuously and shows the
+median frame work (draw until the GPU finished) and display interval over the last 120 frames, with the renderer
+string.
+
 ## Path-tracer goldens
 
 Fix the seed, the sample count, the resolution and the camera. The accumulation stops after exactly N samples, never
@@ -56,6 +92,15 @@ a measurement has no budget. The measured values are in `tools/harness/test-resu
 
 Measured on the local Windows dev machine (SwiftShader, 3 runs) when the budgets were set: frame time median 0.3, 0.3,
 0.4 ms; time to 64 samples median 23.8, 23, 25.8 ms; gzip app 437 B, embed 115 B.
+
+`frameTimeMs.rt-bench-512` is the realtime renderer on the benchmark scene (`fixtures/src/benchScene.ts`: 16 x 16 x 8
+textured cubes, 2,048 cubes, 24,576 triangles, one mesh per cube in 128 group nodes of 4 x 4 cubes as the Blockbench
+loader produces a grouped model, so 512 draw calls per frame after batching per node (checked by the spec), every
+seventh with a partial-alpha face; 512 x 512, 4x MSAA, front and back face passes, opaque and transparency passes),
+median of 30 frames after 5 warm-up frames. Local SwiftShader medians 68.9, 70.2 and 80.7 ms (3 runs, 128 group
+nodes batched per node); max 750 ms is 10x the middle run (702 ms), rounded up, room for a CI runner that is 3-5x slower than the dev machine. SwiftShader cannot
+stand in for a laptop GPU: the 60 fps criterion is evidenced by a manual run of the `fps=1` page on real hardware
+(16.7 ms or less of frame work), recorded with the machine and GPU in the task.
 
 - `frameTimeMs` max 5: the median is below 1 ms and `performance.now` is coarsened to 0.1 ms without cross-origin
   isolation, so 5x the median (2 ms) would be 20 ticks and one GC pause from flaking on a shared runner. 5 ms is 12-16x the
