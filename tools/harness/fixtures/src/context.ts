@@ -5,7 +5,12 @@ export interface FixtureContext {
   floatRenderTargets: boolean;
 }
 
-export function createContext(size: number): FixtureContext {
+export interface ContextOptions {
+  /** A depth buffer on the default framebuffer; off by default. */
+  depth?: boolean;
+}
+
+export function createContext(size: number, options: ContextOptions = {}): FixtureContext {
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
@@ -14,7 +19,7 @@ export function createContext(size: number): FixtureContext {
   const gl = canvas.getContext('webgl2', {
     antialias: false,
     alpha: false,
-    depth: false,
+    depth: options.depth ?? false,
     stencil: false,
     preserveDrawingBuffer: true,
   });

@@ -31,7 +31,7 @@ import type { SceneDocument } from '@modelshot/scene';
 | `nodes`         | `SceneNode[]`                                                       | groups / bones, **parents before children** |
 | `rootNodes`     | `number[]`                                                          | nodes without a parent, in source order     |
 | `meshes`        | `SceneMesh[]`                                                       | triangle meshes                             |
-| `materials`     | `SceneMaterial[]`                                                   | `{ name, texture }`; `texture` −1 for none  |
+| `materials`     | `SceneMaterial[]`                                                   | see [SceneMaterial](#scenematerial)         |
 | `textures`      | `SceneTexture[]`                                                    | PNG images                                  |
 
 ### `SceneNode`
@@ -52,16 +52,30 @@ is the identifier in the source file (a Blockbench uuid) or `''`.
 
 ### `SceneMesh`
 
-| field       | type                           | per vertex                                     |
-| ----------- | ------------------------------ | ---------------------------------------------- |
-| `positions` | `Float32Array`                 | 3: model rest space                            |
-| `normals`   | `Float32Array`                 | 3: unit length, outwards                       |
-| `uvs`       | `Float32Array`                 | 2: normalised, top-left origin                 |
-| `uvRects`   | `Float32Array`                 | 4: `uMin, vMin, uMax, vMax` of the vertex face |
-| `indices`   | `Uint32Array`                  | 3 per triangle                                 |
-| `groups`    | `{ material, start, count }[]` | index ranges per material (−1: no material)    |
+| field       | type               | per vertex                                     |
+| ----------- | ------------------ | ---------------------------------------------- |
+| `positions` | `Float32Array`     | 3: model rest space                            |
+| `normals`   | `Float32Array`     | 3: unit length, outwards                       |
+| `uvs`       | `Float32Array`     | 2: normalised, top-left origin                 |
+| `uvRects`   | `Float32Array`     | 4: `uMin, vMin, uMax, vMax` of the vertex face |
+| `indices`   | `Uint32Array`      | 3 per triangle                                 |
+| `groups`    | `SceneMeshGroup[]` | index ranges, see below                        |
 
-Also `name`, `sourceId`, `node` (owning node, −1 for the model root with an identity world matrix) and `visible`.
+Also `name`, `sourceId`, `node` (owning node, −1 for the model root with an identity world matrix), `visible` and
+`renderOrder`.
+
+A group `{ material, start, count, doubleSided? }` is a run of `count` indices from `start` drawn with one material
+(−1: none, the renderer's default) and one sidedness:
+
+- `doubleSided` absent or `false`: camera rays see only the front (counter-clockwise) side; the back is not drawn.
+- `doubleSided: true`: the back shows the same texels, mirrored as seen from behind (the UVs are the front's), and
+  the normal is flipped toward the viewer or ray before shading.
+- Shadow rays (and ambient-occlusion rays) are blocked by both sides of every face, single-sided or not, so light
+  never leaks through a single-sided wall seen from behind.
+
+`renderOrder` (an integer, absent: 0) only breaks ties between surfaces at the same depth or hit distance: the
+higher one wins. It never shows a surface through a nearer opaque one, and it is the same rule in the realtime
+renderer and the path tracer.
 
 Vertices are in **model rest space**: the source element's own rotation is already applied, the owning node's world
 matrix is not. To draw a mesh, transform its vertices by `worldMatrices(nodes)[mesh.node]` (identity for −1).
@@ -69,6 +83,27 @@ matrix is not. To draw a mesh, transform its vertices by `worldMatrices(nodes)[m
 `uvRects` exist for pixel art: a renderer that anti-aliases texel edges clamps its sample footprint to the face's
 rectangle, so a face never shows texels of a neighbouring region of the texture atlas. All four vertices of a face
 carry the same rectangle. UVs are not inset; with power-of-two UV sizes the corners land exactly on texel edges.
+
+### `SceneMaterial`
+
+`{ name, texture, alphaMode?, alphaCutoff? }`: `texture` indexes `textures` (−1 for none). The alpha fields follow
+glTF and are read through `resolveMaterialAlpha(material)` (absent mode: `opaque`; absent or non-finite cutoff:
+`DEFAULT_ALPHA_CUTOFF`, 0.5; clamped to 0–1). `texelCoverage(alpha, rule)` classifies one texel; it is the one
+definition every pass uses:
+
+| `alphaMode` | alpha `a` of the texel | coverage    |
+| ----------- | ---------------------- | ----------- |
+| `opaque`    | any                    | `opaque`    |
+| `mask`      | `a < alphaCutoff`      | `invisible` |
+| `mask`      | `a ≥ alphaCutoff`      | `opaque`    |
+| `blend`     | `a < alphaCutoff`      | `invisible` |
+| `blend`     | `alphaCutoff ≤ a < 1`  | `partial`   |
+| `blend`     | `a = 1`                | `opaque`    |
+
+Per pass: an `invisible` texel is skipped by camera rays, shadow rays, ambient-occlusion rays and BVH hits alike, as
+if the surface had a hole there (in a rasteriser: discarded in the depth, shadow-map and colour passes). An `opaque`
+texel stops every ray. A `partial` texel is drawn order-independently (never by draw order) with weight `a`, and lets
+`1 − a` of the light through shadow rays. A texel exactly at the cutoff is visible.
 
 ### `SceneTexture`
 
@@ -85,6 +120,11 @@ show a placeholder.
 `formatVersion` is 1. A change that only adds **optional** fields with a defined default keeps version 1 (consumers
 ignore what they do not know). Anything else (a removed, renamed or retyped field, a new required field, a changed
 convention above) bumps `SCENE_FORMAT_VERSION` and ships a migration from every older version.
+
+Added within version 1 (MS-12), each optional with the old meaning as its default: `SceneMaterial.alphaMode`
+(`opaque`) and `alphaCutoff` (0.5), `SceneMeshGroup.doubleSided` (`false`), `SceneMesh.renderOrder` (0). A
+consumer that ignores them draws every material opaque, every face single-sided and ignores render order, which is
+what a version-1 document meant before.
 
 ## Loaders
 

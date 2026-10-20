@@ -10,6 +10,8 @@
     "browsers": "playwright install --only-shell chromium"
   },
   "devDependencies": {
+    "@modelshot/formats": "workspace:*",
+    "@modelshot/scene": "workspace:*",
     "@playwright/test": "1.64.1",
     "@types/node": "~22.20.0",
     "@types/pngjs": "^6.0.5",

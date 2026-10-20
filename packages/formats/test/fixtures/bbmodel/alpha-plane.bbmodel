@@ -12,8 +12,8 @@
   "elements": [
     {
       "name": "ground",
-      "from": [-24, -2, -24],
-      "to": [24, 0, 24],
+      "from": [-64, -2, -64],
+      "to": [64, 0, 64],
       "origin": [0, 0, 0],
       "faces": {
         "north": {

@@ -5,7 +5,8 @@ export interface SceneMeshGroup {
   readonly count: number;
   /**
    * Absent or `false`: only the front (counter-clockwise) side is seen by camera rays. `true`: the back shows the same
-   * texels, mirrored as seen from behind, with the normal flipped toward the viewer or ray.
+   * texels, mirrored as seen from behind, with the normal flipped toward the viewer or ray. Shadow rays are blocked by
+   * both sides either way.
    */
   readonly doubleSided?: boolean;
 }

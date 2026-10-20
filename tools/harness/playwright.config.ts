@@ -30,7 +30,7 @@ export default defineConfig({
     },
   },
   projects: [
-    { name: 'golden', testMatch: ['environment.spec.ts', 'golden*.spec.ts'] },
+    { name: 'golden', testMatch: ['environment.spec.ts', 'golden*.spec.ts', 'modelView.spec.ts'] },
     { name: 'bench', testMatch: 'bench.spec.ts', dependencies: ['golden'] },
   ],
 });

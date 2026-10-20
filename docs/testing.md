@@ -2,7 +2,8 @@
 
 `pnpm test` runs two layers, in order; either failing fails the command and the CI job.
 
-1. `pnpm test:unit`: Vitest, every package plus `tools/harness/test` (comparator, golden store, budgets, bundle size).
+1. `pnpm test:unit`: Vitest, every package plus `tools/harness/test` (comparator, golden store, budgets, bundle size,
+   model-view helpers).
 2. `pnpm test:browser`: Playwright in a pinned headless Chromium on software WebGL (SwiftShader), `tools/harness`.
 
 Run `pnpm browsers` once per machine (and after a Playwright version bump) to install the browser. Playwright is pinned
@@ -46,6 +47,45 @@ image code uses no clock or random source (lint rule; timing lives in `fixtures/
 
 Fix the seed, the sample count, the resolution and the camera. The accumulation stops after exactly N samples, never
 after a time. Random numbers come from a seeded integer hash, never `Math.random`.
+
+## Model-view fixture
+
+`fixtures/model-view.html?variant=<name>` renders a real loader result (`loadBbmodel` on a formats test fixture,
+imported statically; the URL only picks one of the variants below, looked up as an own key) with one fixed camera,
+light and look (`fixtures/src/modelViewCamera.ts`), in two independent ways that read the same material table and
+shading include:
+
+- `raster`: an orthographic depth-only pass from the light (DEPTH_COMPONENT24, 1024², alpha-tested, no culling, slope
+  polygon offset), then the camera pass with culling off for double-sided runs, alpha discard, a `gl_FrontFacing`
+  normal flip and a hard shadow-map lookup.
+- `raycast`: per pixel centre, a camera ray to the nearest triangle whose texel passes the alpha test
+  (single-sided triangles only from the front, render order breaks depth ties), then one shadow ray that any
+  alpha-passing triangle blocks. Triangles live in an RGBA32F data texture (at most 256, checked against
+  `MAX_TEXTURE_SIZE`).
+
+Textures are decoded with `createImageBitmap(…, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' })`,
+uploaded unflipped and unpremultiplied into a NEAREST `TEXTURE_2D_ARRAY` without mipmaps, and read back; a
+partially transparent texel under a blended material fails the page with a clear error (partial alpha is drawn by the
+product renderers, MS-14 and MS-17). Shaders are static `.glsl` files joined by `fixtures/src/shaderSource.ts`
+(`#version` line, then includes from `shaders/include/`, then the stage).
+
+| variant               | golden                    | checks                                                                        |
+| --------------------- | ------------------------- | ----------------------------------------------------------------------------- |
+| `alpha-plane-raster`  | `alpha-plane-raster.png`  | golden; probes                                                                |
+| `alpha-plane-raycast` | `alpha-plane-raycast.png` | golden; probes; byte-identical re-render                                      |
+| `mesh-shapes-raster`  | `mesh-shapes-raster.png`  | golden (triangle, out-of-order quad, n-gons, null-texture face, rotated mesh) |
+
+The page publishes `probes`: pixels of chosen texels of the cutout plane (and of their shadows on the ground,
+following the light ray) and of the plane seen from behind, with the texel colour. `modelView.spec.ts` checks that the
+opaque texel shows the plane, the transparent texel shows the ground, the ground under the transparent texel is lit
+and under the opaque one shadowed, and the back side shows the same texel at its mirrored place.
+
+**Pair test**: the raster and raycast images of `alpha-plane` are compared with `MODEL_VIEW_PAIR_TOLERANCE`
+(`threshold 0.1`, `maxDiffRatio 0.0025`, `maxMeanDelta 0.25`). Measured on SwiftShader (local Windows dev machine,
+deterministic, same on re-runs): 125 differing pixels of 65 536 (ratio 0.0019), mean delta 0.13 levels, all on
+silhouette, texel and shadow edges where a pixel centre is within a rounding error of an edge. The measured values of a
+run are in `tools/harness/test-results/model-view-pair.json`. Dropping the alpha test from the shadow pass alone
+changes about 2 000 pixels; the tolerance is never widened to make the pair pass.
 
 ## Budgets
 
