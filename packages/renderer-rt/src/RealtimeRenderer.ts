@@ -55,12 +55,12 @@ interface LoadedScene {
 }
 
 interface GpuResources {
-  readonly programs: RendererPrograms;
-  readonly targets: RenderTargets | null;
+  programs: RendererPrograms;
+  targets: RenderTargets | null;
   readonly fullscreenVao: WebGLVertexArrayObject;
   readonly placeholder: WebGLTexture;
   readonly untextured: WebGLTexture;
-  readonly capabilities: RendererCapabilities;
+  capabilities: RendererCapabilities;
   sceneTextures: (WebGLTexture | null)[];
   scene: GpuScene | null;
 }
@@ -188,7 +188,8 @@ export class RealtimeRenderer {
     const viewProjection = this.camera
       ? new Float32Array(mat4Multiply(cameraProjection(this.camera, width / height), cameraView(this.camera)))
       : null;
-    if (gpu.targets && gpu.targets.ensure(width, height)) this.drawFloatPath(gpu, gpu.targets, viewProjection);
+    if (gpu.targets && !gpu.targets.ensure(width, height)) this.switchToFallback(gpu);
+    if (gpu.targets) this.drawFloatPath(gpu, gpu.targets, viewProjection);
     else this.drawFallbackPath(gpu, viewProjection);
   }
 
@@ -240,6 +241,16 @@ export class RealtimeRenderer {
       sceneTextures: [],
       scene: null,
     };
+  }
+
+  /** Float targets the driver rejects at this size: draw on the no-float path from now on. */
+  private switchToFallback(gpu: GpuResources): void {
+    const gl = this.gl;
+    gpu.targets?.dispose();
+    gpu.targets = null;
+    for (const program of gpu.programs.all) gl.deleteProgram(program);
+    gpu.programs = createRendererPrograms(gl, false);
+    gpu.capabilities = { ...gpu.capabilities, path: 'fallback', msaaSamples: 0 };
   }
 
   private uploadLoadedScene(gpu: GpuResources): void {
