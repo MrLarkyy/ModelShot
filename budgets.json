@@ -4,7 +4,7 @@
     "gradient-256": { "max": 5 }
   },
   "timeToSamplesMs": {
-    "progressive-256-n64": { "max": 150 }
+    "progressive-256-n64": { "max": 300 }
   },
   "bundleGzipBytes": {
     "app": { "max": 2500 },

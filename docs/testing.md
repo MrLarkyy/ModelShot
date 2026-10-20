@@ -58,9 +58,10 @@ Measured on the local Windows dev machine (SwiftShader, 3 runs) when the budgets
 - `frameTimeMs` max 5: the median is below 1 ms and `performance.now` is coarsened to 0.1 ms without cross-origin
   isolation, so 5x the median (2 ms) would be 20 ticks and one GC pause from flaking on a shared runner. 5 ms is 12-16x the
   local median and still catches about 12x and above over the local median.
-- `timeToSamplesMs` max 150: about 5.8x the worst local median (25.8 ms).
+- `timeToSamplesMs` max 300: about 3.7x the CI median (80.6 ms) and 12x the worst local median (25.8 ms); the first limit of 150 left under 2x on shared runners.
 - `bundleGzipBytes` app 2500, embed 2200: measured plus about 2 kB, so a real dependency shows up while noise does not.
 
-CI numbers are not known yet; re-derive from the `budgets-measured.json` artefact, with the numbers in the commit.
+First CI run (2026-10-20, ubuntu-latest): frame time 0.9 ms (max 5, 5.5x), time to 64 samples 80.6 ms (max 300), gzip app 437 B, embed 115 B.
+Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact, with the numbers in the commit.
 Changing a `max` is a reviewed change: explain it in the commit with the measured numbers, never raise it to hide a
 regression.
