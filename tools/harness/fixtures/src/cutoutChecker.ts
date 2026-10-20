@@ -18,11 +18,7 @@ export const BOX_HEIGHT = 4.5;
 
 /** World point of (s along the tangent, d behind the plane, y up). */
 export function checkerPoint(s: number, d: number, y: number): Point {
-  return [
-    s * CHECKER_TANGENT[0] - d * CHECKER_NORMAL[0],
-    y,
-    s * CHECKER_TANGENT[2] - d * CHECKER_NORMAL[2],
-  ];
+  return [s * CHECKER_TANGENT[0] - d * CHECKER_NORMAL[0], y, s * CHECKER_TANGENT[2] - d * CHECKER_NORMAL[2]];
 }
 
 function texture(name: string, width: number, rgba: Uint8Array): SceneTexture {
@@ -67,7 +63,14 @@ function quads(name: string, faces: readonly Face[], material: number, doubleSid
     corners.forEach((corner, i) => {
       positions.push(...corner);
       normals.push(...outward);
-      uvs.push(...([[0, 0], [1, 0], [1, 1], [0, 1]][i] ?? [0, 0]));
+      uvs.push(
+        ...([
+          [0, 0],
+          [1, 0],
+          [1, 1],
+          [0, 1],
+        ][i] ?? [0, 0]),
+      );
     });
     // Counter-clockwise seen from outside: top-left, bottom-left, bottom-right, then top-left, bottom-right, top-right.
     indices.push(base, base + 3, base + 2, base, base + 2, base + 1);
@@ -117,7 +120,12 @@ export function cutoutChecker(base: SceneDocument): SceneDocument {
   const top = CHECKER_BOTTOM + 8;
   const plane = quads(
     'checker',
-    [{ corners: [p(-4, 0, top), p(4, 0, top), p(4, 0, CHECKER_BOTTOM), p(-4, 0, CHECKER_BOTTOM)], outward: CHECKER_NORMAL }],
+    [
+      {
+        corners: [p(-4, 0, top), p(4, 0, top), p(4, 0, CHECKER_BOTTOM), p(-4, 0, CHECKER_BOTTOM)],
+        outward: CHECKER_NORMAL,
+      },
+    ],
     0,
     true,
   );

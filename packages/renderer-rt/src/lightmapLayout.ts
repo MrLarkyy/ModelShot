@@ -195,7 +195,14 @@ function texelCharts(
     const existing = chartOf[root] ?? -1;
     if (existing < 0) {
       chartOf[root] = charts.length;
-      charts.push({ group, rect, map, texture: [texture.width, texture.height], triangles: [first], back: doubleSided });
+      charts.push({
+        group,
+        rect,
+        map,
+        texture: [texture.width, texture.height],
+        triangles: [first],
+        back: doubleSided,
+      });
       const u = Math.hypot(map[0] ?? 0, map[1] ?? 0, map[2] ?? 0) / texture.width;
       const w = Math.hypot(map[3] ?? 0, map[4] ?? 0, map[5] ?? 0) / texture.height;
       finest = Math.min(finest, u, w);
@@ -267,9 +274,7 @@ interface Packing {
 /** Shelf packing, tallest first then by chart order, so the result depends on the charts only. */
 function pack(protos: readonly ProtoChart[], downscale: number): Packing | null {
   const sizes = protos.map((proto): [number, number] =>
-    proto.mode === 'texel'
-      ? [Math.ceil(proto.texels[0] / downscale), Math.ceil(proto.texels[1] / downscale)]
-      : [1, 1],
+    proto.mode === 'texel' ? [Math.ceil(proto.texels[0] / downscale), Math.ceil(proto.texels[1] / downscale)] : [1, 1],
   );
   const order = protos.map((_, i) => i);
   order.sort((a, b) => (sizes[b]?.[1] ?? 0) - (sizes[a]?.[1] ?? 0) || a - b);

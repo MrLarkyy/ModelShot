@@ -30,9 +30,9 @@ describe('checkLighting', () => {
   it('rejects a malformed catcher', () => {
     const catcher = lighting().catcher!;
     expect(checkLighting(layout, lighting({ catcher: { ...catcher, width: 0 } }))).toBe(false);
-    expect(checkLighting(layout, lighting({ catcher: { ...catcher, width: 513, data: new Uint16Array(513 * 8) } }))).toBe(
-      false,
-    );
+    expect(
+      checkLighting(layout, lighting({ catcher: { ...catcher, width: 513, data: new Uint16Array(513 * 8) } })),
+    ).toBe(false);
     expect(checkLighting(layout, lighting({ catcher: { ...catcher, data: new Uint16Array(31) } }))).toBe(false);
     expect(checkLighting(layout, lighting({ catcher: { ...catcher, rect: [0, 0, 0, 1] } }))).toBe(false);
     expect(checkLighting(layout, lighting({ catcher: { ...catcher, y: NaN } }))).toBe(false);

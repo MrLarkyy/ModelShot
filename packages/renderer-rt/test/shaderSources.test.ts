@@ -3,15 +3,7 @@ import { createGlProgram } from '../src/glProgram';
 import { RendererError } from '../src/index';
 import { shaderProgramSource, type ShaderProgramName } from '../src/shaderSources';
 
-const NAMES: ShaderProgramName[] = [
-  'opaque',
-  'oitAccum',
-  'oitComposite',
-  'present',
-  'fallback',
-  'backdrop',
-  'catcher',
-];
+const NAMES: ShaderProgramName[] = ['opaque', 'oitAccum', 'oitComposite', 'present', 'fallback', 'backdrop', 'catcher'];
 
 /** Just enough of WebGL2 to drive createGlProgram; compile fails for sources containing "BROKEN". */
 function fakeGl(): { gl: WebGL2RenderingContext; deleted: string[] } {

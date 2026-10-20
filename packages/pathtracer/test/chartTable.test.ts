@@ -124,7 +124,15 @@ describe('buildChartTable', () => {
   });
 
   it('samples a vertex just inside its corner and leaves untraced triangles at -1', () => {
-    const doc = { ...face([[0, 0], [0, 0], [0, 0], [0, 0]]), materials: [{ name: 'm', texture: -1 }] };
+    const doc = {
+      ...face([
+        [0, 0],
+        [0, 0],
+        [0, 0],
+        [0, 0],
+      ]),
+      materials: [{ name: 'm', texture: -1 }],
+    };
     const layout = lightmapLayout(doc);
     const table = buildChartTable(layout, flattenScene(doc), identityOrder(2), 8192);
     expect(layout.charts.map((c) => c.mode)).toEqual(['vertex', 'vertex', 'vertex', 'vertex']);

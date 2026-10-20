@@ -173,7 +173,9 @@ test.describe('transparency, shadows and sides (scene format rules)', () => {
       const lit = at(probes, `${surface}-shadow-of-transparent-texel`);
       const dark = at(probes, `${surface}-shadow-of-opaque-texel`);
       const { step, transition, values } = shadowStep(image, lit, dark);
-      console.log(`[pt probe] cutout checker ${surface}: step ${step.toFixed(1)} levels / min 40, edge ${transition.toFixed(2)} px / max 2`);
+      console.log(
+        `[pt probe] cutout checker ${surface}: step ${step.toFixed(1)} levels / min 40, edge ${transition.toFixed(2)} px / max 2`,
+      );
       expect(step, `${surface}: ${values.join(', ')}`).toBeGreaterThanOrEqual(40);
       expect(transition, `${surface}: ${values.join(', ')}`).toBeLessThanOrEqual(2);
     }

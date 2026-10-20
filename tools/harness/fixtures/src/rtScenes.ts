@@ -458,7 +458,8 @@ export function parseRtView(params: URLSearchParams): RtView {
   view.catcher = flag('catcher') ?? view.catcher;
   const bake = params.get('bake');
   if (bake !== null) {
-    if (!/^\d{1,4}$/.test(bake) || Number(bake) > 1024) throw new Error('query parameter bake must be an integer in 0..1024');
+    if (!/^\d{1,4}$/.test(bake) || Number(bake) > 1024)
+      throw new Error('query parameter bake must be an integer in 0..1024');
     view.bake = Number(bake);
   }
   const look = params.get('look');

@@ -1,9 +1,5 @@
 export type RendererErrorCode =
-  | 'WEBGL2_UNAVAILABLE'
-  | 'SHADER_COMPILE'
-  | 'SHADER_LINK'
-  | 'INVALID_SCENE'
-  | 'SCENE_TOO_LARGE';
+  'WEBGL2_UNAVAILABLE' | 'SHADER_COMPILE' | 'SHADER_LINK' | 'INVALID_SCENE' | 'SCENE_TOO_LARGE';
 
 /**
  * A failure the renderer cannot recover from; `path` names the offending scene field for `INVALID_SCENE` and

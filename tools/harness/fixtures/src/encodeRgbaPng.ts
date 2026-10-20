@@ -17,7 +17,12 @@ function adler32(bytes: Uint8Array): number {
   return ((b << 16) | a) >>> 0;
 }
 
-const uint32 = (value: number): number[] => [(value >>> 24) & 255, (value >>> 16) & 255, (value >>> 8) & 255, value & 255];
+const uint32 = (value: number): number[] => [
+  (value >>> 24) & 255,
+  (value >>> 16) & 255,
+  (value >>> 8) & 255,
+  value & 255,
+];
 
 function chunk(type: string, data: Uint8Array): number[] {
   const body = Uint8Array.from([...[...type].map((c) => c.charCodeAt(0)), ...data]);
@@ -35,7 +40,14 @@ export function encodeRgbaPng(width: number, height: number, rgba: Uint8Array): 
   for (let at = 0; at < raw.length || at === 0; at += 65535) {
     const block = raw.subarray(at, Math.min(raw.length, at + 65535));
     const final = at + 65535 >= raw.length ? 1 : 0;
-    zlib.push(final, block.length & 255, block.length >>> 8, ~block.length & 255, (~block.length >>> 8) & 255, ...block);
+    zlib.push(
+      final,
+      block.length & 255,
+      block.length >>> 8,
+      ~block.length & 255,
+      (~block.length >>> 8) & 255,
+      ...block,
+    );
   }
   zlib.push(...uint32(adler32(raw)));
   const header = Uint8Array.from([...uint32(width), ...uint32(height), 8, 6, 0, 0, 0]);

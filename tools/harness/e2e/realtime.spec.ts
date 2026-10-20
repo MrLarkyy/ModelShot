@@ -741,6 +741,21 @@ test.describe('baked lighting', () => {
     }
   });
 
+  test('texel anti-aliasing still halves shimmer against nearest sampling with baked light', async ({ page }) => {
+    for (const framing of ['far', 'closeup']) {
+      const share = async (aa: 0 | 1): Promise<number> => {
+        const a = await render(page, `variant=${framing}&aa=${aa}&yaw=30&bake=4`);
+        const b = await render(page, `variant=${framing}&aa=${aa}&yaw=30.25&bake=4`);
+        return changedShare(a.image, b.image);
+      };
+      const nearest = await share(0);
+      const antialiased = await share(1);
+      console.log(`[rt probe] baked shimmer ${framing}: ${antialiased.toFixed(5)} vs nearest ${nearest.toFixed(5)}`);
+      expect(nearest, `${framing}: nearest sampling must shimmer for the check to mean anything`).toBeGreaterThan(0);
+      expect(antialiased, `${framing}: ${antialiased} vs nearest ${nearest}`).toBeLessThanOrEqual(nearest * 0.5);
+    }
+  });
+
   test('a bake is deterministic: repeated, in 32 or 64 texel tiles, and its progress equals a shorter bake', async ({
     page,
   }) => {
@@ -760,7 +775,9 @@ test.describe('baked lighting', () => {
 
   test('a superseded bake resolves not applied; the shown light is the later bake alone', async ({ page }) => {
     await openFixture(page, '/rt.html?variant=turntable-y030');
-    const both = await page.evaluate(() => window.__msFixture!.rt!.bakeTwice({ samples: 64 }, { samples: 16, seed: 3 }));
+    const both = await page.evaluate(() =>
+      window.__msFixture!.rt!.bakeTwice({ samples: 64 }, { samples: 16, seed: 3 }),
+    );
     expect(both.applied).toEqual([false, true]);
     const alone = await rtBake(page, { samples: 16, seed: 3 });
     expect(both.hash).toBe(alone.hash);

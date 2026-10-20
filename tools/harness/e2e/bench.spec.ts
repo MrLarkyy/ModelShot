@@ -85,7 +85,9 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
     const runs = [await fixture.timeBake(), await fixture.timeBake(), await fixture.timeBake()];
     return { runs, lag: fixture.rt.maxLag() };
   });
-  console.log(`[bench] bake runs ${bake.runs.map((ms) => ms.toFixed(0)).join(', ')} ms, main-thread lag ${bake.lag.toFixed(1)} ms`);
+  console.log(
+    `[bench] bake runs ${bake.runs.map((ms) => ms.toFixed(0)).join(', ')} ms, main-thread lag ${bake.lag.toFixed(1)} ms`,
+  );
 
   const [app, embed] = await Promise.all([measureBundle('app'), measureBundle('embed')]);
 

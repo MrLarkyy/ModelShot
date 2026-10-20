@@ -105,7 +105,14 @@ describe('LightBaker', () => {
   it('turns worker errors into PathTracerError', async () => {
     const { baker: b, worker } = baker();
     const pending = b.bake(doc);
-    worker.reply({ type: 'error', id: 1, name: 'PathTracerError', code: 'SCENE_TOO_LARGE', message: 'big', path: 'meshes' });
+    worker.reply({
+      type: 'error',
+      id: 1,
+      name: 'PathTracerError',
+      code: 'SCENE_TOO_LARGE',
+      message: 'big',
+      path: 'meshes',
+    });
     await expect(pending).rejects.toMatchObject({ code: 'SCENE_TOO_LARGE', path: 'meshes' });
     const failing = b.bake(doc);
     worker.fail();

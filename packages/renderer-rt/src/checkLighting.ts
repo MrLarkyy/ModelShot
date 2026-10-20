@@ -9,7 +9,8 @@ import { MAX_CATCHER_SIDE } from './shadowCatcherPlane';
 export function checkLighting(layout: LightmapLayout, lighting: BakedLighting): boolean {
   if (lighting.layoutKey !== layout.layoutKey) return false;
   if (lighting.width !== layout.width || lighting.height !== layout.height) return false;
-  if (!(lighting.data instanceof Uint16Array) || lighting.data.length !== layout.width * layout.height * 4) return false;
+  if (!(lighting.data instanceof Uint16Array) || lighting.data.length !== layout.width * layout.height * 4)
+    return false;
   const catcher = lighting.catcher;
   if (!catcher) return true;
   const side = (n: number) => Number.isInteger(n) && n >= 1 && n <= MAX_CATCHER_SIDE;

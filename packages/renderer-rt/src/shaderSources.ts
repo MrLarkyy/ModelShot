@@ -20,13 +20,7 @@ import shading from './shaders/shading.glsl?raw';
 import texelSample from './shaders/texelSample.glsl?raw';
 
 export type ShaderProgramName =
-  | 'opaque'
-  | 'oitAccum'
-  | 'oitComposite'
-  | 'present'
-  | 'fallback'
-  | 'backdrop'
-  | 'catcher';
+  'opaque' | 'oitAccum' | 'oitComposite' | 'present' | 'fallback' | 'backdrop' | 'catcher';
 
 export interface ShaderProgramSource {
   readonly vertex: string;

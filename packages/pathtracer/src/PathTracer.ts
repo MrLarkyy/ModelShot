@@ -1,8 +1,6 @@
 import {
   DEFAULT_MAX_TEXTURE_PIXELS_TOTAL,
-  PLACEHOLDER_IMAGE,
   RendererError,
-  UNTEXTURED_IMAGE,
   canvasSize,
   decodeTextures,
   shadowCatcherPlane,
@@ -32,7 +30,6 @@ import {
   checkMaterialCount,
   packGeometry,
   packMaterials,
-  type MaterialTextures,
   type PackedGeometry,
 } from './packSceneData';
 import { PathTracerError } from './PathTracerError';

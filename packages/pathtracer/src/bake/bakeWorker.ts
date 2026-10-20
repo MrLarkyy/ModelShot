@@ -110,7 +110,14 @@ function errorReply(id: number, error: unknown): BakeReply {
     return { type: 'error', id, name: 'PathTracerError', code: error.code, message, path: error.path };
   }
   const name = error instanceof Error ? error.name : 'Error';
-  return { type: 'error', id, name, code: '', message: error instanceof Error ? error.message : String(error), path: '' };
+  return {
+    type: 'error',
+    id,
+    name,
+    code: '',
+    message: error instanceof Error ? error.message : String(error),
+    path: '',
+  };
 }
 
 function halves(sums: Float32Array, samples: number): Uint16Array {
@@ -201,7 +208,11 @@ function texturesFor(request: Extract<BakeRequest, { type: 'bake' }>, maxTexture
 
 /** Everything that can fail runs here, before the job's scene replaces anything on the GPU. */
 async function prepare(current: Job, request: Extract<BakeRequest, { type: 'bake' }>): Promise<void> {
-  if (!session) throw sessionError ?? new PathTracerError('WEBGL2_UNAVAILABLE', 'the bake context is lost');
+  if (!session) {
+    throw sessionError instanceof Error
+      ? sessionError
+      : new PathTracerError('WEBGL2_UNAVAILABLE', 'the bake context is lost');
+  }
   const doc: SceneDocument = request.doc;
   try {
     validateScene(doc);
