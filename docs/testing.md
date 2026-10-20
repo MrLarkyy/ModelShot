@@ -136,6 +136,71 @@ string.
 Fix the seed, the sample count, the resolution and the camera. The accumulation stops after exactly N samples, never
 after a time. Random numbers come from a seeded integer hash, never `Math.random`.
 
+`e2e/pathtracer.spec.ts` renders `fixtures/pt.html` (`@modelshot/pathtracer` on SwiftShader, 256 x 256, 4 bounces,
+seed 1). The page takes the realtime fixture's scenes and views (`rtScenes.ts`: `variant`, `scene`, `look`, ...) so
+every path-traced golden pairs with a preview of the same view, plus `seed`, `samples`, `batch` (samples per `step`),
+`tile` (tile side), `size`, `maxTriangles`, `track=1` and `timing=1`; the path-tracer-only variant `emissive` sets an
+emission on the showcase's brick material. A golden spec names its view in `variant` (`PathTracedGoldenSpec.variant`,
+put in the URL, not in the file name).
+
+| golden                        | view                                            | checks                                       |
+| ----------------------------- | ----------------------------------------------- | -------------------------------------------- |
+| `pt-turntable-y030.s1.n64`    | showcase, perspective 35°                       | golden; determinism; bleeding; pair          |
+| `pt-iso.s1.n64`               | showcase, orthographic isometric                | golden; pair                                 |
+| `pt-closeup.s1.n64`           | showcase, half the fit distance (texels ~28 px) | golden                                       |
+| `pt-alpha-plane.s1.n128`      | alpha-plane.bbmodel, model-view camera          | golden; shadow probes; back side; pair       |
+| `pt-alpha-ramp-blend.s1.n128` | the 16 x 16 alpha ramp (blend, cutoff 0.01)     | golden; stochastic transparency              |
+| `pt-render-order.s1.n16`      | render-order.bbmodel, model-view camera         | golden; render-order probes                  |
+| `pt-emissive.s1.n64`          | showcase, bricks emitting (4, 2.2, 0.8)         | golden; the post beside the bricks brightens |
+| `pt-player-hold-34.s1.n64`    | MS-20 player, hold preset, cube in the hand     | golden; pair with `rt-player-hold-34`        |
+
+- Tolerance: an override of `threshold 0` only (its reason in the spec); `maxDiffRatio 0.001` and `maxMeanDelta 1`
+  stay the defaults. The tracer converges, so at the default threshold 0.1 another seed or one sample more or less
+  still passes (seed 2 at 64 samples: 7 of 65 536 pixels, mean delta 0.30; 63 samples: 0 pixels, mean delta 0.027). At
+  threshold 0 every changed level counts: another seed changes 12 023 pixels (18 %), 63 or 65 samples about 4 900
+  (7.5 %), 75 times the allowed ratio, so `seed 2`, `63 samples` and `65 samples` fail the comparison.
+- Determinism: the same request twice, and the same 64 samples in batches of 1 and 7, in 64-pixel tiles and both, give
+  the bytes of a reference rendered in the same run in one pass (never the bytes of the committed PNG, which only the
+  tolerant golden comparison reads); `samplesDone` is checked against the request (`assertSampleCount`).
+- Probes (`fixtures/src/ptProbes.ts`, from the document, never from a renderer; logged as `[pt probe] ...`): the cutout
+  plane's hole (2, 14) and opaque texel (6, 14) followed along the key direction to the ground: lit 199.4, shadowed
+  146.6 levels (at least 40 apart), and the lit/shadowed step between them spans 0.49 px (at most 2); on the flat cube,
+  whose coincident single-sided faces the light meets from the south, the ground north of it, seen from the
+  `flat-shadow` look: 49.5 levels between the hole and the opaque texel (at least 40); from below, the single-sided
+  quad of `coincident-double` shows the backdrop exactly, and alpha-plane's double-sided back plane shows its texel
+  mirrored (the model-view probe); the render-order pairs resolve as in the model-view fixture; each alpha-ramp texel's
+  9 x 9-pixel mean is within 6 levels of AgX(a · lit white + (1 − a) · backdrop) (largest deviation 1.29); no
+  turntable pixel shows the magenta sentinel; the emissive bricks raise the post's south face by 14.6 levels (at
+  least 10).
+- Limits and lifetime: an empty scene draws only the backdrop; corrupt, missing and size-lying textures draw the
+  placeholder with the realtime renderer's warning; `maxTriangles=10` fails the page with `SCENE_TOO_LARGE`; seeds and
+  sample counts out of range and a field of view of 0 or 180 throw `RangeError`; 10 000 coincident cubes
+  (`scene=coincident-cubes`, 120 000 triangles whose BVH nodes nothing prunes) render a sample without losing the
+  context (the per-ray node cap, path-tracer.md; about 2.3 s with page load on SwiftShader) and their camera rays are
+  counted as capped; no traversal is capped in any golden view, the benchmark scene, the 200 000-triangle grid (load
+  view and edge-on) or the cut-out plant field `grass-field` (edge-on from the ground and at 2°); a lost context draws
+  nothing and, restored, renders the same bytes as before the loss; `cancel()` after 5 samples stays at 5; of two
+  quick `setScene` calls only the second is applied (the bytes of a one-pass reference rendered in the same run); a
+  scene over the material limit (1.4 M materials) fails with `SCENE_TOO_LARGE` before decoding anything and the
+  current scene keeps rendering the same bytes; `dispose()` leaves no WebGL object or ImageBitmap (`track=1`).
+
+**Pair tests** (preview vs render): `rt.html` and `pt.html` of the same view. Framing: the backdrop masks (within 2
+levels of the top-left pixel) must agree on every pixel off the silhouette (a pixel whose 3 x 3 neighbourhood in the
+preview holds both classes); 0 mismatches is the limit. Radiance: pixelmatch `threshold 0.1` with `maxDiffRatio` and
+`maxMeanDelta` = the first measured value x 1.25, never widened; the render differs where it has shadows,
+interreflection and noise. Logged as `[pt pair] <view>: ...`, values in `test-results/pt-pair-<view>.json`. Measured
+on SwiftShader (local Windows dev machine, deterministic):
+
+| view             | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta | limit: `maxDiffRatio`, `maxMeanDelta` |
+| ---------------- | ----------------------------------- | ----------------------------------- | ------------------------------------- |
+| `turntable-y030` | 0 (1 606)                           | 715, 0.01091, 0.784                 | 0.0136, 0.98                          |
+| `iso`            | 0 (1 543)                           | 835, 0.01274, 1.049                 | 0.0159, 1.31                          |
+| `alpha-plane`    | 0 (689)                             | 2 158, 0.03293, 1.984               | 0.0412, 2.48                          |
+| `player-hold-34` | 0 (1 322)                           | 1 596, 0.02435, 1.443               | 0.0304, 1.80                          |
+
+For a manual run on real hardware open `pt.html?scene=bench&size=512&samples=256&timing=1`: one sample per animation
+frame with the elapsed time and the renderer string.
+
 ## Model-view fixture
 
 `fixtures/model-view.html?variant=<name>` renders a real loader result (`loadBbmodel` on a formats test fixture,
@@ -247,8 +312,8 @@ attached vertex formula in four poses, re-posing, nesting, index remapping, ever
 
 ## Budgets
 
-`budgets.json` (root, `"version": 1`) holds `max` values for frame time, time to 64 samples and gzip bundle size of
-`app` and `embed`. `pnpm test` measures them (`bench.spec.ts`; the bundle is built fresh into a temporary directory, so
+`budgets.json` (root, `"version": 1`) holds `max` values for frame time, load time, time to N samples and gzip bundle
+size of `app` and `embed`. `pnpm test` measures them (`bench.spec.ts`; the bundle is built fresh into a temporary directory, so
 it does not depend on `pnpm -r build`) and fails when a value exceeds its `max`, when a budget has no measurement, or
 a measurement has no budget. The measured values are in `tools/harness/test-results/budgets-measured.json`, and
 every run prints each one against its max (`[budget] <group>.<key>: measured … / max …`, from `bench.spec.ts` and
@@ -281,6 +346,14 @@ texel tap), `rt-bench-order-512` 117, 145 and 148 ms with MSAA, 83 and 107 ms si
   isolation, so 5x the median (2 ms) would be 20 ticks and one GC pause from flaking on a shared runner. 5 ms is 12-16x the
   local median and still catches about 12x and above over the local median.
 - `timeToSamplesMs` max 300: about 3.7x the CI median (80.6 ms) and 12x the worst local median (25.8 ms); the first limit of 150 left under 2x on shared runners.
+- `timeToSamplesMs.pt-bench-128-n256`: the path tracer on the benchmark scene (24 576 triangles), 256 samples at
+  128 x 128 (one 256-pixel tile, so one draw call per sample) until the GPU finished, median of 3. Local SwiftShader
+  medians 6096, 5160 and 4970 ms (3 runs, MS-17); max 52 000 ms is 10x the middle run, rounded up, as for
+  `rt-bench-512`, until a CI artefact allows 3-4x the CI median. Under 60 s locally, so the bench stays at 128 x 128.
+  Real hardware (RTX 3080, ANGLE D3D11): 88 ms at 128 x 128, 234 ms at 512 x 512.
+- `frameTimeMs.pt-load-200k`: `setScene` of the generated 200 000-triangle scene of
+  `rt-load-first-frame-200k-order` (validate, flatten, BVH build in JavaScript, upload) plus its first sample. Local
+  SwiftShader 1554, 919 and 941 ms; max 10 000 ms (10x the middle run, rounded up).
 - `bundleGzipBytes` app 2500, embed 2200: measured plus about 2 kB, so a real dependency shows up while noise does not.
 
 First CI run (2026-10-20, ubuntu-latest): frame time 0.9 ms (max 5, 5.5x), time to 64 samples 80.6 ms (max 300), gzip app 437 B, embed 115 B.

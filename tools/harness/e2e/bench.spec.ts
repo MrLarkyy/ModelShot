@@ -7,7 +7,8 @@ import { openFixture } from '../src/expectGolden';
 import { median } from '../src/measure';
 
 test('frame time, time to samples and bundle size stay inside budgets.json', async ({ page }, testInfo) => {
-  test.setTimeout(120_000);
+  // The path-tracer runs take seconds each on SwiftShader, and a CI runner is 3-5x slower than the dev machine.
+  test.setTimeout(300_000);
 
   await openFixture(page, '/gradient.html');
   const frames = await page.evaluate(() => {
@@ -54,6 +55,24 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
     return [fixture.timeToSamples(64), fixture.timeToSamples(64), fixture.timeToSamples(64)];
   });
 
+  // The path tracer on the same benchmark scene: 256 seeded samples at 128 x 128 (tiles of 256, so one draw call per
+  // sample), until the GPU finished; median of 3.
+  await openFixture(page, '/pt.html?scene=bench&size=128&samples=1');
+  const ptRuns = await page.evaluate(() => {
+    const fixture = window.__msFixture;
+    if (!fixture?.timeToSamples) throw new Error('sample bench missing');
+    return [fixture.timeToSamples(256), fixture.timeToSamples(256), fixture.timeToSamples(256)];
+  });
+
+  // Path-tracer load at the loader's limits: validate, flatten, build the BVH of 200 000 triangles, upload, one sample.
+  await openFixture(page, '/pt.html?scene=empty&size=128&samples=1');
+  const ptLoadMs = await page.evaluate(async () => {
+    const fixture = window.__msFixture;
+    if (!fixture?.timeScene) throw new Error('scene bench missing');
+    return fixture.timeScene();
+  });
+  expect(await page.evaluate(() => window.__msFixture?.pt?.triangles)).toBe(200_000);
+
   const [app, embed] = await Promise.all([measureBundle('app'), measureBundle('embed')]);
 
   const measured: Measured = {
@@ -62,8 +81,9 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
       'rt-bench-512': median(rtFrames),
       'rt-bench-order-512': median(rtOrderFrames),
       'rt-load-first-frame-200k-order': loadMs,
+      'pt-load-200k': ptLoadMs,
     },
-    timeToSamplesMs: { 'progressive-256-n64': median(runs) },
+    timeToSamplesMs: { 'progressive-256-n64': median(runs), 'pt-bench-128-n256': median(ptRuns) },
     bundleGzipBytes: { app: app.gzipBytes, embed: embed.gzipBytes },
   };
   const json = JSON.stringify(measured, null, 2);

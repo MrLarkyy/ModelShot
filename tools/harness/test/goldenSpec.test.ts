@@ -67,4 +67,26 @@ describe('goldenSpec', () => {
       '/gradient.html?variant=broken',
     );
   });
+
+  it('puts a path-traced variant in the URL but not in the file name', () => {
+    const spec: PathTracedGoldenSpec = {
+      kind: 'pathtraced',
+      fixture: 'pt',
+      name: 'pt-iso',
+      variant: 'iso',
+      seed: 1,
+      samples: 64,
+    };
+    expect(fixtureUrl(spec)).toBe('/pt.html?variant=iso&seed=1&samples=64');
+    expect(goldenFileName(spec)).toBe('pt-iso.s1.n64.png');
+  });
+
+  it('rejects a variant that could smuggle URL parameters', () => {
+    for (const variant of ['iso&samples=1', 'a b', '../x', '']) {
+      expect(() => fixtureUrl({ ...pt, variant }), variant).toThrow(/variant/);
+    }
+    expect(() => fixtureUrl({ kind: 'raster', fixture: 'gradient', name: 'gradient', variant: 'x=1' })).toThrow(
+      /variant/,
+    );
+  });
 });
