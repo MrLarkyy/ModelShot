@@ -5,7 +5,7 @@ import { fixture, mesh, meshFace, model, type FixtureName } from './fixtures';
 import { worldVertices } from './serializeScene';
 
 const json = (value: unknown): string => JSON.stringify(value);
-const MESH_FIXTURES: FixtureName[] = ['mesh-shapes', 'mesh-plane', 'alpha-plane', 'format5-groups'];
+const MESH_FIXTURES: FixtureName[] = ['mesh-shapes', 'mesh-plane', 'alpha-plane', 'format5-groups', 'render-order'];
 
 function vec(array: Float32Array, index: number, size = 3): number[] {
   return [...array.slice(index * size, index * size + size)];
@@ -16,11 +16,13 @@ function hasVertex(vertices: number[][], position: readonly number[]): boolean {
 }
 
 describe('meshElementToMesh', () => {
-  it.each(MESH_FIXTURES)('%s: unit normals that agree with every triangle’s winding', (name) => {
+  it.each(MESH_FIXTURES)('%s: unit normals; flat ones agree with every triangle’s winding', (name) => {
+    const smooth = new Set(['arch']);
     for (const sceneMesh of loadBbmodel(fixture(name)).scene.meshes) {
       for (let v = 0; v < sceneMesh.normals.length / 3; v++) {
         expect(Math.hypot(...vec(sceneMesh.normals, v))).toBeCloseTo(1, 6);
       }
+      if (smooth.has(sceneMesh.name)) continue;
       for (let t = 0; t < sceneMesh.indices.length; t += 3) {
         const [a, b, c] = [0, 1, 2].map((k) => vec(sceneMesh.positions, sceneMesh.indices[t + k] ?? -1));
         const u = a!.map((x, k) => (b![k] ?? NaN) - x);
@@ -122,5 +124,47 @@ describe('meshElementToMesh', () => {
   it('carries visibility and render order', () => {
     const text = json(model({ elements: [mesh({ visibility: false, render_order: 'in_front' })] }));
     expect(loadBbmodel(text).scene.meshes[0]).toMatchObject({ visible: false, renderOrder: 1 });
+  });
+
+  it('smooth: each vertex gets the normalised average of the normals of the faces sharing its key', () => {
+    const { scene } = loadBbmodel(fixture('mesh-shapes'));
+    const arch = scene.meshes.find((m) => m.name === 'arch') as SceneMesh;
+    expect(arch.positions.length / 3).toBe(16);
+    for (let v = 0; v < 16; v++) {
+      const [x = NaN, , z = NaN] = vec(arch.positions, v);
+      const column = Math.round(Math.atan2(z, x + 11) / (Math.PI / 4));
+      // Faces sit at 22.5° + 45° j; an inner column averages two of them, an end column has one.
+      const degrees = column === 0 ? 22.5 : column === 4 ? 157.5 : column * 45;
+      const angle = (degrees * Math.PI) / 180;
+      const n = vec(arch.normals, v);
+      [Math.cos(angle), 0, Math.sin(angle)].forEach((value, k) => expect(n[k]).toBeCloseTo(value, 4));
+    }
+  });
+
+  it('smooth: the average is unweighted by face area, as Blockbench’s', () => {
+    // A large face in z = 0 and a small one in x = 0 share the edge a–b.
+    const vertices = { a: [0, 0, 0], b: [0, 1, 0], c: [10, 0, 0], d: [0, 0, -0.1] };
+    const faces = { big: meshFace(['a', 'c', 'b']), small: meshFace(['a', 'b', 'd']) };
+    const text = json(model({ elements: [mesh({ shading: 'smooth', vertices, faces })] }));
+    const sceneMesh = loadBbmodel(text).scene.meshes[0] as SceneMesh;
+    const shared = [0, 1, 2, 3, 4, 5].filter(
+      (v) => vec(sceneMesh.positions, v)[0] === 0 && vec(sceneMesh.positions, v)[2] === 0,
+    );
+    expect(shared.length).toBe(4);
+    for (const v of shared) {
+      vec(sceneMesh.normals, v).forEach((value, k) =>
+        expect(value).toBeCloseTo([-Math.SQRT1_2, 0, Math.SQRT1_2][k] ?? NaN, 6),
+      );
+    }
+    // c and d belong to one face each and keep that face's normal.
+    expect(vec(sceneMesh.normals, 1).map((x) => x || 0)).toEqual([0, 0, 1]);
+  });
+
+  it('flat (the default) keeps face normals', () => {
+    const vertices = { a: [0, 0, 0], b: [0, 1, 0], c: [10, 0, 0], d: [0, 0, -0.1] };
+    const faces = { big: meshFace(['a', 'c', 'b']), small: meshFace(['a', 'b', 'd']) };
+    const sceneMesh = loadBbmodel(json(model({ elements: [mesh({ vertices, faces })] }))).scene.meshes[0] as SceneMesh;
+    expect(vec(sceneMesh.normals, 0).map((x) => x || 0)).toEqual([0, 0, 1]);
+    expect(vec(sceneMesh.normals, 3).map((x) => x || 0)).toEqual([-1, 0, 0]);
   });
 });

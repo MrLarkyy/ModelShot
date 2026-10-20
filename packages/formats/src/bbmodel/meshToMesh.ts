@@ -4,17 +4,18 @@ import {
   mat4TransformPoint,
   type SceneMesh,
   type SceneMeshGroup,
+  type Vec3,
 } from '@modelshot/scene';
 import { compareGroupKey } from './GroupKey';
 import type { MeshSpec } from './MeshSpec';
-import { triangulateFace } from './triangulateFace';
+import { blockbenchFaceNormal, triangulateFace } from './triangulateFace';
 
 const NO_TRANSLATION = [0, 0, 0] as const;
 
 /**
- * Flat-shaded triangles of a Blockbench mesh: every face gets its own vertices with the face normal, its vertices are
- * `origin + v` rotated about `origin` (as a cube's), and faces are grouped by material and sidedness. Faces that
- * triangulate to nothing (zero area) are left out.
+ * Triangles of a Blockbench mesh: every face gets its own vertices, placed at `origin + v` rotated about `origin` (as
+ * a cube's), and faces are grouped by material and sidedness. Flat shading gives each vertex its face's normal; smooth
+ * shading the vertex key's normal (see `smoothNormals`). Faces that triangulate to nothing (zero area) are left out.
  */
 export function meshElementToMesh(mesh: MeshSpec, node: number): SceneMesh {
   const transform = mat4NodeLocal(NO_TRANSLATION, mesh.origin, mesh.rotation);
@@ -30,11 +31,12 @@ export function meshElementToMesh(mesh: MeshSpec, node: number): SceneMesh {
   const uvRects = new Float32Array(vertexCount * 4);
   const indices = new Uint32Array(indexCount);
   const groups: SceneMeshGroup[] = [];
+  const smooth = mesh.shading === 'smooth' ? smoothNormals(mesh) : undefined;
 
   let base = 0;
   let start = 0;
   for (const { face, triangulation } of faces) {
-    const normal = mat4TransformDirection(transform, triangulation.normal);
+    const faceNormal = mat4TransformDirection(transform, triangulation.normal);
     const us = face.uvs.map(([u]) => u);
     const vs = face.uvs.map(([, v]) => v);
     const rect = [
@@ -47,7 +49,8 @@ export function meshElementToMesh(mesh: MeshSpec, node: number): SceneMesh {
       const vertex = base + k;
       const absolute = [mesh.origin[0] + p[0], mesh.origin[1] + p[1], mesh.origin[2] + p[2]] as const;
       positions.set(mat4TransformPoint(transform, absolute), vertex * 3);
-      normals.set(normal, vertex * 3);
+      const keyNormal = smooth?.get(face.keys[k] ?? '');
+      normals.set(keyNormal ? mat4TransformDirection(transform, keyNormal) : faceNormal, vertex * 3);
       const [u = 0, v = 0] = face.uvs[k] ?? [];
       uvs.set([u / face.uvWidth, v / face.uvHeight], vertex * 2);
       uvRects.set(rect, vertex * 4);
@@ -78,4 +81,26 @@ export function meshElementToMesh(mesh: MeshSpec, node: number): SceneMesh {
     indices,
     groups,
   };
+}
+
+/**
+ * Blockbench's `calculateNormals` for `shading: "smooth"`: per vertex key, the plain average of the unit normals
+ * (`blockbenchFaceNormal`) of every face of 3 or more vertices that lists the key, unweighted by area or angle (a
+ * zero-area face adds a zero normal), then normalised. A key whose average is zero keeps its faces' own normals.
+ */
+function smoothNormals(mesh: MeshSpec): Map<string, Vec3> {
+  const sums = new Map<string, [number, number, number]>();
+  for (const face of mesh.faces) {
+    const n = blockbenchFaceNormal(face.positions);
+    for (const key of face.keys) {
+      const sum = sums.get(key) ?? [0, 0, 0];
+      sums.set(key, [sum[0] + n[0], sum[1] + n[1], sum[2] + n[2]]);
+    }
+  }
+  const normals = new Map<string, Vec3>();
+  for (const [key, [x, y, z]] of sums) {
+    const length = Math.hypot(x, y, z);
+    if (length > 1e-9) normals.set(key, [x / length, y / length, z / length]);
+  }
+  return normals;
 }

@@ -223,3 +223,27 @@ describe('mesh face texture (Blockbench mesh updateFaces)', () => {
     expect(scene.meshes[0]?.groups[0]?.material).toBe(1);
   });
 });
+
+describe('mesh shading (Blockbench Mesh.shading)', () => {
+  const vertices = { a: [0, 0, 0], b: [1, 0, 0], c: [0, 1, 0], d: [0, 0, -1] };
+  const faces = { f: meshFace(['a', 'b', 'c']), g: meshFace(['a', 'c', 'd']) };
+  const sharedNormal = (shading: unknown) => {
+    const element = mesh(shading === undefined ? { vertices, faces } : { vertices, faces, shading });
+    const result = loadBbmodel(json(model({ elements: [element] })));
+    const normals = result.scene.meshes[0]?.normals ?? new Float32Array(0);
+    return { normal: [...normals.slice(0, 3)].map((x) => Math.round(x * 1e6) / 1e6 || 0), warnings: result.warnings };
+  };
+
+  it('absent and flat keep face normals; smooth averages them per vertex key', () => {
+    expect(sharedNormal(undefined).normal).toEqual([0, 0, 1]);
+    expect(sharedNormal('flat').normal).toEqual([0, 0, 1]);
+    const r = Math.round(Math.SQRT1_2 * 1e6) / 1e6;
+    expect(sharedNormal('smooth').normal).toEqual([-r, 0, r]);
+  });
+
+  it('an unknown value warns and counts as flat', () => {
+    const { normal, warnings } = sharedNormal('phong');
+    expect(normal).toEqual([0, 0, 1]);
+    expect(warnings.map((w) => [w.code, w.path])).toEqual([['UNSUPPORTED_VALUE', '$.elements[0].shading']]);
+  });
+});

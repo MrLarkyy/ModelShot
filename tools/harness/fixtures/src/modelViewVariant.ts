@@ -1,4 +1,4 @@
-export type ModelViewModel = 'alpha-plane' | 'mesh-shapes';
+export type ModelViewModel = 'alpha-plane' | 'mesh-shapes' | 'render-order';
 export type ModelViewMode = 'raster' | 'raycast';
 
 export interface ModelViewVariant {
@@ -10,6 +10,9 @@ const VARIANTS: Readonly<Record<string, ModelViewVariant>> = Object.freeze({
   'alpha-plane-raster': { model: 'alpha-plane', mode: 'raster' },
   'alpha-plane-raycast': { model: 'alpha-plane', mode: 'raycast' },
   'mesh-shapes-raster': { model: 'mesh-shapes', mode: 'raster' },
+  'mesh-shapes-raycast': { model: 'mesh-shapes', mode: 'raycast' },
+  'render-order-raster': { model: 'render-order', mode: 'raster' },
+  'render-order-raycast': { model: 'render-order', mode: 'raycast' },
 });
 
 /** The `variant` query parameter, looked up as an own key only (so `constructor` or `__proto__` are unknown). */

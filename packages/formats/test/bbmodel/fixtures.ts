@@ -19,6 +19,7 @@ export const FIXTURE_NAMES = [
   'mesh-shapes',
   'mesh-plane',
   'alpha-plane',
+  'render-order',
 ] as const;
 
 export type FixtureName = (typeof FIXTURE_NAMES)[number];

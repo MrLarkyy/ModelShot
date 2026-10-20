@@ -1,8 +1,6 @@
 // The material table both model-view renderers read. The alpha rule is resolveMaterialAlpha / texelCoverage of
 // @modelshot/scene: below the cutoff a texel is invisible to camera and shadow rays alike. Partial texels never reach
-// these shaders (sceneUpload.ts rejects them).
-const int MAX_MATERIALS = 8;
-const int MODE_OPAQUE = 0;
+// these shaders (sceneUpload.ts rejects them). MAX_MATERIALS and MODE_* are #defines from modelShaderDefines.ts.
 
 uniform sampler2DArray u_textures;
 uniform int u_materialLayer[MAX_MATERIALS];

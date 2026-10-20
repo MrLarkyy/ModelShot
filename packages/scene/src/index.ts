@@ -16,6 +16,7 @@ export {
   mat4TransformPoint,
   type Mat4,
 } from './Mat4';
+export { RENDER_ORDER_TIE_DISTANCE } from './renderOrder';
 export { SCENE_FORMAT_VERSION, type SceneDocument, type SceneSource } from './SceneDocument';
 export type { SceneAlphaMode, SceneMaterial } from './SceneMaterial';
 export type { SceneMesh, SceneMeshGroup } from './SceneMesh';

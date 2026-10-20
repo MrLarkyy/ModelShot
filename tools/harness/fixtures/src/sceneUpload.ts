@@ -1,9 +1,10 @@
 import { resolveMaterialAlpha, texelCoverage, type SceneDocument } from '@modelshot/scene';
 
-/** Must equal `MAX_MATERIALS` in `shaders/include/texelAlpha.glsl`. */
+/** Slots of the shaders' material table and texture layers; the shaders get it as a `#define`. */
 export const MAX_MATERIALS = 8;
 
-const MODE_CODES = { opaque: 0, mask: 1, blend: 2 } as const;
+/** Alpha mode codes of the material table, shared with the shaders as `#define`s. */
+export const MODE_CODES = { opaque: 0, mask: 1, blend: 2 } as const;
 
 /** One slot of the shaders' material table; slot 0 is untextured, slot `m + 1` scene material `m`. */
 export interface DrawMaterial {
@@ -29,11 +30,7 @@ export interface UploadedTextures {
  * a partially transparent texel under a blended material: this fixture draws cutout alpha only.
  */
 export async function uploadTextures(gl: WebGL2RenderingContext, scene: SceneDocument): Promise<UploadedTextures> {
-  if (scene.materials.length + 1 > MAX_MATERIALS) {
-    throw new Error(
-      `the model-view fixture supports ${MAX_MATERIALS - 1} materials, the model has ${scene.materials.length}`,
-    );
-  }
+  checkTableLimits(scene);
   const bitmaps = await Promise.all(
     scene.textures.map(async (texture) => {
       if (!texture.bytes) throw new Error(`texture "${texture.name}" is missing`);
@@ -99,6 +96,23 @@ export async function uploadTextures(gl: WebGL2RenderingContext, scene: SceneDoc
     materials.push({ layer: layerPixels ? material.texture : -1, mode: MODE_CODES[rule.mode], cutoff: rule.cutoff });
   });
   return { texture, sizes, pixels, materials };
+}
+
+/**
+ * The shaders' tables have `MAX_MATERIALS` slots: slot 0 is untextured, so at most `MAX_MATERIALS − 1` materials,
+ * and one texture layer size per slot, so at most `MAX_MATERIALS` textures.
+ */
+export function checkTableLimits(scene: Pick<SceneDocument, 'materials' | 'textures'>): void {
+  if (scene.materials.length > MAX_MATERIALS - 1) {
+    throw new Error(
+      `the model-view fixture supports ${MAX_MATERIALS - 1} materials, the model has ${scene.materials.length}`,
+    );
+  }
+  if (scene.textures.length > MAX_MATERIALS) {
+    throw new Error(
+      `the model-view fixture supports ${MAX_MATERIALS} textures, the model has ${scene.textures.length}`,
+    );
+  }
 }
 
 function readLayer(gl: WebGL2RenderingContext, texture: WebGLTexture, layer: number, width: number, height: number) {

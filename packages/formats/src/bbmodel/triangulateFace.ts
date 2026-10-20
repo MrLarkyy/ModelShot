@@ -36,6 +36,19 @@ export function triangulateFace(points: readonly Vec3[]): FaceTriangulation {
 }
 
 /**
+ * Blockbench's own face normal (`MeshFace.getNormal(true)`): the unit `(s1 − s0) × (s2 − s0)` of its vertex loop, or
+ * `[0, 0, 0]` for a degenerate face. Smooth shading averages these, so it is kept separate from the Newell normal.
+ */
+export function blockbenchFaceNormal(points: readonly Vec3[]): Vec3 {
+  if (points.length < 3) return ZERO;
+  const loop = points.length === 4 ? blockbenchQuadOrder(points) : [0, 1, 2];
+  const [s0, s1, s2] = loop.map((i) => points[i] ?? ZERO) as [Vec3, Vec3, Vec3];
+  const n = cross(sub(s1, s0), sub(s2, s0));
+  const length = Math.hypot(n[0], n[1], n[2]);
+  return length > 0 ? [n[0] / length, n[1] / length, n[2] / length] : ZERO;
+}
+
+/**
  * Blockbench's `MeshFace.getSortedVertices`: if point 3 lies across the line 1–2 from point 0 the loop is 2, 0, 1, 3;
  * else if it lies across the line 0–1 from point 2 it is 0, 2, 1, 3; otherwise the stored order is the loop.
  */

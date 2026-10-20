@@ -12,6 +12,11 @@ import {
 } from '../fixtures/src/modelViewCamera';
 import { parseModelViewVariant } from '../fixtures/src/modelViewVariant';
 import { sceneTriangles } from '../fixtures/src/sceneTriangles';
+import { RENDER_ORDER_TIE_DISTANCE } from '@modelshot/scene';
+import texelAlpha from '../fixtures/shaders/include/texelAlpha.glsl?raw';
+import raycast from '../fixtures/shaders/raycast.frag.glsl?raw';
+import { MODEL_SHADER_DEFINES } from '../fixtures/src/modelShaderDefines';
+import { checkTableLimits, MAX_MATERIALS, MODE_CODES } from '../fixtures/src/sceneUpload';
 import { buildShader } from '../fixtures/src/shaderSource';
 
 describe('buildShader', () => {
@@ -25,6 +30,44 @@ describe('buildShader', () => {
     expect(shader.startsWith('#version 300 es\nprecision highp float;')).toBe(true);
   });
 
+  it('puts #defines right after the version line, ints as ints and floats with a decimal point', () => {
+    const shader = buildShader('#version 300 es\nvoid main() {}', ['// a'], {
+      COUNT: { int: 8 },
+      ONE: { float: 1 },
+      TIE: { float: 1e-3 },
+    });
+    expect(shader.split('\n').slice(0, 5)).toEqual([
+      '#version 300 es',
+      '#define COUNT 8',
+      '#define ONE 1.0',
+      '#define TIE 0.001',
+      '// a',
+    ]);
+  });
+
+  it('rejects a bad define name or value', () => {
+    expect(() => buildShader('#version 300 es\n', [], { lower: { int: 1 } })).toThrow(/must match/);
+    expect(() => buildShader('#version 300 es\n', [], { X: { int: 1.5 } })).toThrow(/integer/);
+    expect(() => buildShader('#version 300 es\n', [], { X: { float: NaN } })).toThrow(/finite/);
+  });
+
+  it('the model shaders take their shared constants only from the defines', () => {
+    expect(MODEL_SHADER_DEFINES).toEqual({
+      MAX_MATERIALS: { int: MAX_MATERIALS },
+      MODE_OPAQUE: { int: MODE_CODES.opaque },
+      MODE_MASK: { int: MODE_CODES.mask },
+      MODE_BLEND: { int: MODE_CODES.blend },
+      RENDER_ORDER_TIE: { float: RENDER_ORDER_TIE_DISTANCE },
+    });
+    for (const source of [texelAlpha, raycast]) {
+      for (const name of Object.keys(MODEL_SHADER_DEFINES)) {
+        expect(source, name).not.toMatch(new RegExp(`(const\\s+\\w+\\s+${name}\\b|#define\\s+${name}\\b)`));
+      }
+    }
+    expect(texelAlpha).toMatch(/MAX_MATERIALS/);
+    expect(raycast).toMatch(/RENDER_ORDER_TIE/);
+  });
+
   it('rejects a stage without the version line and an include that declares one', () => {
     expect(() => buildShader('void main() {}', [])).toThrow(/must start with/);
     expect(() => buildShader('\n#version 300 es\n', [])).toThrow(/must start with/);
@@ -33,10 +76,13 @@ describe('buildShader', () => {
 });
 
 describe('parseModelViewVariant', () => {
-  it('knows the three variants', () => {
+  it('knows the six variants', () => {
     expect(parseModelViewVariant('?variant=alpha-plane-raster')).toEqual({ model: 'alpha-plane', mode: 'raster' });
     expect(parseModelViewVariant('?variant=alpha-plane-raycast')).toEqual({ model: 'alpha-plane', mode: 'raycast' });
     expect(parseModelViewVariant('?variant=mesh-shapes-raster')).toEqual({ model: 'mesh-shapes', mode: 'raster' });
+    expect(parseModelViewVariant('?variant=mesh-shapes-raycast')).toEqual({ model: 'mesh-shapes', mode: 'raycast' });
+    expect(parseModelViewVariant('?variant=render-order-raster')).toEqual({ model: 'render-order', mode: 'raster' });
+    expect(parseModelViewVariant('?variant=render-order-raycast')).toEqual({ model: 'render-order', mode: 'raycast' });
   });
 
   it.each(['?variant=constructor', '?variant=__proto__', '?variant=toString', '?variant=', '', '?model=alpha-plane'])(
@@ -86,5 +132,21 @@ describe('sceneTriangles', () => {
     });
     // e = (0, 19, −6) before the group's −20° about X: 19 cos 20°.
     expect(Math.max(...ys)).toBeCloseTo(19 * Math.cos(Math.PI / 9), 4);
+  });
+});
+
+describe('checkTableLimits', () => {
+  const named = (count: number) => Array.from({ length: count }, (_, i) => ({ name: String(i) }));
+  it('allows MAX_MATERIALS − 1 materials and MAX_MATERIALS textures', () => {
+    const materials = named(MAX_MATERIALS - 1).map((m, i) => ({ ...m, texture: i }));
+    const textures = named(MAX_MATERIALS) as never[];
+    expect(() => checkTableLimits({ materials, textures })).not.toThrow();
+  });
+
+  it('rejects one material or one texture more, with a clear message', () => {
+    const materials = named(MAX_MATERIALS).map((m, i) => ({ ...m, texture: i }));
+    expect(() => checkTableLimits({ materials, textures: [] })).toThrow(/supports 7 materials, the model has 8/);
+    const textures = named(MAX_MATERIALS + 1) as never[];
+    expect(() => checkTableLimits({ materials: [], textures })).toThrow(/supports 8 textures, the model has 9/);
   });
 });

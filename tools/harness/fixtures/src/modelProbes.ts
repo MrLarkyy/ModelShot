@@ -11,6 +11,8 @@ export interface ProbeRequest {
   readonly uv: readonly [number, number];
   /** Height of the horizontal receiver: the probe is where the light ray through the point meets it. */
   readonly groundY?: number;
+  /** Only triangles whose front faces the light (on a flat cube, the face that casts the shadow). */
+  readonly facesLight?: boolean;
 }
 
 /**
@@ -47,6 +49,7 @@ function locate(scene: SceneDocument, triangles: SceneTriangles, request: ProbeR
     const material = scene.materials[(triangles.materials[t] ?? 0) - 1];
     const texture = material ? scene.textures[material.texture] : undefined;
     if (!material || !texture) continue;
+    if (request.facesLight && !facesLight(triangles, t)) continue;
     const target: [number, number] = [request.uv[0] / texture.uvWidth, request.uv[1] / texture.uvHeight];
     const uv = (c: number): [number, number] => [
       triangles.uvs[t * 6 + c * 2] ?? 0,
@@ -60,6 +63,16 @@ function locate(scene: SceneDocument, triangles: SceneTriangles, request: ProbeR
     return { point, layer: material.texture, uv: target };
   }
   return undefined;
+}
+
+function facesLight(triangles: SceneTriangles, t: number): boolean {
+  const p = (c: number, k: number): number => triangles.positions[t * 9 + c * 3 + k] ?? 0;
+  const e1 = [0, 1, 2].map((k) => p(1, k) - p(0, k));
+  const e2 = [0, 1, 2].map((k) => p(2, k) - p(0, k));
+  const [x1 = 0, y1 = 0, z1 = 0] = e1;
+  const [x2 = 0, y2 = 0, z2 = 0] = e2;
+  const n = [y1 * z2 - z1 * y2, z1 * x2 - x1 * z2, x1 * y2 - y1 * x2];
+  return n.reduce((sum, value, k) => sum + value * (MODEL_VIEW_LOOK.toLight[k] ?? 0), 0) > 0;
 }
 
 function barycentric(

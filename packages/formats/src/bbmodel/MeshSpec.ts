@@ -19,7 +19,9 @@ import { readRenderOrder } from './RenderOrder';
 
 /** One drawable face (3 or more vertices) of a mesh element. */
 export interface MeshFaceSpec {
-  /** Positions relative to the mesh `origin`, in the order the file lists the face's vertices. */
+  /** Vertex keys, in the order the file lists them. */
+  readonly keys: readonly string[];
+  /** Positions relative to the mesh `origin`, one per key. */
   readonly positions: readonly Vec3[];
   /** UV of each position, in uv units of `uvWidth` × `uvHeight`. */
   readonly uvs: readonly (readonly [number, number])[];
@@ -38,8 +40,12 @@ export interface MeshSpec {
   readonly origin: Vec3;
   readonly rotation: Vec3;
   readonly renderOrder: number;
+  /** Blockbench `shading`: `flat` gives every face its own normal, `smooth` averages them per vertex key. */
+  readonly shading: MeshShading;
   readonly faces: readonly MeshFaceSpec[];
 }
+
+export type MeshShading = 'flat' | 'smooth';
 
 const ZERO: Vec3 = [0, 0, 0];
 
@@ -73,6 +79,7 @@ export function readMesh(element: JsonObject, path: string, context: ConverterCo
     origin: readOptionalVec3(element, 'origin', path, ZERO),
     rotation: readOptionalVec3(element, 'rotation', path, ZERO),
     renderOrder: readRenderOrder(element, path, context.warnings),
+    shading: readShading(element, path, context),
     faces,
   };
 }
@@ -85,6 +92,19 @@ export function meshTriangleCount(mesh: MeshSpec): number {
 /** Upper bound of the vertices: every face has its own. */
 export function meshVertexCount(mesh: MeshSpec): number {
   return mesh.faces.reduce((sum, face) => sum + face.positions.length, 0);
+}
+
+/** Absent: `flat`; an unknown string warns and counts as `flat`; anything else is `INVALID_FIELD`. */
+function readShading(element: JsonObject, path: string, context: ConverterContext): MeshShading {
+  const value = field(element, 'shading');
+  if (value === undefined) return 'flat';
+  const valuePath = childPath(path, 'shading');
+  if (typeof value !== 'string') {
+    throw new BbmodelError('INVALID_FIELD', valuePath, `expected flat or smooth, got ${quoteValue(value)}`);
+  }
+  if (value === 'flat' || value === 'smooth') return value;
+  context.warnings.add('UNSUPPORTED_VALUE', valuePath, `${quoteValue(value)} is not flat or smooth; using flat`);
+  return 'flat';
 }
 
 function readVertices(element: JsonObject, path: string, context: ConverterContext): Map<string, Vec3> {
@@ -156,6 +176,7 @@ function readFace(
   });
   const uvSize = material >= 0 ? context.textureUvSizes[material] : context.resolution;
   return {
+    keys,
     positions: keys.map((key) => vertices.get(key) ?? ZERO),
     uvs,
     material,

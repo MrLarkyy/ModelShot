@@ -456,6 +456,7 @@ describe('hostile meshes fail fast with a coded error', () => {
       '$.elements[0].faces.f.texture',
     ],
     ['render_order a number', meshModel({ render_order: 1 }), 'INVALID_FIELD', '$.elements[0].render_order'],
+    ['shading a boolean', meshModel({ shading: true }), 'INVALID_FIELD', '$.elements[0].shading'],
     [
       'render_order of a cube an object',
       json(model({ elements: [cube({ render_order: {} })] })),

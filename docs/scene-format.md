@@ -67,15 +67,21 @@ Also `name`, `sourceId`, `node` (owning node, −1 for the model root with an id
 A group `{ material, start, count, doubleSided? }` is a run of `count` indices from `start` drawn with one material
 (−1: none, the renderer's default) and one sidedness:
 
-- `doubleSided` absent or `false`: camera rays see only the front (counter-clockwise) side; the back is not drawn.
-- `doubleSided: true`: the back shows the same texels, mirrored as seen from behind (the UVs are the front's), and
-  the normal is flipped toward the viewer or ray before shading.
-- Shadow rays (and ambient-occlusion rays) are blocked by both sides of every face, single-sided or not, so light
-  never leaks through a single-sided wall seen from behind.
+- `doubleSided` absent or `false` (glTF's meaning): the face has only its front (counter-clockwise) side, for
+  **every** kind of ray. A ray that meets the back passes through, as if the face were not there:
+  - camera rays (and a rasteriser's camera pass): the back is not drawn;
+  - shadow rays count as travelling **from the light**: a face casts a shadow only if its front faces the light (a
+    rasteriser culls back faces as seen from the light in its shadow pass);
+  - ambient-occlusion and path-tracing rays: only a hit on the front counts.
+- `doubleSided: true`: both sides, for every ray. The back shows the same texels, mirrored as seen from behind (the
+  UVs are the front's), and the normal is flipped toward the viewer or ray before shading.
 
-`renderOrder` (an integer, absent: 0) only breaks ties between surfaces at the same depth or hit distance: the
-higher one wins. It never shows a surface through a nearer opaque one, and it is the same rule in the realtime
-renderer and the path tracer.
+`renderOrder` (an integer, absent: 0) only breaks ties between coincident surfaces: two hits whose distances along
+the ray differ by at most `RENDER_ORDER_TIE_DISTANCE` (0.001 units, exported by `@modelshot/scene`) go to the higher
+order; at equal order, and for any hits farther apart, the nearer one wins. It never shows a surface through a
+nearer opaque one. A ray tracer applies the distance as is; a rasteriser draws in ascending order with a `LEQUAL`
+depth test and a per-order polygon offset, which separates coincident surfaces by much less than that distance. The
+realtime renderer and the path tracer use this one rule.
 
 Vertices are in **model rest space**: the source element's own rotation is already applied, the owning node's world
 matrix is not. To draw a mesh, transform its vertices by `worldMatrices(nodes)[mesh.node]` (identity for −1).
@@ -122,7 +128,8 @@ ignore what they do not know). Anything else (a removed, renamed or retyped fiel
 convention above) bumps `SCENE_FORMAT_VERSION` and ships a migration from every older version.
 
 Added within version 1 (MS-12), each optional with the old meaning as its default: `SceneMaterial.alphaMode`
-(`opaque`) and `alphaCutoff` (0.5), `SceneMeshGroup.doubleSided` (`false`), `SceneMesh.renderOrder` (0). A
+(`opaque`) and `alphaCutoff` (0.5), `SceneMeshGroup.doubleSided` (`false`), `SceneMesh.renderOrder` (0), and the
+exports `resolveMaterialAlpha`, `texelCoverage`, `DEFAULT_ALPHA_CUTOFF` and `RENDER_ORDER_TIE_DISTANCE`. A
 consumer that ignores them draws every material opaque, every face single-sided and ignores render order, which is
 what a version-1 document meant before.
 

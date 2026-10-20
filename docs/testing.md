@@ -55,37 +55,56 @@ imported statically; the URL only picks one of the variants below, looked up as 
 light and look (`fixtures/src/modelViewCamera.ts`), in two independent ways that read the same material table and
 shading include:
 
-- `raster`: an orthographic depth-only pass from the light (DEPTH_COMPONENT24, 1024², alpha-tested, no culling, slope
-  polygon offset), then the camera pass with culling off for double-sided runs, alpha discard, a `gl_FrontFacing`
-  normal flip and a hard shadow-map lookup.
+- `raster`: an orthographic depth-only pass from the light (DEPTH_COMPONENT24, 1024², alpha-tested, slope polygon
+  offset, back faces of single-sided runs culled as seen from the light), then the camera pass with the same culling,
+  alpha discard, a `gl_FrontFacing` normal flip, a hard shadow-map lookup, and runs drawn in ascending render order
+  with `LEQUAL` and a per-order polygon offset (factor −1, units −4 per order step).
 - `raycast`: per pixel centre, a camera ray to the nearest triangle whose texel passes the alpha test
-  (single-sided triangles only from the front, render order breaks depth ties), then one shadow ray that any
-  alpha-passing triangle blocks. Triangles live in an RGBA32F data texture (at most 256, checked against
-  `MAX_TEXTURE_SIZE`).
+  (single-sided triangles only from the front; hits within `RENDER_ORDER_TIE_DISTANCE` go to the higher render
+  order), shaded with the barycentric vertex normal, then one shadow ray toward the light that an alpha-passing
+  triangle blocks (a single-sided one only if its front faces the light). Triangles and their vertex normals live in
+  an RGBA32F data texture (at most 256, checked against `MAX_TEXTURE_SIZE`).
 
 Textures are decoded with `createImageBitmap(…, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' })`,
 uploaded unflipped and unpremultiplied into a NEAREST `TEXTURE_2D_ARRAY` without mipmaps, and read back; a
 partially transparent texel under a blended material fails the page with a clear error (partial alpha is drawn by the
 product renderers, MS-14 and MS-17). Shaders are static `.glsl` files joined by `fixtures/src/shaderSource.ts`
-(`#version` line, then includes from `shaders/include/`, then the stage).
+(`#version` line, then `#define`s, then includes from `shaders/include/`, then the stage). Every constant the
+shaders share with TypeScript (`MAX_MATERIALS`, `MODE_*`, `RENDER_ORDER_TIE`) is such a `#define` from
+`fixtures/src/modelShaderDefines.ts`, so it has one source; a model with more materials or textures than the tables
+hold fails with a clear error.
 
-| variant               | golden                    | checks                                                                        |
-| --------------------- | ------------------------- | ----------------------------------------------------------------------------- |
-| `alpha-plane-raster`  | `alpha-plane-raster.png`  | golden; probes                                                                |
-| `alpha-plane-raycast` | `alpha-plane-raycast.png` | golden; probes; byte-identical re-render                                      |
-| `mesh-shapes-raster`  | `mesh-shapes-raster.png`  | golden (triangle, out-of-order quad, n-gons, null-texture face, rotated mesh) |
+| variant                | golden                     | checks                                                                                           |
+| ---------------------- | -------------------------- | ------------------------------------------------------------------------------------------------ |
+| `alpha-plane-raster`   | `alpha-plane-raster.png`   | golden; probes; pair                                                                             |
+| `alpha-plane-raycast`  | `alpha-plane-raycast.png`  | golden; probes; pair; byte-identical re-render                                                   |
+| `mesh-shapes-raster`   | `mesh-shapes-raster.png`   | golden (triangle, out-of-order quad, n-gons, null-texture face, rotated mesh, smooth arch); pair |
+| `mesh-shapes-raycast`  | `mesh-shapes-raycast.png`  | golden; pair                                                                                     |
+| `render-order-raster`  | `render-order-raster.png`  | golden; render-order probes; pair                                                                |
+| `render-order-raycast` | `render-order-raycast.png` | golden; render-order probes; pair                                                                |
 
 The page publishes `probes`: pixels of chosen texels of the cutout plane (and of their shadows on the ground,
 following the light ray) and of the plane seen from behind, with the texel colour. `modelView.spec.ts` checks that the
 opaque texel shows the plane, the transparent texel shows the ground, the ground under the transparent texel is lit
-and under the opaque one shadowed, and the back side shows the same texel at its mirrored place.
+and under the opaque one shadowed, the back side shows the same texel at its mirrored place, and on the flat cube
+(two coincident single-sided faces) light through a hole of the face toward the light reaches the ground while an
+opaque texel of it shadows it. In `render-order`, two pairs of coincident quads (split along different diagonals, so
+their depths differ by rounding only) show the higher order's texel: `in_front` over `default`, `default` over
+`behind`.
 
-**Pair test**: the raster and raycast images of `alpha-plane` are compared with `MODEL_VIEW_PAIR_TOLERANCE`
-(`threshold 0.1`, `maxDiffRatio 0.0025`, `maxMeanDelta 0.25`). Measured on SwiftShader (local Windows dev machine,
-deterministic, same on re-runs): 125 differing pixels of 65 536 (ratio 0.0019), mean delta 0.13 levels, all on
-silhouette, texel and shadow edges where a pixel centre is within a rounding error of an edge. The measured values of a
-run are in `tools/harness/test-results/model-view-pair.json`. Dropping the alpha test from the shadow pass alone
-changes about 2 000 pixels; the tolerance is never widened to make the pair pass.
+**Pair tests**: the raster and raycast images of each model are compared with its `MODEL_VIEW_PAIR_TOLERANCE`
+entry (`threshold 0.1` throughout). Measured on SwiftShader (local Windows dev machine, deterministic, same on
+re-runs), differing pixels of 65 536, all on silhouette, texel and shadow edges:
+
+| model          | measured: pixels, ratio, mean delta | limit: `maxDiffRatio`, `maxMeanDelta` |
+| -------------- | ----------------------------------- | ------------------------------------- |
+| `alpha-plane`  | 124, 0.00189, 0.133                 | 0.0025, 0.25                          |
+| `mesh-shapes`  | 62, 0.00095, 0.066                  | 0.00125, 0.1                          |
+| `render-order` | 28, 0.00043, 0.032                  | 0.0006, 0.05                          |
+
+The measured values of a run are in `tools/harness/test-results/model-view-pair-<model>.json`. Dropping the alpha test
+from the shadow pass alone changes about 2 000 pixels of `alpha-plane`, dropping the render-order polygon offset about
+2 200 of `render-order`; a tolerance is never widened to make a pair pass.
 
 ## Budgets
 

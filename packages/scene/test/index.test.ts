@@ -10,5 +10,6 @@ describe('@modelshot/scene', () => {
     expect(typeof scene.resolveMaterialAlpha).toBe('function');
     expect(typeof scene.texelCoverage).toBe('function');
     expect(scene.DEFAULT_ALPHA_CUTOFF).toBe(0.5);
+    expect(scene.RENDER_ORDER_TIE_DISTANCE).toBe(1e-3);
   });
 });

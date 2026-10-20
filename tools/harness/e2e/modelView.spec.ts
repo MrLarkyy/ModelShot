@@ -2,7 +2,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import { PNG } from 'pngjs';
-import { compareImages } from '../src/compareImages';
+import { compareImages, type CompareOptions } from '../src/compareImages';
 import { expectGolden, openFixture, renderFixture } from '../src/expectGolden';
 import type { RasterGoldenSpec } from '../src/goldenSpec';
 import { expect, test } from '../src/harnessTest';
@@ -12,20 +12,45 @@ const variant = (name: string): RasterGoldenSpec => ({ kind: 'raster', fixture: 
 const alphaRaster = variant('alpha-plane-raster');
 const alphaRaycast = variant('alpha-plane-raycast');
 const meshRaster = variant('mesh-shapes-raster');
+const meshRaycast = variant('mesh-shapes-raycast');
+const orderRaster = variant('render-order-raster');
+const orderRaycast = variant('render-order-raycast');
 
 /**
- * The raster (shadow map, rasterised edges) and the raycast (exact rays) renders of alpha-plane differ only where a
- * pixel centre sits within a rounding error of a silhouette, a texel edge or a shadow edge. Measured on SwiftShader
- * (docs/testing.md): 125 of 65 536 pixels (ratio 0.0019), mean delta 0.13 levels; the limits leave about 30 %
- * headroom for that count. Never widened to make the pair pass: a real difference (a cutout texel shown or casting
- * a shadow in one path only) changes hundreds of pixels per texel block.
+ * Raster (shadow map, rasterised edges) and raycast (exact rays) renders of the same model differ only where a pixel
+ * centre sits within a rounding error of a silhouette, a texel edge or a shadow edge. Each limit is the measured
+ * difference on SwiftShader (docs/testing.md) with headroom for that count only. Never widened to make a pair pass: a
+ * real difference (a cutout texel shown or casting a shadow in one path only, a lost tie) changes hundreds of pixels.
  */
-const MODEL_VIEW_PAIR_TOLERANCE = {
-  threshold: 0.1,
-  maxDiffRatio: 0.0025,
-  maxMeanDelta: 0.25,
-  reason: 'raster vs raycast differ only on edge pixels (shadow-map texels, rasterisation rules)',
-} as const;
+const MODEL_VIEW_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions & { reason: string }>> = {
+  // Measured 124 of 65 536 pixels (ratio 0.00189), mean delta 0.133.
+  'alpha-plane': {
+    threshold: 0.1,
+    maxDiffRatio: 0.0025,
+    maxMeanDelta: 0.25,
+    reason: 'edge pixels only (shadow-map texels, rasterisation rules)',
+  },
+  // Measured 62 pixels (ratio 0.00095), mean delta 0.066.
+  'mesh-shapes': {
+    threshold: 0.1,
+    maxDiffRatio: 0.00125,
+    maxMeanDelta: 0.1,
+    reason: 'edge pixels only (shadow-map texels, rasterisation rules)',
+  },
+  // Measured 28 pixels (ratio 0.00043), mean delta 0.032.
+  'render-order': {
+    threshold: 0.1,
+    maxDiffRatio: 0.0006,
+    maxMeanDelta: 0.05,
+    reason: 'edge pixels only (shadow-map texels, rasterisation rules)',
+  },
+};
+
+const PAIRS: readonly [string, RasterGoldenSpec, RasterGoldenSpec][] = [
+  ['alpha-plane', alphaRaster, alphaRaycast],
+  ['mesh-shapes', meshRaster, meshRaycast],
+  ['render-order', orderRaster, orderRaycast],
+];
 
 async function render(
   page: Page,
@@ -33,6 +58,9 @@ async function render(
 ): Promise<{ png: PNG; buffer: Buffer; probes: ModelViewProbe[] }> {
   const { png } = await renderFixture(page, spec);
   const probes = await page.evaluate(() => window.__msFixture?.probes ?? []);
+  const body = JSON.stringify(probes);
+  await test.info().attach(`${spec.name}-probes`, { body, contentType: 'application/json' });
+  writeFileSync(join(test.info().project.outputDir, `${spec.name}-probes.json`), body);
   return { png: PNG.sync.read(png), buffer: png, probes };
 }
 
@@ -45,8 +73,14 @@ function pixel(png: PNG, probe: ModelViewProbe | undefined): [number, number, nu
 
 const luminance = ([r, g, b]: readonly number[]): number => 0.2126 * (r ?? 0) + 0.7152 * (g ?? 0) + 0.0722 * (b ?? 0);
 
+/** Cosine between two RGB colours: lighting scales a texel's colour, so its direction stays. */
+function hueMatch(a: readonly number[], b: readonly number[]): number {
+  const dot = [0, 1, 2].reduce((s, k) => s + (a[k] ?? 0) * (b[k] ?? 0), 0);
+  return dot / (Math.hypot(a[0] ?? 0, a[1] ?? 0, a[2] ?? 0) * Math.hypot(b[0] ?? 0, b[1] ?? 0, b[2] ?? 0));
+}
+
 test.describe('model-view fixture', () => {
-  for (const spec of [alphaRaster, alphaRaycast, meshRaster]) {
+  for (const spec of [alphaRaster, alphaRaycast, meshRaster, meshRaycast, orderRaster, orderRaycast]) {
     test(`${spec.name} matches its golden`, async ({ page }, testInfo) => {
       await expectGolden(page, testInfo, spec);
     });
@@ -55,7 +89,6 @@ test.describe('model-view fixture', () => {
   for (const spec of [alphaRaster, alphaRaycast]) {
     test(`${spec.name}: a cutout plane shows and shadows only its opaque texels`, async ({ page }) => {
       const { png, probes } = await render(page, spec);
-      await test.info().attach('probes', { body: JSON.stringify(probes), contentType: 'application/json' });
       const at = (name: string) => probes.find((p) => p.name === name);
       expect(probes.map((p) => p.name)).toEqual([
         'opaque-texel',
@@ -63,10 +96,14 @@ test.describe('model-view fixture', () => {
         'shadow-of-opaque-texel',
         'shadow-of-transparent-texel',
         'back-side-texel',
+        'flat-shadow-of-opaque-texel',
+        'flat-shadow-of-transparent-texel',
       ]);
       // The texture: opaque red at the opaque probe, alpha 0 (with pure green RGB) at the transparent one.
       expect(at('opaque-texel')?.texel).toEqual([220, 50, 40, 255]);
       expect(at('transparent-texel')?.texel).toEqual([0, 255, 0, 0]);
+      expect(at('flat-shadow-of-opaque-texel')?.texel).toEqual([40, 90, 220, 255]);
+      expect(at('flat-shadow-of-transparent-texel')?.texel).toEqual([0, 255, 0, 0]);
 
       const [r, g, b] = pixel(png, at('opaque-texel'));
       expect(r, 'the opaque texel shows the plane').toBeGreaterThan(2 * Math.max(g, b));
@@ -80,27 +117,56 @@ test.describe('model-view fixture', () => {
       expect(luminance(dark), 'the opaque texel shadows the ground').toBeLessThan(0.6 * luminance(lit));
       const [br, bg, bb] = pixel(png, at('back-side-texel'));
       expect(br, 'from behind, the face shows the same texel, mirrored').toBeGreaterThan(2 * Math.max(bg, bb));
+
+      // Flat cube: only the face toward the light casts; the coincident face behind it must not fill its holes.
+      const flatLit = pixel(png, at('flat-shadow-of-transparent-texel'));
+      const flatDark = pixel(png, at('flat-shadow-of-opaque-texel'));
+      expect(luminance(flatLit), 'light through a flat-cube hole lights the ground').toBeGreaterThan(120);
+      expect(luminance(flatDark), 'an opaque flat-cube texel shadows it').toBeLessThan(0.6 * luminance(flatLit));
     });
   }
 
-  test('raster and raycast renders agree within MODEL_VIEW_PAIR_TOLERANCE', async ({ page }, testInfo) => {
-    const raster = await render(page, alphaRaster);
-    const raycast = await render(page, alphaRaycast);
-    const result = compareImages(raster.buffer, raycast.buffer, MODEL_VIEW_PAIR_TOLERANCE);
-    const measured = JSON.stringify({
-      diffPixels: result.diffPixels,
-      ratio: result.ratio,
-      meanDelta: result.meanDelta,
+  for (const spec of [orderRaster, orderRaycast]) {
+    test(`${spec.name}: the higher render order wins on coincident faces`, async ({ page }) => {
+      const { png, probes } = await render(page, spec);
+      const at = (name: string) => probes.find((p) => p.name === name);
+      for (const [winner, loser] of [
+        ['in-front', 'under-in-front'],
+        ['over-behind', 'behind'],
+      ] as const) {
+        const shown = pixel(png, at(winner));
+        const winnerTexel = at(winner)?.texel ?? [];
+        const loserTexel = at(loser)?.texel ?? [];
+        expect(hueMatch(winnerTexel, loserTexel), 'the two faces differ there').toBeLessThan(0.8);
+        expect(hueMatch(shown, winnerTexel), `${winner} is shown`).toBeGreaterThan(0.995);
+      }
     });
-    await testInfo.attach('model-view-pair', { body: measured, contentType: 'application/json' });
-    writeFileSync(join(testInfo.project.outputDir, 'model-view-pair.json'), measured);
-    if (!result.pass) {
-      const diff = join(testInfo.outputDir, 'model-view-pair-diff.png');
-      writeFileSync(diff, result.diffPng);
-      await testInfo.attach('model-view-pair-diff', { path: diff, contentType: 'image/png' });
-    }
-    expect(result.pass, `raster vs raycast: ${measured}`).toBe(true);
-  });
+  }
+
+  for (const [model, raster, raycast] of PAIRS) {
+    test(`${model}: raster and raycast renders agree within MODEL_VIEW_PAIR_TOLERANCE`, async ({ page }, testInfo) => {
+      const tolerance = MODEL_VIEW_PAIR_TOLERANCE[model];
+      if (!tolerance) throw new Error(`no pair tolerance for ${model}`);
+      const result = compareImages(
+        (await render(page, raster)).buffer,
+        (await render(page, raycast)).buffer,
+        tolerance,
+      );
+      const measured = JSON.stringify({
+        diffPixels: result.diffPixels,
+        ratio: result.ratio,
+        meanDelta: result.meanDelta,
+      });
+      await testInfo.attach(`${model}-pair`, { body: measured, contentType: 'application/json' });
+      writeFileSync(join(testInfo.project.outputDir, `model-view-pair-${model}.json`), measured);
+      if (!result.pass) {
+        const diff = join(testInfo.outputDir, `${model}-pair-diff.png`);
+        writeFileSync(diff, result.diffPng);
+        await testInfo.attach(`${model}-pair-diff`, { path: diff, contentType: 'image/png' });
+      }
+      expect(result.pass, `${model} raster vs raycast: ${measured}`).toBe(true);
+    });
+  }
 
   test('the raycast variant re-renders byte-identically', async ({ page }) => {
     const first = await renderFixture(page, alphaRaycast);

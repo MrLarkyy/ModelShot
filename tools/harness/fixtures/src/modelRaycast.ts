@@ -8,15 +8,17 @@ import { MODEL_VIEW_LOOK, cameraViewProjection, invert } from './modelViewCamera
 import { setMaterialUniforms, setShadeUniforms } from './modelUniforms';
 import type { SceneTriangles } from './sceneTriangles';
 import type { UploadedTextures } from './sceneUpload';
+import { MODEL_SHADER_DEFINES } from './modelShaderDefines';
 import { buildShader } from './shaderSource';
 
 /** Brute force: every pixel tests every triangle, twice (camera ray, shadow ray). */
 export const MAX_RAYCAST_TRIANGLES = 256;
-const ROWS_PER_TRIANGLE = 6;
+const ROWS_PER_TRIANGLE = 9;
 
 /**
  * One camera ray through each pixel centre to the nearest hit whose texel passes the alpha test (single-sided faces
- * only from the front), then one shadow ray toward the light that any alpha-passing hit, from either side, blocks.
+ * only from the front; coincident hits by render order), shaded with the interpolated vertex normal, then one shadow
+ * ray toward the light blocked by any alpha-passing hit, single-sided faces only when their front faces the light.
  * Deterministic: no samples, no seed.
  */
 export function renderRaycast(
@@ -32,7 +34,7 @@ export function renderRaycast(
     );
   }
   const vertex = buildShader(vertexSource, []);
-  const fragment = buildShader(raycastSource, [precisionSource, texelAlphaSource, shadeSource]);
+  const fragment = buildShader(raycastSource, [precisionSource, texelAlphaSource, shadeSource], MODEL_SHADER_DEFINES);
   const program = createProgram(gl, vertex, fragment);
   const data = createTriangleTexture(gl, triangles);
   const viewProjection = cameraViewProjection(1);
@@ -70,6 +72,8 @@ function createTriangleTexture(gl: WebGL2RenderingContext, triangles: SceneTrian
     rows.set([...uv(0), ...uv(1)], base + 12);
     rows.set([...uv(2), 0, 0], base + 16);
     rows.set(triangles.rects.subarray(t * 4, t * 4 + 4), base + 20);
+    for (let c = 0; c < 3; c++)
+      rows.set([...triangles.normals.subarray(t * 9 + c * 3, t * 9 + c * 3 + 3), 0], base + 24 + c * 4);
   }
   const texture = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, texture);

@@ -4,9 +4,10 @@ export interface SceneMeshGroup {
   readonly start: number;
   readonly count: number;
   /**
-   * Absent or `false`: only the front (counter-clockwise) side is seen by camera rays. `true`: the back shows the same
-   * texels, mirrored as seen from behind, with the normal flipped toward the viewer or ray. Shadow rays are blocked by
-   * both sides either way.
+   * Absent or `false`: one-sided for every ray (camera, shadow, ambient occlusion, path tracing): a ray that meets the
+   * back passes through; a shadow ray counts as travelling from the light, so only a face whose front faces the light
+   * casts a shadow. `true`: both sides; the back shows the same texels, mirrored as seen from behind, with the normal
+   * flipped toward the viewer or ray.
    */
   readonly doubleSided?: boolean;
 }
@@ -24,8 +25,8 @@ export interface SceneMesh {
   /** `false` hides this mesh. */
   readonly visible: boolean;
   /**
-   * Integer, absent: 0. Only breaks ties between surfaces at the same depth or hit distance (the higher wins); it never
-   * shows a surface through a nearer opaque one.
+   * Integer, absent: 0. Only breaks ties between coincident surfaces (within `RENDER_ORDER_TIE_DISTANCE` along the
+   * ray; the higher wins); it never shows a surface through a nearer opaque one.
    */
   readonly renderOrder?: number;
   /** 3 floats per vertex. */
