@@ -110,7 +110,8 @@ async function start(): Promise<void> {
     lose: () =>
       new Promise((resolve, reject) => {
         if (!lose) return reject(new Error('WEBGL_lose_context is not available'));
-        canvas.addEventListener('webglcontextlost', () => resolve(), { once: true });
+        // Resolve on the next task: the browser allows restoreContext only after the lost event's dispatch ended.
+        canvas.addEventListener('webglcontextlost', () => setTimeout(resolve, 0), { once: true });
         lose.loseContext();
       }),
     restore: () =>

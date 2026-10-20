@@ -7,6 +7,7 @@ test('every fixture renders WebGL2 on SwiftShader and stays on the fixture origi
 
   const progressive = await openFixture(page, '/progressive.html?seed=1&samples=1');
   await openFixture(page, '/gradient.html');
+  await openFixture(page, '/rt.html');
   expect(progressive.floatRenderTargets).toBe(true);
   expect([...origins]).toEqual([new URL(baseURL!).origin]);
 });

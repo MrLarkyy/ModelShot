@@ -126,6 +126,21 @@ test('the float path uses MSAA and the fallback reports itself', async ({ page }
   expect(fallback.floatRenderTargets).toBe(true);
 });
 
+test('the fixture rejects unknown or malformed parameters', async ({ page }) => {
+  for (const [query, message] of [
+    ['variant=nope', /unknown variant/],
+    ['variant=constructor', /unknown variant/],
+    ['scene=toString', /unknown scene/],
+    ['yaw=abc', /query parameter yaw/],
+    ['zoom=0', /query parameter zoom/],
+    ['proj=fisheye', /query parameter proj/],
+    ['aa=2', /query parameter aa/],
+    ['size=0', /query parameter size/],
+  ] as const) {
+    await expect(openFixture(page, `/rt.html?${query}`), query).rejects.toThrow(message);
+  }
+});
+
 test('the same view renders byte-identical images', async ({ page }) => {
   const first = await renderFixture(page, TURNTABLE[1]!);
   const second = await renderFixture(page, TURNTABLE[1]!);
