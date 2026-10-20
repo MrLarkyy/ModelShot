@@ -166,6 +166,34 @@ describe('bindOrbitInput', () => {
     expect(kept.damping).toBe(true);
   });
 
+  it('follows changes of prefers-reduced-motion and stops listening on dispose', () => {
+    const listeners = new Set<(event: { matches: boolean }) => void>();
+    const query = {
+      matches: false,
+      addEventListener: (_: 'change', listener: (event: { matches: boolean }) => void) => listeners.add(listener),
+      removeEventListener: (_: 'change', listener: (event: { matches: boolean }) => void) => listeners.delete(listener),
+    };
+    const controller = new OrbitController({ damping: true });
+    const dispose = bindOrbitInput(new FakeElement(), controller, {
+      onChange: () => undefined,
+      matchMedia: () => query,
+    });
+    expect(controller.damping).toBe(true);
+    for (const listener of listeners) listener({ matches: true });
+    expect(controller.damping).toBe(false);
+    for (const listener of listeners) listener({ matches: false });
+    expect(controller.damping).toBe(true);
+    dispose();
+    expect(listeners.size).toBe(0);
+  });
+
+  it('keeps damping off for a controller created without it', () => {
+    const query = { matches: false, addEventListener: () => undefined, removeEventListener: () => undefined };
+    const controller = new OrbitController({ damping: false });
+    bindOrbitInput(new FakeElement(), controller, { onChange: () => undefined, matchMedia: () => query });
+    expect(controller.damping).toBe(false);
+  });
+
   it('dispose removes every listener', () => {
     const { element, controller, dispose, changes } = setup();
     expect(element.listenerCount).toBeGreaterThan(0);

@@ -56,6 +56,10 @@ const UNIT_BOUNDS: SceneBounds = {
 };
 
 const clamp = (value: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, value));
+/** Input from events or callers may be NaN or infinite; it is ignored so the camera stays defined. */
+const finite = (...values: number[]): boolean => values.every(Number.isFinite);
+const finiteOr = (value: number | undefined, fallback: number): number =>
+  value !== undefined && Number.isFinite(value) ? value : fallback;
 const copy = (s: OrbitState): OrbitState => ({ ...s, target: [...s.target] });
 
 /**
@@ -77,9 +81,9 @@ export class OrbitController {
   damping: boolean;
 
   constructor(options: OrbitControllerOptions = {}) {
-    this.initialYaw = options.yawDeg ?? DEFAULT_YAW_DEG;
-    this.initialPitch = clamp(options.pitchDeg ?? DEFAULT_PITCH_DEG, MIN_PITCH_DEG, MAX_PITCH_DEG);
-    this.fovYDeg = clamp(options.fovYDeg ?? DEFAULT_FOV_DEG, MIN_FOV_DEG, MAX_FOV_DEG);
+    this.initialYaw = finiteOr(options.yawDeg, DEFAULT_YAW_DEG);
+    this.initialPitch = clamp(finiteOr(options.pitchDeg, DEFAULT_PITCH_DEG), MIN_PITCH_DEG, MAX_PITCH_DEG);
+    this.fovYDeg = clamp(finiteOr(options.fovYDeg, DEFAULT_FOV_DEG), MIN_FOV_DEG, MAX_FOV_DEG);
     this.orthographic = options.projection === 'orthographic';
     this.damping = options.damping ?? true;
     this.dampingMs = options.dampingMs ?? DEFAULT_DAMPING_MS;
@@ -127,6 +131,7 @@ export class OrbitController {
 
   /** Re-frames from the current angles: the Blockbench isometric view keeps them, a reset restores them. */
   frame(yawDeg = this.goal.yawDeg, pitchDeg = this.goal.pitchDeg): void {
+    if (!finite(yawDeg, pitchDeg)) return;
     this.goal = this.fittedState(yawDeg, clamp(pitchDeg, MIN_PITCH_DEG, MAX_PITCH_DEG));
     if (!this.damping) this.current = copy(this.goal);
   }
@@ -138,12 +143,14 @@ export class OrbitController {
   }
 
   rotate(deltaYawDeg: number, deltaPitchDeg: number): void {
+    if (!finite(deltaYawDeg, deltaPitchDeg)) return;
     this.goal.yawDeg += deltaYawDeg;
     this.goal.pitchDeg = clamp(this.goal.pitchDeg + deltaPitchDeg, MIN_PITCH_DEG, MAX_PITCH_DEG);
     this.settle();
   }
 
   setAngles(yawDeg: number, pitchDeg: number): void {
+    if (!finite(yawDeg, pitchDeg)) return;
     this.goal.yawDeg = yawDeg;
     this.goal.pitchDeg = clamp(pitchDeg, MIN_PITCH_DEG, MAX_PITCH_DEG);
     this.settle();
@@ -151,7 +158,7 @@ export class OrbitController {
 
   /** Multiplies the distance (perspective) or the visible height (orthographic); `factor` below 1 zooms in. */
   zoom(factor: number): void {
-    if (!(factor > 0) || Number.isNaN(factor)) return;
+    if (!finite(factor) || !(factor > 0)) return;
     if (this.orthographic) this.goal.orthoHeight = this.clampOrthoHeight(this.goal.orthoHeight * factor);
     else this.goal.distance = this.clampDistance(this.goal.distance * factor);
     this.settle();
@@ -159,7 +166,7 @@ export class OrbitController {
 
   /** Moves the target in the view plane so the model follows a drag of (`dxPx`, `dyPx`) on a `viewportHeightPx` view. */
   pan(dxPx: number, dyPx: number, viewportHeightPx: number): void {
-    if (!(viewportHeightPx > 0)) return;
+    if (!finite(dxPx, dyPx, viewportHeightPx) || !(viewportHeightPx > 0)) return;
     const worldPerPixel = this.visibleHeight(this.goal) / viewportHeightPx;
     const { right, up } = viewAxes(this.goal.yawDeg, this.goal.pitchDeg);
     for (let i = 0; i < 3; i++) {

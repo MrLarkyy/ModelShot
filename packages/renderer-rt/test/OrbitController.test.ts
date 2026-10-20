@@ -173,6 +173,27 @@ describe('OrbitController', () => {
     expect(JSON.stringify(c.camera())).toBe(before);
   });
 
+  it('ignores non-finite input so the camera stays defined', () => {
+    const c = controller();
+    const before = JSON.stringify(c.camera());
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      c.rotate(bad, 0);
+      c.rotate(0, bad);
+      c.setAngles(bad, 10);
+      c.setAngles(10, bad);
+      c.frame(bad, 0);
+      c.pan(bad, 0, 100);
+      c.pan(0, 0, bad);
+      c.zoom(bad);
+      c.setFov(bad);
+    }
+    expect(JSON.stringify(c.camera())).toBe(before);
+    const fromOptions = new OrbitController({ yawDeg: NaN, pitchDeg: Infinity, fovYDeg: NaN });
+    expect(fromOptions.angles).toEqual({ yawDeg: 30, pitchDeg: 20 });
+    expect(fromOptions.fov).toBe(35);
+    expect(fromOptions.camera().position.every(Number.isFinite)).toBe(true);
+  });
+
   it('frames an empty scene with a default sphere', () => {
     const c = new OrbitController({ damping: false });
     c.reset(null);

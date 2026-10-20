@@ -17,7 +17,14 @@ export interface BindOrbitInputOptions {
   /** Degrees of orbit per dragged pixel. Default 0.4. */
   readonly rotateDegPerPixel?: number;
   /** Media query source for prefers-reduced-motion; default `globalThis.matchMedia`. */
-  readonly matchMedia?: (query: string) => { readonly matches: boolean };
+  readonly matchMedia?: (query: string) => MotionQuery;
+}
+
+/** The parts of a `MediaQueryList` the binding uses. */
+export interface MotionQuery {
+  readonly matches: boolean;
+  addEventListener?(type: 'change', listener: (event: { readonly matches: boolean }) => void): void;
+  removeEventListener?(type: 'change', listener: (event: { readonly matches: boolean }) => void): void;
 }
 
 interface PointerPosition {
@@ -31,8 +38,8 @@ const WHEEL_LINE_PX = 16;
 /**
  * Mouse, touch (through pointer events) and keyboard input for an `OrbitController`: left drag orbits; right,
  * middle or Shift + left drag pans; the wheel dollies; one finger orbits, two fingers pinch-zoom and pan; keys work
- * on the focused element (it gets `tabindex="0"` when it has none). Damping is switched off under
- * prefers-reduced-motion. Returns a function that removes every listener.
+ * on the focused element (it gets `tabindex="0"` when it has none). Damping is off while prefers-reduced-motion is
+ * set, following changes of the setting. Returns a function that removes every listener.
  */
 export function bindOrbitInput(
   element: OrbitInputElement,
@@ -41,7 +48,14 @@ export function bindOrbitInput(
 ): () => void {
   const rotateDeg = options.rotateDegPerPixel ?? 0.4;
   const matchMedia = options.matchMedia ?? globalThis.matchMedia?.bind(globalThis);
-  if (matchMedia?.('(prefers-reduced-motion: reduce)').matches) controller.damping = false;
+  // Damping follows the user's motion setting while bound, also when it changes.
+  const motion = matchMedia?.('(prefers-reduced-motion: reduce)');
+  const dampingWanted = controller.damping;
+  const onMotionChange = (event: { readonly matches: boolean }): void => {
+    controller.damping = dampingWanted && !event.matches;
+  };
+  if (motion) onMotionChange(motion);
+  motion?.addEventListener?.('change', onMotionChange);
   if (element.getAttribute('tabindex') === null) element.setAttribute('tabindex', '0');
   element.style?.setProperty('touch-action', 'none');
 
@@ -144,6 +158,7 @@ export function bindOrbitInput(
   for (const [type, listener, listenerOptions] of listeners) element.addEventListener(type, listener, listenerOptions);
   return () => {
     for (const [type, listener] of listeners) element.removeEventListener(type, listener);
+    motion?.removeEventListener?.('change', onMotionChange);
     pointers.clear();
   };
 }
