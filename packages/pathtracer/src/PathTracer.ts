@@ -347,8 +347,9 @@ export class PathTracer {
   }
 
   /**
-   * The per-pixel float sums of the samples done (RGBA, rows bottom to top; divide by `samplesDone`), for a denoiser
-   * or a test; `null` while the context is lost or before a sample.
+   * The per-pixel float sums of the samples done (rows bottom to top): rgb the radiance (divide by `samplesDone`), a
+   * the traversals stopped by the per-ray node cap (0 in any ordinary scene). For a denoiser or a test; `null` while
+   * the context is lost or before a sample.
    */
   readAccumulation(): Float32Array | null {
     const targets = this.gpu?.targets;

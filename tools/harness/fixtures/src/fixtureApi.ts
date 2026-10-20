@@ -86,6 +86,8 @@ export interface PtControls {
   dispose: () => void;
   /** Calls setScene for every name at once; resolves with which calls were applied. */
   setScenes: (names: string[]) => Promise<boolean[]>;
+  /** Traversals stopped by the per-ray node cap in the samples done (accumulation alpha): total and pixels with any. */
+  capped: () => { traversals: number; pixels: number };
   /** setScene of the current scene with 1.4 M materials (over the material table): the error code, or `ok`. */
   tryHugeMaterials: () => Promise<string>;
   /** The error `start` throws for this request (`name: message`), or `ok`. */

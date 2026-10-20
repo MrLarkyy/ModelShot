@@ -53,6 +53,7 @@ export const RT_SCENE_NAMES = [
   'player-walk-hold',
   'player-wave',
   'coincident-cubes',
+  'grass-field',
 ] as const;
 export type RtSceneName = (typeof RT_SCENE_NAMES)[number];
 
@@ -281,6 +282,8 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return largeOrderScene(load(showcaseSource));
     case 'coincident-cubes':
       return coincidentCubes(load(showcaseSource));
+    case 'grass-field':
+      return grassField(load(alphaPlaneSource));
     case 'player-classic':
       return playerScene('classic', 'classic');
     case 'player-slim':
@@ -566,10 +569,95 @@ function alphaRamp(alpha: Pick<SceneDocument['materials'][number], 'alphaMode' |
 }
 
 /**
- * The loader's limits in one mesh: 100 000 quads (200 000 triangles, 400 000 vertices, each quad its own four, as the
- * loader writes faces) on a 316-wide grid, at render order 1, so the renderer builds the exact key's de-indexed
- * geometry at upload. For the load-and-first-frame budget.
+ * A field of cut-out plants on a ground plane: 64 x 64 crossed pairs of double-sided 8 x 8 quads 6 units apart, each
+ * showing alpha-plane's cutout.png (half its texels holes), 16 384 quads in all. Seen at a low angle, rays cross dozens
+ * of plants and their holes before a hit: the realistic worst case for the path tracer's per-ray node cap.
  */
+function grassField(alphaPlane: SceneDocument): SceneDocument {
+  const side = 64;
+  const spacing = 6;
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+  const quad = (corners: readonly (readonly number[])[], normal: readonly number[], uv: readonly number[][]): void => {
+    const base = positions.length / 3;
+    corners.forEach((corner, i) => {
+      positions.push(...corner);
+      normals.push(...normal);
+      uvs.push(...(uv[i] ?? [0, 0]));
+    });
+    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  };
+  const extent = (side * spacing) / 2 + 8;
+  const flat = [
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+  ];
+  quad(
+    [
+      [-extent, 0, extent],
+      [extent, 0, extent],
+      [extent, 0, -extent],
+      [-extent, 0, -extent],
+    ],
+    [0, 1, 0],
+    flat,
+  );
+  const groundIndices = indices.length;
+  const full = [
+    [0, 1],
+    [1, 1],
+    [1, 0],
+    [0, 0],
+  ];
+  for (let i = 0; i < side; i++) {
+    for (let j = 0; j < side; j++) {
+      const x = (i - side / 2 + 0.5) * spacing;
+      const z = (j - side / 2 + 0.5) * spacing;
+      quad(
+        [
+          [x - 4, 0, z],
+          [x + 4, 0, z],
+          [x + 4, 8, z],
+          [x - 4, 8, z],
+        ],
+        [0, 0, 1],
+        full,
+      );
+      quad(
+        [
+          [x, 0, z + 4],
+          [x, 0, z - 4],
+          [x, 8, z - 4],
+          [x, 8, z + 4],
+        ],
+        [1, 0, 0],
+        full,
+      );
+    }
+  }
+  const vertices = positions.length / 3;
+  const mesh: SceneMesh = {
+    name: 'field',
+    sourceId: '',
+    node: -1,
+    visible: true,
+    positions: new Float32Array(positions),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+    uvRects: new Float32Array(Array.from({ length: vertices }, (_, v) => (v < 4 ? [0, 0, 0, 0] : [0, 0, 1, 1])).flat()),
+    indices: new Uint32Array(indices),
+    groups: [
+      { material: -1, start: 0, count: groundIndices },
+      { material: 0, start: groundIndices, count: indices.length - groundIndices, doubleSided: true },
+    ],
+  };
+  return { ...alphaPlane, nodes: [], rootNodes: [], meshes: [mesh] };
+}
+
 /**
  * 10 000 coincident untextured 8-unit cubes (the bbmodel loader's element limit, 120 000 triangles) in one mesh: every
  * BVH node box is the same, so nothing prunes a traversal. The path tracer's per-ray node cap must keep a sample short.
@@ -625,6 +713,11 @@ function coincidentCubes(showcase: SceneDocument): SceneDocument {
   return { ...showcase, nodes: [], rootNodes: [], meshes: [mesh] };
 }
 
+/**
+ * The loader's limits in one mesh: 100 000 quads (200 000 triangles, 400 000 vertices, each quad its own four, as the
+ * loader writes faces) on a 316-wide grid, at render order 1, so the renderer builds the exact key's de-indexed
+ * geometry at upload. For the load-and-first-frame budget.
+ */
 function largeOrderScene(showcase: SceneDocument): SceneDocument {
   const quads = 100_000;
   const side = 316;

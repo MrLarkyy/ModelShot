@@ -57,7 +57,7 @@ export class AccumulationTargets {
     this.current = 0;
   }
 
-  /** The float sums (RGBA per pixel, rows bottom to top), for a denoiser or a test. */
+  /** The float sums (RGBA per pixel, rows bottom to top; a counts capped traversals), for a denoiser or a test. */
   read(): Float32Array {
     const gl = this.gl;
     const pixels = new Float32Array(this.width * this.height * 4);

@@ -92,6 +92,8 @@ test.describe('path-tracer goldens', () => {
   for (const golden of GOLDENS) {
     test(`${golden.name} matches its golden`, async ({ page }, testInfo) => {
       await expectGolden(page, testInfo, golden);
+      // No traversal of a golden view stops at the per-ray node cap, so the cap shapes no pixel.
+      expect(await page.evaluate(() => window.__msFixture?.pt?.capped())).toEqual({ traversals: 0, pixels: 0 });
     });
   }
 });
@@ -338,8 +340,29 @@ test.describe('limits and hostile input', () => {
     expect(await page.evaluate(() => window.__msFixture?.pt?.triangles)).toBe(120_000);
     expect(await page.evaluate(() => window.__msFixture?.pt?.contextLost)).toBe(false);
     expect(modelBox(image).x1 - modelBox(image).x0, 'the cubes are drawn').toBeGreaterThan(50);
+    const capped = await page.evaluate(() => window.__msFixture!.pt!.capped());
+    console.log(`[pt probe] coincident cubes: ${capped.traversals} capped traversals in ${capped.pixels} pixels`);
+    expect(capped.pixels, 'the camera rays onto the cubes stop at the cap').toBeGreaterThan(1000);
     expect(errors).toEqual([]);
   });
+
+  // Real views, the costliest ones measured: the benchmark scene, the 200 000-triangle grid of the load budget, and a
+  // field of 16 384 cut-out plants seen edge-on from the ground (rays cross dozens of plants and holes). The worst
+  // needed between 512 and 1024 node visits (counted with lower caps); the cap is 2048.
+  for (const [label, query] of [
+    ['benchmark scene (24 576 triangles)', 'scene=bench&size=128&samples=16'],
+    ['200 000-triangle grid, load-budget view', 'scene=large-order&size=128&samples=4'],
+    ['200 000-triangle grid, edge-on', 'scene=large-order&size=256&samples=4&pitch=0&zoom=0.1'],
+    ['cut-out plant field, edge-on from the ground', 'scene=grass-field&size=256&samples=16&pitch=0&zoom=0.12'],
+    ['cut-out plant field, 2 degrees', 'scene=grass-field&size=256&samples=16&pitch=2&zoom=0.15'],
+  ] as const) {
+    test(`no traversal reaches the node cap: ${label}`, async ({ page }) => {
+      await openFixture(page, `/pt.html?${query}&seed=1`);
+      const capped = await page.evaluate(() => window.__msFixture!.pt!.capped());
+      console.log(`[pt probe] node cap, ${label}: ${capped.traversals} capped traversals`);
+      expect(capped).toEqual({ traversals: 0, pixels: 0 });
+    });
+  }
 
   test('seed, sample count and projection out of range throw a RangeError', async ({ page }) => {
     await openFixture(page, '/pt.html?variant=turntable-y030&samples=1');

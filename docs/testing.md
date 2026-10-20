@@ -176,7 +176,9 @@ put in the URL, not in the file name).
   placeholder with the realtime renderer's warning; `maxTriangles=10` fails the page with `SCENE_TOO_LARGE`; seeds and
   sample counts out of range and a field of view of 0 or 180 throw `RangeError`; 10 000 coincident cubes
   (`scene=coincident-cubes`, 120 000 triangles whose BVH nodes nothing prunes) render a sample without losing the
-  context (the per-ray node cap, path-tracer.md; about 1.2 s with page load on SwiftShader); a lost context draws
+  context (the per-ray node cap, path-tracer.md; about 2.3 s with page load on SwiftShader) and their camera rays are
+  counted as capped; no traversal is capped in any golden view, the benchmark scene, the 200 000-triangle grid (load
+  view and edge-on) or the cut-out plant field `grass-field` (edge-on from the ground and at 2°); a lost context draws
   nothing and, restored, renders the same bytes as before the loss; `cancel()` after 5 samples stays at 5; of two
   quick `setScene` calls only the second is applied (the bytes of a one-pass reference rendered in the same run); a
   scene over the material limit (1.4 M materials) fails with `SCENE_TOO_LARGE` before decoding anything and the

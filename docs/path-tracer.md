@@ -134,11 +134,17 @@ triangles over `maxTriangles` (both before any vertex is read or any array alloc
 allocation and leaves the current scene in place. Warnings: the realtime renderer's texture codes (with `texture`) and
 `DEGENERATE_TRIANGLES` (with `count`).
 
-Per-ray work is bounded: a traversal visits at most `MAX_NODE_VISITS` (1024) BVH nodes, so a draw call stays short
+Per-ray work is bounded: a traversal visits at most `MAX_NODE_VISITS` (2048) BVH nodes, so a draw call stays short
 whatever the model (10 000 coincident cubes give identical node boxes that no test prunes;
-`pt.html?scene=coincident-cubes` renders them). Past the cap the traversal stops the same way on every run: a camera
-or bounce ray keeps the best hit found so far, a shadow ray counts as blocked. Ordinary scenes do not reach it: every
-path-traced golden still passes at threshold 0 with the cap.
+`pt.html?scene=coincident-cubes` renders a sample in about 2.3 s on SwiftShader, page load included). Past the cap the
+traversal stops the same way on every run: a camera or bounce ray keeps the best hit found so far, a shadow ray counts
+as blocked. Every capped traversal (camera, bounce or shadow) is counted into the alpha channel of the accumulation
+(`readAccumulation`; the image reads only rgb), and `pathtracer.spec.ts` asserts 0 on every golden view and on the
+costliest real views measured: the benchmark scene, the 200 000-triangle grid of the load budget (its view and
+edge-on) and a field of 16 384 cut-out plants (`scene=grass-field`) seen edge-on from the ground and at 2°. Counted
+with lower caps, the benchmark scene needs at most 128 to 256 visits and the plant field edge-on 512 to 1024, so 2048
+leaves at least twice the worst measured need; the coincident cubes reach it (one capped camera ray per pixel they
+cover).
 
 Shaders are static `.glsl` files under `src/shaders/` (`trace.frag`, `present.frag`, `fullscreen.vert` and the chunks
 `rng`, `sceneData`, `primaryRay`, `surfaceHit`, `bvhTraverse`) composed by `linkShader` with the shared look chunks

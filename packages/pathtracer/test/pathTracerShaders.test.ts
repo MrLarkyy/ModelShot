@@ -38,9 +38,11 @@ describe('path tracer shaders', () => {
 
   it('bounds every traversal by a fixed node count', () => {
     const trace = pathTracerProgramSource('trace').fragment;
-    expect(trace).toContain('const int MAX_NODE_VISITS = 1024;');
+    expect(trace).toContain('const int MAX_NODE_VISITS = 2048;');
     expect(trace.match(/for \(int visits = 0; visits < MAX_NODE_VISITS; visits\+\+\)/g)).toHaveLength(2);
     expect(trace).not.toMatch(/while \(/);
+    // Capped traversals are counted into the accumulation's alpha.
+    expect(trace).toContain('sum.a + float(cappedTraversals)');
   });
 
   it('has no clock or time input', () => {

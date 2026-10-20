@@ -94,9 +94,10 @@ vec3 tracePath(uint key, vec2 pixel) {
 
 void main() {
   ivec2 pixel = ivec2(gl_FragCoord.xy);
-  vec3 sum = texelFetch(u_previous, pixel, 0).rgb;
+  vec4 sum = texelFetch(u_previous, pixel, 0);
   vec3 radiance = tracePath(sampleHash(u_seed, u_sample, uvec2(pixel)), vec2(pixel));
   // One bad sample must not poison the sum for good.
   if (any(isnan(radiance)) || any(isinf(radiance))) radiance = vec3(0.0);
-  outSum = vec4(sum + radiance, 1.0);
+  // rgb: the radiance sum; a: the traversals stopped by the node cap so far (present reads rgb only).
+  outSum = vec4(sum.rgb + radiance, sum.a + float(cappedTraversals));
 }

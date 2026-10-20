@@ -211,6 +211,18 @@ async function start(): Promise<void> {
       render();
       return results.map((r) => r.applied);
     },
+    capped: () => {
+      const sums = tracer.readAccumulation();
+      if (!sums) throw new Error('no accumulation to read');
+      let traversals = 0;
+      let pixels = 0;
+      for (let i = 3; i < sums.length; i += 4) {
+        const count = sums[i] ?? 0;
+        traversals += count;
+        if (count > 0) pixels++;
+      }
+      return { traversals, pixels };
+    },
     tryHugeMaterials: async () => {
       const material = doc.materials[0] ?? { name: 'm', texture: -1 };
       try {

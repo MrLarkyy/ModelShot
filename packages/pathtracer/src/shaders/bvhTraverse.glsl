@@ -9,7 +9,11 @@ const int BVH_STACK_SIZE = 32;
 // Nodes one traversal may visit. Bounds the work of every ray whatever the model (thousands of coincident boxes give
 // identical node boxes that nothing prunes), so a draw call stays short on any GPU. Past it the traversal stops, the
 // same way for every run: a camera or bounce ray keeps the best hit found so far, a shadow ray counts as blocked.
-const int MAX_NODE_VISITS = 1024;
+const int MAX_NODE_VISITS = 2048;
+
+// Traversals of this fragment that stopped at MAX_NODE_VISITS with nodes left; the trace pass sums it into the
+// accumulation's alpha channel, so a test can show that real scenes never reach the cap.
+int cappedTraversals = 0;
 
 uniform float u_maxRenderOrder;
 uniform float u_orderTie;
@@ -115,6 +119,8 @@ bool closestHit(
       hit = Hit(triangle, t, bary, back);
     }
   }
+  // Stopped at MAX_NODE_VISITS with nodes left: the best hit so far.
+  if (size > 0) cappedTraversals++;
   return hit.triangle >= 0;
 }
 
@@ -160,6 +166,8 @@ float shadowTransmittance(vec3 origin, vec3 direction, int skip) {
       if (coverage == COVERAGE_PARTIAL) transmittance *= 1.0 - alpha;
     }
   }
+  if (size == 0) return transmittance;
   // Stopped at MAX_NODE_VISITS with nodes left: blocked.
-  return size == 0 ? transmittance : 0.0;
+  cappedTraversals++;
+  return 0.0;
 }
