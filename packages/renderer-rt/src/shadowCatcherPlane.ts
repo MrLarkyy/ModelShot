@@ -25,7 +25,8 @@ export interface ShadowCatcherPlane {
  * origin): at the bounds' lowest y, covering the footprint and the bounds' shadow along −`keyDirection` (the unit
  * vector towards the key, pointing up) plus a margin of half the largest extent. Its lightmap has
  * `CATCHER_TEXELS_PER_MODEL_TEXEL` texels per `finestTexel` (world size of the finest model texel), at most
- * `MAX_CATCHER_SIDE` per side. `y` and `rect` do not depend on `finestTexel`.
+ * `MAX_CATCHER_SIDE` per side (without a finite `finestTexel`: `MAX_CATCHER_SIDE` along the longer side). `y` and `rect`
+ * do not depend on `finestTexel`.
  */
 export function shadowCatcherPlane(
   bounds: SceneBounds | null,
@@ -55,7 +56,11 @@ export function shadowCatcherPlane(
     const margin = 0.5 * extent;
     rect = [rect[0] - margin, rect[1] - margin, rect[2] + margin, rect[3] + margin];
   }
-  const texel = Number.isFinite(finestTexel) && finestTexel > 0 ? finestTexel / CATCHER_TEXELS_PER_MODEL_TEXEL : 1;
+  const largest = Math.max(rect[2] - rect[0], rect[3] - rect[1]);
+  const texel =
+    Number.isFinite(finestTexel) && finestTexel > 0
+      ? finestTexel / CATCHER_TEXELS_PER_MODEL_TEXEL
+      : largest / MAX_CATCHER_SIDE;
   const side = (length: number) => Math.min(MAX_CATCHER_SIDE, Math.max(1, Math.ceil(length / texel)));
   return { y, rect, width: side(rect[2] - rect[0]), height: side(rect[3] - rect[1]) };
 }
