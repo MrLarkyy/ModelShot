@@ -210,18 +210,29 @@ importers:
 
   packages/pathtracer: {}
 
-  packages/renderer-rt: {}
+  packages/renderer-rt:
+    dependencies:
+      '@modelshot/looks':
+        specifier: workspace:*
+        version: link:../looks
+      '@modelshot/scene':
+        specifier: workspace:*
+        version: link:../scene
 
   packages/scene: {}
 
   tools/harness:
-    devDependencies:
+    dependencies:
       '@modelshot/formats':
         specifier: workspace:*
         version: link:../../packages/formats
+      '@modelshot/renderer-rt':
+        specifier: workspace:*
+        version: link:../../packages/renderer-rt
       '@modelshot/scene':
         specifier: workspace:*
         version: link:../../packages/scene
+    devDependencies:
       '@playwright/test':
         specifier: 1.64.1
         version: 1.64.1

@@ -9,6 +9,7 @@ test('every fixture renders WebGL2 on SwiftShader and stays on the fixture origi
   await openFixture(page, '/gradient.html');
   await openFixture(page, '/model-view.html?variant=alpha-plane-raster');
   await openFixture(page, '/model-view.html?variant=alpha-plane-raycast');
+  await openFixture(page, '/rt.html');
   expect(progressive.floatRenderTargets).toBe(true);
   expect([...origins]).toEqual([new URL(baseURL!).origin]);
 });

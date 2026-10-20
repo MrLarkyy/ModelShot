@@ -28,4 +28,5 @@ Also: `pnpm typecheck`, `pnpm lint`, `pnpm format:check` (`pnpm format` fixes fo
 Packages (`packages/*`): `formats`, `scene`, `renderer-rt`, `pathtracer`, `looks`, `export`, `app`, `embed`. Test tooling lives in `tools/harness`.
 
 Docs: [scene format](docs/scene-format.md) (what every loader produces), [Blockbench loader](docs/bbmodel.md)
-(supported features, limits, error codes).
+(supported features, limits, error codes), [realtime renderer](docs/realtime-renderer.md) (passes, pixel-art
+sampling, transparency, context loss), [camera](docs/camera.md) (the shared camera, frame-to-fit, controls).

@@ -17,6 +17,17 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
     return fixture.renderFrames(30);
   });
 
+  const rtBench = await openFixture(page, '/rt.html?scene=bench&size=512');
+  expect([rtBench.width, rtBench.height]).toEqual([512, 512]);
+  // 128 group nodes, one batch each, drawn front and back in the opaque and the transparency pass.
+  expect(await page.evaluate(() => window.__msFixture?.rt?.drawCallsPerFrame())).toBe(128 * 2 * 2);
+  const rtFrames = await page.evaluate(() => {
+    const fixture = window.__msFixture;
+    if (!fixture?.renderFrames) throw new Error('frame bench missing');
+    fixture.renderFrames(5);
+    return fixture.renderFrames(30);
+  });
+
   await openFixture(page, '/progressive.html?seed=7&samples=64');
   const runs = await page.evaluate(() => {
     const fixture = window.__msFixture;
@@ -27,7 +38,7 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
   const [app, embed] = await Promise.all([measureBundle('app'), measureBundle('embed')]);
 
   const measured: Measured = {
-    frameTimeMs: { 'gradient-256': median(frames) },
+    frameTimeMs: { 'gradient-256': median(frames), 'rt-bench-512': median(rtFrames) },
     timeToSamplesMs: { 'progressive-256-n64': median(runs) },
     bundleGzipBytes: { app: app.gzipBytes, embed: embed.gzipBytes },
   };

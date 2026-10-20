@@ -9,9 +9,12 @@
     "golden:update": "playwright test --update-snapshots=changed",
     "browsers": "playwright install --only-shell chromium"
   },
-  "devDependencies": {
+  "dependencies": {
     "@modelshot/formats": "workspace:*",
-    "@modelshot/scene": "workspace:*",
+    "@modelshot/renderer-rt": "workspace:*",
+    "@modelshot/scene": "workspace:*"
+  },
+  "devDependencies": {
     "@playwright/test": "1.64.1",
     "@types/node": "~22.20.0",
     "@types/pngjs": "^6.0.5",

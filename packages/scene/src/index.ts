@@ -24,3 +24,25 @@ export type { SceneNode } from './SceneNode';
 export type { SceneTexture } from './SceneTexture';
 export type { Vec3 } from './Vec3';
 export { worldMatrices } from './worldMatrices';
+export { cameraBasis, cameraProjection, cameraView, checkCameraProjection, type CameraBasis } from './cameraMatrices';
+export { cameraRay, type CameraRay } from './cameraRay';
+export {
+  DEFAULT_FIT_MARGIN,
+  MIN_FIT_RADIUS,
+  fitClipPlanes,
+  fitDistance,
+  fitOrthoHeight,
+  fitRadius,
+  frameToFit,
+  type ClipPlanes,
+  type FrameToFitOptions,
+} from './frameToFit';
+export {
+  ISOMETRIC_PITCH_DEG,
+  ISOMETRIC_YAW_DEG,
+  orbitDirection,
+  type SceneCamera,
+  type SceneProjection,
+} from './SceneCamera';
+export { sceneBounds, type SceneBounds } from './sceneBounds';
+export { meshVisible, nodeVisibility } from './nodeVisibility';
