@@ -7,8 +7,9 @@ import { openFixture } from '../src/expectGolden';
 import { median } from '../src/measure';
 
 test('frame time, time to samples and bundle size stay inside budgets.json', async ({ page }, testInfo) => {
-  // The path-tracer runs take seconds each on SwiftShader, and a CI runner is 3-5x slower than the dev machine.
-  test.setTimeout(300_000);
+  // The path-tracer runs and the bakes take seconds each on SwiftShader, and a CI runner is 3-5x slower than the dev
+  // machine.
+  test.setTimeout(600_000);
 
   await openFixture(page, '/gradient.html');
   const frames = await page.evaluate(() => {
@@ -73,6 +74,19 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
   });
   expect(await page.evaluate(() => window.__msFixture?.pt?.triangles)).toBe(200_000);
 
+  // The light bake of the benchmark scene in its worker: 16 samples with the shadow catcher, from bake() to the final
+  // lighting, median of 3; and the main thread's longest event-loop lag over those bakes (posting, three progress
+  // uploads per bake, drawing them).
+  await openFixture(page, '/rt.html?scene=bench&lag=1');
+  const bake = await page.evaluate(async () => {
+    const fixture = window.__msFixture;
+    if (!fixture?.timeBake || !fixture.rt) throw new Error('bake bench missing');
+    fixture.rt.resetLag();
+    const runs = [await fixture.timeBake(), await fixture.timeBake(), await fixture.timeBake()];
+    return { runs, lag: fixture.rt.maxLag() };
+  });
+  console.log(`[bench] bake runs ${bake.runs.map((ms) => ms.toFixed(0)).join(', ')} ms, main-thread lag ${bake.lag.toFixed(1)} ms`);
+
   const [app, embed] = await Promise.all([measureBundle('app'), measureBundle('embed')]);
 
   const measured: Measured = {
@@ -85,6 +99,8 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
     },
     timeToSamplesMs: { 'progressive-256-n64': median(runs), 'pt-bench-128-n256': median(ptRuns) },
     bundleGzipBytes: { app: app.gzipBytes, embed: embed.gzipBytes },
+    bakeTimeMs: { 'bake-bench-n16': median(bake.runs) },
+    mainThreadBlockMs: { 'bake-bench': bake.lag },
   };
   const json = JSON.stringify(measured, null, 2);
   writeFileSync(join(testInfo.project.outputDir, 'budgets-measured.json'), json);

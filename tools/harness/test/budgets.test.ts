@@ -6,8 +6,16 @@ const valid = {
   frameTimeMs: { a: { max: 10 } },
   timeToSamplesMs: { b: { max: 20 } },
   bundleGzipBytes: { c: { max: 30 } },
+  bakeTimeMs: { d: { max: 40 } },
+  mainThreadBlockMs: { e: { max: 50 } },
 };
-const measured: Measured = { frameTimeMs: { a: 5 }, timeToSamplesMs: { b: 5 }, bundleGzipBytes: { c: 5 } };
+const measured: Measured = {
+  frameTimeMs: { a: 5 },
+  timeToSamplesMs: { b: 5 },
+  bundleGzipBytes: { c: 5 },
+  bakeTimeMs: { d: 5 },
+  mainThreadBlockMs: { e: 5 },
+};
 const parse = (patch: object): ReturnType<typeof parseBudgets> => parseBudgets(JSON.stringify({ ...valid, ...patch }));
 
 describe('budgets.json', () => {
@@ -19,6 +27,8 @@ describe('budgets.json', () => {
     expect(() => parse({ version: 2 })).toThrow(/version 2/);
     expect(() => parse({ extra: {} })).toThrow(/unknown key "extra"/);
     expect(() => parse({ frameTimeMs: undefined })).toThrow(/missing group "frameTimeMs"/);
+    expect(() => parse({ bakeTimeMs: undefined })).toThrow(/missing group "bakeTimeMs"/);
+    expect(() => parse({ mainThreadBlockMs: undefined })).toThrow(/missing group "mainThreadBlockMs"/);
     expect(() => parse({ frameTimeMs: { a: { max: 0 } } })).toThrow(/max must be a positive number/);
     expect(() => parse({ frameTimeMs: { a: { max: -1 } } })).toThrow(/max must be a positive number/);
     expect(() => parse({ frameTimeMs: { a: { max: '10' } } })).toThrow(/max must be a positive number/);
@@ -39,8 +49,18 @@ describe('checkBudgets', () => {
     expect(violations.map((v) => v.message)).toEqual(['frameTimeMs.a: measured 10.5 exceeds budget max 10']);
   });
 
+  it('checks the bake groups like the others', () => {
+    const violations = checkBudgets(budgets, { ...measured, bakeTimeMs: { d: 41 }, mainThreadBlockMs: { e: 50 } });
+    expect(violations.map((v) => v.message)).toEqual(['bakeTimeMs.d: measured 41 exceeds budget max 40']);
+  });
+
   it('fails a budget without a measurement', () => {
-    const violations = checkBudgets(budgets, { frameTimeMs: { a: 1 }, timeToSamplesMs: { b: 1 } });
+    const violations = checkBudgets(budgets, {
+      frameTimeMs: { a: 1 },
+      timeToSamplesMs: { b: 1 },
+      bakeTimeMs: { d: 1 },
+      mainThreadBlockMs: { e: 1 },
+    });
     expect(violations.map((v) => v.message)).toEqual(['bundleGzipBytes.c: budget has no measurement']);
   });
 
@@ -67,6 +87,8 @@ describe('budgetReport', () => {
       'frameTimeMs.a: measured 0.3 / max 10',
       'timeToSamplesMs.b: measured 5 / max 20',
       'bundleGzipBytes.c: measured nothing / max 30',
+      'bakeTimeMs.d: measured 5 / max 40',
+      'mainThreadBlockMs.e: measured 5 / max 50',
     ]);
   });
 });

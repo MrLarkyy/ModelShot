@@ -1,18 +1,46 @@
 {
   "version": 1,
   "frameTimeMs": {
-    "gradient-256": { "max": 5 },
-    "rt-bench-512": { "max": 750 },
-    "rt-bench-order-512": { "max": 750 },
-    "rt-load-first-frame-200k-order": { "max": 3500 },
-    "pt-load-200k": { "max": 10000 }
+    "gradient-256": {
+      "max": 5
+    },
+    "rt-bench-512": {
+      "max": 750
+    },
+    "rt-bench-order-512": {
+      "max": 750
+    },
+    "rt-load-first-frame-200k-order": {
+      "max": 3500
+    },
+    "pt-load-200k": {
+      "max": 10000
+    }
   },
   "timeToSamplesMs": {
-    "progressive-256-n64": { "max": 300 },
-    "pt-bench-128-n256": { "max": 52000 }
+    "progressive-256-n64": {
+      "max": 300
+    },
+    "pt-bench-128-n256": {
+      "max": 52000
+    }
   },
   "bundleGzipBytes": {
-    "app": { "max": 2500 },
-    "embed": { "max": 2200 }
+    "app": {
+      "max": 2500
+    },
+    "embed": {
+      "max": 2200
+    }
+  },
+  "bakeTimeMs": {
+    "bake-bench-n16": {
+      "max": 222000
+    }
+  },
+  "mainThreadBlockMs": {
+    "bake-bench": {
+      "max": 50
+    }
   }
 }

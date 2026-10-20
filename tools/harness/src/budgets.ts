@@ -4,7 +4,13 @@ import { fileURLToPath } from 'node:url';
 
 export const BUDGET_VERSION = 1;
 
-export const BUDGET_GROUPS = ['frameTimeMs', 'timeToSamplesMs', 'bundleGzipBytes'] as const;
+export const BUDGET_GROUPS = [
+  'frameTimeMs',
+  'timeToSamplesMs',
+  'bundleGzipBytes',
+  'bakeTimeMs',
+  'mainThreadBlockMs',
+] as const;
 export type BudgetGroup = (typeof BUDGET_GROUPS)[number];
 
 export interface Budgets {
@@ -12,6 +18,10 @@ export interface Budgets {
   frameTimeMs: Record<string, { max: number }>;
   timeToSamplesMs: Record<string, { max: number }>;
   bundleGzipBytes: Record<string, { max: number }>;
+  /** Light bake from the call to its final lighting. */
+  bakeTimeMs: Record<string, { max: number }>;
+  /** Longest main-thread event-loop lag while something runs off the main thread. */
+  mainThreadBlockMs: Record<string, { max: number }>;
 }
 
 export type Measured = Record<BudgetGroup, Record<string, number>>;
