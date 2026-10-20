@@ -46,3 +46,9 @@ export {
 } from './SceneCamera';
 export { sceneBounds, type SceneBounds } from './sceneBounds';
 export { meshVisible, nodeVisibility } from './nodeVisibility';
+export { PLAYER_BONES, type PlayerBoneName } from './PlayerBones';
+export type { ScenePose, ScenePoseBone } from './ScenePose';
+export { MAX_POSE_BONES, MAX_POSE_ROTATION_DEG, MAX_POSE_TRANSLATION, poseScene, type PoseResult } from './poseScene';
+export { PLAYER_POSE_PRESETS, playerPosePreset, type PlayerPosePresetName } from './playerPosePresets';
+export type { SceneAttachment } from './SceneAttachment';
+export { MAX_ATTACH_SCALE, attachModel, type AttachOptions } from './attachModel';

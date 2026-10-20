@@ -1,4 +1,4 @@
-import type { SceneDocument, SceneMesh } from '@modelshot/scene';
+import { attachModel, poseScene, type SceneDocument, type SceneMesh } from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
 import { RendererError, validateScene } from '../src/index';
 import { quadScene } from './testScene';
@@ -121,5 +121,12 @@ describe('validateScene', () => {
       withMesh(() => ({ groups })),
       'meshes[0].groups[0].doubleSided',
     );
+  });
+  it('accepts a posed document with models attached, nested', () => {
+    const once = attachModel(quadScene(), quadScene(), { bone: 'root', offset: [1, 0, 0], scale: 0.5 });
+    const twice = attachModel(once, once, { bone: once.nodes.length - 1, rotation: [0, 90, 0] });
+    const posed = poseScene(twice, { name: 'p', bones: [{ bone: 'root', rotation: [10, 20, 30] }] }).document;
+    expect(() => validateScene(posed)).not.toThrow();
+    expect(posed.meshes).toHaveLength(4);
   });
 });
