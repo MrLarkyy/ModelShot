@@ -47,7 +47,8 @@ export function loadSkin(bytes: Uint8Array, options: SkinLoadOptions = {}): Skin
     texture: {
       name,
       mimeType: 'image/png',
-      bytes: bytes.slice(),
+      // Not bytes.slice(): Buffer overrides it to return a view of the same memory; the typed-array slice copies.
+      bytes: Uint8Array.prototype.slice.call(bytes),
       width: size.width,
       height: size.height,
       uvWidth: SKIN_UV_WIDTH,

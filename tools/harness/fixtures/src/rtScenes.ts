@@ -8,7 +8,7 @@ import alphaRampUri from '../models/rt-alpha-ramp.png?inline';
 import showcaseSource from '../models/rt-showcase.bbmodel?raw';
 import { benchScene } from './benchScene';
 import { MODEL_VIEW_LOOK, type Point3 } from './modelViewCamera';
-import { holdingCube, playerScene } from './playerScenes';
+import { holdingCube, playerScene, posedPlayer } from './playerScenes';
 
 /**
  * Named scenes and camera presets of the realtime fixture. The path-tracer fixture renders the same scenes and
@@ -51,6 +51,7 @@ export const RT_SCENE_NAMES = [
   'player-legacy',
   'player-hold',
   'player-walk-hold',
+  'player-wave',
 ] as const;
 export type RtSceneName = (typeof RT_SCENE_NAMES)[number];
 
@@ -158,6 +159,7 @@ export const RT_VARIANTS: Readonly<Record<string, Partial<RtView>>> = {
   'player-hold-34': { scene: 'player-hold', yawDeg: 210, pitchDeg: 20 },
   'player-walk-hold-34': { scene: 'player-walk-hold', yawDeg: 210, pitchDeg: 20 },
   'player-slim-fallback': { scene: 'player-slim', yawDeg: 210, pitchDeg: 20, fallback: true },
+  'player-wave-front': { scene: 'player-wave', yawDeg: 180, pitchDeg: 10 },
 };
 
 function load(source: string): SceneDocument {
@@ -279,6 +281,8 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return holdingCube(playerScene('classic', 'classic'), 'hold');
     case 'player-walk-hold':
       return holdingCube(playerScene('classic', 'classic'), 'walk');
+    case 'player-wave':
+      return posedPlayer(playerScene('classic', 'classic'), 'wave');
   }
 }
 

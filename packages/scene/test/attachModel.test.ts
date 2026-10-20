@@ -238,6 +238,10 @@ describe('attachModel', () => {
     ['a NaN offset', { bone: 0, offset: [0, NaN, 0] }, 'options.offset[1]'],
     ['a rotation of 361', { bone: 0, rotation: [0, 0, 361] }, 'options.rotation[2]'],
     ['a name of 1025 characters', { bone: 0, name: 'x'.repeat(1025) }, 'options.name'],
+    // eslint-disable-next-line no-sparse-arrays
+    ['a hole in the offset', { bone: 0, offset: [1, , 2] as unknown as Vec3 }, 'options.offset[1]'],
+    // eslint-disable-next-line no-sparse-arrays
+    ['a hole in the rotation', { bone: 0, rotation: [, 0, 0] as unknown as Vec3 }, 'options.rotation[0]'],
   ])('rejects %s with a RangeError naming the path', (_name, options, path) => {
     let caught: unknown;
     try {

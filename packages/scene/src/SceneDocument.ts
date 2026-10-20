@@ -33,7 +33,11 @@ export interface SceneDocument {
   readonly textures: readonly SceneTexture[];
   /** Nodes without a parent, in source order. */
   readonly rootNodes: readonly number[];
-  /** The pose `poseScene` applied (the nodes already carry it); absent: rest. */
+  /**
+   * The pose `poseScene` last applied to this document (the nodes already carry it); absent: none applied. Not a
+   * statement about every node: a model merged in by `attachModel` keeps its own posed node rotations until the next
+   * `poseScene` returns them to rest.
+   */
   readonly pose?: ScenePose;
   /** Models merged in by `attachModel` (the nodes and meshes already carry them); absent: none. */
   readonly attachments?: readonly SceneAttachment[];

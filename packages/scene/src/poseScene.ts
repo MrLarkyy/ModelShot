@@ -59,7 +59,8 @@ function checkPose(pose: ScenePose): ScenePose {
     throw new RangeError(`pose.bones: expected an array of at most ${MAX_POSE_BONES} bones`);
   }
   const seen = new Map<string, number>();
-  const checked = (bones as unknown[]).map((value, i): ScenePoseBone => {
+  // Array.from visits the holes of a sparse array (map skips them), so a hole is reported as a bad bone.
+  const checked = Array.from(bones as unknown[], (value, i): ScenePoseBone => {
     const path = `pose.bones[${i}]`;
     if (typeof value !== 'object' || value === null) throw new RangeError(`${path}: expected an object`);
     const bone = value as Partial<Record<keyof ScenePoseBone, unknown>>;

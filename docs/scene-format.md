@@ -33,7 +33,7 @@ import type { SceneDocument } from '@modelshot/scene';
 | `meshes`        | `SceneMesh[]`                                                                   | triangle meshes                             |
 | `materials`     | `SceneMaterial[]`                                                               | see [SceneMaterial](#scenematerial)         |
 | `textures`      | `SceneTexture[]`                                                                | PNG images                                  |
-| `pose?`         | `ScenePose`                                                                     | the pose the nodes carry; absent: rest      |
+| `pose?`         | `ScenePose`                                                                     | last `poseScene` pose; absent: none applied |
 | `attachments?`  | `SceneAttachment[]`                                                             | models merged under a bone; absent: none    |
 
 `source.format` is `'player'` for a document built by `createPlayerModel` ([player.md](player.md)); its
@@ -151,8 +151,10 @@ restRotation = rest
 ```
 
 so a pose always applies to rest: posing B after A gives exactly B, and `poseScene(doc, null)` restores rest and
-removes `pose`. `pose` records the applied pose; the nodes already carry it, so a consumer that ignores `pose` draws
-the posed model correctly. Limits, each a `RangeError` naming the path (`pose.bones[2].rotation[1]`): at most 1024
+removes `pose`. `pose` records the pose `poseScene` last applied to this document; the nodes already carry it, so a
+consumer that ignores `pose` draws the posed model correctly. An absent `pose` does not mean every node is at rest: a
+model merged in by `attachModel` keeps its own posed rotations (its `pose` record is dropped) until the next
+`poseScene`. Limits, each a `RangeError` naming the path (`pose.bones[2].rotation[1]`): at most 1024
 bones, names strings of at most 1024 characters, no bone twice, rotations finite with |v| ≤ 360, translations
 finite with |v| ≤ 4096. Bone names are looked up in a `Map`, so `__proto__` or `constructor` are ordinary names.
 `PLAYER_POSE_PRESETS` (`idle`, `walk`, `hold`, `wave`) are frozen poses for the player rig; `playerPosePreset(name)`
@@ -173,8 +175,9 @@ world(bone) · T(pivot) · R(rotation) · (scale · x + offset)
 in every pose of the host; posing the merged document again keeps it attached, and the item's own nodes go back to
 their rest rotation. `scale` is uniform in (0, 16] (normals stay unit length), `offset` and `rotation` follow the pose
 limits; bad options throw a `RangeError` naming the path. The record `{ name, bone, node, offset, rotation, scale,
-source }` is appended to `attachments` (the item's own records follow, remapped). The host's `pose` is kept, the
-item's dropped (its nodes keep their posed rotation and `restRotation`). The renderers read only the merged nodes and
+source }` is appended to `attachments` (the item's own records follow, remapped). The host's `pose` record is kept, the
+item's dropped while its nodes keep their posed rotation and `restRotation`; the next `poseScene` of the merged
+document returns them to rest. The renderers read only the merged nodes and
 meshes, so the realtime preview and the path tracer cannot disagree on where an attachment is.
 
 ## Versioning
@@ -190,7 +193,7 @@ consumer that ignores them draws every material opaque, every face single-sided 
 what a version-1 document meant before.
 
 Added within version 1 (MS-20), each optional: `SceneNode.restRotation` (absent: `rotation`),
-`SceneDocument.pose` (absent: rest) and `SceneDocument.attachments` (absent: none); `SceneSource.format` gains
+`SceneDocument.pose` (absent: no `poseScene` pose recorded) and `SceneDocument.attachments` (absent: none); `SceneSource.format` gains
 `'player'`. Poses and attachments are already applied to the nodes and meshes, so a consumer that ignores the new
 fields draws a posed or attached scene correctly; no migration.
 

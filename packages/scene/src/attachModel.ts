@@ -28,8 +28,9 @@ const ZERO: Vec3 = [0, 0, 0];
  * attachment node (child of the bone, pivot = the bone's pivot, rest rotation `options.rotation`) is appended, then
  * the item's nodes, meshes, materials and textures with every index remapped; the item's vertices, pivots and
  * translations become `scale · x + offset + bone pivot`. The attached item's world position is therefore
- * `world(bone) · T(pivot) · R(rotation) · (scale · x + offset)`. The host's pose, if any, is kept; the item's own pose
- * is baked into its nodes and its `pose` dropped. Bad options throw a `RangeError` naming the path; inputs are never
+ * `world(bone) · T(pivot) · R(rotation) · (scale · x + offset)`. The host's `pose` record, if any, is kept; the item's
+ * `pose` record is dropped while its nodes keep their posed rotations and `restRotation`, so the next `poseScene` of
+ * the merged document returns them to rest. Bad options throw a `RangeError` naming the path; inputs are never
  * mutated.
  */
 export function attachModel(host: SceneDocument, item: SceneDocument, options: AttachOptions): SceneDocument {

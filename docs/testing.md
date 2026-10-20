@@ -116,7 +116,8 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
   goldens `rt-player-classic-front` (yaw 180°, pitch 10°), `rt-player-classic-back` (yaw 0°), `rt-player-slim-34`,
   `rt-player-legacy-34`, `rt-player-hold-34` (classic in the `hold` preset with `single-cube.bbmodel` at half size
   attached to `right_hand`), `rt-player-walk-hold-34` (the same in `walk`) (yaw 210°, pitch 20°) and
-  `rt-player-slim-fallback`; default tolerance. No player frame has a magenta sentinel pixel (the held cube's own
+  `rt-player-slim-fallback`, and `rt-player-wave-front` (classic in the `wave` preset, yaw 180°, pitch 10°; `idle` is
+  the rest pose of the other frames); default tolerance. No player frame has a magenta sentinel pixel (the held cube's own
   gradient texture is hidden for that check with `hide=block`; the camera frames the unhidden scene, so the view does
   not move). Probes projected from model space, float and fallback: the alpha-0 base texel shows its cyan RGB (base
   layer opaque), a hat hole shows the red head front, and the slim skin's alpha-128 hat texel (5 x 5 mean, as the
@@ -218,6 +219,13 @@ differs as a whole. The measured values of a run are also in
 `tools/harness/test-results/model-view-pair-<model>.json`. Dropping the alpha test from the shadow pass alone changes
 about 2 000 pixels of `alpha-plane`, dropping the render-order term from the raster depth about 3 400 of
 `render-order`; a tolerance is never widened to make a pair pass.
+
+`player` has one more class: about 80 of its 111 pixels are 1-px strips just inside the holes of the outer layer
+(right arm 39, left arm 18, legs 25), where the base layer lies 0.15 units (0.25 × 0.6 scale) behind the opaque ring
+and the raycast's exact shadow ray draws the ring's contact shadow on it; the raster's shadow map (0.0625-unit texels,
+receiver offset 0.094) cannot resolve a shadow that close, so the strip stays lit there. It is shadow-map resolution,
+not a disagreement about the scene: the skin probes (opaque base, hat hole, held cube) match in both. The rest are edge
+pixels as above.
 
 ## Player skin fixtures
 

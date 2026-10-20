@@ -149,6 +149,10 @@ describe('poseScene', () => {
       'pose.bones',
     ],
     ['a bone that is null', { name: 'p', bones: [null] }, 'pose.bones[0]'],
+    // Sparse arrays: forEach and map skip holes, so these once passed as NaN rotations or a TypeError.
+    // eslint-disable-next-line no-sparse-arrays
+    ['a hole in a rotation', { name: 'p', bones: [{ bone: 'head', rotation: [0, , 0] }] }, 'pose.bones[0].rotation[1]'],
+    ['bones that are holes', { name: 'p', bones: new Array(2) }, 'pose.bones[0]'],
   ])('rejects %s with a RangeError naming the path', (_name, pose, path) => {
     expect(failure(playerRig(), pose).message.startsWith(`${path}:`)).toBe(true);
   });

@@ -58,6 +58,21 @@ describe('loadSkin', () => {
     expect(texture.bytes?.[40]).not.toBe(bytes[40]);
   });
 
+  it('returns a copy for a Buffer-like input whose slice is a view', () => {
+    // Node's Buffer overrides slice to return a view of the same memory; this subclass does the same.
+    class ViewSlice extends Uint8Array {
+      override slice(start?: number, end?: number): Uint8Array<ArrayBuffer> {
+        return this.subarray(start, end);
+      }
+    }
+    const input = new ViewSlice(skinBytes('classic'));
+    const { texture } = loadSkin(input);
+    const before = texture.bytes?.[40];
+    input[40] = (input[40] ?? 0) ^ 0xff;
+    expect(texture.bytes?.[40]).toBe(before);
+    expect(texture.bytes?.buffer).not.toBe(input.buffer);
+  });
+
   it('accepts a valid header over undecodable data (pixels are never decoded here)', () => {
     expect(loadSkin(headerOver(64, 64, 500)).texture.bytes).toHaveLength(533);
   });
@@ -78,6 +93,8 @@ describe('loadSkin', () => {
   it.each<[string, Uint8Array, SkinErrorCode]>([
     ['empty', new Uint8Array(0), 'TRUNCATED'],
     ['20 bytes of a header', pngHeader(64, 64).slice(0, 20), 'TRUNCATED'],
+    ['the signature alone', pngHeader(64, 64).slice(0, 8), 'TRUNCATED'],
+    ['5 bytes of a signature', pngHeader(64, 64).slice(0, 5), 'NOT_PNG'],
     ['JPEG magic', new Uint8Array([0xff, 0xd8, 0xff, 0xe0, ...new Array<number>(60).fill(0)]), 'NOT_PNG'],
     ['zero width', pngHeader(0, 64), 'BAD_SIZE'],
   ])('rejects %s', (_name, bytes, code) => {

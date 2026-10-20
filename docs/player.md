@@ -24,22 +24,38 @@ into the texture and decoded by the renderer, like any model texture.
 | 64 · 2^k square (64, 128, …) | `modern` | 64 × 64  | hat, jacket, sleeves, pants   |
 | 64 · 2^k × half (64 × 32, …) | `legacy` | 64 × 32  | hat only; left limbs mirrored |
 
-Limits (`DEFAULT_SKIN_LIMITS`, overridable with positive integers, else a `RangeError`): `maxFileBytes` 2 MiB,
-`maxSide` 1024 pixels wide (HD skins up to 16 pixels per skin pixel). The checks run in this order and before anything
-is copied: the name (at most 1024 characters), the file length, the PNG signature and IHDR header, the size rule. A
+Limits (`SkinLimits`, defaults `DEFAULT_SKIN_LIMITS`; an override must be an integer, `maxFileBytes` ≥ 1 and
+`maxSide` ≥ 64, else a `RangeError`): `maxFileBytes` 2 MiB, `maxSide` 1024 pixels wide (HD skins up to 16 pixels per
+skin pixel). The checks run in this order and before anything is copied: the name (at most `MAX_SKIN_NAME_CHARS`,
+1024 characters), the file length, the PNG signature and IHDR header, the size rule. A
 failure throws `SkinError` with a `code`; the message names the rule, never file content:
 
 | code             | cause                                                                      |
 | ---------------- | -------------------------------------------------------------------------- |
 | `FILE_TOO_LARGE` | more than `maxFileBytes`                                                   |
-| `NOT_PNG`        | no PNG signature, or the first chunk is not IHDR                           |
-| `TRUNCATED`      | empty, or shorter than the signature and IHDR (33 bytes)                   |
+| `NOT_PNG`        | 1–7 bytes, no PNG signature, or the first chunk is not IHDR                |
+| `TRUNCATED`      | empty, or the PNG signature followed by less than IHDR (8–32 bytes)        |
 | `BAD_SIZE`       | not 64 · 2^k wide, wider than `maxSide`, not square or 2:1, or a zero size |
 | `INVALID_NAME`   | `name` is not a string of at most 1024 characters                          |
 
 A valid header over image data that does not decode passes `loadSkin`; the renderer then shows its placeholder for a
 texture that fails to decode, with a warning. Skins come only from bytes the caller hands over: nothing is fetched,
 and fetching a skin by user name is not offered (it would send the name to a third party).
+
+## API
+
+| export                                                                | package              | what                                       |
+| --------------------------------------------------------------------- | -------------------- | ------------------------------------------ |
+| `loadSkin`, `SkinLoadOptions`, `SkinLoadResult`, `SkinLayout`         | `@modelshot/formats` | skin bytes → texture and layout            |
+| `SkinError`, `SkinErrorCode`                                          | `@modelshot/formats` | the error `loadSkin` throws                |
+| `SkinLimits`, `DEFAULT_SKIN_LIMITS`, `MAX_SKIN_NAME_CHARS`            | `@modelshot/formats` | limits (2 MiB, 1024 px wide, 1024 chars)   |
+| `createPlayerModel`, `PlayerModelOptions`, `PlayerArms`               | `@modelshot/formats` | the player scene document                  |
+| `PLAYER_OUTER_ALPHA_CUTOFF`                                           | `@modelshot/formats` | 0.1, the outer layer's alpha cutoff        |
+| `PLAYER_BONES`, `PlayerBoneName`                                      | `@modelshot/scene`   | node names of the player rig               |
+| `poseScene`, `PoseResult`, `ScenePose`, `ScenePoseBone`               | `@modelshot/scene`   | posing from rest                           |
+| `MAX_POSE_BONES`, `MAX_POSE_ROTATION_DEG`, `MAX_POSE_TRANSLATION`     | `@modelshot/scene`   | pose limits (1024 bones, 360°, 4096 units) |
+| `PLAYER_POSE_PRESETS`, `PlayerPosePresetName`, `playerPosePreset`     | `@modelshot/scene`   | built-in poses                             |
+| `attachModel`, `AttachOptions`, `SceneAttachment`, `MAX_ATTACH_SCALE` | `@modelshot/scene`   | merging a model under a bone (scale ≤ 16)  |
 
 ## Model
 

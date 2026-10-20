@@ -39,12 +39,17 @@ export function playerScene(skin: PlayerSkin, arms: PlayerArms): SceneDocument {
   return createPlayerModel(loadSkin(skinBytes(skin), { name: `skin-${skin}.png` }), { arms });
 }
 
-/** `doc` in a preset pose with `HELD_CUBE` attached to its right hand. */
-export function holdingCube(doc: SceneDocument, preset: PlayerPosePresetName): SceneDocument {
+/** `doc` in a preset pose. */
+export function posedPlayer(doc: SceneDocument, preset: PlayerPosePresetName): SceneDocument {
   const pose = playerPosePreset(preset);
   if (!pose) throw new Error(`no pose preset ${preset}`);
+  return poseScene(doc, pose).document;
+}
+
+/** `doc` in a preset pose with `HELD_CUBE` attached to its right hand. */
+export function holdingCube(doc: SceneDocument, preset: PlayerPosePresetName): SceneDocument {
   const cube = loadBbmodel(singleCubeSource).scene;
-  return attachModel(poseScene(doc, pose).document, cube, HELD_CUBE);
+  return attachModel(posedPlayer(doc, preset), cube, HELD_CUBE);
 }
 
 /**

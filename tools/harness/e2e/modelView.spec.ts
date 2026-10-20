@@ -46,13 +46,14 @@ const MODEL_VIEW_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions & { reas
     maxMeanDelta: 0.06,
     reason: 'edge pixels only (shadow-map texels, rasterisation rules)',
   },
-  // Measured 111 pixels (ratio 0.00169), mean delta 0.063: texel and silhouette edges at 0.6 scale and the shadow-map
-  // edge along the raised arm.
+  // Measured 111 pixels (ratio 0.00169), mean delta 0.063. About 80 are 1-px strips just inside the outer layer's holes
+  // (arms, legs), where the raycast draws the opaque ring's contact shadow on the base layer 0.15 units behind and the
+  // shadow map (0.0625-unit texels, 0.094 receiver offset) cannot resolve it; the rest are edge pixels.
   player: {
     threshold: 0.1,
     maxDiffRatio: 0.0025,
     maxMeanDelta: 0.095,
-    reason: 'edge pixels only (shadow-map texels, rasterisation rules)',
+    reason: 'contact-shadow strips inside outer-layer holes (shadow-map resolution) and edge pixels',
   },
 };
 

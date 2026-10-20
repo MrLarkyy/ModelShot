@@ -24,6 +24,7 @@ const PLAYER = [
   'player-hold-34',
   'player-walk-hold-34',
   'player-slim-fallback',
+  'player-wave-front',
 ].map((variant) => spec(variant, variant));
 const GOLDENS = [
   ...TURNTABLE,
