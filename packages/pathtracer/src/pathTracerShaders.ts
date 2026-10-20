@@ -1,4 +1,5 @@
 import { linkShader, lookShaderChunks, type ShaderChunks } from '@modelshot/looks';
+import bakeFrag from './shaders/bake.frag.glsl?raw';
 import bvhTraverse from './shaders/bvhTraverse.glsl?raw';
 import fullscreenVert from './shaders/fullscreen.vert.glsl?raw';
 import keyLight from './shaders/keyLight.glsl?raw';
@@ -22,11 +23,12 @@ export const PATH_TRACER_SHADER_CHUNKS: ShaderChunks = Object.freeze({
   bvhTraverse,
 });
 
-export type PathTracerProgramName = 'trace' | 'present';
+export type PathTracerProgramName = 'trace' | 'present' | 'bake';
 
 const PROGRAMS: Readonly<Record<PathTracerProgramName, readonly [string, string]>> = {
   trace: [fullscreenVert, traceFrag],
   present: [fullscreenVert, presentFrag],
+  bake: [fullscreenVert, bakeFrag],
 };
 
 /** Linked GLSL of one program. */

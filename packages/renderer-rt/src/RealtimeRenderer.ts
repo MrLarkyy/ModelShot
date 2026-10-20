@@ -9,11 +9,14 @@ import {
   type SceneDocument,
 } from '@modelshot/scene';
 import { LIGHT_RIG_V0 } from '@modelshot/looks';
+import type { BakedLighting } from './BakedLighting';
+import { checkLighting } from './checkLighting';
 import { canvasSize, type CanvasCssSize, type CanvasSize } from './canvasSize';
 import { DEFAULT_MAX_TEXTURE_PIXELS_TOTAL, decodeTextures, type TextureLimits } from './decodeTextures';
 import { queryGlLimits, type GlLimits } from './glLimits';
 import { depthKeyMode, depthPull, exactDepthRange, type DepthKeyMode } from './depthKeyMode';
 import { invertMat4 } from './invertMat4';
+import { lightmapLayout, type LightmapLayout } from './lightmapLayout';
 import { createRendererPrograms, type MeshPassName, type RendererPrograms } from './rendererPrograms';
 import { RendererError } from './RendererError';
 import type { RendererWarning } from './RendererWarning';
@@ -74,6 +77,18 @@ interface LoadedScene {
   alphaLevels: (AlphaLevels | null)[] | null;
   /** Per mesh: closed and opaque on every face (`closedOpaqueMeshes`), from the same readback. */
   closedOpaque: boolean[] | null;
+  /** Where baked light lies (`lightmapLayout`); `setLighting` takes only lighting baked for it. */
+  readonly layout: LightmapLayout;
+}
+
+/** The baked light on the GPU: RGBA16F lightmaps and the shadow catcher's quad. */
+interface GpuLighting {
+  readonly lightmap: WebGLTexture;
+  readonly catcher: {
+    readonly texture: WebGLTexture;
+    readonly vao: WebGLVertexArrayObject;
+    readonly buffer: WebGLBuffer;
+  } | null;
 }
 
 /** What one frame draws with: matrices, the far plane and the depth-key variant (`depthKeyMode`). */
@@ -100,6 +115,9 @@ interface GpuResources {
   capabilities: RendererCapabilities;
   sceneTextures: (WebGLTexture | null)[];
   scene: GpuScene | null;
+  /** 1 × 1 light of value 1, bound while there is no baked light. */
+  readonly unbakedLight: WebGLTexture;
+  lighting: GpuLighting | null;
 }
 
 /**
@@ -116,6 +134,8 @@ export class RealtimeRenderer {
   private disposed = false;
   private dirty = true;
   private frameDepthKey: DepthKeyMode | null = null;
+  /** Kept on the CPU so a lost context gets it back. */
+  private lighting: BakedLighting | null = null;
   private readonly restoredListeners = new Set<() => void>();
   private readonly background: readonly [number, number, number];
 
@@ -177,21 +197,49 @@ export class RealtimeRenderer {
   }
 
   /**
-   * Validates `doc` (a malformed one rejects with `RendererError` `INVALID_SCENE`), decodes its textures off the
-   * drawing path and swaps it in. A later call or `dispose()` supersedes a pending one: it resolves with
-   * `applied: false` and releases what it decoded.
+   * Validates `doc` (a malformed one rejects with `RendererError` `INVALID_SCENE`) and lays out its lightmap
+   * (`SCENE_TOO_LARGE` over its limit), decodes its textures off the drawing path and swaps it in. Baked light stays
+   * when the new document has the same `layoutKey` (another pose of the same model) and is dropped otherwise. A later
+   * call or `dispose()` supersedes a pending one: it resolves with `applied: false` and releases what it decoded.
    */
   async setScene(doc: SceneDocument): Promise<SetSceneResult> {
     if (this.disposed) return { applied: false, warnings: [] };
     validateScene(doc);
+    const layout = lightmapLayout(doc);
     const generation = ++this.generation;
     const decoded = await decodeTextures(doc.textures, this.textureLimits(), () => this.isCurrent(generation));
     if (!decoded) return { applied: false, warnings: [] };
     this.releaseScene();
-    this.loaded = { doc, bitmaps: decoded.bitmaps, alphaLevels: null, closedOpaque: null };
+    this.loaded = { doc, bitmaps: decoded.bitmaps, alphaLevels: null, closedOpaque: null, layout };
+    if (this.lighting && this.lighting.layoutKey !== layout.layoutKey) this.dropLighting();
     if (this.gpu && !this.lost) this.uploadLoadedScene(this.gpu);
     this.dirty = true;
     return { applied: true, warnings: decoded.warnings };
+  }
+
+  /** The current scene's lightmap layout (what a bake for it must match); `null` before a scene. */
+  get lightmapLayout(): LightmapLayout | null {
+    return this.loaded?.layout ?? null;
+  }
+
+  /**
+   * Shades the scene with baked light (`LightBaker` of `@modelshot/pathtracer`) and draws its shadow catcher, or
+   * without (`null`): exactly the unbaked image. Returns `false` and changes nothing when the lighting was not baked
+   * for the current scene's layout (`checkLighting`) or there is no scene. One RGBA16F upload per lightmap.
+   */
+  setLighting(lighting: BakedLighting | null): boolean {
+    if (this.disposed) return false;
+    if (lighting === null) {
+      this.dropLighting();
+      this.dirty = true;
+      return true;
+    }
+    const layout = this.loaded?.layout;
+    if (!layout || !checkLighting(layout, lighting)) return false;
+    this.lighting = lighting;
+    if (this.gpu && !this.lost) this.uploadLighting(this.gpu);
+    this.dirty = true;
+    return true;
   }
 
   setCamera(camera: SceneCamera): void {
@@ -305,6 +353,13 @@ export class RealtimeRenderer {
       }
     }
     const programs = createRendererPrograms(gl, targets !== null);
+    const unbakedLight = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, unbakedLight);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA16F, 1, 1);
+    // Half-float 1.0 in all four channels.
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1, 1, gl.RGBA, gl.HALF_FLOAT, new Uint16Array(4).fill(0x3c00));
+    setNearest(gl);
+    gl.bindTexture(gl.TEXTURE_2D, null);
     return {
       programs,
       targets,
@@ -314,7 +369,65 @@ export class RealtimeRenderer {
       capabilities: { path: targets ? 'float' : 'fallback', msaaSamples: targets?.samples ?? 0, limits },
       sceneTextures: [],
       scene: null,
+      unbakedLight,
+      lighting: null,
     };
+  }
+
+  /** Uploads the retained lighting in place of what the GPU had. */
+  private uploadLighting(gpu: GpuResources): void {
+    const lighting = this.lighting;
+    this.releaseGpuLighting(gpu);
+    if (!lighting) return;
+    const gl = this.gl;
+    const upload = (width: number, height: number, data: Uint16Array): WebGLTexture => {
+      const texture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+      gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA16F, width, height);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, width, height, gl.RGBA, gl.HALF_FLOAT, data);
+      setNearest(gl);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      return texture;
+    };
+    const lightmap = upload(lighting.width, lighting.height, lighting.data);
+    let catcher: GpuLighting['catcher'] = null;
+    if (lighting.catcher) {
+      const { y, rect, width, height, data } = lighting.catcher;
+      const texture = upload(width, height, data);
+      const vao = gl.createVertexArray();
+      const buffer = gl.createBuffer();
+      gl.bindVertexArray(vao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      // Counter-clockwise seen from above: the catcher is one-sided.
+      const quad = [rect[0], y, rect[3], rect[2], y, rect[3], rect[2], y, rect[1], rect[0], y, rect[1]];
+      const corners = [0, 1, 2, 0, 2, 3].flatMap((i) => quad.slice(i * 3, i * 3 + 3));
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(corners), gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+      gl.bindVertexArray(null);
+      gl.bindBuffer(gl.ARRAY_BUFFER, null);
+      catcher = { texture, vao, buffer };
+    }
+    gpu.lighting = { lightmap, catcher };
+  }
+
+  private releaseGpuLighting(gpu: GpuResources): void {
+    const lighting = gpu.lighting;
+    gpu.lighting = null;
+    if (!lighting || this.lost) return;
+    const gl = this.gl;
+    gl.deleteTexture(lighting.lightmap);
+    if (lighting.catcher) {
+      gl.deleteTexture(lighting.catcher.texture);
+      gl.deleteVertexArray(lighting.catcher.vao);
+      gl.deleteBuffer(lighting.catcher.buffer);
+    }
+  }
+
+  private dropLighting(): void {
+    this.lighting = null;
+    if (this.gpu) this.releaseGpuLighting(this.gpu);
   }
 
   /** Float targets the driver rejects at this size: draw on the no-float path from now on. */
@@ -345,7 +458,7 @@ export class RealtimeRenderer {
         alpha.map((texture) => texture?.opacity ?? 'opaque'),
       );
     }
-    gpu.scene = uploadScene(gl, loaded.doc, loaded.alphaLevels, loaded.closedOpaque);
+    gpu.scene = uploadScene(gl, loaded.doc, loaded.alphaLevels, loaded.closedOpaque, loaded.layout.vertexData);
   }
 
   private releaseScene(): void {
@@ -371,6 +484,8 @@ export class RealtimeRenderer {
     gl.deleteVertexArray(gpu.fullscreenVao);
     gl.deleteTexture(gpu.placeholder);
     gl.deleteTexture(gpu.untextured);
+    gl.deleteTexture(gpu.unbakedLight);
+    this.releaseGpuLighting(gpu);
   }
 
   private readonly handleContextLost = (event: Event): void => {
@@ -387,6 +502,7 @@ export class RealtimeRenderer {
     try {
       this.gpu = this.createGpuResources();
       this.uploadLoadedScene(this.gpu);
+      this.uploadLighting(this.gpu);
     } catch {
       this.gpu = null;
       return;
@@ -424,6 +540,10 @@ export class RealtimeRenderer {
     const noPull = new Float32Array(4);
     gl.uniform1i(pass.texture, 0);
     gl.uniform1i(pass.texelAntialias, this.options.texelAntialias === false ? 0 : 1);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, gpu.lighting?.lightmap ?? gpu.unbakedLight);
+    gl.uniform1i(pass.lightmap, 1);
+    gl.uniform1i(pass.bakeOn, gpu.lighting ? 1 : 0);
     gl.activeTexture(gl.TEXTURE0);
     gl.enable(gl.CULL_FACE);
     const draw = (item: DrawItem, order: number): void => {
@@ -432,6 +552,7 @@ export class RealtimeRenderer {
       gl.uniform1i(pass.alphaMode, item.alpha.modeId);
       gl.uniform1i(pass.alphaCutoffByte, item.alpha.cutoffByte);
       gl.bindTexture(gl.TEXTURE_2D, this.textureFor(gpu, item.texture));
+      gl.uniform2f(pass.lightmapTextureSize, item.textureSize[0], item.textureSize[1]);
       gl.uniformMatrix4fv(pass.model, false, item.model);
       const exactVao = exact?.vaos.get(item.batch);
       if (exactVao) {
@@ -469,6 +590,41 @@ export class RealtimeRenderer {
     }
     gl.disable(gl.CULL_FACE);
     gl.bindVertexArray(null);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.activeTexture(gl.TEXTURE0);
+  }
+
+  /**
+   * The shadow catcher, drawn right after the backdrop without depth test or write: it is one-sided from above and
+   * lies at the model's lowest point, so a camera ray meets any model surface before the plane, and the model drawn
+   * next covers it wherever both are seen, in either depth-key variant.
+   */
+  private drawCatcher(gpu: GpuResources, frame: FrameView, toneMap: boolean): void {
+    const catcher = gpu.lighting?.catcher;
+    const baked = this.lighting?.catcher;
+    if (!catcher || !baked) return;
+    const gl = this.gl;
+    const { program, uniforms } = gpu.programs.catcher;
+    gl.useProgram(program);
+    gl.disable(gl.DEPTH_TEST);
+    gl.depthMask(false);
+    gl.enable(gl.CULL_FACE);
+    gl.cullFace(gl.BACK);
+    gl.uniformMatrix4fv(uniforms['u_viewProjection'] ?? null, false, frame.viewProjection);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, catcher.texture);
+    gl.uniform1i(uniforms['u_catcherLight'] ?? null, 0);
+    gl.uniform4fv(uniforms['u_catcherRect'] ?? null, baked.rect);
+    gl.uniform2f(uniforms['u_catcherSize'] ?? null, baked.width, baked.height);
+    gl.uniform3fv(uniforms['u_background'] ?? null, this.background);
+    gl.uniform1i(uniforms['u_toneMap'] ?? null, toneMap ? 1 : 0);
+    gl.bindVertexArray(catcher.vao);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    gl.bindVertexArray(null);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.disable(gl.CULL_FACE);
+    gl.depthMask(true);
   }
 
   private drawFloatPath(gpu: GpuResources, targets: RenderTargets, frame: FrameView | null): void {
@@ -491,6 +647,8 @@ export class RealtimeRenderer {
     gl.depthMask(true);
     gl.clearBufferfv(gl.COLOR, 0, [...this.background, 1]);
     gl.clearBufferfv(gl.DEPTH, 0, [1]);
+    if (frame) this.drawCatcher(gpu, frame, false);
+    gl.enable(gl.DEPTH_TEST);
     if (scene && frame) this.drawItems(gpu, 'opaque', scene.opaque, frame);
 
     if (msaa) {
@@ -565,6 +723,7 @@ export class RealtimeRenderer {
     gl.uniform3f(backdrop.uniforms['u_background'] ?? null, ...this.background);
     gl.bindVertexArray(gpu.fullscreenVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    if (frame) this.drawCatcher(gpu, frame, true);
     if (gpu.scene && frame) {
       gl.enable(gl.DEPTH_TEST);
       gl.depthFunc(gl.LESS);
@@ -573,4 +732,9 @@ export class RealtimeRenderer {
     }
     gl.bindVertexArray(null);
   }
+}
+
+function setNearest(gl: WebGL2RenderingContext): void {
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 }

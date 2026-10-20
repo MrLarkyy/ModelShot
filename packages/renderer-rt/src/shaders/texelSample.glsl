@@ -16,14 +16,26 @@ vec4 fetchPremultiplied(sampler2D tex, ivec2 texel, ivec4 range, int mode, int c
   return tapWeight(texelFetch(tex, clamp(texel, range.xy, range.zw), 0), mode, cutoffByte);
 }
 
-// p: position in texel units; texelsPerPixel: fwidth(p). Inside a texel the result is that texel; across a seam the
-// two sides blend over one pixel. Premultiplied, so a cutout neighbour adds no dark fringe.
-vec4 texelAntialiased(sampler2D tex, vec2 p, vec2 texelsPerPixel, ivec4 range, int mode, int cutoffByte) {
+// The anti-aliased seam's taps: texels base, base + (1, 0), (0, 1), (1, 1), blended by f. p: position in texel units;
+// texelsPerPixel: fwidth(p). Inside a texel f picks that texel alone; across a seam the two sides blend over one
+// pixel. The baked light (bakedLight) uses the same grid, so light and albedo change at the same pixels.
+struct SeamTaps {
+  ivec2 base;
+  vec2 f;
+};
+
+SeamTaps seamTaps(vec2 p, vec2 texelsPerPixel) {
   vec2 seam = floor(p + 0.5);
   vec2 q = seam + clamp((p - seam) / max(texelsPerPixel, vec2(1.0e-6)), -0.5, 0.5) - 0.5;
   vec2 cell = floor(q);
-  vec2 f = q - cell;
-  ivec2 base = ivec2(cell);
+  return SeamTaps(ivec2(cell), q - cell);
+}
+
+// Premultiplied, so a cutout neighbour adds no dark fringe.
+vec4 texelAntialiased(sampler2D tex, vec2 p, vec2 texelsPerPixel, ivec4 range, int mode, int cutoffByte) {
+  SeamTaps taps = seamTaps(p, texelsPerPixel);
+  ivec2 base = taps.base;
+  vec2 f = taps.f;
   vec4 c00 = fetchPremultiplied(tex, base, range, mode, cutoffByte);
   vec4 c10 = fetchPremultiplied(tex, base + ivec2(1, 0), range, mode, cutoffByte);
   vec4 c01 = fetchPremultiplied(tex, base + ivec2(0, 1), range, mode, cutoffByte);

@@ -13,7 +13,8 @@ export interface GpuScene {
   readonly maxRenderOrder: number;
 }
 
-function uploadData(gl: WebGL2RenderingContext, texture: DataTexture): WebGLTexture {
+/** One RGBA32F data texture, NEAREST, `DATA_TEXTURE_WIDTH` texels per row. */
+export function uploadData(gl: WebGL2RenderingContext, texture: DataTexture): WebGLTexture {
   const handle = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, handle);
   gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);

@@ -5,6 +5,7 @@ precision highp int;
 #include "texelSample"
 #include "texelAlpha"
 #include "shading"
+#include "bakedLight"
 #include "depthKey"
 
 uniform sampler2D u_texture;
@@ -36,9 +37,11 @@ float toHalf(float v) {
 void main() {
   prepareDepthKey();
   TexelSample s = sampleTexels(u_texture, v_uv, v_uvRect, u_texelAntialias, u_alphaMode, u_alphaCutoffByte);
+  vec4 light = vec4(1.0);
+  if (u_bakeOn) light = sampleBakedLight(v_uv, v_uvRect);
   if (s.coverage != COVERAGE_PARTIAL) discard;
   float alpha = 1.0 - toHalf(1.0 - s.nearestAlpha);
-  vec3 color = shadeSurface(sampleColor(s), surfaceNormal(v_normal));
+  vec3 color = shadeLit(sampleColor(s), surfaceNormal(v_normal), light);
   float d = 1.0 - gl_FragCoord.z;
   float weight = alpha * clamp(3.0e3 * d * d * d, 1.0e-2, 3.0e3);
   outAccum = vec4(toHalf(color * weight * alpha), alpha);

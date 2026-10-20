@@ -5,6 +5,7 @@ precision highp int;
 #include "texelSample"
 #include "texelAlpha"
 #include "shading"
+#include "bakedLight"
 #include "depthKey"
 
 uniform sampler2D u_texture;
@@ -22,7 +23,9 @@ out vec4 outColor;
 void main() {
   prepareDepthKey();
   TexelSample s = sampleTexels(u_texture, v_uv, v_uvRect, u_texelAntialias, u_alphaMode, u_alphaCutoffByte);
+  vec4 light = vec4(1.0);
+  if (u_bakeOn) light = sampleBakedLight(v_uv, v_uvRect);
   if (s.coverage != COVERAGE_OPAQUE) discard;
-  outColor = vec4(shadeSurface(sampleColor(s), surfaceNormal(v_normal)), 1.0);
+  outColor = vec4(shadeLit(sampleColor(s), surfaceNormal(v_normal), light), 1.0);
   writeDepthKey();
 }

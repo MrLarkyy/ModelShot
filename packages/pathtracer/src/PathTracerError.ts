@@ -5,12 +5,14 @@ export type PathTracerErrorCode =
   | 'SHADER_COMPILE'
   | 'SHADER_LINK'
   | 'INVALID_SCENE'
-  | 'SCENE_TOO_LARGE';
+  | 'SCENE_TOO_LARGE'
+  | 'WORKER_UNAVAILABLE';
 
 /**
  * A failure the path tracer cannot render around. `FLOAT_TARGETS_UNAVAILABLE` / `HIGHP_UNAVAILABLE`: this GPU cannot
  * accumulate exactly (the preview still works); `SCENE_TOO_LARGE`: a limit was exceeded before anything was allocated;
- * `INVALID_SCENE`: `path` names the offending scene field.
+ * `INVALID_SCENE`: `path` names the offending scene field; `WORKER_UNAVAILABLE`: the light bake could not start its
+ * worker (no main-thread fallback).
  */
 export class PathTracerError extends Error {
   override readonly name = 'PathTracerError';

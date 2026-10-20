@@ -12,6 +12,8 @@ export interface DrawItem {
   readonly count: number;
   /** Index into `SceneDocument.textures`, −1 for an untextured face. */
   readonly texture: number;
+  /** The texture's size in texels as the lightmap layout saw it (`SceneTexture` width, height; 1 × 1 untextured). */
+  readonly textureSize: readonly [number, number];
   readonly alpha: BatchAlpha;
   /** Single-sided: back faces culled in every pass. */
   readonly cull: boolean;
@@ -49,6 +51,7 @@ const ATTRIBUTES = [
   { location: 1, size: 3, key: 'normals' },
   { location: 2, size: 2, key: 'uvs' },
   { location: 3, size: 4, key: 'uvRects' },
+  { location: 8, size: 4, key: 'lightmap' },
 ] as const satisfies readonly { location: number; size: number; key: keyof SceneBatch }[];
 
 const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
@@ -57,20 +60,21 @@ const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 
  * Uploads the visible geometry of a validated document, merged by `batchScene`, one vertex array per batch.
  * `alphaLevels[t]` holds the alpha bytes present in texture `t` (`readTextureAlpha`); a batch whose texture has a byte
  * that its alpha rule makes partial is also drawn by the transparency pass. `closedOpaque[m]` marks mesh `m` closed and
- * opaque on every face (`closedOpaqueMeshes`).
+ * opaque on every face (`closedOpaqueMeshes`); `lightmap[m]` its per-vertex lightmap data (`LightmapLayout.vertexData`).
  */
 export function uploadScene(
   gl: WebGL2RenderingContext,
   doc: SceneDocument,
   alphaLevels: readonly (AlphaLevels | null)[],
   closedOpaque: readonly boolean[] = [],
+  lightmap: readonly (Float32Array | null)[] = [],
 ): GpuScene {
   const world = worldMatrices(doc.nodes);
   const vaos: WebGLVertexArrayObject[] = [];
   const buffers: WebGLBuffer[] = [];
   const opaque: DrawItem[] = [];
   const partial: DrawItem[] = [];
-  for (const batch of batchScene(doc, closedOpaque)) {
+  for (const batch of batchScene(doc, closedOpaque, lightmap)) {
     const vao = gl.createVertexArray();
     vaos.push(vao);
     gl.bindVertexArray(vao);
@@ -96,6 +100,7 @@ export function uploadScene(
       offset: 0,
       count: batch.indices.length,
       texture: batch.texture,
+      textureSize: [doc.textures[batch.texture]?.width || 1, doc.textures[batch.texture]?.height || 1],
       alpha: batch.alpha,
       cull: !batch.doubleSided,
       renderOrder: batch.renderOrder,
@@ -207,9 +212,10 @@ export function uploadExactGeometry(gl: WebGL2RenderingContext, scene: GpuScene)
       normals: new Float32Array(n * 3),
       uvs: new Float32Array(n * 2),
       uvRects: new Float32Array(n * 4),
+      lightmap: new Float32Array(n * 4),
     };
     const corners = CORNER_LOCATIONS.map(() => new Float32Array(n * 3));
-    const { indices, positions, normals, uvs, uvRects } = batch;
+    const { indices, positions, normals, uvs, uvRects, lightmap } = batch;
     // Plain index loops: this runs once per scene on up to the loader's 200 000 triangles.
     for (let i = 0; i < n; i++) {
       const v = indices[i] ?? 0;
@@ -220,6 +226,7 @@ export function uploadExactGeometry(gl: WebGL2RenderingContext, scene: GpuScene)
       arrays.uvs[i * 2] = uvs[v * 2] ?? 0;
       arrays.uvs[i * 2 + 1] = uvs[v * 2 + 1] ?? 0;
       for (let k = 0; k < 4; k++) arrays.uvRects[i * 4 + k] = uvRects[v * 4 + k] ?? 0;
+      for (let k = 0; k < 4; k++) arrays.lightmap[i * 4 + k] = lightmap[v * 4 + k] ?? 0;
     }
     for (let t = 0; t < n; t += 3) {
       for (let c = 0; c < 3; c++) {

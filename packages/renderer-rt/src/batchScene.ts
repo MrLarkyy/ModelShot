@@ -35,6 +35,8 @@ export interface SceneBatch {
   readonly normals: Float32Array;
   readonly uvs: Float32Array;
   readonly uvRects: Float32Array;
+  /** 4 per vertex: where its baked light lies (`LightmapLayout.vertexData`); (0, 0, −1, 0) without a layout. */
+  readonly lightmap: Float32Array;
   readonly indices: Uint32Array;
 }
 
@@ -62,7 +64,11 @@ function alphaOf(doc: SceneDocument, group: SceneMeshGroup, texture: number): Ba
   return { modeId: ALPHA_MODE_ID[rule.mode], cutoffByte: alphaCutoffByte(rule.cutoff) };
 }
 
-function merge(key: BatchKey, parts: readonly Part[]): SceneBatch {
+function merge(
+  key: BatchKey,
+  parts: readonly Part[],
+  lightmapOf: (mesh: SceneMesh) => Float32Array | null,
+): SceneBatch {
   const bases = new Map<SceneMesh, number>();
   let vertices = 0;
   let indexCount = 0;
@@ -79,6 +85,7 @@ function merge(key: BatchKey, parts: readonly Part[]): SceneBatch {
     normals: new Float32Array(vertices * 3),
     uvs: new Float32Array(vertices * 2),
     uvRects: new Float32Array(vertices * 4),
+    lightmap: new Float32Array(vertices * 4),
     indices: new Uint32Array(indexCount),
   };
   for (const [mesh, base] of bases) {
@@ -86,6 +93,9 @@ function merge(key: BatchKey, parts: readonly Part[]): SceneBatch {
     batch.normals.set(mesh.normals, base * 3);
     batch.uvs.set(mesh.uvs, base * 2);
     batch.uvRects.set(mesh.uvRects, base * 4);
+    const light = lightmapOf(mesh);
+    if (light) batch.lightmap.set(light, base * 4);
+    else for (let v = base; v < base + mesh.positions.length / 3; v++) batch.lightmap[v * 4 + 2] = -1;
   }
   let at = 0;
   for (const { mesh, group } of parts) {
@@ -100,9 +110,16 @@ function merge(key: BatchKey, parts: readonly Part[]): SceneBatch {
 /**
  * Groups the visible triangles of a validated document by (node, texture, alpha mode, cutoff byte, sidedness, render
  * order, closed and opaque), in order of first appearance; within a batch triangles keep the document's mesh and group
- * order. `closedOpaque[m]` marks mesh `m` closed and opaque on every face (`closedOpaqueMeshes`; default none).
+ * order. `closedOpaque[m]` marks mesh `m` closed and opaque on every face (`closedOpaqueMeshes`; default none);
+ * `lightmap[m]` holds mesh `m`'s per-vertex lightmap data (`LightmapLayout.vertexData`; default none).
  */
-export function batchScene(doc: SceneDocument, closedOpaque: readonly boolean[] = []): SceneBatch[] {
+export function batchScene(
+  doc: SceneDocument,
+  closedOpaque: readonly boolean[] = [],
+  lightmap: readonly (Float32Array | null)[] = [],
+): SceneBatch[] {
+  const meshIndex = new Map(doc.meshes.map((mesh, m) => [mesh, m]));
+  const lightmapOf = (mesh: SceneMesh) => lightmap[meshIndex.get(mesh) ?? -1] ?? null;
   const visibility = nodeVisibility(doc);
   const parts = new Map<string, { key: BatchKey; parts: Part[] }>();
   doc.meshes.forEach((mesh, index) => {
@@ -136,5 +153,5 @@ export function batchScene(doc: SceneDocument, closedOpaque: readonly boolean[] 
       entry.parts.push({ mesh, group });
     }
   });
-  return [...parts.values()].map((entry) => merge(entry.key, entry.parts));
+  return [...parts.values()].map((entry) => merge(entry.key, entry.parts, lightmapOf));
 }

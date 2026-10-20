@@ -39,7 +39,9 @@ import { PathTracerError } from './PathTracerError';
 import type { PathTracerOptions, RenderRequest, SetSceneOptions, SetSceneResult } from './PathTracerOptions';
 import type { PathTracerWarning } from './PathTracerWarning';
 import { sampleTiles, samplesToDraw } from './sampleSchedule';
-import { planTextureLayers, type TextureLayerPlan } from './textureLayers';
+import { requireExactAccumulation } from './requireExactAccumulation';
+import { layoutTextures } from './layoutTextures';
+import type { TextureLayerPlan } from './textureLayers';
 import { createTracerPrograms, disposeTracerPrograms, type TracerPrograms } from './tracerPrograms';
 
 const DEFAULT_MAX_BOUNCES = 4;
@@ -97,24 +99,6 @@ function checkInteger(label: string, value: unknown, min: number, max: number): 
     throw new RangeError(`${label} must be an integer in ${min}..${max}, got ${String(value)}`);
   }
   return value;
-}
-
-/** Places the untextured colour, the placeholder and every decoded image in texture layers. */
-function layoutTextures(bitmaps: readonly (ImageBitmap | null)[], side: number, maxLayers: number) {
-  const images: (ImageBitmap | RawImage)[] = [UNTEXTURED_IMAGE, PLACEHOLDER_IMAGE];
-  const slotOf = bitmaps.map((bitmap) => (bitmap ? images.push(bitmap) - 1 : -1));
-  const plan = planTextureLayers(images, side, maxLayers);
-  const at = (index: number) => {
-    const place = plan.placements[index];
-    if (!place) throw new Error(`texture image ${index} has no placement`);
-    return place;
-  };
-  const textures: MaterialTextures = {
-    untextured: at(0),
-    placeholder: at(1),
-    textures: slotOf.map((slot) => (slot >= 0 ? at(slot) : null)),
-  };
-  return { plan, images, textures };
 }
 
 /**
@@ -411,17 +395,7 @@ export class PathTracer {
 
   private createGpu(): Gpu {
     const gl = this.gl;
-    if (gl.getExtension('EXT_color_buffer_float') === null) {
-      throw new PathTracerError(
-        'FLOAT_TARGETS_UNAVAILABLE',
-        'EXT_color_buffer_float is missing: the path tracer needs RGBA32F render targets',
-      );
-    }
-    const float = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT);
-    const int = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_INT);
-    if (!float || float.precision < 23 || !int || int.rangeMax < 30) {
-      throw new PathTracerError('HIGHP_UNAVAILABLE', 'fragment shaders lack 32-bit highp floats and integers');
-    }
+    requireExactAccumulation(gl);
     const capabilities = this.queryCapabilities();
     const programs = createTracerPrograms(gl);
     return { capabilities, programs, vao: gl.createVertexArray(), scene: null, targets: null };
