@@ -63,7 +63,8 @@ class Inflater {
   private readonly out: Uint8Array;
   // Reused by every dynamic block: a stream of many tiny blocks must not allocate per block.
   private readonly codeLengths = new Uint8Array(19);
-  private readonly lengths = new Uint8Array(MAX_LITERAL_CODES + MAX_DISTANCE_CODES);
+  private readonly usedSymbols = new Uint16Array(MAX_LITERAL_CODES + MAX_DISTANCE_CODES);
+  private readonly usedLengths = new Uint8Array(MAX_LITERAL_CODES + MAX_DISTANCE_CODES);
   private readonly codeLengthCode = emptyHuffman(19);
   private readonly literal = emptyHuffman(MAX_LITERAL_CODES);
   private readonly distance = emptyHuffman(MAX_DISTANCE_CODES);
@@ -123,37 +124,52 @@ class Inflater {
     const distanceCount = this.bits(5) + 1;
     const codeLengthCount = this.bits(4) + 4;
     if (literalCount > MAX_LITERAL_CODES || distanceCount > MAX_DISTANCE_CODES) throw new Malformed();
-    const codeLengths = this.codeLengths.fill(0);
-    for (let i = 0; i < codeLengthCount; i++) codeLengths[CODE_LENGTH_ORDER[i] ?? 0] = this.bits(3);
+    const codeLengths = this.codeLengths;
+    for (let i = 0; i < 19; i++) codeLengths[CODE_LENGTH_ORDER[i] ?? 0] = i < codeLengthCount ? this.bits(3) : 0;
     const codeLengthCode = this.codeLengthCode;
-    if (huffman(codeLengths, codeLengthCode) !== 0) throw new Malformed();
+    if (huffman(codeLengths, 0, 19, codeLengthCode) !== 0) throw new Malformed();
 
-    const lengths = this.lengths.subarray(0, literalCount + distanceCount);
+    // Only the non-zero lengths are kept, in symbol order: a block then costs work in proportion to the codes it
+    // defines, not to the 316-symbol alphabet, so a stream of tiny blocks cannot multiply the work per input byte.
+    const symbols = this.usedSymbols;
+    const lengths = this.usedLengths;
+    const total = literalCount + distanceCount;
+    let used = 0;
+    let previous = -1;
+    let hasEnd = false;
     let i = 0;
-    while (i < lengths.length) {
+    while (i < total) {
       const symbol = this.decode(codeLengthCode);
-      if (symbol < 16) {
-        lengths[i++] = symbol;
-        continue;
-      }
       let value = 0;
-      let repeat: number;
-      if (symbol === 16) {
-        if (i === 0) throw new Malformed();
-        value = lengths[i - 1] ?? 0;
+      let repeat = 1;
+      if (symbol < 16) {
+        value = symbol;
+      } else if (symbol === 16) {
+        if (previous < 0) throw new Malformed();
+        value = previous;
         repeat = 3 + this.bits(2);
       } else if (symbol === 17) {
         repeat = 3 + this.bits(3);
       } else {
         repeat = 11 + this.bits(7);
       }
-      if (i + repeat > lengths.length) throw new Malformed();
-      lengths.fill(value, i, i + repeat);
-      i += repeat;
+      if (i + repeat > total) throw new Malformed();
+      if (value === 0) {
+        i += repeat;
+      } else {
+        for (const end = i + repeat; i < end; i++, used++) {
+          if (i === END_OF_BLOCK) hasEnd = true;
+          symbols[used] = i;
+          lengths[used] = value;
+        }
+      }
+      previous = value;
     }
-    if (lengths[END_OF_BLOCK] === 0) throw new Malformed();
-    const literalLeft = huffman(lengths.subarray(0, literalCount), this.literal);
-    const distanceLeft = huffman(lengths.subarray(literalCount), this.distance);
+    if (!hasEnd) throw new Malformed();
+    let literalUsed = 0;
+    while (literalUsed < used && (symbols[literalUsed] ?? 0) < literalCount) literalUsed++;
+    const literalLeft = sparseHuffman(symbols, lengths, 0, literalUsed, 0, literalCount, this.literal);
+    const distanceLeft = sparseHuffman(symbols, lengths, literalUsed, used, literalCount, distanceCount, this.distance);
     if (!usable(this.literal, literalLeft, literalCount) || !usable(this.distance, distanceLeft, distanceCount)) {
       throw new Malformed();
     }
@@ -209,17 +225,63 @@ class Inflater {
 const offsets = new Uint16Array(MAX_BITS + 1);
 
 /**
- * Fills `code` with the canonical code for per-symbol code lengths (0 = unused) and returns how many codes of the full
- * 2^15 space are left unused: 0 for a complete code, negative for an over-subscribed one.
+ * Fills `code` with the canonical code for the code lengths `lengths[start .. start + count)` (0 = unused) and returns
+ * how many codes of the full 2^15 space are left unused: 0 for a complete code, negative for an over-subscribed one.
  */
-function huffman(lengths: Uint8Array, code: Huffman): number {
+function huffman(lengths: Uint8Array, start: number, count: number, code: Huffman): number {
   const { counts, symbols } = code;
-  counts.fill(0);
-  for (let symbol = 0; symbol < lengths.length; symbol++) {
-    const length = lengths[symbol] ?? 0;
+  for (let length = 0; length <= MAX_BITS; length++) counts[length] = 0;
+  for (let symbol = 0; symbol < count; symbol++) {
+    const length = lengths[start + symbol] ?? 0;
     counts[length] = (counts[length] ?? 0) + 1;
   }
-  if (counts[0] === lengths.length) return 0;
+  if (counts[0] === count) return 0;
+  const left = unusedCodes(counts);
+  if (left < 0) return left;
+  for (let symbol = 0; symbol < count; symbol++) {
+    const length = lengths[start + symbol] ?? 0;
+    if (length === 0) continue;
+    const at = offsets[length] ?? 0;
+    symbols[at] = symbol;
+    offsets[length] = at + 1;
+  }
+  return left;
+}
+
+/**
+ * `huffman` for a code given as its non-zero lengths only: `symbols[from .. to)` (ascending, offset by `base`) with
+ * `lengths[from .. to)`, in an alphabet of `symbolCount`.
+ */
+function sparseHuffman(
+  symbols: Uint16Array,
+  lengths: Uint8Array,
+  from: number,
+  to: number,
+  base: number,
+  symbolCount: number,
+  code: Huffman,
+): number {
+  const { counts } = code;
+  for (let length = 0; length <= MAX_BITS; length++) counts[length] = 0;
+  counts[0] = symbolCount - (to - from);
+  if (to === from) return 0;
+  for (let k = from; k < to; k++) {
+    const length = lengths[k] ?? 0;
+    counts[length] = (counts[length] ?? 0) + 1;
+  }
+  const left = unusedCodes(counts);
+  if (left < 0) return left;
+  for (let k = from; k < to; k++) {
+    const length = lengths[k] ?? 0;
+    const at = offsets[length] ?? 0;
+    code.symbols[at] = (symbols[k] ?? 0) - base;
+    offsets[length] = at + 1;
+  }
+  return left;
+}
+
+/** Codes of the 2^15 space that `counts` leaves unused (negative: over-subscribed); sets `offsets` for placement. */
+function unusedCodes(counts: Uint16Array): number {
   let left = 1;
   for (let length = 1; length <= MAX_BITS; length++) {
     left = (left << 1) - (counts[length] ?? 0);
@@ -228,13 +290,6 @@ function huffman(lengths: Uint8Array, code: Huffman): number {
   offsets[1] = 0;
   for (let length = 1; length < MAX_BITS; length++) {
     offsets[length + 1] = (offsets[length] ?? 0) + (counts[length] ?? 0);
-  }
-  for (let symbol = 0; symbol < lengths.length; symbol++) {
-    const length = lengths[symbol] ?? 0;
-    if (length === 0) continue;
-    const at = offsets[length] ?? 0;
-    symbols[at] = symbol;
-    offsets[length] = at + 1;
   }
   return left;
 }
@@ -254,7 +309,7 @@ const FIXED = (() => {
   lengths.fill(5, FIXED_LITERAL_CODES);
   const literal = emptyHuffman(FIXED_LITERAL_CODES);
   const distance = emptyHuffman(MAX_DISTANCE_CODES);
-  huffman(lengths.subarray(0, FIXED_LITERAL_CODES), literal);
-  huffman(lengths.subarray(FIXED_LITERAL_CODES), distance);
+  huffman(lengths, 0, FIXED_LITERAL_CODES, literal);
+  huffman(lengths, FIXED_LITERAL_CODES, MAX_DISTANCE_CODES, distance);
   return { literal, distance };
 })();

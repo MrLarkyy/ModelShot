@@ -4,6 +4,11 @@ import { inflateZlib } from '../../src/png/inflateZlib';
 import { seededBytes, seededRandom } from '../support/seededRandom';
 import { BitWriter } from '../support/BitWriter';
 
+/** Byte equality without an element-wise diff, which costs seconds on a megabyte array. */
+function sameBytes(actual: Uint8Array | undefined, expected: Uint8Array): boolean {
+  return actual !== undefined && Buffer.from(actual).equals(Buffer.from(expected));
+}
+
 /** Canonical Huffman codes for per-symbol code lengths (RFC 1951 3.2.2). */
 function canonical(lengths: readonly number[]): number[] {
   const counts = new Array<number>(16).fill(0);
@@ -79,9 +84,7 @@ const DATA: [string, Uint8Array][] = [
 describe('inflateZlib', () => {
   for (const [dataName, data] of DATA) {
     it.each(STRATEGIES)(`inflates ${dataName} data deflated by node:zlib with %s`, (_name, options) => {
-      const inflated = inflateZlib(new Uint8Array(deflateSync(data, options)), data.length);
-      expect(inflated).toBeDefined();
-      expect(Buffer.from(inflated ?? []).equals(Buffer.from(data))).toBe(true);
+      expect(sameBytes(inflateZlib(new Uint8Array(deflateSync(data, options)), data.length), data)).toBe(true);
     });
   }
 
@@ -90,7 +93,7 @@ describe('inflateZlib', () => {
     const stream = deflateSync(data);
     const outer = new Uint8Array(stream.length + 20);
     outer.set(stream, 7);
-    expect(inflateZlib(outer.subarray(7, 7 + stream.length), data.length)).toEqual(data);
+    expect(sameBytes(inflateZlib(outer.subarray(7, 7 + stream.length), data.length), data)).toBe(true);
   });
 
   it('accepts a single one-bit distance code (as zlib does)', () => {
@@ -190,7 +193,7 @@ describe('inflateZlib', () => {
       const stream = new Uint8Array(deflateSync(data, options));
       expect(inflateZlib(stream, data.length + 1)).toBeUndefined();
       expect(inflateZlib(stream, data.length - 1)).toBeUndefined();
-      expect(inflateZlib(stream, data.length)).toEqual(data);
+      expect(sameBytes(inflateZlib(stream, data.length), data)).toBe(true);
     }
   });
 
@@ -207,7 +210,7 @@ describe('inflateZlib', () => {
     expect(inflateZlib(stream, stream.length * 1032 + 1)).toBeUndefined();
     // The largest real ratio stays inside the bound: 1 MiB of zeros.
     const zeros = new Uint8Array(1 << 20);
-    expect(inflateZlib(new Uint8Array(deflateSync(zeros, { level: 9 })), zeros.length)).toEqual(zeros);
+    expect(sameBytes(inflateZlib(new Uint8Array(deflateSync(zeros, { level: 9 })), zeros.length), zeros)).toBe(true);
   });
 
   it('throws a RangeError for an invalid expected length', () => {
