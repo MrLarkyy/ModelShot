@@ -16,5 +16,8 @@
   },
   "dependencies": {
     "@modelshot/scene": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "~22.20.5"
   }
 }
