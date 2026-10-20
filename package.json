@@ -12,7 +12,11 @@
     "lint": "eslint .",
     "format:check": "prettier --check .",
     "format": "prettier --write .",
-    "test": "vitest run"
+    "test": "pnpm run test:unit && pnpm run test:browser",
+    "test:unit": "vitest run",
+    "test:browser": "pnpm --filter @modelshot/harness run test:browser",
+    "golden:update": "pnpm --filter @modelshot/harness run golden:update",
+    "browsers": "pnpm --filter @modelshot/harness run browsers"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -12,3 +12,5 @@ AGENTS.md
 CLAUDE.md
 
 *.tsbuildinfo
+playwright-report/
+blob-report/
