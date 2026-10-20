@@ -4,7 +4,7 @@ import { batchScene } from '../src/batchScene';
 import {
   backSidesVisible,
   closedOpaqueMeshes,
-  closedSurface,
+  closedSolid,
   meshFacesOpaque,
   textureOpacityOf,
   translucentTexelsIn,
@@ -43,54 +43,87 @@ function cube(faces: readonly (readonly number[])[] = FACES): { positions: Float
   return { positions: new Float32Array(positions), indices: new Uint32Array(indices) };
 }
 
-describe('closedSurface', () => {
+describe('closedSolid', () => {
   it('a cube with its own vertices per face is closed (edges matched by position)', () => {
     const { positions, indices } = cube();
-    expect(closedSurface(positions, indices)).toBe(true);
+    expect(closedSolid(positions, indices)).toBe(true);
   });
 
   it('a cube sharing its eight corners is closed', () => {
     const indices = FACES.flatMap(([a, b, c, d]) => [a, b, c, a, c, d]);
-    expect(closedSurface(new Float32Array(CORNERS.flat()), indices)).toBe(true);
+    expect(closedSolid(new Float32Array(CORNERS.flat()), indices)).toBe(true);
   });
 
   it('an open sheet is not closed', () => {
     const { positions, indices } = cube([FACES[0]]);
-    expect(closedSurface(positions, indices)).toBe(false);
+    expect(closedSolid(positions, indices)).toBe(false);
   });
 
   it('a cube with a missing face is not closed', () => {
     const { positions, indices } = cube(FACES.slice(0, 5));
-    expect(closedSurface(positions, indices)).toBe(false);
+    expect(closedSolid(positions, indices)).toBe(false);
   });
 
   it('a cube with one face wound the other way is not closed', () => {
     const faces = FACES.map((face, f) => (f === 2 ? [...face].reverse() : face));
     const { positions, indices } = cube(faces);
-    expect(closedSurface(positions, indices)).toBe(false);
+    expect(closedSolid(positions, indices)).toBe(false);
   });
 
   it('duplicated faces are not closed: a repeated face, a coincident opposite face, the whole cube twice', () => {
     const repeated = cube([...FACES, FACES[0]]);
-    expect(closedSurface(repeated.positions, repeated.indices)).toBe(false);
+    expect(closedSolid(repeated.positions, repeated.indices)).toBe(false);
     const opposite = cube([...FACES, [...FACES[0]].reverse()]);
-    expect(closedSurface(opposite.positions, opposite.indices)).toBe(false);
+    expect(closedSolid(opposite.positions, opposite.indices)).toBe(false);
     const twice = cube([...FACES, ...FACES]);
-    expect(closedSurface(twice.positions, twice.indices)).toBe(false);
+    expect(closedSolid(twice.positions, twice.indices)).toBe(false);
   });
 
-  it('two separate closed cubes in one mesh are closed; no triangle at all is not', () => {
+  it('two disjoint outward cubes in one mesh are a solid; no triangle at all is not', () => {
     const one = cube();
     const positions = new Float32Array([...one.positions, ...one.positions.map((v, i) => (i % 3 === 0 ? v + 3 : v))]);
     const indices = [...one.indices, ...one.indices.map((i) => i + 24)];
-    expect(closedSurface(positions, indices)).toBe(true);
-    expect(closedSurface(positions, [])).toBe(false);
+    expect(closedSolid(positions, indices)).toBe(true);
+    expect(closedSolid(positions, [])).toBe(false);
+  });
+
+  it('an inside-out cube (every face reversed, as Blockbench Invert Faces) is not a solid wound outward', () => {
+    const { positions, indices } = cube(FACES.map((face) => [...face].reverse()));
+    expect(closedSolid(positions, indices)).toBe(false);
+  });
+
+  it('a coincident opposite pair of quads with different diagonals encloses no volume', () => {
+    // The same unit square twice: once facing +z split along 0-2, once facing −z split along 1-3.
+    const positions = new Float32Array([0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0]);
+    const indices = [0, 1, 2, 0, 2, 3, 1, 0, 3, 1, 3, 2];
+    expect(closedSolid(positions, indices)).toBe(false);
+  });
+
+  /** The unit cube scaled by `scale` about its centre, wound inward when `inward`. */
+  function shell(scale: number, inward: boolean, offset = 0): { positions: number[]; indices: number[] } {
+    const { positions, indices } = cube(inward ? FACES.map((face) => [...face].reverse()) : FACES);
+    return {
+      positions: [...positions].map((v) => (v - 0.5) * scale + 0.5),
+      indices: [...indices].map((i) => i + offset),
+    };
+  }
+
+  it('a cube with a cavity (an inner shell wound towards it) or an inner shell wound outward is not accepted', () => {
+    const outer = shell(1, false);
+    const cavity = shell(0.5, true, 24);
+    expect(
+      closedSolid(new Float32Array([...outer.positions, ...cavity.positions]), [...outer.indices, ...cavity.indices]),
+    ).toBe(false);
+    const nested = shell(0.5, false, 24);
+    expect(
+      closedSolid(new Float32Array([...outer.positions, ...nested.positions]), [...outer.indices, ...nested.indices]),
+    ).toBe(false);
   });
 
   it('ignores collapsed triangles (two corners at one position)', () => {
     const { positions, indices } = cube();
-    expect(closedSurface(positions, [...indices, 0, 0, 1])).toBe(true);
-    expect(closedSurface(positions, [0, 0, 1])).toBe(false);
+    expect(closedSolid(positions, [...indices, 0, 0, 1])).toBe(true);
+    expect(closedSolid(positions, [0, 0, 1])).toBe(false);
   });
 });
 

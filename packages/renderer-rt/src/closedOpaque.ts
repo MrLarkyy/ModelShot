@@ -2,9 +2,11 @@ import { ALPHA_MODE_ID } from '@modelshot/looks';
 import { resolveMaterialAlpha, type SceneDocument, type SceneMesh } from '@modelshot/scene';
 
 /**
- * Raster frames skip the back pass of a mesh that is closed and opaque on every face: from outside its bounds every
- * ray meets one of its front faces before any of its back sides, so a back side could only show through the MSAA
- * depth mismatch beside a near edge-on face (docs/realtime-renderer.md). This module decides which meshes qualify.
+ * Raster frames skip the back pass of a mesh that is a closed solid wound outward (every shell encloses positive
+ * volume, none inside another) and opaque on every face: from outside its bounds every ray then meets one of its front
+ * faces before any of its back sides, so a back side could only show through the MSAA depth mismatch beside a near
+ * edge-on face (docs/realtime-renderer.md). An inside-out mesh fails the volume test: its near walls are back sides.
+ * This module decides which meshes qualify.
  */
 
 /** Positions closer than this (model units) are the same corner when matching edges. */
@@ -55,50 +57,134 @@ function positionIds(positions: Float32Array): Int32Array {
   return ids;
 }
 
+/** A shell encloses less than this share of its bounding cube (largest extent cubed): zero volume, not a solid. */
+const SOLID_VOLUME_EPSILON = 1e-6;
+
+/** More shells than this in one mesh: not checked for nesting, the mesh keeps its back pass (bounded cost). */
+const MAX_SHELLS = 1024;
+
 /**
- * Whether the triangles `indices` (over `positions`) form a closed surface: every edge, matched by position, is used
- * exactly once in each direction. An open border, a missing face, a face wound the other way, a duplicated face or a
- * pair of coincident opposite faces all break it. Triangles with two corners at one position are ignored (they cover
- * nothing); no other triangle at all is not closed. Linear in the vertex and index count (open-addressing tables, no
- * per-vertex strings): about 40 to 65 ms in Node at the loader's limit of 400 000 vertices.
+ * Whether the triangles `indices` (over `positions`) form closed solids wound outward, whose back sides no ray from
+ * outside the bounds can reach before a front face:
+ * - closed: every edge, matched by position, is used exactly once in each direction (an open border, a missing face,
+ *   a face wound against its neighbours, a duplicated face break it);
+ * - per shell (triangles connected across edges) the signed volume Σ dot(v0, v1 × v2) / 6 is positive, above
+ *   SOLID_VOLUME_EPSILON of its bounding cube: an inside-out shell (inverted faces, an import wound inward) is
+ *   negative, a coincident opposite pair zero, a cavity wound towards it negative;
+ * - no shell's bounds lie inside another's (an inner shell), and at most MAX_SHELLS shells.
+ * Triangles with two corners at one position are ignored (they cover nothing); no other triangle at all is not a
+ * solid. Linear in the vertex and index count (open-addressing tables, no per-vertex strings) up to the shell nesting
+ * check (pairwise over at most MAX_SHELLS shells).
  */
-export function closedSurface(positions: Float32Array, indices: ArrayLike<number>): boolean {
+export function closedSolid(positions: Float32Array, indices: ArrayLike<number>): boolean {
   const triangles = Math.floor(indices.length / 3);
   if (triangles === 0) return false;
   const ids = positionIds(positions);
   const size = tableSize(triangles * 3);
-  // Directed edges from → to, −1 when empty.
+  // Directed edges from → to and the triangle that uses them, −1 when empty.
   const from = new Int32Array(size).fill(-1);
   const to = new Int32Array(size);
+  const owner = new Int32Array(size);
   const find = (a: number, b: number): number => {
     for (let slot = mix(a, b) & (size - 1); ; slot = (slot + 1) & (size - 1)) {
       const at = from[slot] ?? -1;
       if (at < 0 || (at === a && to[slot] === b)) return slot;
     }
   };
+  // Union-find over triangles; collapsed triangles stay at −2 and belong to no shell.
+  const parent = new Int32Array(triangles).fill(-2);
   let edges = 0;
   for (let t = 0; t < triangles; t++) {
     const c0 = ids[indices[t * 3] ?? 0] ?? 0;
     const c1 = ids[indices[t * 3 + 1] ?? 0] ?? 0;
     const c2 = ids[indices[t * 3 + 2] ?? 0] ?? 0;
     if (c0 === c1 || c1 === c2 || c2 === c0) continue;
-    for (const [a, b] of [
-      [c0, c1],
-      [c1, c2],
-      [c2, c0],
-    ] as const) {
+    parent[t] = t;
+    for (let i = 0; i < 3; i++) {
+      const a = i === 0 ? c0 : i === 1 ? c1 : c2;
+      const b = i === 0 ? c1 : i === 1 ? c2 : c0;
       const slot = find(a, b);
       // A second use of one directed edge: a duplicated face or two faces wound alike across it.
       if ((from[slot] ?? -1) >= 0) return false;
       from[slot] = a;
       to[slot] = b;
+      owner[slot] = t;
       edges++;
     }
   }
   if (edges === 0) return false;
+  const root = (t: number): number => {
+    let r = t;
+    while ((parent[r] ?? r) !== r) r = parent[r] ?? r;
+    while ((parent[t] ?? t) !== r) {
+      const next = parent[t] ?? r;
+      parent[t] = r;
+      t = next;
+    }
+    return r;
+  };
   for (let slot = 0; slot < size; slot++) {
     const a = from[slot] ?? -1;
-    if (a >= 0 && (from[find(to[slot] ?? 0, a)] ?? -1) < 0) return false;
+    if (a < 0) continue;
+    const reverse = find(to[slot] ?? 0, a);
+    if ((from[reverse] ?? -1) < 0) return false;
+    const x = root(owner[slot] ?? 0);
+    const y = root(owner[reverse] ?? 0);
+    if (x !== y) parent[Math.max(x, y)] = Math.min(x, y);
+  }
+  // Per shell: signed volume (about the mesh's first vertex, for precision) and bounds.
+  const shellOf = new Map<number, number>();
+  const volume: number[] = [];
+  const bounds: number[][] = [];
+  const ox = positions[0] ?? 0;
+  const oy = positions[1] ?? 0;
+  const oz = positions[2] ?? 0;
+  for (let t = 0; t < triangles; t++) {
+    if ((parent[t] ?? -2) === -2) continue;
+    const r = root(t);
+    let shell = shellOf.get(r);
+    if (shell === undefined) {
+      shell = volume.length;
+      if (shell >= MAX_SHELLS) return false;
+      shellOf.set(r, shell);
+      volume.push(0);
+      bounds.push([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
+    }
+    const box = bounds[shell] ?? [];
+    const p: number[] = [];
+    for (let c = 0; c < 3; c++) {
+      const v = indices[t * 3 + c] ?? 0;
+      for (let k = 0; k < 3; k++) {
+        const value = positions[v * 3 + k] ?? 0;
+        box[k] = Math.min(box[k] ?? 0, value);
+        box[k + 3] = Math.max(box[k + 3] ?? 0, value);
+        p.push(value - (k === 0 ? ox : k === 1 ? oy : oz));
+      }
+    }
+    const [ax = 0, ay = 0, az = 0, bx = 0, by = 0, bz = 0, cx = 0, cy = 0, cz = 0] = p;
+    volume[shell] =
+      (volume[shell] ?? 0) + (ax * (by * cz - bz * cy) + ay * (bz * cx - bx * cz) + az * (bx * cy - by * cx)) / 6;
+  }
+  for (let shell = 0; shell < volume.length; shell++) {
+    const box = bounds[shell] ?? [];
+    const extent = Math.max(
+      (box[3] ?? 0) - (box[0] ?? 0),
+      (box[4] ?? 0) - (box[1] ?? 0),
+      (box[5] ?? 0) - (box[2] ?? 0),
+    );
+    if (!((volume[shell] ?? 0) > SOLID_VOLUME_EPSILON * extent ** 3)) return false;
+  }
+  for (let i = 0; i < bounds.length; i++) {
+    for (let j = 0; j < bounds.length; j++) {
+      const inner = bounds[i] ?? [];
+      const outer = bounds[j] ?? [];
+      if (
+        i !== j &&
+        [0, 1, 2].every((k) => (outer[k] ?? 0) <= (inner[k] ?? 0) && (inner[k + 3] ?? 0) <= (outer[k + 3] ?? 0))
+      ) {
+        return false;
+      }
+    }
   }
   return true;
 }
@@ -188,14 +274,14 @@ export function meshFacesOpaque(doc: SceneDocument, mesh: SceneMesh, opacity: re
 }
 
 /**
- * Per mesh of `doc`: closed (`closedSurface` over its drawn triangles) and opaque on every face (`meshFacesOpaque`),
+ * Per mesh of `doc`: a closed solid wound outward (`closedSolid` over its drawn triangles) and opaque on every face (`meshFacesOpaque`),
  * so raster frames may skip its back pass. Only meshes with a double-sided group are checked (single-sided ones have
  * no back pass); the others, and meshes without triangles, are false.
  */
 export function closedOpaqueMeshes(doc: SceneDocument, opacity: readonly TextureOpacity[]): boolean[] {
   return doc.meshes.map((mesh) => {
     if (!mesh.groups.some((group) => group.doubleSided)) return false;
-    return meshFacesOpaque(doc, mesh, opacity) && closedSurface(mesh.positions, drawnIndices(mesh));
+    return meshFacesOpaque(doc, mesh, opacity) && closedSolid(mesh.positions, drawnIndices(mesh));
   });
 }
 

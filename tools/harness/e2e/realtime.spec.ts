@@ -526,6 +526,17 @@ test.describe('raster back pass of closed meshes', () => {
       }
     });
 
+    test(`${label}: an inside-out closed cube keeps its back pass: its near wall shows at the centre`, async ({
+      page,
+    }) => {
+      // Inverted faces: the near (red) walls are back sides, the far (blue) walls face the camera. Skipping the back
+      // pass would show the blue far wall at the centre.
+      const { image } = await render(page, `scene=closed-cube-inverted${query}&look=cube`);
+      expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('raster');
+      const [r, g, b] = pixel(image, image.width / 2, image.height / 2);
+      expect(r, `centre ${r}, ${g}, ${b}: red near wall`).toBeGreaterThan(2 * Math.max(g, b) + 10);
+    });
+
     test(`${label}: with the camera inside a closed opaque cube the back sides are still drawn`, async ({ page }) => {
       const { image } = await render(page, `scene=closed-cube${query}&look=cube-inside`);
       expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('raster');

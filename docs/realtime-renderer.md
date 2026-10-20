@@ -77,21 +77,23 @@ The rules are the scene format's ([scene-format.md](scene-format.md): `SceneMate
     that keeps a back side behind the front face it meets at a silhouette or coincides with (the −1/16 order step is
     far below the rasteriser's depth interpolation error; with (1, 1) back sides leak at MSAA samples next to a
     silhouette, see the closed-cube-cutout test). The back pass is skipped for a batch whose meshes are all closed
-    (every edge, matched by position, used exactly once in each direction, over the mesh's drawn triangles) and opaque
-    on every face (untextured, the opaque alpha mode, or no alpha byte below 255 inside any face's UV rectangle, from a
-    summed-area table of the load-time alpha readback; a failed readback counts as not opaque), unless the camera is
-    inside the batch's world bounding box or the near plane reaches it: from outside, every ray meets a front face of
-    such a mesh before any back side, so its back sides could only show as an error. Closed and opaque are decided per
-    mesh at load (`closedOpaqueMeshes`; the closedness check is about 40–65 ms at the loader's 400 000 vertices) and
-    are part of the batch key. Deviation of this variant: a back side that really lies in front of a front face by
-    less than about four pixels' worth of its own depth slope (e.g. about 0.3–0.5 units for a face at 45° in the
-    turntable framing) is drawn behind it; and where the back pass is still drawn (a closed mesh with a cut-out or a
-    translucent texel on a face, an open double-sided sheet, the camera inside the bounds), next to the silhouette of
-    a face within a few degrees of edge-on, MSAA samples of a hidden back side can still show: the depth stored at an
-    edge sample is the front face's depth about half a pixel away, an error that scales with the front face's depth
-    gradient, so no back-face offset removes it (closed cube with cut-outs at 1°: 10 pixels, pinned; the same cube
-    opaque: 0, where it was 74 before the skip; none without MSAA). Measured on SwiftShader only; the real-GPU check
-    is manual.
+    solids wound outward (over the mesh's drawn triangles: every edge, matched by position, used exactly once in each
+    direction; every edge-connected shell enclosing a positive signed volume, Σ dot(v0, v1 × v2) / 6 above 1e-6 of its
+    bounding cube, so inside-out meshes, coincident opposite pairs and cavities fail; no shell's bounds inside
+    another's; at most 1024 shells) and opaque on every face (untextured, the opaque alpha mode, or no alpha byte below
+    255 inside any face's UV rectangle, from a summed-area table of the load-time alpha readback; a failed readback
+    counts as not opaque), unless the camera is inside the batch's world bounding box or the near plane reaches it: from
+    outside, every ray meets a front face of such a mesh before any back side, so its back sides could only show as an
+    error. Closed and opaque are decided per mesh at load (`closedOpaqueMeshes`; the solid check is about 90–115 ms in
+    Node for one closed mesh at the loader's 400 000 vertices) and are part of the batch key. Deviation of this variant:
+    a back side that really lies in front of a front face by less than about four pixels' worth of its own depth slope
+    (e.g. about 0.3–0.5 units for a face at 45° in the turntable framing) is drawn behind it; and where the back pass is
+    still drawn (a closed mesh with a cut-out or a translucent texel on a face, an open double-sided sheet, an
+    inside-out mesh, the camera inside the bounds), next to the silhouette of a face within a few degrees of edge-on,
+    MSAA samples of a hidden back side can still show: the depth stored at an edge sample is the front face's depth
+    about half a pixel away, an error that scales with the front face's depth gradient, so no back-face offset removes
+    it (closed cube with cut-outs at 1°: 10 pixels, pinned; the same cube opaque: 0, where it was 74 before the skip;
+    none without MSAA). Measured on SwiftShader only; the real-GPU check is manual.
   - `exact`: every mesh pass computes the key per fragment and writes it as `gl_FragDepth`, with the key range
     `[−(1024 + 1) × TIE, far + (1024 + 1) × TIE]` mapped to `[0, 1]` (`exactDepthRange`), so no order is clamped at
     the near or far plane. Exact frames draw single-sampled (no MSAA on the float path): one key per pixel can only be

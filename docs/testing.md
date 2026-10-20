@@ -84,12 +84,15 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
   `cube`, `cube-grazing-1` (the east face about 1° from edge-on) and `cube-grazing-5` (`step`: `cube` and
   `cube-grazing-5`). The raster frames skip these opaque closed boxes' back pass; drawing it anyway differs in 74
   pixels (cube, 1°) and 23 (step, 5°) on float.
-- Raster back pass of closed meshes, float and fallback: `closed-cube-cutout` (the hidden faces' rectangle half
-  hole, so the cube is closed but not opaque and keeps its back pass) against `closed-cube-open`: 0 pixels from
-  `cube` (at `polygonOffset(1, 1)`: 45), at most 10 from `cube-grazing-1` on float (the pinned MSAA deviation,
+- Raster back pass of closed meshes, float and fallback: `closed-cube-cutout` (the hidden faces' rectangle half hole, so
+  the cube is closed but not opaque and keeps its back pass) against `closed-cube-open`: 0 pixels from `cube` (at
+  `polygonOffset(1, 1)`: 45), at most 10 from `cube-grazing-1` on float (the pinned MSAA deviation,
   realtime-renderer.md), 0 on fallback; `closed-cube` from `cube-inside` (camera inside the cube's bounds): no backdrop
-  pixel, every wall a back side (skipping it there leaves only backdrop). Unit tests (`closedOpaque.test.ts`): closedness
-  (cube, shared or own vertices, open sheet, missing face, a face wound the other way, duplicated faces), the
+  pixel, every wall a back side (skipping it there leaves only backdrop); `closed-cube-inverted` (every triangle
+  reversed, normals flipped) from `cube`: the centre pixel is the red near wall, a back side (an orientation-blind
+  closedness test skips it and shows the blue far wall: 76, 108, 190). Unit tests (`closedOpaque.test.ts`): solids
+  (cube, shared or own vertices, two disjoint cubes; not: open sheet, missing face, a face wound the other way,
+  duplicated faces, inside-out cube, coincident opposite pair with different diagonals, cavity, nested shell), the
   translucent-texel count inside a UV rectangle, the per-mesh decision (readback failure, opaque mode, untextured,
   single-sided, groups), `backSidesVisible` (inside, outside, near plane) and the batch key.
 - Render-order tie at sample level: a red `in_front` quad over a coincident blue default quad split along the other

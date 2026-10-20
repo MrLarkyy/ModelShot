@@ -36,6 +36,7 @@ export const RT_SCENE_NAMES = [
   'closed-cube-open',
   'closed-cube-order-open',
   'closed-cube-cutout',
+  'closed-cube-inverted',
   'tie-pair',
   'tie-single',
   'tie-pair-double',
@@ -219,6 +220,8 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return closedCube(1, true);
     case 'closed-cube-cutout':
       return closedCube(0, false, true);
+    case 'closed-cube-inverted':
+      return invertFaces(closedCube(0, false));
     case 'step':
       return step(0, false);
     case 'step-open':
@@ -391,6 +394,25 @@ function closedCube(renderOrder: number, open: boolean, cutout = false): SceneDo
     open,
     cutout,
   );
+}
+
+/**
+ * Every triangle wound the other way and every normal flipped, as Blockbench's Invert Faces leaves a model: a closed
+ * mesh inside out, whose near walls are back sides.
+ */
+function invertFaces(doc: SceneDocument): SceneDocument {
+  return {
+    ...doc,
+    meshes: doc.meshes.map((mesh) => {
+      const indices = new Uint32Array(mesh.indices);
+      for (let t = 0; t + 2 < indices.length; t += 3) {
+        const second = indices[t + 1] ?? 0;
+        indices[t + 1] = indices[t + 2] ?? 0;
+        indices[t + 2] = second;
+      }
+      return { ...mesh, indices, normals: mesh.normals.map((n) => -n) };
+    }),
+  };
 }
 
 /**
