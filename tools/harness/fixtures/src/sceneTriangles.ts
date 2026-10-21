@@ -1,7 +1,7 @@
 import {
   meshVisible,
   nodeVisibility,
-  mat3TransformVector,
+  normalMatrixTransform,
   mat4Identity,
   mat4NormalMatrix,
   mat4TransformPoint,
@@ -93,7 +93,7 @@ export function sceneTriangles(scene: SceneDocument): SceneTriangles {
         at(mesh.positions, 3, 1),
         at(mesh.positions, 3, 2),
       ]);
-      const n = mat3TransformVector(mat4NormalMatrix(matrix), [
+      const n = normalMatrixTransform(mat4NormalMatrix(matrix), [
         at(mesh.normals, 3, 0),
         at(mesh.normals, 3, 1),
         at(mesh.normals, 3, 2),

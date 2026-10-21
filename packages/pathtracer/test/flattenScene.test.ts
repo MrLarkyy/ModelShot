@@ -1,6 +1,6 @@
 import {
   NO_EDGE,
-  mat3TransformVector,
+  normalMatrixTransform,
   mat4NodeLocal,
   mat4NormalMatrix,
   sharpEdges,
@@ -53,7 +53,7 @@ describe('flattenScene', () => {
     // The scaled plane x/2 + y = 1/2 has the normal (1/2, 1, 0)/|…|, what mat4NormalMatrix gives normalised.
     const expected = [0.5, 1, 0].map((v) => v / Math.hypot(0.5, 1));
     Array.from(flat.normals.subarray(0, 3)).forEach((v, k) => expect(v).toBeCloseTo(expected[k] ?? NaN, 6));
-    const shared = mat3TransformVector(mat4NormalMatrix(mat4NodeLocal([0, 0, 0], [1, 0, 0], [0, 0, 0], [2, 1, 1])), [
+    const shared = normalMatrixTransform(mat4NormalMatrix(mat4NodeLocal([0, 0, 0], [1, 0, 0], [0, 0, 0], [2, 1, 1])), [
       normal,
       normal,
       0,

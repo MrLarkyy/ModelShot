@@ -178,6 +178,31 @@ describe('sceneTriangles', () => {
     // e = (0, 19, −6) before the group's −20° about X: 19 cos 20°.
     expect(Math.max(...ys)).toBeCloseTo(19 * Math.cos(Math.PI / 9), 4);
   });
+
+  it('maps normals of a non-uniformly scaled node with the inverse transpose', () => {
+    const { scene } = loadBbmodel(meshShapes);
+    const turned = scene.meshes.findIndex((m) => m.name === 'turned');
+    const node = scene.meshes[turned]?.node ?? -1;
+    expect(node).toBeGreaterThanOrEqual(0);
+    const sloped = Math.SQRT1_2;
+    const scaled: SceneDocument = {
+      ...scene,
+      // No rotation anywhere, so the node's scale is the whole linear part.
+      nodes: scene.nodes.map((n, i) => ({ ...n, rotation: [0, 0, 0], ...(i === node ? { scale: [2, 1, 1] } : {}) })),
+      meshes: scene.meshes.map((m, i) =>
+        i === turned
+          ? { ...m, normals: new Float32Array(m.normals.length).map((_, k) => [sloped, sloped, 0][k % 3] ?? 0) }
+          : m,
+      ),
+    };
+    const triangles = sceneTriangles(scaled);
+    const t = [...triangles.meshes].indexOf(turned);
+    const normal = [0, 1, 2].map((k) => triangles.normals[t * 9 + k] ?? NaN);
+    const length = Math.hypot(...normal);
+    // A plane with normal (1, 1, 0) stretched 2× along x tilts towards y: (1/2, 1, 0) normalised, not (2, 1, 0).
+    const expected = [0.5, 1, 0].map((x) => x / Math.hypot(0.5, 1));
+    normal.forEach((x, k) => expect(x / length).toBeCloseTo(expected[k] ?? NaN, 6));
+  });
 });
 
 describe('gltf-nodes model', () => {

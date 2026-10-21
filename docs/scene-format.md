@@ -66,7 +66,7 @@ is the identifier in the source file (a Blockbench uuid) or `''`. `restRotation`
 unless `animateScene` set it (absent: 1 on every axis, which rest always is), scales about the pivot before the
 rotation (three.js `T · R · S`, as Blockbench bones); it is always positive, so no node matrix mirrors or collapses.
 With a scale the upper 3×3 of a world matrix no longer maps normals: both renderers use `mat4NormalMatrix(world)` (the
-cofactor matrix, i.e. the inverse transpose up to a positive factor) and normalise, `mat3TransformVector` applies it.
+cofactor matrix, i.e. the inverse transpose up to a positive factor) and normalise, `normalMatrixTransform` applies it.
 
 ### `SceneMesh`
 

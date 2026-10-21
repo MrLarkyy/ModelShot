@@ -8,7 +8,6 @@ export {
   type TexelCoverage,
 } from './materialAlpha';
 export {
-  mat3TransformVector,
   mat4Identity,
   mat4Multiply,
   mat4NodeLocal,
@@ -18,6 +17,7 @@ export {
   mat4TransformPoint,
   type Mat4,
 } from './Mat4';
+export { normalMatrixTransform } from './normalMatrixTransform';
 export { BACK_SIDE_RENDER_ORDER, MAX_ABS_RENDER_ORDER, RENDER_ORDER_TIE_DISTANCE } from './renderOrder';
 export { SCENE_FORMAT_VERSION, type SceneDocument, type SceneSource, type SceneSourceFormat } from './SceneDocument';
 export type { SceneAlphaMode, SceneMaterial } from './SceneMaterial';

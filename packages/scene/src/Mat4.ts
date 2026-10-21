@@ -84,16 +84,6 @@ export function mat4NormalMatrix(m: Mat4): Float64Array {
   return new Float64Array([...cross(b, c), ...cross(c, a), ...cross(a, b)]);
 }
 
-/** Applies a column-major 3×3 (`mat4NormalMatrix`) to `v`; the result is not normalised. */
-export function mat3TransformVector(n: ArrayLike<number>, v: Vec3): [number, number, number] {
-  const e = (i: number): number => n[i] ?? 0;
-  return [
-    e(0) * v[0] + e(3) * v[1] + e(6) * v[2],
-    e(1) * v[0] + e(4) * v[1] + e(7) * v[2],
-    e(2) * v[0] + e(5) * v[1] + e(8) * v[2],
-  ];
-}
-
 function cross(u: Vec3, v: Vec3): [number, number, number] {
   return [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
 }

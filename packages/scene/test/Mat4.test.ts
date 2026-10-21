@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  mat3TransformVector,
+  normalMatrixTransform,
   mat4Identity,
   mat4Multiply,
   mat4NodeLocal,
@@ -98,10 +98,10 @@ describe('Mat4', () => {
   it('maps a sloped normal under non-uniform scale to the inverse transpose', () => {
     // The plane x + y = c, normal (1,1,0)/√2; x scaled by 2 gives x/2 + y = c, normal ∝ (1/2, 1, 0).
     const n = mat4NormalMatrix(mat4NodeLocal([0, 0, 0], [3, 1, 0], [0, 0, 0], [2, 1, 1]));
-    expectClose(unit(mat3TransformVector(n, [1, 1, 0])), unit([0.5, 1, 0]));
+    expectClose(unit(normalMatrixTransform(n, [1, 1, 0])), unit([0.5, 1, 0]));
     // With rotation as well: the mapped normal stays perpendicular to every mapped tangent of the surface.
     const m = mat4NodeLocal([1, 2, 3], [3, 1, 0], [10, 20, 30], [2, 0.5, 3]);
-    const normal = mat3TransformVector(mat4NormalMatrix(m), [1, 2, 3]);
+    const normal = normalMatrixTransform(mat4NormalMatrix(m), [1, 2, 3]);
     for (const tangent of [
       [2, -1, 0],
       [3, 0, -1],

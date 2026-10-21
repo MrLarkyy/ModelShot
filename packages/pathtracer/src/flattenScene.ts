@@ -2,7 +2,7 @@ import {
   EDGE_SLOTS,
   NO_EDGE,
   sceneSharpEdges,
-  mat3TransformVector,
+  normalMatrixTransform,
   mat4NormalMatrix,
   mat4TransformPoint,
   meshVisible,
@@ -169,7 +169,7 @@ export function flattenScene(
             mesh.normals[k * 3 + 2] ?? 0,
           ];
           // The same normal matrix as the preview's u_normalMatrix, so both renderers shade a scaled node alike.
-          const w = normalMatrix ? mat3TransformVector(normalMatrix, n) : n;
+          const w = normalMatrix ? normalMatrixTransform(normalMatrix, n) : n;
           const length = Math.hypot(w[0], w[1], w[2]);
           normals.set(length > 0 ? [w[0] / length, w[1] / length, w[2] / length] : [0, 0, 0], count * 9 + j * 3);
           uvs[count * 6 + j * 2] = mesh.uvs[k * 2] ?? 0;
