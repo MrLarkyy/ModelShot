@@ -1,15 +1,17 @@
 # Landing page
 
 `packages/site` (`@modelshot/site`) is the static landing page: one `index.html`, CSS files that use the brand tokens
-only ([brand.md](brand.md)) and a small script for the file picker and the drop zone. It carries no app code; it hands
-files to the app.
+only ([brand.md](brand.md)) and a small script for the file picker and the drop zone. From the app it imports only
+the handoff module `@modelshot/app/handoff` (limits, checks, storage), which it bundles; it hands files to the app and
+never parses them.
 
 ## Layout
 
 | path                          | what                                                                                                       |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `index.html`                  | sections `top` (hero, drop zone), `highlights`, `looks`, `how`, `faq`, `open` (CTA), footer `footer`       |
-| `src/main.ts`                 | loads the brand CSS and the page CSS, wires the drop zone                                                  |
+| `src/main.ts`                 | loads the brand CSS and the page CSS, wires the drop zone, starts the load-time cleanup                    |
+| `src/cleanUpHandoff.ts`       | load-time cleanup: discards a stale record, only when `indexedDB.databases()` lists `modelshot-handoff`    |
 | `src/dropZone.ts`             | picker buttons, drop zone, page-wide drop guard, handoff to the app                                        |
 | `src/styles/`                 | `base.css` (ground, type, focus), `layout.css`, `components.css`, `motion.css`                             |
 | `src/build/inlineBrandSvg.ts` | Vite plugin: replaces `<!-- brand:mark -->` and `<!-- brand:hero-island -->` with the committed brand SVGs |
@@ -45,6 +47,10 @@ browser and opens the app, which takes them:
    write timeout grows with the bytes (`putTimeoutMs`: 5 s plus 1 s per 16 MiB, 21 s at the 256 MiB limit); a
    handoff at the limit measured 45..274 ms to store and 174..433 ms to take (Chromium, Windows and Ubuntu).
 3. The site navigates to `./app/?open=handoff`.
+
+   On every landing page load, before any of this, `src/cleanUpHandoff.ts` asks `indexedDB.databases()`; only when
+   it lists `modelshot-handoff` does it open the database and call `discardStaleHandoff` (details below).
+
 4. The app (`packages/app/src/showHandoff.ts`) calls `takeHandoffFiles`, which reads and deletes the record in one
    transaction, then validates it as untrusted (`readHandoffRecord`): own data properties only, `v === 1`, a finite
    `createdAt` at most 60 s in the future (clock skew between tabs), real `File` objects only, the same limits
@@ -79,8 +85,9 @@ With `prefers-reduced-motion: reduce` every animation and transition is off. The
 
 ## Tests
 
-- Vitest (`test/`): no raw colours or inline styles, no off-origin reference in the sources, every coloured CSS rule
-  is a checked contrast pair, the SVG inlining plugin.
+- Vitest (`test/`): no raw colours (hex, colour functions, CSS named colours) or inline styles, no off-origin
+  reference in the sources, every coloured CSS rule is a checked contrast pair, the SVG inlining plugin, the load-time
+  cleanup (`cleanUpHandoff.test.ts`: no open without the database or without `databases()`, open when it exists).
 - Playwright (`e2e/`, own config, not the harness): every request must be a GET on the site origin and no page error
   may occur (`siteTest.ts`).
   - `landing.golden.spec.ts`: full-page goldens at 360, 768 and 1440 px, animations stopped, fonts loaded;
@@ -92,9 +99,13 @@ With `prefers-reduced-motion: reduce` every animation and transition is off. The
     the hero text; every rendered text/ground pair is a checked contrast pair.
   - `landing.network.spec.ts`: same-origin requests only, fonts served by the site.
   - `landing.motion.spec.ts`: running animations move only transform/opacity, hover transitions too, cumulative
-    layout shift 0 over load and 4 s at 360 and 1440 px, nothing runs with reduced motion.
+    layout shift 0 over load and 4 s at 360 and 1440 px, nothing runs with reduced motion and the sweep band then rests
+    outside the hero tile.
   - `landing.handoff.spec.ts`: picker and drop open the files in the app and the record is gone; `.exe` and 33 files
-    are refused with an alert; a drop outside the zone does nothing; expired and unknown records are refused.
+    are refused with an alert; a drop outside the zone does nothing; the app refuses expired and unknown records; the
+    picker is empty after a refused choice, after a storage failure, after Back from the app and after a
+    back/forward-cache restore; the landing page removes an expired record on load and keeps a fresh one; a first
+    visit creates no handoff database; 32 files of 256 MiB are stored and opened in under half of each timeout.
 
 `pnpm test` runs them after the harness (`pnpm test:browser`); the port is `MS_SITE_PORT`, else a stable per-checkout
 port derived from the site directory. CI uploads `packages/site/test-results/` with the harness results.
