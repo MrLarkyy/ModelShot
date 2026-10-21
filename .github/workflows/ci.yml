@@ -31,15 +31,15 @@ jobs:
       - run: pnpm -r build
       - run: pnpm run test:unit
 
-  # The browser suite in 4 shards, each on its own VM with one Playwright worker (docs/testing.md, CI): one runner ran
-  # past the 20-minute limit with the whole suite.
+  # The golden tests in 6 shards, each on its own VM with one Playwright worker (docs/testing.md, CI): one runner ran
+  # past the 20-minute limit with the whole suite, and 4 shards left the bake shard cancelled twice.
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -50,7 +50,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @modelshot/harness exec playwright install --with-deps --only-shell chromium
       - run: pnpm -r build
-      - run: pnpm --filter @modelshot/harness exec playwright test --shard=${{ matrix.shard }}/4
+      - run: pnpm --filter @modelshot/harness exec playwright test --project=golden --shard=${{ matrix.shard }}/6
       - run: pnpm --filter @modelshot/site run test:browser
         if: ${{ matrix.shard == 1 && !cancelled() }}
       - uses: actions/upload-artifact@v7
@@ -60,5 +60,28 @@ jobs:
           path: |
             tools/harness/test-results/
             packages/site/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # The budget bench alone on a VM, so its numbers do not share a machine with a golden shard.
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - run: npm i -g corepack@latest
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @modelshot/harness exec playwright install --with-deps --only-shell chromium
+      - run: pnpm -r build
+      - run: pnpm --filter @modelshot/harness exec playwright test --project=bench
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: browser-test-results-bench
+          path: tools/harness/test-results/
           retention-days: 14
           if-no-files-found: ignore

@@ -12,12 +12,14 @@ to an exact version in `tools/harness/package.json`, which pins the Chromium rev
 
 ## CI
 
-`.github/workflows/ci.yml` has two jobs, each with `timeout-minutes: 20`:
+`.github/workflows/ci.yml` has three jobs, each with `timeout-minutes: 20`:
 
 - `check`: install, typecheck, lint, format check, `pnpm -r build`, `pnpm run test:unit` (Vitest, bundle size
   included).
-- `e2e`: a matrix of 4 shards (`fail-fast: false`), each on its own VM: install, the pinned Chromium, `pnpm -r build`,
-  then `playwright test --shard=<k>/4`, then on shard 1 only `pnpm --filter @modelshot/site run test:browser` (it runs even when the harness tests failed), uploading `tools/harness/test-results/` and `packages/site/test-results/` as `browser-test-results-<k>`.
+- `e2e`: a matrix of 6 shards (`fail-fast: false`), each on its own VM: install, the pinned Chromium, `pnpm -r build`,
+  then `playwright test --project=golden --shard=<k>/6`, then on shard 1 only `pnpm --filter @modelshot/site run test:browser` (it runs even when the harness tests failed), uploading `tools/harness/test-results/` and `packages/site/test-results/` as `browser-test-results-<k>`.
+- `bench`: its own VM, same install and build, `playwright test --project=bench` (the one budget test), uploading
+  `browser-test-results-bench`; the budgets are measured on a machine that runs nothing else.
 
 Why: on one runner the browser suite alone outran the 20-minute limit (run 39545935955 on 4861384 was cancelled in
 `pnpm test`; the e2e part ran over 19 minutes with one worker, the baked-light tests about 37 s each). Shards are
@@ -25,18 +27,22 @@ separate VMs, so each keeps one worker and the budgets measure an otherwise idle
 the worker count changed. For the shards to split the suite the `golden` project is `fullyParallel` (its tests share
 no state; with one worker nothing runs at once, it only lets a shard take part of a file), and `bench` no longer
 depends on `golden` (a dependency put every golden test into the bench's shard: shard 1 had all 219 tests, 2-4
-none). Listed locally (`--list`): shard 1 55 tests (environment, golden, goldenFailure, modelView, 18 of
-pathtracer), 2 55 (31 pathtracer, 24 realtime), 3 55 (realtime), 4 54 (53 realtime and `bench.spec.ts`), 219 in all as
-without `--shard`. By the local test times the heaviest shard (the last realtime tests, the bakes, and the bench)
-takes about 6 + 3 minutes.
+none). Listed locally (`playwright test --list --project=golden --shard=<k>/6`), 219 golden tests in all: shard 1 37
+(environment, golden, goldenFailure, modelView), 2 37 (pathtracer), 3 37 (13 pathtracer, 24 realtime goldens), 4 36
+(hostile textures, scene-format rules, lifetime, coincident faces, DPR 2), 5 36 (double-sided, raster back pass,
+render-order tie, texel alpha), 6 36 (23 baked lighting, player skins, rounded edges); the bench project lists 1 test.
+
+Why 6 and a separate bench: with 4 shards, shard 4 (the baked lighting tests plus the bench, 4.5 minutes on a normal
+runner) was cancelled at the 20-minute job limit in two runs in a row (39612706830, 39624802150). The VMs differ in
+speed by up to about 2x on the same image (the cut-out checker bake took 1.3 minutes on one, 39 s on another), so
+a shard needs room for the slow case; the bench no longer shares a VM with the bakes.
 
 Timeouts: the Playwright default is 30 s and stays. On the runners (SwiftShader, 3-5x slower than local) some tests
 came near or over it; the worst of runs 39594658979 and 39612706830 per test: the baked goldens
 `rt-bake-cutout-checker` and its fallback over 30 s, `rt-bake-turntable-y030` over 30 s, `rt-bake-alpha-plane` 24.5 s;
 the path-tracer determinism batches test 35.0 s (over 30 s), its same-seed test 15.2 s, `pt-alpha-plane` 22.4 s, the
 transparency tests up to 22.5 s, the lifetime tests 14.9-18.6 s, the 10 000 coincident cubes test 10.0 s. A suite or
-test whose CI time reaches a third of the default carries a timeout: 180 s for the baked goldens (as the baked lighting
-describe), 120 s for the path-tracer goldens, determinism, transparency and lifetime describes and the coincident cubes
+test whose CI time reaches a third of the default carries a timeout: 180 s for the baked goldens (bakes took 33-42 s in run 39624802150), 300 s for the baked lighting describe, 480 s for its determinism test (1.6 minutes on a normal runner, over 3 on a slow one), 300 s for the baked-preview pairing tests (up to 1.3 minutes, about 2.6 on a slow VM), 120 s for the path-tracer goldens, determinism, transparency and lifetime describes and the coincident cubes
 test (at least 3x the worst measured time). A hang now fails after that time, not after 30 s; several hangs in one
 shard can reach the 20-minute job limit, and the job is then cancelled instead of reporting the failures.
 

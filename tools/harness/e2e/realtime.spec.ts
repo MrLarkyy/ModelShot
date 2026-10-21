@@ -727,8 +727,9 @@ const probeAt = (probes: readonly PtProbe[], name: string): PtProbe => {
 };
 
 test.describe('baked lighting', () => {
-  // A 64-sample bake takes seconds on SwiftShader; several tests bake more than once.
-  test.describe.configure({ timeout: 180_000 });
+  // A 64-sample bake takes seconds on SwiftShader; several tests bake more than once. Run 39624802150: bake goldens
+  // 33-42 s, and a VM ran about 2x slower than another on the same image.
+  test.describe.configure({ timeout: 300_000 });
 
   test('the cut-out checker casts pixel-shaped shadows on the catcher and the box (float path and fallback)', async ({
     page,
@@ -767,6 +768,8 @@ test.describe('baked lighting', () => {
   test('a bake is deterministic: repeated, in 32 or 64 texel tiles, and its progress equals a shorter bake', async ({
     page,
   }) => {
+    // 1.6 m on a normal runner, 3.0 m (the old 180 s limit) on a slow one: several 64-sample bakes in a row.
+    test.setTimeout(480_000);
     await openFixture(page, '/rt.html?variant=turntable-y030');
     const first = await rtBake(page, { samples: 64 });
     const again = await rtBake(page, { samples: 64 });
