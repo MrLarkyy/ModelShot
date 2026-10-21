@@ -293,32 +293,30 @@ export function edgesLoadScene(base: SceneDocument): SceneDocument {
   return { ...base, nodes: [], rootNodes: [], meshes: [mesh] };
 }
 
-/**
- * Hostile case of sharp-edge detection: one flat patch of 300 x 300 quads walled on all four sides (181 200
- * triangles), so every plate triangle has the 1 200 sharp edges of its patch to consider. Detection stops at
- * `MAX_EDGE_CHECKS` instead of making 2 · 10⁸ checks.
- */
-export function edgesHostileScene(base: SceneDocument): SceneDocument {
-  const side = 300;
-  const half = side / 2;
+/** A plate of `side` x `side` square cells of size `cell` at `(x0, z0)`, walled on all four sides one cell high. */
+function walledPlate(name: string, side: number, cell: number, x0: number, z0: number): SceneMesh {
   const plate = side * side;
-  const mesh = quadMesh(
-    'plate',
+  const end = side * cell;
+  return quadMesh(
+    name,
     plate + 4 * side,
     (q, out) => {
       if (q < plate) {
-        const x = (q % side) - half;
-        const z = Math.floor(q / side) - half;
-        out.set([x, 0, z + 1, x + 1, 0, z + 1, x + 1, 0, z, x, 0, z]);
+        const x = x0 + (q % side) * cell;
+        const z = z0 + Math.floor(q / side) * cell;
+        out.set([x, 0, z + cell, x + cell, 0, z + cell, x + cell, 0, z, x, 0, z]);
         return;
       }
       const w = q - plate;
-      const along = (w % side) - half;
+      const along = (w % side) * cell;
       const wall = Math.floor(w / side);
-      // Walls along z = -half, z = half, x = -half, x = half: a bottom edge on the plate's rim, 1 unit high.
-      const at = wall % 2 === 0 ? -half : half;
-      const [ax, az, bx, bz] = wall < 2 ? [along, at, along + 1, at] : [at, along, at, along + 1];
-      out.set([ax, 0, az, bx, 0, bz, bx, 1, bz, ax, 1, az]);
+      // Walls along z = z0, z = z0 + end, x = x0, x = x0 + end: a bottom edge on the plate's rim, one cell high.
+      const at = wall % 2 === 0 ? 0 : end;
+      const [ax, az, bx, bz] =
+        wall < 2
+          ? [x0 + along, z0 + at, x0 + along + cell, z0 + at]
+          : [x0 + at, z0 + along, x0 + at, z0 + along + cell];
+      out.set([ax, 0, az, bx, 0, bz, bx, cell, bz, ax, cell, az]);
     },
     (q) => {
       if (q < plate) return [0, 1, 0];
@@ -326,5 +324,17 @@ export function edgesHostileScene(base: SceneDocument): SceneDocument {
       return wall < 2 ? [0, 0, wall === 0 ? -1 : 1] : [wall === 2 ? -1 : 1, 0, 0];
     },
   );
-  return { ...base, nodes: [], rootNodes: [], meshes: [mesh] };
+}
+
+/**
+ * Hostile case of sharp-edge detection: 9 meshes, each a plate of 100 x 100 cells of 0.01 units walled on all four
+ * sides (20 800 triangles, 187 200 in all). The rounding reach (4 units) covers a whole plate, so every plate triangle
+ * visits the 404 sharp edges of its patch: about 5 · 10⁷ work units per plate, past the document's `MAX_EDGE_WORK`
+ * from the third plate on, where detection stops rounding instead of taking several seconds.
+ */
+export function edgesHostileScene(base: SceneDocument): SceneDocument {
+  const meshes = Array.from({ length: 9 }, (_, i) =>
+    walledPlate(`plate-${i}`, 100, 0.01, (i % 3) * 2, Math.floor(i / 3) * 2),
+  );
+  return { ...base, nodes: [], rootNodes: [], meshes };
 }
