@@ -62,6 +62,8 @@ describe('the render sweep', () => {
     const peak = compositeOver(tokens.illustration.sweep, color.shotBlue);
     const onBlue = CONTRAST_PAIRS.filter((p) => p.bg === 'shotBlue' && p.use !== 'ring');
     expect(onBlue.map((p) => p.fg)).toContain('paper');
+    // The figure quoted in tokens.ts and docs/brand.md.
+    expect(contrastRatio(color.paper, peak)).toBeCloseTo(4.74, 2);
     for (const pair of onBlue) {
       expect(contrastRatio(color[pair.fg], peak), pair.where).toBeGreaterThanOrEqual(MIN_CONTRAST[pair.use]);
     }

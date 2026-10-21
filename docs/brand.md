@@ -67,7 +67,7 @@ Pages use tokens only: the landing page has no raw `#hex`, `rgb()` or named colo
 - The focus ring is 3 px ink with a 3 px offset. On ink and shot blue grounds it switches to sun
   (`--ms-focus-on-dark`): a page puts `.on-dark` on such a panel.
 - Translucent layers are checked at their strongest point: the render sweep (`illustration.sweep`, white at 12 %)
-  composited over shot blue (`compositeOver`) still gives paper text 4.76:1. axe reports text over a gradient only as
+  composited over shot blue (`compositeOver`) still gives paper text 4.74:1. axe reports text over a gradient only as
   incomplete, so this test is the check.
 - A new colour pair on a page is added to `CONTRAST_PAIRS` first. The site checks this twice: CSS rules that set both
   a colour and a ground (`packages/site/test/contrastCoverage.test.ts`) and every rendered text element in the browser
