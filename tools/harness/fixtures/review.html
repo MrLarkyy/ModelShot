@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>look review</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #111;
+        color: #ddd;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+      }
+      form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: end;
+        padding: 12px;
+      }
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      :focus-visible {
+        outline: 2px solid #8cf;
+        outline-offset: 2px;
+      }
+      .views {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        padding: 0 12px 12px;
+      }
+      figure {
+        margin: 0;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <form id="controls">
+      <label>
+        Model (.bbmodel, read locally; empty: the harness player with a held cube)
+        <input id="model" type="file" accept=".bbmodel" />
+      </label>
+      <label>
+        Look preset
+        <select id="preset"></select>
+      </label>
+      <label>
+        Yaw (degrees)
+        <input id="yaw" type="number" value="210" step="5" />
+      </label>
+      <label>
+        Pitch (degrees)
+        <input id="pitch" type="number" value="20" min="-89" max="89" step="5" />
+      </label>
+      <button id="render" type="submit">Render</button>
+    </form>
+    <p id="status" role="status" aria-live="polite">Loading…</p>
+    <div class="views">
+      <figure>
+        <div id="preview-host"></div>
+        <figcaption>Preview (baked, 64 samples) · <a id="preview-download" download="preview.png">PNG</a></figcaption>
+      </figure>
+      <figure>
+        <div id="render-host"></div>
+        <figcaption>Render (seed 1) · <a id="render-download" download="render.png">PNG</a></figcaption>
+      </figure>
+    </div>
+    <script type="module" src="/src/review.ts"></script>
+  </body>
+</html>
