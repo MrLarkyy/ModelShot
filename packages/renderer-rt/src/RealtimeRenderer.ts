@@ -236,8 +236,13 @@ export class RealtimeRenderer {
     }
     const layout = this.loaded?.layout;
     if (!layout || !checkLighting(layout, lighting)) return false;
+    const previous = this.lighting;
     this.lighting = lighting;
-    if (this.gpu && !this.lost) this.uploadLighting(this.gpu);
+    if (this.gpu && !this.lost) {
+      // A bake's progress updates keep their shape: write into the textures instead of reallocating them.
+      if (previous && this.gpu.lighting && sameShape(previous, lighting)) this.refreshLighting(this.gpu, lighting);
+      else this.uploadLighting(this.gpu);
+    }
     this.dirty = true;
     return true;
   }
@@ -372,6 +377,20 @@ export class RealtimeRenderer {
       unbakedLight,
       lighting: null,
     };
+  }
+
+  private refreshLighting(gpu: GpuResources, lighting: BakedLighting): void {
+    const gl = this.gl;
+    const write = (texture: WebGLTexture, width: number, height: number, data: Uint16Array): void => {
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, width, height, gl.RGBA, gl.HALF_FLOAT, data);
+    };
+    if (gpu.lighting) write(gpu.lighting.lightmap, lighting.width, lighting.height, lighting.data);
+    const catcher = lighting.catcher;
+    if (gpu.lighting?.catcher && catcher)
+      write(gpu.lighting.catcher.texture, catcher.width, catcher.height, catcher.data);
+    gl.bindTexture(gl.TEXTURE_2D, null);
   }
 
   /** Uploads the retained lighting in place of what the GPU had. */
@@ -732,6 +751,14 @@ export class RealtimeRenderer {
     }
     gl.bindVertexArray(null);
   }
+}
+
+/** Same lightmap size and the same catcher plane and size: the GPU textures and the catcher quad still fit. */
+function sameShape(a: BakedLighting, b: BakedLighting): boolean {
+  if (a.width !== b.width || a.height !== b.height) return false;
+  if (!a.catcher || !b.catcher) return a.catcher === b.catcher;
+  const [p, q] = [a.catcher, b.catcher];
+  return p.width === q.width && p.height === q.height && p.y === q.y && p.rect.every((v, i) => v === q.rect[i]);
 }
 
 function setNearest(gl: WebGL2RenderingContext): void {

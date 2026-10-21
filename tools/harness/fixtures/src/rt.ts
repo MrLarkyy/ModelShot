@@ -132,17 +132,23 @@ async function start(): Promise<void> {
 
   let baker: LightBaker | null = null;
   let shown: BakedLighting | null = null;
+  // The camera is already set: an update re-uploads the light and draws, nothing more on the main thread.
   const show = (lighting: BakedLighting): void => {
     if (!renderer.setLighting(lighting)) return;
     shown = lighting;
-    frame();
+    renderer.render();
   };
-  const outcome = (result: BakeResult, progress: number[], progressHashes: string[]): RtBakeOutcome => ({
+  const outcome = (
+    result: BakeResult,
+    progress: number[],
+    progressHashes: string[],
+    hashes: boolean,
+  ): RtBakeOutcome => ({
     applied: result.applied,
     progress,
     progressHashes,
     warnings: result.warnings.map(({ code, texture }) => ({ code, ...(texture !== undefined ? { texture } : {}) })),
-    hash: lightingHash(result.lighting),
+    hash: hashes ? lightingHash(result.lighting) : '',
     error: '',
   });
   const failed = (error: unknown, progress: number[]): RtBakeOutcome => ({
@@ -153,7 +159,13 @@ async function start(): Promise<void> {
     hash: '',
     error: errorText(error),
   });
-  const runBake = async (target: SceneDocument, request: RtBakeRequest, display: boolean): Promise<RtBakeOutcome> => {
+  // `hashes`: hash every update for the determinism tests; the bake bench leaves it out (main-thread work of its own).
+  const runBake = async (
+    target: SceneDocument,
+    request: RtBakeRequest,
+    display: boolean,
+    hashes = true,
+  ): Promise<RtBakeOutcome> => {
     baker ??= LightBaker.create({ testHooks: true });
     const progress: number[] = [];
     const progressHashes: string[] = [];
@@ -165,13 +177,13 @@ async function start(): Promise<void> {
         shadowCatcher: request.catcher ?? view.catcher,
         onProgress: ({ samplesDone, samples, lighting }) => {
           progress.push(samplesDone);
-          progressHashes.push(lightingHash(lighting));
+          if (hashes) progressHashes.push(lightingHash(lighting));
           console.log(`[bake] ${samplesDone} / ${samples} samples`);
           if (display) show(lighting);
         },
       });
       if (display && result.lighting) show(result.lighting);
-      return outcome(result, progress, progressHashes);
+      return outcome(result, progress, progressHashes, hashes);
     } catch (error) {
       return failed(error, progress);
     }
@@ -181,7 +193,7 @@ async function start(): Promise<void> {
     if (first.error) throw new Error(first.error);
   }
   installBakeBench(api, async () => {
-    const result = await runBake(doc, { samples: view.bake || 16 }, true);
+    const result = await runBake(doc, { samples: view.bake || 16 }, true, false);
     if (result.error) throw new Error(result.error);
   });
 

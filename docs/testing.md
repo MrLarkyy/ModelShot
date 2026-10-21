@@ -439,9 +439,12 @@ texel tap), `rt-bench-order-512` 117, 145 and 148 ms with MSAA, 83 and 107 ms si
   shadow catcher (lightmap 2048 wide, catcher 512 x 512), from the call to the final lighting, median of 3. Local
   SwiftShader 22 873, 22 113 and 22 141 ms; max 222 000 ms (10x the middle run, rounded up).
 - `mainThreadBlockMs.bake-bench` (MS-16): the longest main-thread event-loop lag (`fixtures/src/eventLoopLag.ts`, a
-  10 ms heartbeat) over those three bakes, posting, progress uploads and redraws included. Local 27.4 ms; max 50 ms,
-  fixed (RAIL's 50 ms response budget), not derived from a measurement. In the same run
-  `rt-load-first-frame-200k-order` (now with the lightmap layout) measured 1109 ms of its 3500.
+  10 ms heartbeat) over those three bakes, posting, progress uploads and redraws included. Local 27.4 ms, then
+  68.3 ms in a slower run, which found the fixture recomputing its camera from the scene bounds and hashing the light on
+  every update; with an update that only re-uploads into the existing textures and draws (the bench skips the
+  hashes), 4.2 ms (bakes 17 865, 17 693, 17 800 ms in that run). Max 50 ms, fixed (RAIL's 50 ms response budget), not
+  derived from a measurement. In the same run `rt-load-first-frame-200k-order` (now with the lightmap layout)
+  measured 592 ms of its 3500.
 
 First CI run (2026-10-20, ubuntu-latest): frame time 0.9 ms (max 5, 5.5x), time to 64 samples 80.6 ms (max 300), gzip app 437 B, embed 115 B.
 Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact, with the numbers in the commit.
