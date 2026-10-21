@@ -24,6 +24,7 @@ export type { SceneAlphaMode, SceneMaterial } from './SceneMaterial';
 export type { SceneMesh, SceneMeshGroup } from './SceneMesh';
 export type { SceneNode } from './SceneNode';
 export type { SceneTexture } from './SceneTexture';
+export { DEFAULT_TEXTURE_FRAME_TIME, type SceneTextureFrames } from './SceneTextureFrames';
 export type { Vec3 } from './Vec3';
 export { worldMatrices } from './worldMatrices';
 export { cameraBasis, cameraProjection, cameraView, checkCameraProjection, type CameraBasis } from './cameraMatrices';
