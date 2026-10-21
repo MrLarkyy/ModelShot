@@ -41,13 +41,26 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
   space; in every other format, and when absent, the project `resolution` (default 16×16) does. Bedrock's per-texture
   UV size exists only with a multi-file ruleset, which is Blockbench runtime state not saved in the file, so bedrock
   models use the project resolution.
+- **Animations** (`animations`): every animation becomes a [`SceneAnimation`](scene-format.md#animations) with its
+  `name`, `loop` (`once`, `hold`, `loop`) and `length`. Bone animators play their `rotation`, `position` and `scale`
+  keyframes with `linear`, `catmullrom` and `step` interpolation, pre/post data points and numeric data points (a
+  number, or a string holding a decimal literal such as `"-12.5"`; blank is 0). Animators are found by group uuid, or
+  for a key that is no uuid by group name ignoring case, as Blockbench does. Files before 3.7 (`bones`, an animator
+  that is a keyframe array, values on the keyframe itself) load too.
 
 ## Not yet supported
 
 Skipped with an `UNSUPPORTED_ELEMENT` warning: `locator`, `null_object`, `texture_mesh`, `billboard`, `spline_mesh`,
-armatures and any other element type except `cube` and `mesh`. Animations are ignored. An animated (strip) texture is
+armatures and any other element type except `cube` and `mesh`. An animated (strip) texture is
 carried as one image. A texture `render_mode` (emissive,
 additive, layered) is not carried.
+
+Animation parts that are not played as authored, each reported (see Warnings) and the rest of the clip played:
+Molang expressions (the keyframe is skipped; constants play), `bezier` keyframes (played linear), effect animators
+(`sound`, `particle`, `timeline`), animators of other elements (null objects, cubes, meshes, …), unknown channels,
+`rotation_global` (played in local space), `quaternion_interpolation` (played as Euler angles), `anim_time_update`,
+`start_delay`, `loop_delay` and `blend_weight` (played at normal speed, without delay, at full weight), and negative
+scale (played as the smallest positive scale).
 
 ## Conversion
 
@@ -89,6 +102,12 @@ additive, layered) is not carried.
   texture is double-sided, as in Blockbench.
 - `render_order`: `default` (or absent) → `renderOrder` 0, `behind` → −1, `in_front` → 1.
 - One material per texture, same index, `alphaMode: "blend"`, `alphaCutoff: 0.01`.
+- Animations: keyframes are taken in Blockbench's own convention, which is the scene's: Blockbench adds a keyframe's
+  rotation (degrees) and position to the bone's three.js rotation and position, set from the group's `rotation` and
+  `origin` as the loader reads them, and multiplies its scale (only the Bedrock export flips rotation x, y and
+  position x). `position` becomes `translation`. Keyframes are sorted by time (stable), and `length` is raised to
+  the last keyframe, as Blockbench does. A later animator for the same group replaces an earlier one. A file without
+  `animations` (or with an empty list) gives a document without `animations`.
 
 ### Blockbench conventions assumed
 
@@ -126,6 +145,12 @@ format, quad order and split, normal sign, `render_sides`, `render_order` and th
 11. **Smooth shading** (`Mesh.calculateNormals`): per vertex key, the average of `MeshFace.getNormal(true)` (the unit
     `(s1 − s0) × (s2 − s0)` of the face's Blockbench vertex order) over the faces with more than 2 vertices that list
     the key; no area or angle weighting.
+12. **Animations** (MS-21, checked against Blockbench `js/animations` at commit `ec0b282`): `BoneAnimator.interpolate`
+    for the pair rules, pre/post data points and catmull-rom neighbours (including the wrap in `loop` mode),
+    `displayRotation` / `displayPosition` / `displayScale` for the conventions above, `Animation.time` for the loop
+    modes. ModelShot compares times exactly where Blockbench snaps within 1/1200 s, maps `loop` time with a plain
+    modulo (Blockbench shows the end frame at exactly `length`), and returns a `once` clip to rest after its end
+    (Blockbench's editor keeps the last frame; the game resets).
 
 ## Limits
 
@@ -146,12 +171,18 @@ or `Infinity`; anything else throws a `RangeError` (a caller error, not a `Bbmod
 | `maxTexturePixels` | 16 777 216 | `TEXTURE_TOO_LARGE`                                                 |
 | `maxDataUriChars`  | 24 Mi      | `TEXTURE_TOO_LARGE` (length of a texture `source`)                  |
 | `maxStringChars`   | 1024       | `INVALID_FIELD` (names, uuids, paths)                               |
+| `maxAnimations`    | 1024       | `TOO_MANY_KEYFRAMES` (entries of `animations`)                      |
+| `maxKeyframes`     | 200 000    | `TOO_MANY_KEYFRAMES` (all animations together, counted first)       |
 
 Triangles are counted from an upper bound (k − 2 per mesh face of k vertices) and vertices per face (each face has
 its own), both before any geometry is built; a mesh's `vertices` key count is checked before its lookup table is
 built. Ear clipping is O(k³) for k ≤ 16, so `maxTriangles` faces load in well under 5 s.
 
-Numbers must be finite and within ±10 000 000. The outliner is walked with an explicit stack, so nesting depth is
+Every animation, animator (at most `maxGroups + maxElements + 1` per animation) and keyframe is counted before any
+keyframe is read. Only the first two data points of a keyframe are read.
+
+Numbers must be finite and within ±10 000 000; keyframe values, keyframe times and animation lengths within ±10⁶
+(`MAX_ANIMATION_VALUE`, what `animateScene` accepts), times not negative. The outliner is walked with an explicit stack, so nesting depth is
 bounded by `maxNesting`, not by the call stack.
 
 ## Errors
@@ -170,6 +201,7 @@ bounded by `maxNesting`, not by the call stack.
 | `TOO_MANY_TRIANGLES`  | triangles over `maxTriangles`                                                                                                                                                                                                                                                                               |
 | `TOO_MANY_VERTICES`   | vertices over `maxVertices`, or a mesh face over `maxFaceVertices`                                                                                                                                                                                                                                          |
 | `TOO_MANY_TEXTURES`   | textures over `maxTextures`                                                                                                                                                                                                                                                                                 |
+| `TOO_MANY_KEYFRAMES`  | animations, animators of one animation, or keyframes over their limit; the message names which                                                                                                                                                                                                              |
 | `NESTING_TOO_DEEP`    | groups nested deeper than `maxNesting`                                                                                                                                                                                                                                                                      |
 | `DUPLICATE_REFERENCE` | the same uuid twice: two elements, two `groups` entries, or one element or group placed twice in the outliner (this also rejects a group inside itself)                                                                                                                                                     |
 | `TEXTURE_TOO_LARGE`   | data URI longer than `maxDataUriChars`, or the PNG exceeds the side or pixel limit                                                                                                                                                                                                                          |
@@ -179,19 +211,30 @@ bounded by `maxNesting`, not by the call stack.
 
 The model still loads; at most 100 warnings are kept (`MAX_BBMODEL_WARNINGS`). Each has `code`, `path`, `message`.
 
-| code                  | when                                                                               |
-| --------------------- | ---------------------------------------------------------------------------------- |
-| `UNSUPPORTED_ELEMENT` | an element type other than `cube` or `mesh`; skipped                               |
-| `UNSUPPORTED_VALUE`   | an unknown `render_order`, `render_sides` or `shading` string; the default is used |
-| `UNKNOWN_REFERENCE`   | an outliner entry names a uuid no element has; skipped                             |
-| `SOURCE_NOT_FETCHED`  | a texture `source` that is not a data URI (a URL or file path); never fetched      |
-| `MISSING_TEXTURE`     | no embedded image and no matching picked file; the texture is `missing`            |
+| code                  | when                                                                                                   |
+| --------------------- | ------------------------------------------------------------------------------------------------------ |
+| `UNSUPPORTED_ELEMENT` | an element type other than `cube` or `mesh`; skipped                                                   |
+| `UNSUPPORTED_VALUE`   | an unknown `render_order`, `render_sides` or `shading` string; the default is used                     |
+| `UNKNOWN_REFERENCE`   | an outliner entry names a uuid no element has; skipped                                                 |
+| `SOURCE_NOT_FETCHED`  | a texture `source` that is not a data URI (a URL or file path); never fetched                          |
+| `MISSING_TEXTURE`     | no embedded image and no matching picked file; the texture is `missing`                                |
+| `UNSUPPORTED_CHANNEL` | an animation part not played as authored (Not yet supported); once per animation, animator and channel |
+
+Animations also warn `UNSUPPORTED_VALUE` for an unknown `loop` (played `once`) or interpolation (played linear),
+`anim_time_update`, `start_delay`, `loop_delay`, `blend_weight` other than their defaults and negative scale, and
+`UNKNOWN_REFERENCE` for an animator whose uuid or name matches no group.
 
 ## Compatibility
 
 MS-12 adds the error code `TOO_MANY_VERTICES`, the warning code `UNSUPPORTED_VALUE` and the limits `maxVertices` and
 `maxFaceVertices`. At runtime this is additive; TypeScript code with an exhaustive `switch` over
 `BbmodelErrorCode` or `BbmodelWarningCode` gets a compile error until it handles the new codes.
+
+MS-21 adds animations: the error code `TOO_MANY_KEYFRAMES`, the warning code `UNSUPPORTED_CHANNEL`, the limits
+`maxAnimations` and `maxKeyframes`, and `SceneDocument.animations` on files that have any. Files without animations
+load exactly as before; files with animations that are malformed (a wrong JSON type, a negative time, a value beyond
+±10⁶) now fail with `INVALID_FIELD` where they used to load with the animations ignored. Exhaustive switches over the
+code unions get a compile error, as above.
 
 ## Local-first
 

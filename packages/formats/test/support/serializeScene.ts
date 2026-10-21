@@ -58,7 +58,8 @@ function meshUvSize(scene: SceneDocument, index: number): { width: number; heigh
 
 /**
  * Golden form of a load result: node transforms (world matrix rounded to 1e-6), meshes in world space (1e-5) with
- * render order and group sidedness, materials with their alpha rule, textures without their bytes, warnings. Number arrays print on one line.
+ * render order and group sidedness, materials with their alpha rule, textures without their bytes, animations when
+ * the file has any, warnings. Number arrays print on one line.
  */
 export function serializeResult(result: LoadResult): string {
   const { scene } = result;
@@ -75,6 +76,7 @@ export function serializeResult(result: LoadResult): string {
       pivot: node.pivot,
       rotation: node.rotation,
       translation: node.translation,
+      ...(node.scale ? { scale: node.scale } : {}),
       visible: node.visible,
       meshes: node.meshes,
       world: [...(world[i] ?? [])].map((x) => round(x, 1e-6)),
@@ -101,7 +103,13 @@ export function serializeResult(result: LoadResult): string {
       missing: texture.missing,
       byteLength: texture.bytes?.byteLength ?? null,
     })),
+    ...(scene.animations ? { animations: scene.animations } : {}),
     warnings: result.warnings,
   };
+  return printJson(data);
+}
+
+/** Number arrays print on one line. */
+export function printJson(data: unknown): string {
   return `${JSON.stringify(data, null, 2).replace(/\[\s+([^[\]{}]*?)\s+\]/g, (_, items: string) => `[${items.replace(/\s*\n\s*/g, ' ')}]`)}\n`;
 }

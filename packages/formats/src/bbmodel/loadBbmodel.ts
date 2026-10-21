@@ -16,6 +16,7 @@ import {
   readPositiveNumber,
   readString,
 } from './JsonFields';
+import { parseAnimations } from './parseAnimations';
 import { readTextureEntries, resolveTextures, textureIdIndex, type UvSize } from './parseTextures';
 import { quoteValue } from '../text/quoteValue';
 import { readJson } from './readJson';
@@ -30,7 +31,7 @@ interface PlacedElement {
 }
 
 /**
- * Loads a Blockbench `.bbmodel` (format 3.x–5.x): cubes, meshes, groups and PNG textures. Synchronous and bounded: every
+ * Loads a Blockbench `.bbmodel` (format 3.x–5.x): cubes, meshes, groups, PNG textures and bone animations. Synchronous and bounded: every
  * count, size and depth is checked against `limits` before anything proportional to it is allocated or decoded, and
  * the result does not depend on the clock or randomness. A bad file throws only `BbmodelError`; recoverable problems
  * are warnings. Invalid `options.limits` throw a `RangeError`.
@@ -76,6 +77,7 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
     warnings,
   };
   const placed = prepareElements(elementObjects, hierarchy.placements, context, limits, warnings);
+  const animations = parseAnimations(root, hierarchy.nodes, limits, warnings);
 
   // Every limit has passed; only now are texture bytes decoded and geometry buffers allocated.
   const textures = resolveTextures(textureEntries, options.textureFiles, limits, warnings);
@@ -104,6 +106,8 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
       })),
       textures,
       rootNodes: hierarchy.rootNodes,
+      // Absent rather than empty, so a file without animations loads exactly as before animations were read.
+      ...(animations ? { animations } : {}),
     },
     warnings: warnings.items,
   };

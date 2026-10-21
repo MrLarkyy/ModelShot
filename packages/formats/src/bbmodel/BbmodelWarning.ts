@@ -1,7 +1,12 @@
 import { shortenPath } from '../text/quoteValue';
 
 export type BbmodelWarningCode =
-  'UNSUPPORTED_ELEMENT' | 'UNSUPPORTED_VALUE' | 'MISSING_TEXTURE' | 'UNKNOWN_REFERENCE' | 'SOURCE_NOT_FETCHED';
+  | 'UNSUPPORTED_ELEMENT'
+  | 'UNSUPPORTED_VALUE'
+  | 'MISSING_TEXTURE'
+  | 'UNKNOWN_REFERENCE'
+  | 'SOURCE_NOT_FETCHED'
+  | 'UNSUPPORTED_CHANNEL';
 
 /** Something the loader skipped or could not resolve; the model still loads. */
 export interface BbmodelWarning {
@@ -19,6 +24,7 @@ const TITLES: Readonly<Record<BbmodelWarningCode, string>> = {
   MISSING_TEXTURE: 'Missing texture',
   UNKNOWN_REFERENCE: 'Unknown reference skipped',
   SOURCE_NOT_FETCHED: 'Texture source not fetched',
+  UNSUPPORTED_CHANNEL: 'Unsupported animation channel ignored',
 };
 
 export class BbmodelWarningList {

@@ -1,7 +1,8 @@
+import { animateScene, animationFrameTimes, worldMatrices, type SceneDocument } from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
 import { loadBbmodel } from '../../src/index';
 import { FIXTURE_NAMES, fixture, fixtureTextureFiles, type FixtureName } from './fixtures';
-import { serializeResult, worldVertices } from '../support/serializeScene';
+import { printJson, round, serializeResult, worldVertices } from '../support/serializeScene';
 
 function load(name: FixtureName) {
   const textureFiles = fixtureTextureFiles(name);
@@ -17,12 +18,63 @@ describe('loadBbmodel fixtures (data goldens)', () => {
     await expect(serializeResult(load(name))).toMatchFileSnapshot(`__goldens__/${name}.json`);
   });
 
+  it('animated.frames matches its golden', async () => {
+    await expect(serializeFrames(load('animated').scene)).toMatchFileSnapshot('__goldens__/animated.frames.json');
+  });
+
   it('loads identically from bytes and from a string', () => {
     const text = fixture('nested-groups');
     const fromBytes = loadBbmodel(new TextEncoder().encode(text));
     expect(serializeResult(fromBytes)).toBe(serializeResult(loadBbmodel(text)));
   });
 });
+
+/**
+ * Golden frames: every animation of `scene` at the start, inside the first keyframe gap, at a keyframe, just before
+ * and at the end, past the end (where once, hold and loop differ) and in the third repetition; node transforms rounded
+ * to 1e-6, plus the export frame times at 24 fps.
+ */
+function serializeFrames(scene: SceneDocument): string {
+  const vec = (v: ArrayLike<number> | undefined) => (v ? Array.from(v, (x) => round(x, 1e-6)) : undefined);
+  const animations = (scene.animations ?? []).map((animation, index) => {
+    const times = [0, 0.125, 0.5, animation.length - 0.05, animation.length, animation.length + 0.3];
+    times.push(2 * animation.length + 0.1);
+    return {
+      name: animation.name,
+      loop: animation.loop,
+      length: animation.length,
+      frames: times.map((time) => {
+        const { document, clipTime } = animateScene(scene, { animation: index, time });
+        const world = worldMatrices(document.nodes);
+        return {
+          time: round(time, 1e-6),
+          clipTime: clipTime === null ? null : round(clipTime, 1e-6),
+          nodes: document.nodes.map((node, i) => ({
+            name: node.name,
+            rotation: vec(node.rotation),
+            translation: vec(node.translation),
+            scale: vec(node.scale) ?? null,
+            world: vec(world[i]),
+          })),
+        };
+      }),
+      frameTimes24: animationFrameTimes(animation, 24).map((t) => round(t, 1e-6)),
+    };
+  });
+  return printJson({ animations });
+}
+
+/** three.js CatmullRom between p1 and p2, written out as the Hermite form. */
+function catmullRom(t: number, p0: number, p1: number, p2: number, p3: number): number {
+  const m1 = (p2 - p0) / 2;
+  const m2 = (p3 - p1) / 2;
+  return (
+    (2 * t ** 3 - 3 * t ** 2 + 1) * p1 +
+    (t ** 3 - 2 * t ** 2 + t) * m1 +
+    (-2 * t ** 3 + 3 * t ** 2) * p2 +
+    (t ** 3 - t ** 2) * m2
+  );
+}
 
 // Hand-computed values next to the goldens, so a golden can never approve a wrong transform by itself.
 describe('hand-checked transforms', () => {
@@ -124,5 +176,63 @@ describe('hand-checked transforms', () => {
     const corner = [-16, 9 - 8 * Math.cos((50 * Math.PI) / 180), 8 * Math.sin((50 * Math.PI) / 180)];
     expect(hasVertex(worldVertices(scene, 1), corner)).toBe(true);
     expect(scene.meshes.map((m) => m.groups.map((g) => g.doubleSided))).toEqual([[true], [true], [true], [false]]);
+  });
+
+  describe('animated frames', () => {
+    const scene = load('animated').scene;
+    const at = (animation: string, time: number) => animateScene(scene, { animation, time }).document.nodes;
+
+    it('loads four animations without warnings, keyframes sorted and numeric strings read', () => {
+      const { warnings } = load('animated');
+      expect(warnings).toEqual([]);
+      expect(scene.animations?.map((a) => [a.name, a.loop, a.length, a.channels.length])).toEqual([
+        ['bob', 'loop', 1, 2],
+        ['spin', 'hold', 2, 1],
+        ['squash', 'once', 1, 1],
+        ['mixed', 'loop', 2, 2],
+      ]);
+      const mixed = scene.animations?.[3]?.channels[0];
+      expect(mixed?.node).toBe(1);
+      expect(mixed?.keyframes.map((k) => [k.time, k.value, k.interpolation])).toEqual([
+        [0, [10, 0, -2.5], 'linear'],
+        [1, [0, 0, 45], 'catmullrom'],
+        [1.5, [5, 5, 5], 'step'],
+        [2, [0, 0, 0], 'linear'],
+      ]);
+    });
+
+    it('bob: linear into a pre/post split, step positions', () => {
+      expect(at('bob', 0.25)[0]?.translation).toEqual([0, 1, 0]);
+      expect(at('bob', 0.5)[0]?.translation).toEqual([0, 2, 0]);
+      expect(at('bob', 0.75)[0]?.translation).toEqual([0, 2, 0]);
+      expect(at('bob', 1.25)[0]?.translation).toEqual([0, 1, 0]);
+      expect(at('bob', 0.25)[1]?.translation).toEqual([1, 0, 0]);
+      expect(at('bob', 0.5)[1]?.translation).toEqual([-1, 0, 0]);
+    });
+
+    it('spin: catmull-rom past 360°, added to the rest rotation, held after the end', () => {
+      const y = at('spin', 0.25)[1]?.rotation[1] ?? NaN;
+      expect(y).toBeCloseTo(catmullRom(0.5, 0, 0, 90, 360), 9);
+      expect(at('spin', 3)[1]?.rotation).toEqual([0, 720, 10]);
+    });
+
+    it('squash: scale about the pivot, clamped at 0, rest after a once clip ends', () => {
+      expect(at('squash', 0.75)[0]?.scale).toEqual([1.5, 0.25, 1]);
+      expect(at('squash', 1)[0]?.scale).toEqual([1, 1e-4, 1]);
+      expect(at('squash', 1.3)[0]?.scale).toBeUndefined();
+      // Trunk corner (2, 8, 2) scaled by (2, 0.5, 1) about the body pivot (0, 0, 0).
+      const squashed = { ...scene, nodes: at('squash', 0.5) };
+      expect(hasVertex(worldVertices(squashed, 0), [4, 4, 2])).toBe(true);
+    });
+
+    it('mixed: a name-keyed animator, linear into catmull-rom wrapping its neighbours, step', () => {
+      expect(at('mixed', 0)[1]?.rotation).toEqual([10, 0, 7.5]);
+      const half = at('mixed', 0.5)[1]?.rotation ?? [];
+      const expected = [0, 1, 2].map((k) => catmullRom(0.5, 5, [10, 0, -2.5][k] ?? 0, [0, 0, 45][k] ?? 0, 5));
+      expected.forEach((value, k) => expect(half[k]).toBeCloseTo(value + (k === 2 ? 10 : 0), 9));
+      expect(at('mixed', 1.75)[1]?.rotation).toEqual([5, 5, 15]);
+      expect(at('mixed', 1)[1]?.translation).toEqual([0, 0, 0]);
+      expect(at('mixed', 0)[1]?.translation).toEqual([0, 1, 0]);
+    });
   });
 });

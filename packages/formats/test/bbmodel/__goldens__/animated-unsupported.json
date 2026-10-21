@@ -1,0 +1,183 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "format": "bbmodel",
+    "formatVersion": "4.10",
+    "modelFormat": "free"
+  },
+  "rootNodes": [0],
+  "nodes": [
+    {
+      "name": "bone",
+      "sourceId": "0b0d1e5a-0000-4000-8000-0000000000b1",
+      "parent": -1,
+      "children": [],
+      "pivot": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "translation": [0, 0, 0],
+      "visible": true,
+      "meshes": [0],
+      "world": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    }
+  ],
+  "meshes": [
+    {
+      "name": "block",
+      "sourceId": "c-block",
+      "node": 0,
+      "visible": true,
+      "renderOrder": 0,
+      "groups": [
+        {
+          "material": -1,
+          "start": 0,
+          "count": 36,
+          "doubleSided": true
+        }
+      ],
+      "indices": [0, 3, 2, 0, 2, 1, 4, 7, 6, 4, 6, 5, 8, 11, 10, 8, 10, 9, 12, 15, 14, 12, 14, 13, 16, 19, 18, 16, 18, 17, 20, 23, 22, 20, 22, 21],
+      "vertexColumns": "x y z nx ny nz u v uMin vMin uMax vMax (uv in texture uv units; untextured: normalised)",
+      "vertices": [
+        [2, 4, -2, 0, 0, -1, 0, 0, 0, 0, 0.0625, 0.0625],
+        [-2, 4, -2, 0, 0, -1, 0.0625, 0, 0, 0, 0.0625, 0.0625],
+        [-2, 0, -2, 0, 0, -1, 0.0625, 0.0625, 0, 0, 0.0625, 0.0625],
+        [2, 0, -2, 0, 0, -1, 0, 0.0625, 0, 0, 0.0625, 0.0625],
+        [2, 4, 2, 1, 0, 0, 0, 0, 0, 0, 0.0625, 0.0625],
+        [2, 4, -2, 1, 0, 0, 0.0625, 0, 0, 0, 0.0625, 0.0625],
+        [2, 0, -2, 1, 0, 0, 0.0625, 0.0625, 0, 0, 0.0625, 0.0625],
+        [2, 0, 2, 1, 0, 0, 0, 0.0625, 0, 0, 0.0625, 0.0625],
+        [-2, 4, 2, 0, 0, 1, 0, 0, 0, 0, 0.0625, 0.0625],
+        [2, 4, 2, 0, 0, 1, 0.0625, 0, 0, 0, 0.0625, 0.0625],
+        [2, 0, 2, 0, 0, 1, 0.0625, 0.0625, 0, 0, 0.0625, 0.0625],
+        [-2, 0, 2, 0, 0, 1, 0, 0.0625, 0, 0, 0.0625, 0.0625],
+        [-2, 4, -2, -1, 0, 0, 0, 0, 0, 0, 0.0625, 0.0625],
+        [-2, 4, 2, -1, 0, 0, 0.0625, 0, 0, 0, 0.0625, 0.0625],
+        [-2, 0, 2, -1, 0, 0, 0.0625, 0.0625, 0, 0, 0.0625, 0.0625],
+        [-2, 0, -2, -1, 0, 0, 0, 0.0625, 0, 0, 0.0625, 0.0625],
+        [-2, 4, -2, 0, 1, 0, 0, 0, 0, 0, 0.0625, 0.0625],
+        [2, 4, -2, 0, 1, 0, 0.0625, 0, 0, 0, 0.0625, 0.0625],
+        [2, 4, 2, 0, 1, 0, 0.0625, 0.0625, 0, 0, 0.0625, 0.0625],
+        [-2, 4, 2, 0, 1, 0, 0, 0.0625, 0, 0, 0.0625, 0.0625],
+        [-2, 0, 2, 0, -1, 0, 0, 0, 0, 0, 0.0625, 0.0625],
+        [2, 0, 2, 0, -1, 0, 0.0625, 0, 0, 0, 0.0625, 0.0625],
+        [2, 0, -2, 0, -1, 0, 0.0625, 0.0625, 0, 0, 0.0625, 0.0625],
+        [-2, 0, -2, 0, -1, 0, 0, 0.0625, 0, 0, 0.0625, 0.0625]
+      ]
+    }
+  ],
+  "materials": [],
+  "textures": [],
+  "animations": [
+    {
+      "name": "odd",
+      "loop": "loop",
+      "length": 1,
+      "channels": [
+        {
+          "node": 0,
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": [0, 0, 0],
+              "interpolation": "linear"
+            },
+            {
+              "time": 0.5,
+              "value": [0, 45, 0],
+              "interpolation": "linear"
+            }
+          ]
+        },
+        {
+          "node": 0,
+          "property": "scale",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": [-1, 1, 1],
+              "interpolation": "linear"
+            },
+            {
+              "time": 1,
+              "value": [1, 1, 1],
+              "interpolation": "linear"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "warnings": [
+    {
+      "code": "UNSUPPORTED_VALUE",
+      "path": "$.animations[0].anim_time_update",
+      "message": "Unsupported value ignored at $.animations[0].anim_time_update: played at normal speed"
+    },
+    {
+      "code": "UNSUPPORTED_VALUE",
+      "path": "$.animations[0].start_delay",
+      "message": "Unsupported value ignored at $.animations[0].start_delay: played without delay"
+    },
+    {
+      "code": "UNSUPPORTED_VALUE",
+      "path": "$.animations[0].blend_weight",
+      "message": "Unsupported value ignored at $.animations[0].blend_weight: played at full weight"
+    },
+    {
+      "code": "UNSUPPORTED_CHANNEL",
+      "path": "$.animations[0].animators.effects.sound",
+      "message": "Unsupported animation channel ignored at $.animations[0].animators.effects.sound: \"effect\" \"sound\" keyframes are not played"
+    },
+    {
+      "code": "UNSUPPORTED_CHANNEL",
+      "path": "$.animations[0].animators.effects.particle",
+      "message": "Unsupported animation channel ignored at $.animations[0].animators.effects.particle: \"effect\" \"particle\" keyframes are not played"
+    },
+    {
+      "code": "UNSUPPORTED_CHANNEL",
+      "path": "$.animations[0].animators.effects.timeline",
+      "message": "Unsupported animation channel ignored at $.animations[0].animators.effects.timeline: \"effect\" \"timeline\" keyframes are not played"
+    },
+    {
+      "code": "UNSUPPORTED_CHANNEL",
+      "path": "$.animations[0].animators.0b0d1e5a-0000-4000-8000-0000000000c1.position",
+      "message": "Unsupported animation channel ignored at $.animations[0].animators.0b0d1e5a-0000-4000-8000-0000000000c1.position: \"null_object\" \"position\" keyframes are not played"
+    },
+    {
+      "code": "UNSUPPORTED_CHANNEL",
+      "path": "$.animations[0].animators.0b0d1e5a-0000-4000-8000-0000000000b1.rotation_global",
+      "message": "Unsupported animation channel ignored at $.animations[0].animators.0b0d1e5a-0000-4000-8000-0000000000b1.rotation_global: global rotation played in local space"
+    },
+    {
+      "code": "UNSUPPORTED_CHANNEL",
+      "path": "$.animations[0].animators.0b0d1e5a-0000-4000-8000-0000000000b1.quaternion_interpolation",
+      "message": "Unsupported animation channel ignored at $.animations[0].animators.0b0d…0-4000-8000-0000000000b1.quaternion_interpolation: quaternion interpolation played as Euler angles"
+    },
+    {
+      "code": "UNSUPPORTED_CHANNEL",
+      "path": "$.animations[0].animators.0b0d1e5a-0000-4000-8000-0000000000b1.keyframes[1]",
+      "message": "Unsupported animation channel ignored at $.animations[0].animators.0b0d1e5a-0000-4000-8000-0000000000b1.keyframes[1]: a Molang expression is not evaluated; its keyframe is skipped"
+    },
+    {
+      "code": "UNSUPPORTED_CHANNEL",
+      "path": "$.animations[0].animators.0b0d1e5a-0000-4000-8000-0000000000b1.keyframes[2].interpolation",
+      "message": "Unsupported animation channel ignored at $.animations[0].animators.0b0d…4000-8000-0000000000b1.keyframes[2].interpolation: bezier keyframes played linear"
+    },
+    {
+      "code": "UNSUPPORTED_VALUE",
+      "path": "$.animations[0].animators.0b0d1e5a-0000-4000-8000-0000000000b1.keyframes[3]",
+      "message": "Unsupported value ignored at $.animations[0].animators.0b0d1e5a-0000-4000-8000-0000000000b1.keyframes[3]: negative scale played as a tiny positive scale"
+    },
+    {
+      "code": "UNSUPPORTED_CHANNEL",
+      "path": "$.animations[0].animators.0b0d1e5a-0000-4000-8000-0000000000b1.squish",
+      "message": "Unsupported animation channel ignored at $.animations[0].animators.0b0d1e5a-0000-4000-8000-0000000000b1.squish: channel \"squish\" is not played"
+    },
+    {
+      "code": "UNKNOWN_REFERENCE",
+      "path": "$.animations[0].animators.0b0d1e5a-0000-4000-8000-0000000000ff",
+      "message": "Unknown reference skipped at $.animations[0].animators.0b0d1e5a-0000-4000-8000-0000000000ff: no group with uuid or name \"0b0d1e5a-0000-4000-8000-00000000\"…"
+    }
+  ]
+}

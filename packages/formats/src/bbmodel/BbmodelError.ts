@@ -10,6 +10,7 @@ export type BbmodelErrorCode =
   | 'TOO_MANY_TRIANGLES'
   | 'TOO_MANY_VERTICES'
   | 'TOO_MANY_TEXTURES'
+  | 'TOO_MANY_KEYFRAMES'
   | 'NESTING_TOO_DEEP'
   | 'DUPLICATE_REFERENCE'
   | 'TEXTURE_TOO_LARGE'
@@ -25,6 +26,7 @@ const TITLES: Readonly<Record<BbmodelErrorCode, string>> = {
   TOO_MANY_TRIANGLES: 'Too many triangles',
   TOO_MANY_VERTICES: 'Too many vertices',
   TOO_MANY_TEXTURES: 'Too many textures',
+  TOO_MANY_KEYFRAMES: 'Too many keyframes',
   NESTING_TOO_DEEP: 'Nesting too deep',
   DUPLICATE_REFERENCE: 'Duplicate reference',
   TEXTURE_TOO_LARGE: 'Texture too large',
