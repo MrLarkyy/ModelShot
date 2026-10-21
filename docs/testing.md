@@ -5,7 +5,7 @@
 
 1. `pnpm test:unit`: Vitest, every package plus `tools/harness/test` (comparator, golden store, budgets, bundle size,
    model-view helpers).
-2. `pnpm test:browser`: Playwright in a pinned headless Chromium on software WebGL (SwiftShader), `tools/harness`.
+2. `pnpm test:browser`: Playwright in a pinned headless Chromium on software WebGL (SwiftShader), `tools/harness`, and the landing page's suite in `packages/site` (its own Playwright config, docs/site.md).
 
 Run `pnpm browsers` once per machine (and after a Playwright version bump) to install the browser. Playwright is pinned
 to an exact version in `tools/harness/package.json`, which pins the Chromium revision.
@@ -17,7 +17,7 @@ to an exact version in `tools/harness/package.json`, which pins the Chromium rev
 - `check`: install, typecheck, lint, format check, `pnpm -r build`, `pnpm run test:unit` (Vitest, bundle size
   included).
 - `e2e`: a matrix of 4 shards (`fail-fast: false`), each on its own VM: install, the pinned Chromium, `pnpm -r build`,
-  then `playwright test --shard=<k>/4`, uploading `tools/harness/test-results/` as `browser-test-results-<k>`.
+  then `playwright test --shard=<k>/4`, then on shard 1 only `pnpm --filter @modelshot/site run test:browser` (it runs even when the harness tests failed), uploading `tools/harness/test-results/` and `packages/site/test-results/` as `browser-test-results-<k>`.
 
 Why: on one runner the browser suite alone outran the 20-minute limit (run 39545935955 on 4861384 was cancelled in
 `pnpm test`; the e2e part ran over 19 minutes with one worker, the baked-light tests about 37 s each). Shards are
@@ -466,7 +466,7 @@ attached vertex formula in four poses, re-posing, nesting, index remapping, ever
 ## Budgets
 
 `budgets.json` (root, `"version": 1`) holds `max` values for frame time, load time, time to N samples and gzip bundle
-size of `app` and `embed`. `pnpm test` measures them (`bench.spec.ts`; the bundle is built fresh into a temporary directory, so
+size of `app`, `embed`, `site` and `site-assets`. `site` is a plain `vite build` of `packages/site` without the `/app/` copy that `build:with-app` adds; `site-assets` is the same build's woff2 and svg files. `pnpm test` measures them (`bench.spec.ts`; the bundle is built fresh into a temporary directory, so
 it does not depend on `pnpm -r build`) and fails when a value exceeds its `max`, when a budget has no measurement, or
 a measurement has no budget. The measured values are in `tools/harness/test-results/budgets-measured.json`, and
 every run prints each one against its max (`[budget] <group>.<key>: measured … / max …`, from `bench.spec.ts` and

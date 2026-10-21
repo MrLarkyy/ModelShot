@@ -52,7 +52,7 @@ jobs:
       - run: pnpm -r build
       - run: pnpm --filter @modelshot/harness exec playwright test --shard=${{ matrix.shard }}/4
       - run: pnpm --filter @modelshot/site run test:browser
-        if: ${{ matrix.shard == 1 }}
+        if: ${{ matrix.shard == 1 && !cancelled() }}
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
