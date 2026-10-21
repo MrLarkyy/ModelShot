@@ -7,7 +7,9 @@ import { build } from 'vite';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
-export type BundleTarget = 'app' | 'embed' | 'site' | 'site-assets';
+export const BUNDLE_TARGETS = ['app', 'embed', 'site', 'site-assets'] as const;
+
+export type BundleTarget = (typeof BUNDLE_TARGETS)[number];
 
 const PACKAGE: Record<BundleTarget, string> = { app: 'app', embed: 'embed', site: 'site', 'site-assets': 'site' };
 const EXTENSIONS: Record<BundleTarget, string[]> = {

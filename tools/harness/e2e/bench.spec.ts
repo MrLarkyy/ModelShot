@@ -2,7 +2,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '../src/harnessTest';
 import { budgetReport, checkBudgets, loadBudgets, type Measured } from '../src/budgets';
-import { measureBundle } from '../src/bundleSize';
+import { BUNDLE_TARGETS, measureBundle } from '../src/bundleSize';
 import { openFixture } from '../src/expectGolden';
 import { traceMainThread } from '../src/mainThreadTrace';
 import { median } from '../src/measure';
@@ -161,7 +161,9 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
       `${post.call.toFixed(1)} ms, wall-time block ${post.block.toFixed(1)} ms (heartbeat lag ${post.lag.toFixed(1)} ms)`,
   );
 
-  const [app, embed] = await Promise.all([measureBundle('app'), measureBundle('embed')]);
+  // Every target, so a budget row cannot go unmeasured; one at a time, as `site` and `site-assets` build the same package.
+  const bundleGzipBytes: Record<string, number> = {};
+  for (const target of BUNDLE_TARGETS) bundleGzipBytes[target] = (await measureBundle(target)).gzipBytes;
 
   const measured: Measured = {
     frameTimeMs: {
@@ -175,7 +177,7 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
       'pt-load-200k': ptLoadMs,
     },
     timeToSamplesMs: { 'progressive-256-n64': median(runs), 'pt-bench-128-n256': median(ptRuns) },
-    bundleGzipBytes: { app: app.gzipBytes, embed: embed.gzipBytes },
+    bundleGzipBytes,
     bakeTimeMs: { 'bake-bench-n16': median(bakeRuns) },
     mainThreadBlockMs: { 'bake-bench': trace.maxBlocking, 'bake-post-200k': postTrace.maxBlocking },
   };
