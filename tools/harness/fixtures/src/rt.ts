@@ -12,7 +12,7 @@ import {
 } from '@modelshot/scene';
 import { installBakeBench, installFrameBench, installFrameReadout, installSceneBench } from './bench';
 import { readDrawingBufferBase64 } from './context';
-import { startEventLoopLag } from './eventLoopLag';
+import { spinMainThread, startEventLoopLag } from './eventLoopLag';
 import type { MsFixture, RtBakeOutcome, RtBakeRequest, RtControls } from './fixtureApi';
 import { breakFramebuffers } from './breakFramebuffers';
 import { installGlTracker } from './glTracker';
@@ -364,7 +364,7 @@ async function start(): Promise<void> {
     get lightingHash() {
       return lightingHash(shown);
     },
-    loseBakerContext: (beforeMark) => baker?.loseContext(beforeMark),
+    loseBakerContext: (options) => baker?.loseContext(options),
     disposeBaker: () => baker?.dispose(),
     get bakerTerminated() {
       return baker?.terminated ?? false;
@@ -381,6 +381,7 @@ async function start(): Promise<void> {
     },
     maxLag: () => lag?.max() ?? -1,
     mainThreadBlock: () => lag?.block() ?? -1,
+    spinMainThread,
     resetLag: () => lag?.reset(),
   };
   api.rt = controls;

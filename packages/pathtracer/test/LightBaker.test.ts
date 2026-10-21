@@ -127,7 +127,7 @@ describe('LightBaker', () => {
     expect(() => plain.loseContext()).toThrow(/test hook/);
     const { baker: b, worker } = baker();
     void b.bake(doc, { countCappedTraversals: true });
-    b.loseContext(16);
+    b.loseContext({ beforeMark: 16 });
     expect(worker.posted.map((m) => (m.type === 'bake' ? m.countCapped : m))).toEqual([
       true,
       { type: 'loseContext', beforeMark: 16 },

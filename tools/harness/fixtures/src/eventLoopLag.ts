@@ -17,6 +17,20 @@ export interface EventLoopLag {
 const HEARTBEAT_MS = 10;
 
 /**
+ * Keeps the main thread busy for `ms` in a task of its own (a timer, as page work runs; a test of the long-task
+ * measure) and resolves after it.
+ */
+export function spinMainThread(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(() => {
+      const end = performance.now() + ms;
+      while (performance.now() < end);
+      resolve();
+    }, 0);
+  });
+}
+
+/**
  * Main-thread responsiveness probes. The heartbeat (a 10 ms timer, each beat recording how late it ran) also counts
  * time the page did not get the CPU at all; on SwiftShader, whose GPU process spreads every draw over all cores, a
  * bake delays it by up to 200 ms while no task of the page runs (MS-16). `block()` measures the page's own work: the
@@ -41,7 +55,11 @@ export function startEventLoopLag(): EventLoopLag {
   observer.observe({ type: 'longtask' });
   return {
     max: () => worst,
-    block: () => Math.max(longest, worked),
+    block: () => {
+      // Entries of tasks that ended before this one are queued, but their observer callback may not have run yet.
+      for (const entry of observer.takeRecords()) longest = Math.max(longest, entry.duration);
+      return Math.max(longest, worked);
+    },
     work: (fn) => {
       const start = performance.now();
       try {

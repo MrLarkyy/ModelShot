@@ -212,8 +212,8 @@ All eight earlier `pt-*` goldens were regenerated in MS-16 on purpose (same seed
 a 0.04 rad cone, the shadow catcher appeared under every model, and the random dimensions per path vertex grew from
 4 to 6. Their probes were measured again (below). Round 2 gave the catcher's fill ray its own number for partial
 texels (it shared the camera ray's): `pt-turntable-y030`, `pt-iso`, `pt-closeup`, `pt-emissive` and
-`pt-alpha-ramp-blend`, whose catcher is seen through partial texels, were regenerated again; the others did not
-change.
+`pt-alpha-ramp-blend`, where catcher fill rays meet partial texels (the glass panes, the ramp), were regenerated
+again, by at most 5 levels (mean 1) over their whole catcher; the others did not change.
 
 - Tolerance: an override of `threshold 0` only (its reason in the spec); `maxDiffRatio 0.001` and `maxMeanDelta 1`
   stay the defaults. The tracer converges, so at the default threshold 0.1 another seed or one sample more or less
@@ -456,7 +456,9 @@ texel tap), `rt-bench-order-512` 117, 145 and 148 ms with MSAA, 83 and 107 ms si
   every update (fixed: an update only re-uploads into the existing textures and draws; 4.2 ms). The heartbeat then
   still read 63.9 and once 192.9 ms with no long task and no handler over 6.3 ms: SwiftShader's GPU process spreads
   every draw over all cores and the page gets no CPU, which no page change can fix. It is printed beside the block
-  (`heartbeat lag`). Block measured 9.1 and 7.3 ms. Max 50 ms, fixed (RAIL's 50 ms response budget), not derived from
+  (`heartbeat lag`). Block measured 9.1 and 7.3 ms. `realtime.spec.ts` pins the long-task half: an 80 ms busy timer
+  task outside the timed work reads a block of 80.0 ms (`block()` takes the observer's pending records first). A task
+  Playwright's `evaluate` runs is not reported as a long task, so the bench times the `bake()` call itself. Max 50 ms, fixed (RAIL's 50 ms response budget), not derived from
   a measurement.
 - `mainThreadBlockMs.bake-post-200k` (MS-16 round 2): `bake()` of the 200 000-triangle `large-order` document (1
   sample): the longer of the call's own duration (validation and the structured clone of the posted document) and the

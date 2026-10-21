@@ -62,10 +62,17 @@ let job: Job | null = null;
 let textures: { version: number; decoded: Promise<DecodedTextures | null> } | null = null;
 /** Test hook: lose the context right before the readback after this many samples. */
 let loseBeforeMark: number | null = null;
+/** Test hook: the next restore fails to create a session, as a driver that cannot compile the bake program would. */
+let failNextRestore = false;
 
 function createSession(): void {
   session = null;
   sessionError = null;
+  if (failNextRestore) {
+    failNextRestore = false;
+    sessionError = new PathTracerError('WEBGL2_UNAVAILABLE', 'test hook: the restored context could not bake');
+    return;
+  }
   if (!gl) {
     sessionError = new PathTracerError('WEBGL2_UNAVAILABLE', 'WebGL2 is not available on an OffscreenCanvas here');
     return;
@@ -76,6 +83,13 @@ function createSession(): void {
   } catch (error) {
     sessionError = error;
   }
+}
+
+/** Why there is no session (a failed creation or restore). */
+function sessionFailure(): unknown {
+  return sessionError instanceof Error
+    ? sessionError
+    : new PathTracerError('WEBGL2_UNAVAILABLE', 'the bake has no WebGL2 context');
 }
 
 /** The event-driven flag lags behind: a readback on a context lost a moment ago returns zeros without an error. */
@@ -239,11 +253,7 @@ async function prepare(
   decodedTextures: Promise<DecodedTextures | null>,
 ): Promise<void> {
   // While the context is lost the bake is prepared all the same and starts once it is back.
-  if (!session && !lost) {
-    throw sessionError instanceof Error
-      ? sessionError
-      : new PathTracerError('WEBGL2_UNAVAILABLE', 'the bake has no WebGL2 context');
-  }
+  if (!session && !lost) throw sessionFailure();
   if (!limits) throw new PathTracerError('WEBGL2_UNAVAILABLE', 'the bake context was lost before it could start');
   const doc: SceneDocument = request.doc;
   try {
@@ -292,7 +302,14 @@ async function prepare(
 /** Uploads the job's scene and runs it; a failure (an RGBA32F target the driver rejects) is the job's error. */
 async function launch(current: Job): Promise<void> {
   const scene = current.scene;
-  if (!scene || !session) return;
+  if (!scene || current.stopped) return;
+  if (!session) {
+    // Lost: the restore handler starts the job. Otherwise the restore (or the first creation) failed: settle the bake.
+    if (contextGone()) return;
+    if (job === current) job = null;
+    post(errorReply(current.id, sessionFailure()));
+    return;
+  }
   try {
     session.upload(scene);
     await run(current);
@@ -355,7 +372,7 @@ if (gl) {
     if (!current?.scene || current.stopped) return;
     if (!session) {
       job = null;
-      post(errorReply(current.id, sessionError));
+      post(errorReply(current.id, sessionFailure()));
       return;
     }
     post({ type: 'restarted', id: current.id });
@@ -369,6 +386,7 @@ scope.addEventListener('message', (event: MessageEvent<BakeRequest>) => {
   if (request.type === 'bake') {
     start(request).catch((error: unknown) => post(errorReply(request.id, error)));
   } else if (request.type === 'loseContext') {
+    if (request.failRestore) failNextRestore = true;
     if (request.beforeMark !== undefined) loseBeforeMark = request.beforeMark;
     else loseNow();
   } else {

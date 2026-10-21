@@ -186,12 +186,16 @@ export class LightBaker {
 
   /**
    * Test hook (`testHooks: true`): the worker loses its context and gets it back; a running bake restarts. With
-   * `beforeMark` the loss comes right before the readback after that many samples of a running bake.
+   * `beforeMark` the loss comes right before the readback after that many samples of a running bake; with
+   * `failRestore` the restored context cannot bake (pending and later bakes reject).
    */
-  loseContext(beforeMark?: number): void {
+  loseContext(options: { readonly beforeMark?: number; readonly failRestore?: boolean } = {}): void {
     if (!this.options.testHooks) throw new Error('loseContext is a test hook: create the baker with testHooks: true');
-    const request: BakeRequest =
-      beforeMark === undefined ? { type: 'loseContext' } : { type: 'loseContext', beforeMark };
+    const request: BakeRequest = {
+      type: 'loseContext',
+      ...(options.beforeMark !== undefined ? { beforeMark: options.beforeMark } : {}),
+      ...(options.failRestore ? { failRestore: true } : {}),
+    };
     if (!this.disposing) this.worker.postMessage(request);
   }
 

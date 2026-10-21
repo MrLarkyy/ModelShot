@@ -97,7 +97,7 @@ export interface RtControls {
   /** Hash of the lighting the renderer shows, '' for none. */
   readonly lightingHash: string;
   /** The worker loses its WebGL context and gets it back (LightBaker test hook), now or before a progress mark. */
-  loseBakerContext: (beforeMark?: number) => void;
+  loseBakerContext: (options?: { beforeMark?: number; failRestore?: boolean }) => void;
   disposeBaker: () => void;
   readonly bakerTerminated: boolean;
   /** setLighting with the shown lighting changed in one way: whether the renderer took it. */
@@ -106,6 +106,8 @@ export interface RtControls {
   maxLag: () => number;
   /** Longest main-thread block from page work since load or `resetLag` (lag=1: long tasks, bake calls and updates). */
   mainThreadBlock: () => number;
+  /** Busy main thread for `ms` outside any timed bake work (checks that `mainThreadBlock` sees long tasks). */
+  spinMainThread: (ms: number) => Promise<void>;
   resetLag: () => void;
 }
 

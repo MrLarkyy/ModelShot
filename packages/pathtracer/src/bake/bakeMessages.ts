@@ -20,8 +20,11 @@ export type BakeRequest =
       readonly countCapped: boolean;
     }
   | { readonly type: 'dispose' }
-  /** Test hook: lose the context now, or (`beforeMark`) right before the readback after that many samples. */
-  | { readonly type: 'loseContext'; readonly beforeMark?: number };
+  /**
+   * Test hook: lose the context now, or (`beforeMark`) right before the readback after that many samples;
+   * `failRestore`: the restored context cannot bake.
+   */
+  | { readonly type: 'loseContext'; readonly beforeMark?: number; readonly failRestore?: boolean };
 
 /** Bake worker to main thread. */
 export type BakeReply =

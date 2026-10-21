@@ -902,13 +902,38 @@ test.describe('baked lighting', () => {
     const reference = await page.evaluate(() => window.__msFixture!.rt!.lightingHash);
     const result = await page.evaluate(() => {
       const rt = window.__msFixture!.rt!;
-      rt.loseBakerContext(16);
+      rt.loseBakerContext({ beforeMark: 16 });
       return rt.bake({ samples: 64 });
     });
     expect(result.error).toBe('');
     // The update after 4 samples came, the one after 16 was lost; the restarted bake reports 4 and 16 again.
     expect(result.progress).toEqual([4, 4, 16]);
     expect(result.hash).toBe(reference);
+  });
+
+  test('a bake whose restored context cannot bake rejects instead of hanging, and so do later bakes', async ({
+    page,
+  }) => {
+    await openFixture(page, '/rt.html?variant=bake-turntable-y030');
+    const results = await page.evaluate(async () => {
+      const rt = window.__msFixture!.rt!;
+      rt.loseBakerContext({ failRestore: true });
+      const pending = await rt.bake({ samples: 4 });
+      return [pending, await rt.bake({ samples: 4 })];
+    });
+    for (const result of results) expect(result.error).toMatch(/^WEBGL2_UNAVAILABLE: test hook/);
+  });
+
+  test('the main-thread block measure sees a long task outside the timed bake work', async ({ page }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030&lag=1');
+    await page.evaluate(() => {
+      window.__msFixture!.rt!.resetLag();
+      return window.__msFixture!.rt!.spinMainThread(80);
+    });
+    // Read in a later task: the long-task entry exists once the busy task ended.
+    const block = await page.evaluate(() => window.__msFixture!.rt!.mainThreadBlock());
+    console.log(`[rt probe] 80 ms busy task: block ${block.toFixed(1)} ms`);
+    expect(block).toBeGreaterThanOrEqual(80);
   });
 
   test('no bake ray reaches the per-ray node cap: benchmark scene and the cut-out plant field', async ({ page }) => {
