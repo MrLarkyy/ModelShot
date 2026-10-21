@@ -98,6 +98,7 @@ async function start(): Promise<void> {
     texelAntialias: view.texelAntialias,
     preserveDrawingBuffer: !continuous,
     maxTextureSide,
+    ...(view.edges !== null ? { edges: { width: view.edges } } : {}),
   });
   const capabilities = renderer.capabilities;
   if (!capabilities) throw new Error('renderer has no capabilities');
@@ -244,6 +245,15 @@ async function start(): Promise<void> {
     liveGlObjects: () => tracker?.liveGlObjects() ?? -1,
     openBitmaps: () => tracker?.openBitmaps() ?? -1,
     render: () => renderer.render(),
+    setEdges: (edges) => {
+      try {
+        renderer.setEdges(edges);
+        frame();
+        return 'ok';
+      } catch (error) {
+        return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      }
+    },
     drawCallsPerFrame: () => {
       let calls = 0;
       const drawElements = gl.drawElements.bind(gl);
