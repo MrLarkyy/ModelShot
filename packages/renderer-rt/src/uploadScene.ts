@@ -69,7 +69,7 @@ const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 
  * `alphaLevels[t]` holds the alpha bytes present in texture `t` (`readTextureAlpha`); a batch whose texture has a byte
  * that its alpha rule makes partial is also drawn by the transparency pass. `closedOpaque[m]` marks mesh `m` closed and
  * opaque on every face (`closedOpaqueMeshes`); `lightmap[m]` its per-vertex lightmap data (`LightmapLayout.vertexData`);
- * `edges[m]` its sharp-edge attributes (`cachedSharpEdges`).
+ * `edges[m]` its sharp-edge attributes (`sceneSharpEdges`).
  */
 export function uploadScene(
   gl: WebGL2RenderingContext,

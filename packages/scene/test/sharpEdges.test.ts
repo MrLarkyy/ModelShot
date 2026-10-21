@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   EDGE_SLOTS,
-  MAX_EDGE_CHECKS,
+  MAX_EDGE_WORK,
   NO_EDGE,
-  cachedSharpEdges,
+  sceneSharpEdges,
   sharpEdges,
   type SceneMesh,
   type SharpEdgeAttributes,
@@ -282,67 +282,212 @@ describe('sharpEdges', () => {
     expect(far.angles[5 * EDGE_SLOTS]).toBeCloseTo(-Math.PI / 2, 6);
   });
 
-  it('is identical across runs and cached per mesh and options', () => {
+  it('is identical across runs and cached per document for the latest options', () => {
     const mesh = box([0, 0, 0], [1, 2, 3]);
     const a = sharpEdges(mesh, OPTIONS);
     const b = sharpEdges(mesh, OPTIONS);
     expect([...a.distances]).toEqual([...b.distances]);
     expect([...a.angles]).toEqual([...b.angles]);
-    const cached = cachedSharpEdges(mesh, OPTIONS);
-    expect(cachedSharpEdges(mesh, { ...OPTIONS })).toBe(cached);
-    expect(cachedSharpEdges(mesh, { ...OPTIONS, sharpAngleDeg: 40 })).not.toBe(cached);
-    expect(cachedSharpEdges({ ...mesh }, OPTIONS)).not.toBe(cached);
+    const meshes = [mesh, box([4, 0, 0], [5, 1, 1])];
+    const cached = sceneSharpEdges(meshes, OPTIONS);
+    expect([...(cached[0]?.distances ?? [])]).toEqual([...a.distances]);
+    expect(sceneSharpEdges(meshes, { ...OPTIONS })).toBe(cached);
+    const steeper = sceneSharpEdges(meshes, { ...OPTIONS, sharpAngleDeg: 40 });
+    expect(steeper).not.toBe(cached);
+    // Only the latest options are kept: going back detects again.
+    expect(sceneSharpEdges(meshes, OPTIONS)).not.toBe(cached);
+    expect(sceneSharpEdges([...meshes], OPTIONS)).not.toBe(cached);
   });
 
-  it('bounds a hostile patch: past MAX_EDGE_CHECKS the remaining triangles round nothing', () => {
-    // One patch of 200 x 200 quads walled on all four sides: 80 000 triangles x 800 sharp edges is 6.4 x 10^7 checks.
-    const side = 200;
-    const faces: Vec3[][] = [];
-    for (let z = 0; z < side; z++) {
-      for (let x = 0; x < side; x++)
-        faces.push([
-          [x, 0, z + 1],
-          [x + 1, 0, z + 1],
-          [x + 1, 0, z],
-          [x, 0, z],
-        ]);
+  it('bounds the slot search of a whole document: past MAX_EDGE_WORK later triangles and meshes round nothing', () => {
+    // Fine walled plates (cells of 0.01 within a reach of 4): every plate triangle visits all 404 sharp edges.
+    const plates = Array.from({ length: 6 }, (_, i) => walledPlate(100, 0.01, i * 2));
+    const work = { used: 0 };
+    const first = sharpEdges(plates[0]!, OPTIONS, work);
+    const perPlate = work.used;
+    expect(first.edgeCount).toBe(404);
+    expect(roundedVertices(first)).toBeGreaterThan(0);
+    expect(perPlate * plates.length).toBeGreaterThan(MAX_EDGE_WORK);
+    const all = sceneSharpEdges(plates, OPTIONS);
+    expect([...(all[0]?.distances ?? [])]).toEqual([...first.distances]);
+    const last = all[plates.length - 1]!;
+    // The last plate still finds its edges but rounds none of them: the document's budget is spent.
+    expect(last.edgeCount).toBe(404);
+    expect(roundedVertices(last)).toBe(0);
+    // The work stops within one triangle's candidates of the budget.
+    const shared = { used: 0 };
+    for (const plate of plates) sharpEdges(plate, OPTIONS, shared);
+    expect(shared.used).toBeLessThan(MAX_EDGE_WORK + 404 * 16);
+  });
+
+  it('takes one of nearly parallel rim edges: a smooth cylinder wall rounds its own top and bottom edge only', () => {
+    const cylinder = smoothCylinder(16);
+    const result = sharpEdges(cylinder, OPTIONS);
+    expect(result.edgeCount).toBe(32);
+    // Wall triangles come after the two caps' 16 triangles each.
+    for (let t = 32; t < 64; t++) {
+      for (let c = 0; c < 3; c++) {
+        const v = result.indices[t * 3 + c] ?? 0;
+        expect(
+          slotsOf(result, v).filter((d) => d < NO_EDGE),
+          `triangle ${t}`,
+        ).toHaveLength(2);
+      }
     }
-    for (let i = 0; i < side; i++) {
-      faces.push([
-        [i + 1, 0, 0],
-        [i, 0, 0],
-        [i, 1, 0],
-        [i + 1, 1, 0],
-      ]);
-      faces.push([
-        [i, 0, side],
-        [i + 1, 0, side],
-        [i + 1, 1, side],
-        [i, 1, side],
-      ]);
-      faces.push([
-        [0, 0, i],
-        [0, 0, i + 1],
-        [0, 1, i + 1],
-        [0, 1, i],
-      ]);
-      faces.push([
-        [side, 0, i + 1],
-        [side, 0, i],
-        [side, 1, i],
-        [side, 1, i + 1],
-      ]);
+    // Both triangles of a wall quad share their vertices: no seam along the diagonal.
+    for (let q = 0; q < 16; q++) {
+      const t = 32 + q * 2;
+      expect(result.indices[t * 3]).toBe(result.indices[(t + 1) * 3]);
+      expect(result.indices[t * 3 + 2]).toBe(result.indices[(t + 1) * 3 + 1]);
     }
-    expect(2 * side * side * 4 * side).toBeGreaterThan(MAX_EDGE_CHECKS);
-    const result = sharpEdges(quads(faces), OPTIONS);
-    // The rim under every wall quad, and the four corners where two walls meet.
-    expect(result.edgeCount).toBe(4 * side + 4);
-    // The first plate quad (beside two walls) rounds; the last one, beside two walls too, is past the cap.
-    expect(slotsOf(result, result.indices[0] ?? 0).some((d) => d < NO_EDGE)).toBe(true);
-    const last = side * side - 1;
-    expect(slotsOf(result, result.indices[last * 6] ?? 0).every((d) => d === NO_EDGE)).toBe(true);
+  });
+
+  it('applies an edge only beside its segment: the corner square of an L rounds its own two edges', () => {
+    const result = sharpEdges(lPrism(), { sharpAngleDeg: 30, reach: 0.9 });
+    // The top's first quad is the cell at the outer corner, diagonal to the inner (concave) corner at (1, 1).
+    for (let t = 0; t < 2; t++) {
+      for (let c = 0; c < 3; c++) {
+        const v = result.indices[t * 3 + c] ?? 0;
+        expect(
+          slotsOf(result, v).filter((d) => d < NO_EDGE),
+          `triangle ${t}`,
+        ).toHaveLength(2);
+      }
+    }
+    // The cell beside an inner edge does round it.
+    const besideInner = 2 * 2; // cell (1, 0)'s first triangle
+    const v = result.indices[besideInner * 3] ?? 0;
+    expect(slotsOf(result, v).filter((d) => d < NO_EDGE).length).toBeGreaterThanOrEqual(2);
   });
 });
+
+/** A plate of side x side square cells of size `cell` at x offset `x0`, walled on all four sides one cell high. */
+function walledPlate(side: number, cell: number, x0: number): SceneMesh {
+  const faces: Vec3[][] = [];
+  const at = (i: number) => i * cell;
+  for (let z = 0; z < side; z++) {
+    for (let x = 0; x < side; x++) {
+      faces.push([
+        [x0 + at(x), 0, at(z + 1)],
+        [x0 + at(x + 1), 0, at(z + 1)],
+        [x0 + at(x + 1), 0, at(z)],
+        [x0 + at(x), 0, at(z)],
+      ]);
+    }
+  }
+  const h = cell;
+  const end = at(side);
+  for (let i = 0; i < side; i++) {
+    faces.push([
+      [x0 + at(i + 1), 0, 0],
+      [x0 + at(i), 0, 0],
+      [x0 + at(i), h, 0],
+      [x0 + at(i + 1), h, 0],
+    ]);
+    faces.push([
+      [x0 + at(i), 0, end],
+      [x0 + at(i + 1), 0, end],
+      [x0 + at(i + 1), h, end],
+      [x0 + at(i), h, end],
+    ]);
+    faces.push([
+      [x0, 0, at(i)],
+      [x0, 0, at(i + 1)],
+      [x0, h, at(i + 1)],
+      [x0, h, at(i)],
+    ]);
+    faces.push([
+      [x0 + end, 0, at(i + 1)],
+      [x0 + end, 0, at(i)],
+      [x0 + end, h, at(i)],
+      [x0 + end, h, at(i + 1)],
+    ]);
+  }
+  return quads(faces);
+}
+
+/** A cylinder of radius 1 and height 2: two flat caps (fans, own vertices), a smooth wall of shared vertices. */
+function smoothCylinder(segments: number): SceneMesh {
+  const points: Vec3[] = [];
+  const normals: number[] = [];
+  const indices: number[] = [];
+  const ring = (y: number): Vec3[] =>
+    Array.from({ length: segments }, (_, i) => {
+      const a = (i / segments) * 2 * Math.PI;
+      return [Math.cos(a), y, -Math.sin(a)] as Vec3;
+    });
+  const cap = (y: number, up: boolean) => {
+    const base = points.length;
+    points.push([0, y, 0], ...ring(y));
+    for (let i = 0; i <= segments; i++) normals.push(0, up ? 1 : -1, 0);
+    for (let i = 0; i < segments; i++) {
+      const a = base + 1 + i;
+      const b = base + 1 + ((i + 1) % segments);
+      indices.push(...(up ? [base, a, b] : [base, b, a]));
+    }
+  };
+  cap(2, true);
+  cap(0, false);
+  const bottom = points.length;
+  points.push(...ring(0));
+  const top = points.length;
+  points.push(...ring(2));
+  for (let k = 0; k < 2; k++) {
+    for (let i = 0; i < segments; i++) {
+      const a = (i / segments) * 2 * Math.PI;
+      normals.push(Math.cos(a), 0, -Math.sin(a));
+    }
+  }
+  for (let i = 0; i < segments; i++) {
+    const j = (i + 1) % segments;
+    indices.push(bottom + i, bottom + j, top + j, bottom + i, top + j, top + i);
+  }
+  return testMesh(-1, points, {
+    normals: new Float32Array(normals),
+    indices: new Uint32Array(indices),
+    groups: [{ material: -1, start: 0, count: indices.length }],
+  });
+}
+
+/**
+ * An L-shaped prism one unit high: top cells (0, 0), (1, 0) and (0, 1) of unit size (first), then walls around the L,
+ * one quad per unit of its outline. The concave corner is at (1, 1).
+ */
+function lPrism(): SceneMesh {
+  const faces: Vec3[][] = [];
+  for (const [x, z] of [
+    [0, 0],
+    [1, 0],
+    [0, 1],
+  ] as const) {
+    faces.push([
+      [x, 1, z],
+      [x, 1, z + 1],
+      [x + 1, 1, z + 1],
+      [x + 1, 1, z],
+    ]);
+  }
+  const outline: [number, number][] = [
+    [0, 0],
+    [1, 0],
+    [2, 0],
+    [2, 1],
+    [1, 1],
+    [1, 2],
+    [0, 2],
+    [0, 1],
+  ];
+  outline.forEach(([ax, az], i) => {
+    const [bx, bz] = outline[(i + 1) % outline.length]!;
+    faces.push([
+      [bx, 0, bz],
+      [ax, 0, az],
+      [ax, 1, az],
+      [bx, 1, bz],
+    ]);
+  });
+  return quads(faces);
+}
 
 /** A UV sphere with shared vertices and smooth normals. */
 function sphere(rings: number, segments: number): SceneMesh {

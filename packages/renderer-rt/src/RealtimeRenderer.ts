@@ -1,16 +1,13 @@
 import {
   BACK_SIDE_RENDER_ORDER,
   RENDER_ORDER_TIE_DISTANCE,
-  cachedSharpEdges,
   cameraProjection,
   cameraView,
   mat4Multiply,
-  meshVisible,
-  nodeVisibility,
+  sceneSharpEdges,
   type Mat4,
   type SceneCamera,
   type SceneDocument,
-  type SharpEdgeAttributes,
 } from '@modelshot/scene';
 import { LIGHT_RIG_V0, MAX_EDGE_WIDTH, checkEdgeLook, type EdgeLook } from '@modelshot/looks';
 import type { BakedLighting } from './BakedLighting';
@@ -335,7 +332,7 @@ export class RealtimeRenderer {
   /**
    * Changes the rounded edges; fields left out keep their current value. A value out of range throws a `RangeError`
    * naming the field and changes nothing. A new width is a uniform; a new sharp angle detects the edges again (once per
-   * mesh and angle, `cachedSharpEdges`) and uploads the geometry again.
+   * document and angle, `sceneSharpEdges`) and uploads the geometry again.
    */
   setEdges(edges: Partial<EdgeLook>): void {
     const next = checkEdgeLook(edges, this.edges);
@@ -599,11 +596,7 @@ export class RealtimeRenderer {
   /** Uploads the loaded scene's geometry with its sharp edges under the current angle. */
   private uploadGeometry(loaded: LoadedScene): GpuScene {
     const { doc } = loaded;
-    const options = { sharpAngleDeg: this.edges.sharpAngleDeg, reach: MAX_EDGE_WIDTH };
-    const visibility = nodeVisibility(doc);
-    const edges: (SharpEdgeAttributes | null)[] = doc.meshes.map((mesh, m) =>
-      meshVisible(doc, m, visibility) ? cachedSharpEdges(mesh, options) : null,
-    );
+    const edges = sceneSharpEdges(doc.meshes, { sharpAngleDeg: this.edges.sharpAngleDeg, reach: MAX_EDGE_WIDTH });
     return uploadScene(
       this.gl,
       doc,

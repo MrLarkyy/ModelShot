@@ -48,11 +48,13 @@ export { sceneBounds, type SceneBounds } from './sceneBounds';
 export {
   EDGE_SLOTS,
   EDGE_WELD_DISTANCE,
-  MAX_EDGE_CHECKS,
+  MAX_EDGE_WORK,
   MAX_SHARP_ANGLE_DEG,
   NO_EDGE,
-  cachedSharpEdges,
+  PARALLEL_EDGE_DEG,
+  sceneSharpEdges,
   sharpEdges,
+  type EdgeWork,
   type SharpEdgeAttributes,
   type SharpEdgeOptions,
 } from './sharpEdges';

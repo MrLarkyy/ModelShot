@@ -8,8 +8,24 @@ export const EDGE_SLOTS = 4;
 export const MAX_SHARP_ANGLE_DEG = 170;
 /** Positions closer than this (model units) are the same corner when matching edges. */
 export const EDGE_WELD_DISTANCE = 1e-4;
-/** Candidate checks of one mesh's slot assignment; past it the remaining triangles round no edge (hostile input). */
-export const MAX_EDGE_CHECKS = 20_000_000;
+/**
+ * Work units of the slot search over one document (all its meshes, in order), about 5 ns each on the dev machine: a
+ * candidate edge visited costs 1, testing whether the triangle lies beside it 5 more, measuring its distance 20 more,
+ * keeping it in order 1 per place moved. Past the budget every later triangle rounds nothing, in every renderer alike
+ * (a count, never a clock, so goldens stay stable): a hostile model costs at most about 0.6 s of `setScene` here.
+ */
+export const MAX_EDGE_WORK = 100_000_000;
+/** A candidate edge whose inward direction is within this angle (degrees) of a kept edge's is not taken. */
+export const PARALLEL_EDGE_DEG = 30;
+const PARALLEL_EDGE_COS = Math.cos((PARALLEL_EDGE_DEG * Math.PI) / 180);
+const WORK_VISIT = 1;
+const WORK_TEST = 5;
+const WORK_DISTANCE = 20;
+
+/** Slot-search work done so far, shared by the meshes of one document (`MAX_EDGE_WORK`). */
+export interface EdgeWork {
+  used: number;
+}
 
 export interface SharpEdgeOptions {
   /** Faces meeting at this angle between their normals (degrees) or more form a sharp edge. */
@@ -128,11 +144,18 @@ function find(parent: Int32Array, i: number): number {
  * normals is at least `sharpAngleDeg` and below `MAX_SHARP_ANGLE_DEG`, and their vertex normals differ there (a
  * smooth-shaded edge is not sharp). Boundary edges (planes), edges of three or more triangles and back-to-back folds
  * (zero-thickness cards) never are. Triangles joined across other edges form a patch; each triangle takes up to
- * `EDGE_SLOTS` sharp edges of its patch within `reach` that have all its corners on their interior side, the nearest
- * first, kept in a fixed order so neighbours with the same edges share vertices. Pure and deterministic; triangles
- * with a non-finite corner or no area round nothing. Indices out of range throw a `RangeError`.
+ * `EDGE_SLOTS` sharp edges of its patch that it lies beside (not beyond a segment's ends), with all its corners on
+ * their interior side and within `reach`, the nearest first, skipping one nearly parallel to a kept one on the same
+ * side (`PARALLEL_EDGE_DEG`), kept in a fixed order so neighbours with the same edges share vertices. `work` is the
+ * document's slot-search budget (`MAX_EDGE_WORK`, `sceneSharpEdges`); once spent, triangles round nothing. Pure and
+ * deterministic; triangles with a non-finite corner or no area round nothing. Indices out of range throw a
+ * `RangeError`.
  */
-export function sharpEdges(mesh: SceneMesh, options: SharpEdgeOptions): SharpEdgeAttributes {
+export function sharpEdges(
+  mesh: SceneMesh,
+  options: SharpEdgeOptions,
+  work: EdgeWork = { used: 0 },
+): SharpEdgeAttributes {
   const { positions, normals, indices } = mesh;
   const vertexCount = Math.floor(positions.length / 3);
   const triangles = Math.floor(indices.length / 3);
@@ -341,13 +364,16 @@ export function sharpEdges(mesh: SceneMesh, options: SharpEdgeOptions): SharpEdg
     filled[patch] = (filled[patch] ?? 0) + 1;
   }
 
-  // Slots per triangle: up to EDGE_SLOTS side ids, ascending.
+  // Slots per triangle: up to EDGE_SLOTS side ids, ascending. Candidates are sides of the triangle's patch that it lies
+  // beside (its projection onto the segment overlaps the segment), on their interior side and within reach. The nearest
+  // are kept first, and one whose inward direction is within PARALLEL_EDGE_DEG of a kept side's is dropped: nearly
+  // parallel edges on the same side (a curved rim) would bend the normal several times over.
   const slots = new Int32Array(triangles * EDGE_SLOTS).fill(-1);
-  const bestDistance = new Float64Array(EDGE_SLOTS);
-  const bestSide = new Int32Array(EDGE_SLOTS);
+  const candidateDistance: number[] = [];
+  const candidateSide: number[] = [];
+  const kept: number[] = [];
   const q = new Float64Array(9);
-  let checks = 0;
-  for (let t = 0; t < triangles && checks < MAX_EDGE_CHECKS; t++) {
+  for (let t = 0; t < triangles && work.used < MAX_EDGE_WORK; t++) {
     if (!valid[t]) continue;
     const patch = find(parent, t);
     const start = patchStart[patch] ?? 0;
@@ -359,9 +385,11 @@ export function sharpEdges(mesh: SceneMesh, options: SharpEdgeOptions): SharpEdg
       q[c * 3 + 1] = py(v);
       q[c * 3 + 2] = pz(v);
     }
-    let found = 0;
+    candidateDistance.length = 0;
+    candidateSide.length = 0;
     for (let j = start; j < end; j++) {
-      if (++checks > MAX_EDGE_CHECKS) break;
+      work.used += WORK_VISIT;
+      if (work.used > MAX_EDGE_WORK) break;
       const s = patchSides[j] ?? 0;
       let outside = false;
       for (let k = 0; k < 3 && !outside; k++) {
@@ -370,12 +398,26 @@ export function sharpEdges(mesh: SceneMesh, options: SharpEdgeOptions): SharpEdg
         outside = low > (sideBox[s * 6 + 3 + k] ?? 0) || high < (sideBox[s * 6 + k] ?? 0);
       }
       if (outside) continue;
+      work.used += WORK_TEST;
       const ax = sideA[s * 3] ?? 0;
       const ay = sideA[s * 3 + 1] ?? 0;
       const az = sideA[s * 3 + 2] ?? 0;
       const bx = sideB[s * 3] ?? 0;
       const by = sideB[s * 3 + 1] ?? 0;
       const bz = sideB[s * 3 + 2] ?? 0;
+      const ex = bx - ax;
+      const ey = by - ay;
+      const ez = bz - az;
+      const length2 = ex * ex + ey * ey + ez * ez;
+      let low = Infinity;
+      let high = -Infinity;
+      for (let c = 0; c < 3; c++) {
+        const along = ((q[c * 3] ?? 0) - ax) * ex + ((q[c * 3 + 1] ?? 0) - ay) * ey + ((q[c * 3 + 2] ?? 0) - az) * ez;
+        low = Math.min(low, along);
+        high = Math.max(high, along);
+      }
+      // Beside the segment: the overlap of the projections is longer than the weld distance.
+      if (Math.min(high, length2) - Math.max(low, 0) <= EDGE_WELD_DISTANCE * Math.sqrt(length2)) continue;
       const ix = inward[s * 3] ?? 0;
       const iy = inward[s * 3 + 1] ?? 0;
       const iz = inward[s * 3 + 2] ?? 0;
@@ -385,6 +427,7 @@ export function sharpEdges(mesh: SceneMesh, options: SharpEdgeOptions): SharpEdg
         behind = d < -EDGE_WELD_DISTANCE;
       }
       if (behind) continue;
+      work.used += WORK_DISTANCE;
       // Distance between the triangle's edges and the segment (they do not cross): the nearest endpoint distance.
       let nearest = Infinity;
       for (let c = 0; c < 3 && nearest > 0; c++) {
@@ -405,29 +448,35 @@ export function sharpEdges(mesh: SceneMesh, options: SharpEdgeOptions): SharpEdg
       }
       const distance = Math.sqrt(nearest);
       if (!(distance <= reach)) continue;
-      // Keep the EDGE_SLOTS nearest, ties to the lower side id (sides come in ascending order).
-      let at = Math.min(found, EDGE_SLOTS);
-      while (at > 0 && (bestDistance[at - 1] ?? 0) > distance) at--;
-      if (at >= EDGE_SLOTS) continue;
-      for (let k = Math.min(found, EDGE_SLOTS - 1); k > at; k--) {
-        bestDistance[k] = bestDistance[k - 1] ?? 0;
-        bestSide[k] = bestSide[k - 1] ?? 0;
-      }
-      bestDistance[at] = distance;
-      bestSide[at] = s;
-      found++;
-    }
-    // Ascending side ids (insertion sort of at most EDGE_SLOTS).
-    const kept = Math.min(found, EDGE_SLOTS);
-    for (let k = 0; k < kept; k++) {
-      const value = bestSide[k] ?? 0;
-      let at = t * EDGE_SLOTS + k;
-      while (at > t * EDGE_SLOTS && (slots[at - 1] ?? 0) > value) {
-        slots[at] = slots[at - 1] ?? 0;
+      // Insert by (distance, side id); sides come in ascending order, so ties keep it.
+      let at = candidateDistance.length;
+      candidateDistance.push(distance);
+      candidateSide.push(s);
+      while (at > 0 && (candidateDistance[at - 1] ?? 0) > distance) {
+        candidateDistance[at] = candidateDistance[at - 1] ?? 0;
+        candidateSide[at] = candidateSide[at - 1] ?? 0;
         at--;
       }
-      slots[at] = value;
+      candidateDistance[at] = distance;
+      candidateSide[at] = s;
+      work.used += candidateDistance.length - at;
     }
+    // Past the budget the triangle rounds nothing, nor does any later one.
+    if (work.used > MAX_EDGE_WORK) break;
+    kept.length = 0;
+    for (let k = 0; k < candidateSide.length && kept.length < EDGE_SLOTS; k++) {
+      const s = candidateSide[k] ?? 0;
+      const parallel = kept.some(
+        (o) =>
+          (inward[s * 3] ?? 0) * (inward[o * 3] ?? 0) +
+            (inward[s * 3 + 1] ?? 0) * (inward[o * 3 + 1] ?? 0) +
+            (inward[s * 3 + 2] ?? 0) * (inward[o * 3 + 2] ?? 0) >
+          PARALLEL_EDGE_COS,
+      );
+      if (!parallel) kept.push(s);
+    }
+    kept.sort((x, y) => x - y);
+    slots.set(kept, t * EDGE_SLOTS);
   }
 
   // A set id per triangle (0: no slot), equal slots equal ids; neighbours on one face usually share their set.
@@ -527,23 +576,23 @@ export function sharpEdges(mesh: SceneMesh, options: SharpEdgeOptions): SharpEdg
   };
 }
 
-const cache = new WeakMap<SceneMesh, Map<string, SharpEdgeAttributes>>();
+const cache = new WeakMap<readonly SceneMesh[], { key: string; result: readonly SharpEdgeAttributes[] }>();
 
 /**
- * `sharpEdges` computed once per mesh object and options: another pose of a document keeps its mesh objects
- * (`poseScene`), so re-posing never detects again.
+ * `sharpEdges` of every mesh of a document, in order, sharing one `MAX_EDGE_WORK` budget, so the result is a pure
+ * function of the meshes and options. Kept per meshes array for the latest options only: another pose of a document
+ * keeps its meshes array (`poseScene`), so re-posing detects nothing again, and an angle change replaces the result
+ * instead of adding one.
  */
-export function cachedSharpEdges(mesh: SceneMesh, options: SharpEdgeOptions): SharpEdgeAttributes {
-  let byOptions = cache.get(mesh);
-  if (!byOptions) {
-    byOptions = new Map();
-    cache.set(mesh, byOptions);
-  }
+export function sceneSharpEdges(
+  meshes: readonly SceneMesh[],
+  options: SharpEdgeOptions,
+): readonly SharpEdgeAttributes[] {
   const key = `${options.sharpAngleDeg}:${options.reach}`;
-  let result = byOptions.get(key);
-  if (!result) {
-    result = sharpEdges(mesh, options);
-    byOptions.set(key, result);
-  }
+  const cached = cache.get(meshes);
+  if (cached?.key === key) return cached.result;
+  const work: EdgeWork = { used: 0 };
+  const result = meshes.map((mesh) => sharpEdges(mesh, options, work));
+  cache.set(meshes, { key, result });
   return result;
 }

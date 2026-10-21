@@ -1,7 +1,7 @@
 import {
   EDGE_SLOTS,
   NO_EDGE,
-  cachedSharpEdges,
+  sceneSharpEdges,
   mat4TransformDirection,
   mat4TransformPoint,
   meshVisible,
@@ -51,7 +51,7 @@ const finite = (values: ArrayLike<number>, start: number, count: number): boolea
 };
 
 /**
- * Sharp-edge distances and angles (`cachedSharpEdges` of each triangle's mesh) of the triangles listed in `sources`
+ * Sharp-edge distances and angles (`sceneSharpEdges` of the document, looked up once) of the triangles listed in `sources`
  * (`FlatScene.sources`); `null` options fill empty slots. Distances are in the mesh's rest space: node world matrices
  * are rigid, so they hold in world space too.
  */
@@ -64,10 +64,10 @@ export function flatEdges(
   const edgeDistances = new Float32Array(count * 3 * EDGE_SLOTS).fill(NO_EDGE);
   const edgeAngles = new Float32Array(count * EDGE_SLOTS);
   if (!edges) return { edgeDistances, edgeAngles };
+  const byMesh = sceneSharpEdges(doc.meshes, edges);
   for (let t = 0; t < count; t++) {
-    const mesh = doc.meshes[sources[t * 2] ?? 0];
-    if (!mesh) continue;
-    const attributes = cachedSharpEdges(mesh, edges);
+    const attributes = byMesh[sources[t * 2] ?? 0];
+    if (!attributes) continue;
     const first = sources[t * 2 + 1] ?? 0;
     for (let c = 0; c < 3; c++) {
       const v = attributes.indices[first + c] ?? 0;

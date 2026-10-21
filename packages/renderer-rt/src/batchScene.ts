@@ -143,7 +143,7 @@ function merge(
  * order, closed and opaque), in order of first appearance; within a batch triangles keep the document's mesh and group
  * order. `closedOpaque[m]` marks mesh `m` closed and opaque on every face (`closedOpaqueMeshes`; default none);
  * `lightmap[m]` holds mesh `m`'s per-vertex lightmap data (`LightmapLayout.vertexData`; default none); `edges[m]` its
- * sharp-edge attributes (`cachedSharpEdges`; default none), whose split vertices replace the mesh's.
+ * sharp-edge attributes (`sceneSharpEdges`; default none), whose split vertices replace the mesh's.
  */
 export function batchScene(
   doc: SceneDocument,
