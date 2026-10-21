@@ -31,7 +31,7 @@ jobs:
       - run: pnpm -r build
       - run: pnpm run test:unit
 
-  # The browser tests in 10 shards, each on its own VM with one Playwright worker (docs/testing.md, CI): 4 of the golden
+  # The browser tests in 9 shards, each on its own VM with one Playwright worker (docs/testing.md, CI): 4 of the golden
   # project, 2 of the pair project (the preview-vs-render pairing tests, about 11 minutes together) and 3 of the bake
   # project (the baked lighting tests, 13-15 minutes together on a slow VM); either block would fill a
   # contiguous shard. One runner ran past the 20-minute limit with the whole suite.

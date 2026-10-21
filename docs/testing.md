@@ -17,7 +17,7 @@ to an exact version in `tools/harness/package.json`, which pins the Chromium rev
 - `check`: install, typecheck, lint, format check, `pnpm -r build`, `pnpm run test:unit` (Vitest, bundle size
   included).
 - `e2e`: a matrix of 9 shards (golden 1-4 of `--project=golden --shard=<k>/4`, pair 1-2 of `--project=pair --shard=<k>/2`, bake 1-3 of `--project=bake --shard=<k>/3`) (`fail-fast: false`), each on its own VM: install, the pinned Chromium, `pnpm -r build`,
-  then `playwright test --project=<project> --shard=<k>/<n>`, then on golden shard 1 only `pnpm --filter @modelshot/site run test:browser` (it runs even when the harness tests failed), uploading `tools/harness/test-results/` and `packages/site/test-results/` as `browser-test-results-<golden-k|bake-k>`.
+  then `playwright test --project=<project> --shard=<k>/<n>`, then on golden shard 1 only `pnpm --filter @modelshot/site run test:browser` (it runs even when the harness tests failed), uploading `tools/harness/test-results/` and `packages/site/test-results/` as `browser-test-results-<golden-k|pair-k|bake-k>`.
 - `bench`: its own VM, same install and build, `playwright test --project=bench` (the one budget test), uploading
   `browser-test-results-bench`; the budgets are measured on a machine that runs nothing else.
 
@@ -32,7 +32,7 @@ none). The `golden` project excludes the tests titled `baked lighting` or `like 
 only the second: shards are contiguous ranges, so a block of slow tests always landed in one or two shards. Listed locally
 (`--list`): `golden` 190 tests in 4 shards, 48 / 48 / 47 / 47; `pair` 6 tests, 3 / 3; `bake` 23 tests, 8 / 8 / 7; `bench` 1
 test; 220 in all, each once, as the plain `playwright test` (and so `pnpm test`) runs every project. By the times of
-run 39624802150 (normal VM) a golden shard takes about 3 minutes, a pair shard 3.8 (1.1-1.3 minutes per test; 7.6 on a 2x
+run 39624802150 (normal VM) the heaviest golden shard (2) takes about 5 minutes (about 10 on a 2x slow VM), a pair shard 3.8 (1.1-1.3 minutes per test; 7.6 on a 2x
 slow VM), against the 20-minute limit.
 
 Why: the shard holding the baked tests ran into the 20-minute job limit with 4 shards (cancelled in runs 39612706830 and
