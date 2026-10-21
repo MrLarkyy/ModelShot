@@ -596,6 +596,14 @@ hostile (one 300 x 300 plate, round 1) 891 and 938 ms, the nine plates 951 ms; t
 the first detection (2 s more on `edges-200k`) or an unbudgeted hostile document fails it, while the CI runner keeps
 its margin as for the sibling.
 
+`frameTimeMs.rt-load-first-frame-edges-weld` (MS-15 round 3): the same load of `edges-weld`, 100 000 quads (200 000
+triangles, 400 000 vertices) on a grid of 65 536-unit steps, each quad with its own vertices: every quantised
+coordinate is a multiple of 2^20 and every edge is shared, the worst case of the multiplicative hash with linear
+probing that matching used before (about two minutes at this size; `sharpEdges` alone took 2.0 s for 60 000 such
+vertices). Matching sorts now: 752 ms local SwiftShader for the whole load (`sharpEdges` alone 0.15 s for 400 000
+vertices), max 3500 ms as for the other load budgets. The same run: `edges-200k` 1158 ms, `edges-hostile` 1194 ms,
+`large-order` 896 ms.
+
 First CI run (2026-10-20, ubuntu-latest): frame time 0.9 ms (max 5, 5.5x), time to 64 samples 80.6 ms (max 300), gzip app 437 B, embed 115 B.
 Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact (in the e2e shard that ran
 `bench.spec.ts`), with the numbers in the commit.

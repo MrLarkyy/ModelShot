@@ -338,3 +338,25 @@ export function edgesHostileScene(base: SceneDocument): SceneDocument {
   );
   return { ...base, nodes: [], rootNodes: [], meshes };
 }
+
+/**
+ * Hostile case of position and edge matching: 100 000 quads (200 000 triangles, 400 000 vertices, the loaders'
+ * limits) on a grid of 65 536-unit steps, each quad with its own vertices, so every quantised coordinate is a
+ * multiple of 2^20 and every edge is shared. A multiplicative hash with linear probing put all of them into one
+ * probe chain (minutes); matching sorts instead.
+ */
+export function edgesWeldScene(base: SceneDocument): SceneDocument {
+  const side = 316;
+  const step = 65536;
+  const mesh = quadMesh(
+    'grid',
+    100_000,
+    (q, out) => {
+      const x = ((q % side) - side / 2) * step;
+      const z = (Math.floor(q / side) - side / 2) * step;
+      out.set([x, 0, z + step, x + step, 0, z + step, x + step, 0, z, x, 0, z]);
+    },
+    () => [0, 1, 0],
+  );
+  return { ...base, nodes: [], rootNodes: [], meshes: [mesh] };
+}

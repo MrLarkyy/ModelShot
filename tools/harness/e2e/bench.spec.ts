@@ -65,6 +65,9 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
   const edgesLoadMs = await timeScene('edges-200k');
   await openFixture(page, '/rt.html?scene=empty&size=512');
   const edgesHostileMs = await timeScene('edges-hostile');
+  // And the matching of positions and edges where every coordinate is a multiple of 2^20 (a hash's worst case).
+  await openFixture(page, '/rt.html?scene=empty&size=512');
+  const edgesWeldMs = await timeScene('edges-weld');
 
   await openFixture(page, '/progressive.html?seed=7&samples=64');
   const runs = await page.evaluate(() => {
@@ -168,6 +171,7 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
       'rt-load-first-frame-200k-order': loadMs,
       'rt-load-first-frame-200k-edges': edgesLoadMs,
       'rt-load-first-frame-edges-hostile': edgesHostileMs,
+      'rt-load-first-frame-edges-weld': edgesWeldMs,
       'pt-load-200k': ptLoadMs,
     },
     timeToSamplesMs: { 'progressive-256-n64': median(runs), 'pt-bench-128-n256': median(ptRuns) },

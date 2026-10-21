@@ -213,9 +213,11 @@ is `EdgeLook` of `@modelshot/looks` ([realtime-renderer.md](realtime-renderer.md
 - Per vertex and slot: the distance to the edge's line in the triangle's plane toward the interior (never negative;
   affine over the triangle, so interpolation is exact), `NO_EDGE` (10⁶) in an empty slot; and the angle between the
   face normals in radians, negative for a crease, 0 when empty.
-- Pure and deterministic (edges, patches and slot sets in order of first appearance; positions and edges welded by
-  open-addressing tables of exact quantised values). Linear in the triangles for separate solids (about 0.2 s for
-  200 000 triangles of cubes). The slot search, the only part that is not linear, is bounded per document by work,
+- Pure and deterministic (edges, patches and split vertices in order of first appearance). Positions, edges, slot
+  sets and split vertices are matched by sorting exact integer keys (quantised coordinates ranked per axis, id pairs),
+  never by a hash table a model could crowd: O(n log n) whatever the positions (about 0.45 s for 200 000 triangles
+  of cubes; 0.15 s for 400 000 vertices on a 65 536-unit grid, where the earlier open-addressing tables put every
+  vertex into one probe chain and took about two minutes). The slot search, the only part that is not near-linear, is bounded per document by work,
   not by a count of checks: `MAX_EDGE_WORK` (10⁸ units of about 5 ns: 1 per candidate edge visited, 5 more to test
   whether the triangle lies beside it, 20 more to measure its distance, 1 per place it moves in the order), shared by
   all meshes of the document in order. Once spent, every later triangle of that mesh and the later meshes round
