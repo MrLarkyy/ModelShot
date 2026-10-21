@@ -36,7 +36,8 @@ requestAnimationFrame(frame);
 - `setCamera(camera)`, `resize(cssSize)`: the shared `SceneCamera` and the canvas size, as for the preview.
 - `setEdges(edges)`, `edgeLook`: the rounded edges (fields left out keep theirs; a bad value throws as for the option
   and changes nothing). A new width restarts the accumulation; a new sharp angle detects the edges again and rewrites
-  the triangles' edge texels (`packTriangleEdges`) before uploading them.
+  the triangles' edge texels (`packTriangleEdges`) before uploading them. A scene whose `setScene` was still decoding
+  when the angle changed is packed again with the current angle before its first upload.
 - `start({ seed, samples })`: a request for exactly `samples` samples per pixel (1..65 536) from `seed`
   (0..2^32 − 1); anything else throws a `RangeError`.
 - `step(maxSamples = 1)`: draws up to `maxSamples` more samples, never past the request, presents the mean and returns
@@ -64,7 +65,7 @@ computed in `setScene` with the scene and kept through a context loss.
    non-finite position, normal, UV or rectangle, or with no area, are skipped and counted (`DEGENERATE_TRIANGLES`
    warning). More visible triangles than `maxTriangles` throw `SCENE_TOO_LARGE` before anything is read or allocated.
    With edge options (the render; the bake passes none) each triangle also carries its corners' four sharp-edge
-   distances and the slots' angles (`flatEdges`, from `cachedSharpEdges` of its mesh).
+   distances and the slots' angles (`flatEdges`, from `sceneSharpEdges` of the document, looked up once).
 3. `buildBvh`: binned SAH (12 bins per axis), leaves of at most 4 triangles, in JavaScript on the main thread (with
    upload and a first sample about 1 s for 200 000 triangles on the dev machine, `pt-load-200k`). Deterministic: ties go to the lower axis and
    bin, partitions are stable. Depth is at most 31 for any input: a node whose triangles would need every remaining

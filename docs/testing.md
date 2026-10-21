@@ -586,12 +586,15 @@ in round 1).
 `frameTimeMs.rt-load-first-frame-200k-edges` and `frameTimeMs.rt-load-first-frame-edges-hostile` (MS-15) time
 `setScene` plus the first frame like `rt-load-first-frame-200k-order`, on generated scenes whose detection runs on
 fresh meshes (`fixtures/src/edgesScene.ts`): `edges-200k`, those 16 667 cubes (200 004 triangles at the loaders'
-limit, every edge sharp), and `edges-hostile`, one flat patch of 300 x 300 quads walled on all four sides (181 200
-triangles; every plate triangle has the patch's 1 204 sharp edges to consider, 2 · 10⁸ checks, cut at
-`MAX_EDGE_CHECKS`, unit-tested in `sharpEdges.test.ts`). Local SwiftShader 997 and 1215 ms, 891 and 938 ms (the
-large-order load beside them 1254 and 1149 ms). Max 3500 ms each, the limit of the load budget they extend: about
-3x the measurement, so a return of the first detection (2 s more on `edges-200k`) or an uncapped hostile patch fails
-it, while the CI runner keeps its margin as for the sibling.
+limit, every edge sharp), and `edges-hostile`, nine meshes that are each a plate of 100 x 100 cells of 0.01 units
+walled on all four sides (20 800 triangles each, 187 200 in all). Within the 4-unit reach every plate triangle visits
+all 404 sharp edges of its patch: about 5 · 10⁷ work units per plate, so the document's `MAX_EDGE_WORK` (10⁸) stops
+the slot search in the third plate (round 2: the earlier cap counted checks per mesh, so one such plate at that cell
+size took 10 s and nine about 30 s; unit-tested in `sharpEdges.test.ts`). Local SwiftShader 997, 1215 and 913 ms;
+hostile (one 300 x 300 plate, round 1) 891 and 938 ms, the nine plates 951 ms; the large-order load beside them 1254,
+1149 and 797 ms. Max 3500 ms each, the limit of the load budget they extend: about 3x the measurement, so a return of
+the first detection (2 s more on `edges-200k`) or an unbudgeted hostile document fails it, while the CI runner keeps
+its margin as for the sibling.
 
 First CI run (2026-10-20, ubuntu-latest): frame time 0.9 ms (max 5, 5.5x), time to 64 samples 80.6 ms (max 300), gzip app 437 B, embed 115 B.
 Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact (in the e2e shard that ran

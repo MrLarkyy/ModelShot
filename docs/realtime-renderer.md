@@ -190,7 +190,7 @@ Sharp edges of cubes and meshes catch light as if rounded, without extra geometr
 option `edges` (a `Partial<EdgeLook>`, out of range a `RangeError` naming `edges.width` or `edges.sharpAngleDeg`) and
 `setEdges(edges)` / `edgeLook`; the path tracer takes the same ([path-tracer.md](path-tracer.md#lighting)).
 
-- The edges come from `cachedSharpEdges` of each visible mesh ([scene-format.md](scene-format.md#sharp-edges)), at
+- The edges come from `sceneSharpEdges` of the document ([scene-format.md](scene-format.md#sharp-edges)), at
   upload; a new pose of the same meshes detects nothing again. `batchScene` copies a mesh's vertices through
   `vertexOf` (positions, normals, UVs, UV rectangles and lightmap data alike) and takes its split `indices`; the
   distances and angles go to attribute locations 9 (`a_edgeDistances`) and 10 (`a_edgeAngles`, flat), in the exact

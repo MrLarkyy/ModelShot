@@ -189,10 +189,11 @@ meshes, so the realtime preview and the path tracer cannot disagree on where an 
 
 ## Sharp edges
 
-Rounded edges are derived from the meshes, never stored: `sharpEdges(mesh, { sharpAngleDeg, reach })` (and
-`cachedSharpEdges`, once per mesh object and options, so another pose of a document detects nothing again) returns
-per-vertex data both renderers shade with (`EdgeLook` of `@modelshot/looks`, see
-[realtime-renderer.md](realtime-renderer.md#edge-rounding)).
+Rounded edges are derived from the meshes, never stored: `sharpEdges(mesh, { sharpAngleDeg, reach }, work?)` returns
+per-vertex data both renderers shade with, and the renderers call `sceneSharpEdges(doc.meshes, options)`: every mesh
+in order under one work budget, kept per meshes array for the latest options only (another pose of a document keeps
+its meshes array, so re-posing detects nothing again; an angle change replaces the result). How the edges are rounded
+is `EdgeLook` of `@modelshot/looks` ([realtime-renderer.md](realtime-renderer.md#edge-rounding)).
 
 - Corners match by position (within `EDGE_WELD_DISTANCE`, 10⁻⁴ units), so a Blockbench cube's faces, each with its
   own four vertices, still share their edges. Detection is per `SceneMesh`: edges are never welded across meshes, as
@@ -202,16 +203,25 @@ per-vertex data both renderers shade with (`EdgeLook` of `@modelshot/looks`, see
   there. So a plane's boundary, an edge of three or more triangles, the folded rim of a zero-thickness card (front
   and back faces, 180°) and a smooth-shaded edge (equal normals) are never sharp.
 - Triangles joined across the other edges form patches (a cube face, a smooth area). Each triangle takes up to
-  `EDGE_SLOTS` (4) sharp edges of its patch: those within `reach` (`MAX_EDGE_WIDTH`, 4 units) with all its corners on
-  their interior side, the nearest first, kept in a fixed order. A vertex shared by triangles with different slots is
+  `EDGE_SLOTS` (4) sharp edges of its patch: those it lies beside (its projection onto the edge overlaps the segment,
+  so a flat L, U or frame does not carry an inner edge across the corner square beyond its end), with all its corners
+  on their interior side and within `reach` (`MAX_EDGE_WIDTH`, 4 units), the nearest first. An edge whose inward
+  direction is within `PARALLEL_EDGE_DEG` (30°) of a kept one's is skipped: the nearly parallel rim segments of a
+  smooth cylinder would otherwise bend the normal two or three times over (72° instead of 45° at the rim). The kept
+  edges are stored in a fixed order. A vertex shared by triangles with different slots is
   split (`vertexOf`, with `indices` replacing the mesh's in the same triangle order); a cube face never is.
 - Per vertex and slot: the distance to the edge's line in the triangle's plane toward the interior (never negative;
   affine over the triangle, so interpolation is exact), `NO_EDGE` (10⁶) in an empty slot; and the angle between the
   face normals in radians, negative for a crease, 0 when empty.
 - Pure and deterministic (edges, patches and slot sets in order of first appearance; positions and edges welded by
   open-addressing tables of exact quantised values). Linear in the triangles for separate solids (about 0.2 s for
-  200 000 triangles of cubes); a hostile mesh is bounded: past `MAX_EDGE_CHECKS` (2 · 10⁷) candidate checks the
-  remaining triangles round nothing.
+  200 000 triangles of cubes). The slot search, the only part that is not linear, is bounded per document by work,
+  not by a count of checks: `MAX_EDGE_WORK` (10⁸ units of about 5 ns: 1 per candidate edge visited, 5 more to test
+  whether the triangle lies beside it, 20 more to measure its distance, 1 per place it moves in the order), shared by
+  all meshes of the document in order. Once spent, every later triangle of that mesh and the later meshes round
+  nothing: fail-safe (flat shading), and a count, never a clock, so the result and the goldens do not depend on the
+  machine. Nine walled plates of fine cells (`edges-hostile`, 187 200 triangles) stop at it after about 0.4 s instead
+  of about 30 s.
 
 ## Versioning
 
@@ -234,7 +244,7 @@ Added within version 1 (MS-20), each optional: `SceneNode.restRotation` (absent:
 `SceneDocument.pose` (absent: no `poseScene` pose recorded) and `SceneDocument.attachments` (absent: none); `SceneSource.format` gains
 `'player'`. Poses and attachments are already applied to the nodes and meshes, so a consumer that ignores the new
 fields draws a posed or attached scene correctly; no migration.
-Added within version 1 (MS-15): no field. Sharp edges are derived from the meshes (`sharpEdges`, `cachedSharpEdges`,
+Added within version 1 (MS-15): no field. Sharp edges are derived from the meshes (`sharpEdges`, `sceneSharpEdges`,
 `SharpEdgeAttributes`, `NO_EDGE` and the constants above, see Sharp edges), and how they are rounded is look data
 (`EdgeLook`), so documents do not change and nothing migrates.
 
