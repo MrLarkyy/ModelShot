@@ -16,7 +16,7 @@ to an exact version in `tools/harness/package.json`, which pins the Chromium rev
 
 - `check`: install, typecheck, lint, format check, `pnpm -r build`, `pnpm run test:unit` (Vitest, bundle size
   included).
-- `e2e`: a matrix of 8 shards (golden 1-5 of `--project=golden --shard=<k>/5`, bake 1-3 of `--project=bake --shard=<k>/3`) (`fail-fast: false`), each on its own VM: install, the pinned Chromium, `pnpm -r build`,
+- `e2e`: a matrix of 9 shards (golden 1-4 of `--project=golden --shard=<k>/4`, pair 1-2 of `--project=pair --shard=<k>/2`, bake 1-3 of `--project=bake --shard=<k>/3`) (`fail-fast: false`), each on its own VM: install, the pinned Chromium, `pnpm -r build`,
   then `playwright test --project=<project> --shard=<k>/<n>`, then on golden shard 1 only `pnpm --filter @modelshot/site run test:browser` (it runs even when the harness tests failed), uploading `tools/harness/test-results/` and `packages/site/test-results/` as `browser-test-results-<golden-k|bake-k>`.
 - `bench`: its own VM, same install and build, `playwright test --project=bench` (the one budget test), uploading
   `browser-test-results-bench`; the budgets are measured on a machine that runs nothing else.
@@ -27,16 +27,19 @@ separate VMs, so each keeps one worker and the budgets measure an otherwise idle
 the worker count changed. For the shards to split the suite the `golden` project is `fullyParallel` (its tests share
 no state; with one worker nothing runs at once, it only lets a shard take part of a file), and `bench` no longer
 depends on `golden` (a dependency put every golden test into the bench's shard: shard 1 had all 219 tests, 2-4
-none). The `golden` project excludes the tests titled `baked lighting` (`grepInvert`) and the `bake` project runs only
-them: shards are contiguous ranges, so a block of 23 slow tests always landed in one or two shards. Listed locally
-(`--list`): `golden` 196 tests in 5 shards, 40 / 39 / 39 / 39 / 39 (1: environment, golden, goldenFailure, modelView and the
-first path-tracer tests; 2-3 path-tracer; 3-5 realtime); `bake` 23 tests in 3 shards, 8 / 8 / 7; `bench` 1 test; 220 in
-all, as the plain `playwright test` (and so `pnpm test`) runs every project.
+none). The `golden` project excludes the tests titled `baked lighting` or `like the baked preview` (`grepInvert`); the
+`bake` project runs only the first, the `pair` project (the 6 preview-vs-render pairing tests of `pathtracer.spec.ts`)
+only the second: shards are contiguous ranges, so a block of slow tests always landed in one or two shards. Listed locally
+(`--list`): `golden` 190 tests in 4 shards, 48 / 48 / 47 / 47; `pair` 6 tests, 3 / 3; `bake` 23 tests, 8 / 8 / 7; `bench` 1
+test; 220 in all, each once, as the plain `playwright test` (and so `pnpm test`) runs every project. By the times of
+run 39624802150 (normal VM) a golden shard takes about 3 minutes, a pair shard 3.8 (1.1-1.3 minutes per test; 7.6 on a 2x
+slow VM), against the 20-minute limit.
 
-Why: with 4 and then 6 shards the shard holding the baked tests ran into the 20-minute job limit (shard 4 cancelled in
-runs 39612706830 and 39624802150; the 23 baked lighting tests alone took 13-15 minutes on the slow VM of the second).
-The VMs differ in speed by up to about 2x on the same image (the cut-out checker bake took 1.3 minutes on one, 39 s on
-another), so a shard needs room for the slow case; the bench no longer shares a VM with the bakes.
+Why: the shard holding the baked tests ran into the 20-minute job limit with 4 shards (cancelled in runs 39612706830 and
+39624802150; the 23 baked lighting tests alone took 13-15 minutes on the slow VM of the second), and the 6 pairing tests
+alone are about 11 minutes together on a normal VM. The VMs differ in speed by up to about 2x on the same image (the
+cut-out checker bake took 1.3 minutes on one, 39 s on another), so a shard needs room for the slow case; the bench no
+longer shares a VM with the bakes.
 
 Timeouts: the Playwright default is 30 s and stays. On the runners (SwiftShader, 3-5x slower than local) some tests
 came near or over it; the worst of runs 39594658979 and 39612706830 per test: the baked goldens

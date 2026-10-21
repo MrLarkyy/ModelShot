@@ -31,14 +31,14 @@ export default defineConfig({
   },
   // CI runs the suite in separate jobs, one VM per shard (docs/testing.md, CI). Shards split whole files unless tests
   // are independent units: the golden tests share no state, so they shard per test; workers stay 1, so nothing runs in
-  // parallel. Shards are contiguous ranges, so the baked lighting tests (slow, 13-15 minutes together on a slow VM)
-  // are their own project to be spread over their own shards. The bench has no dependency on the goldens, which would
+  // parallel. Shards are contiguous ranges, so the baked lighting tests (13-15 minutes together on a slow VM) and the
+  // preview-vs-render pairing tests (about 4 minutes per three on a normal VM) are their own projects, with own shards. The bench has no dependency on the goldens, which would
   // pull every golden test into its shard.
   projects: [
     {
       name: 'golden',
       fullyParallel: true,
-      grepInvert: /baked lighting/,
+      grepInvert: /baked lighting|like the baked preview/,
       testMatch: [
         'environment.spec.ts',
         'golden*.spec.ts',
@@ -48,6 +48,7 @@ export default defineConfig({
       ],
     },
     { name: 'bake', fullyParallel: true, testMatch: 'realtime.spec.ts', grep: /baked lighting/ },
+    { name: 'pair', fullyParallel: true, testMatch: 'pathtracer.spec.ts', grep: /like the baked preview/ },
     { name: 'bench', testMatch: 'bench.spec.ts' },
   ],
 });
