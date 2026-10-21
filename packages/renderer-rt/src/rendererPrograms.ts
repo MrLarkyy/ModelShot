@@ -19,6 +19,7 @@ export interface MeshProgram {
   readonly lightmap: WebGLUniformLocation | null;
   readonly bakeOn: WebGLUniformLocation | null;
   readonly lightmapTextureSize: WebGLUniformLocation | null;
+  readonly edgeWidth: WebGLUniformLocation | null;
 }
 
 export interface FullscreenProgram {
@@ -76,6 +77,7 @@ export function createRendererPrograms(gl: WebGL2RenderingContext, floatPath: bo
         lightmap: at('u_lightmap'),
         bakeOn: at('u_bakeOn'),
         lightmapTextureSize: at('u_lightmapTextureSize'),
+        edgeWidth: at('u_edgeWidth'),
       };
     };
     const fullscreenProgram = (name: 'oitComposite' | 'present' | 'backdrop' | 'catcher'): FullscreenProgram => {

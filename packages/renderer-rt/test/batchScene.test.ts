@@ -1,4 +1,4 @@
-import type { SceneDocument, SceneMesh } from '@modelshot/scene';
+import { NO_EDGE, type SceneDocument, type SceneMesh, type SharpEdgeAttributes } from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
 import { batchScene } from '../src/batchScene';
 import { quadScene } from './testScene';
@@ -94,5 +94,34 @@ describe('batchScene', () => {
     ]);
     const untextured = batchScene(doc([quad(0, 0, { groups: [{ material: -1, start: 0, count: 6 }] })]));
     expect(untextured[0]?.alpha).toEqual({ modeId: 0, cutoffByte: 0 });
+  });
+
+  it('splits vertices as the sharp-edge attributes say, carrying every attribute along', () => {
+    const a = quad(0, 0);
+    const b = quad(0, 10);
+    const lightmapA = Float32Array.from({ length: 16 }, (_, i) => 100 + i);
+    // Vertex 0 of quad a is used twice (by both triangles); its second use becomes a split copy, output vertex 4.
+    const edges: SharpEdgeAttributes = {
+      vertexOf: new Uint32Array([0, 1, 2, 3, 0]),
+      indices: new Uint32Array([0, 1, 2, 4, 2, 3]),
+      distances: Float32Array.from({ length: 20 }, (_, i) => i),
+      angles: Float32Array.from({ length: 20 }, (_, i) => -i),
+      edgeCount: 1,
+    };
+    const [batch] = batchScene(doc([a, b]), [], [lightmapA, null], [edges, null]);
+    expect(batch?.positions.length).toBe(9 * 3);
+    expect([...(batch?.indices ?? [])]).toEqual([0, 1, 2, 4, 2, 3, 5, 6, 7, 5, 7, 8]);
+    expect([...(batch?.positions.subarray(12, 15) ?? [])]).toEqual([...a.positions.subarray(0, 3)]);
+    expect([...(batch?.normals.subarray(12, 15) ?? [])]).toEqual([...a.normals.subarray(0, 3)]);
+    expect([...(batch?.uvs.subarray(8, 10) ?? [])]).toEqual([...a.uvs.subarray(0, 2)]);
+    expect([...(batch?.uvRects.subarray(16, 20) ?? [])]).toEqual([...a.uvRects.subarray(0, 4)]);
+    expect([...(batch?.lightmap.subarray(16, 20) ?? [])]).toEqual([100, 101, 102, 103]);
+    expect([...(batch?.edgeDistances.subarray(0, 20) ?? [])]).toEqual([...edges.distances]);
+    expect([...(batch?.edgeAngles.subarray(0, 20) ?? [])]).toEqual([...edges.angles]);
+    // The mesh without attributes: empty slots, its own vertices.
+    expect([...(batch?.edgeDistances.subarray(20) ?? [])]).toEqual(new Array(16).fill(NO_EDGE));
+    expect([...(batch?.edgeAngles.subarray(20) ?? [])]).toEqual(new Array(16).fill(0));
+    expect(batch?.positions[5 * 3]).toBe(10);
+    expect(batch?.lightmap[5 * 4 + 2]).toBe(-1);
   });
 });
