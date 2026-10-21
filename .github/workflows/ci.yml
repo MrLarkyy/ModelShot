@@ -31,15 +31,26 @@ jobs:
       - run: pnpm -r build
       - run: pnpm run test:unit
 
-  # The browser suite in 4 shards, each on its own VM with one Playwright worker (docs/testing.md, CI): one runner ran
-  # past the 20-minute limit with the whole suite.
+  # The browser tests in 9 shards, each on its own VM with one Playwright worker (docs/testing.md, CI): 4 of the golden
+  # project, 2 of the pair project (the preview-vs-render pairing tests, about 11 minutes together) and 3 of the bake
+  # project (the baked lighting tests, 13-15 minutes together on a slow VM); either block would fill a
+  # contiguous shard. One runner ran past the 20-minute limit with the whole suite.
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        include:
+          - { name: golden-1, project: golden, shard: '1/4' }
+          - { name: golden-2, project: golden, shard: '2/4' }
+          - { name: golden-3, project: golden, shard: '3/4' }
+          - { name: golden-4, project: golden, shard: '4/4' }
+          - { name: pair-1, project: pair, shard: '1/2' }
+          - { name: pair-2, project: pair, shard: '2/2' }
+          - { name: bake-1, project: bake, shard: '1/3' }
+          - { name: bake-2, project: bake, shard: '2/3' }
+          - { name: bake-3, project: bake, shard: '3/3' }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -50,15 +61,38 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @modelshot/harness exec playwright install --with-deps --only-shell chromium
       - run: pnpm -r build
-      - run: pnpm --filter @modelshot/harness exec playwright test --shard=${{ matrix.shard }}/4
+      - run: pnpm --filter @modelshot/harness exec playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}
       - run: pnpm --filter @modelshot/site run test:browser
-        if: ${{ matrix.shard == 1 && !cancelled() }}
+        if: ${{ matrix.name == 'golden-1' && !cancelled() }}
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
-          name: browser-test-results-${{ matrix.shard }}
+          name: browser-test-results-${{ matrix.name }}
           path: |
             tools/harness/test-results/
             packages/site/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # The budget bench alone on a VM, so its numbers do not share a machine with a golden shard.
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - run: npm i -g corepack@latest
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @modelshot/harness exec playwright install --with-deps --only-shell chromium
+      - run: pnpm -r build
+      - run: pnpm --filter @modelshot/harness exec playwright test --project=bench
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: browser-test-results-bench
+          path: tools/harness/test-results/
           retention-days: 14
           if-no-files-found: ignore

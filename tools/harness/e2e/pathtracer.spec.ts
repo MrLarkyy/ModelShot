@@ -342,7 +342,8 @@ const PAIR_SAMPLES: Readonly<Record<string, number>> = { 'alpha-plane': 128, 'cu
 test.describe('the render frames and lights like the baked preview', () => {
   for (const [variant, tolerance] of Object.entries(PT_PAIR_TOLERANCE)) {
     test(`${variant}: same silhouettes, radiance within the measured tolerance`, async ({ page }, testInfo) => {
-      test.setTimeout(180_000);
+      // Up to 1.3 m on a normal runner, about 2.6 m on a slow VM (run 39624802150).
+      test.setTimeout(300_000);
       const samples = PAIR_SAMPLES[variant] ?? 64;
       const preview = (catcher: 0 | 1) => openFixture(page, `/rt.html?variant=${variant}&bake=64&catcher=${catcher}`);
       const previewPng = encodeFlipped(await preview(1));
