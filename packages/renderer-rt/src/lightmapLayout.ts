@@ -55,6 +55,12 @@ export interface LightmapLayout {
   readonly layoutKey: string;
 }
 
+/** What of a layout the preview keeps: no charts (one per vertex in vertex mode), which only the bake reads. */
+export type LightmapLayoutSummary = Pick<
+  LightmapLayout,
+  'width' | 'height' | 'downscale' | 'vertexData' | 'finestTexel' | 'layoutKey'
+>;
+
 /** Inclusive texel range of a UV rectangle, as `faceTexelRange` of the look's GLSL computes it. */
 function faceTexelRange(rect: ArrayLike<number>, at: number, width: number, height: number): number[] {
   const loX = Math.floor(Math.fround((rect[at] ?? 0) * width) + 1e-3);

@@ -16,7 +16,8 @@ import { DEFAULT_MAX_TEXTURE_PIXELS_TOTAL, decodeTextures, type TextureLimits } 
 import { queryGlLimits, type GlLimits } from './glLimits';
 import { depthKeyMode, depthPull, exactDepthRange, type DepthKeyMode } from './depthKeyMode';
 import { invertMat4 } from './invertMat4';
-import { lightmapLayout, type LightmapLayout } from './lightmapLayout';
+import { lightmapLayout, type LightmapLayoutSummary } from './lightmapLayout';
+import { poseOnlyChange } from './poseOnlyChange';
 import { createRendererPrograms, type MeshPassName, type RendererPrograms } from './rendererPrograms';
 import { RendererError } from './RendererError';
 import type { RendererWarning } from './RendererWarning';
@@ -78,7 +79,7 @@ interface LoadedScene {
   /** Per mesh: closed and opaque on every face (`closedOpaqueMeshes`), from the same readback. */
   closedOpaque: boolean[] | null;
   /** Where baked light lies (`lightmapLayout`); `setLighting` takes only lighting baked for it. */
-  readonly layout: LightmapLayout;
+  readonly layout: LightmapLayoutSummary;
 }
 
 /** The baked light on the GPU: RGBA16F lightmaps and the shadow catcher's quad. */
@@ -205,7 +206,10 @@ export class RealtimeRenderer {
   async setScene(doc: SceneDocument): Promise<SetSceneResult> {
     if (this.disposed) return { applied: false, warnings: [] };
     validateScene(doc);
-    const layout = lightmapLayout(doc);
+    // Another pose of the shown document keeps its layout: the layout never depends on the pose, and laying out a
+    // large model again costs the main thread a hundred milliseconds or more.
+    const layout =
+      this.loaded && poseOnlyChange(this.loaded.doc, doc) ? this.loaded.layout : summarize(lightmapLayout(doc));
     const generation = ++this.generation;
     const decoded = await decodeTextures(doc.textures, this.textureLimits(), () => this.isCurrent(generation));
     if (!decoded) return { applied: false, warnings: [] };
@@ -218,7 +222,7 @@ export class RealtimeRenderer {
   }
 
   /** The current scene's lightmap layout (what a bake for it must match); `null` before a scene. */
-  get lightmapLayout(): LightmapLayout | null {
+  get lightmapLayout(): LightmapLayoutSummary | null {
     return this.loaded?.layout ?? null;
   }
 
@@ -751,6 +755,11 @@ export class RealtimeRenderer {
     }
     gl.bindVertexArray(null);
   }
+}
+
+function summarize(layout: LightmapLayoutSummary): LightmapLayoutSummary {
+  const { width, height, downscale, vertexData, finestTexel, layoutKey } = layout;
+  return { width, height, downscale, vertexData, finestTexel, layoutKey };
 }
 
 /** Same lightmap size and the same catcher plane and size: the GPU textures and the catcher quad still fit. */

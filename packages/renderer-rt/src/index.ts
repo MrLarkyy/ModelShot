@@ -19,6 +19,7 @@ export {
   lightmapLayout,
   type LightmapChart,
   type LightmapLayout,
+  type LightmapLayoutSummary,
 } from './lightmapLayout';
 export { observeCanvasSize } from './observeCanvasSize';
 export {

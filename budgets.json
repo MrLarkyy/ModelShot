@@ -19,6 +19,7 @@
     "bake-bench-n16": { "max": 222000 }
   },
   "mainThreadBlockMs": {
-    "bake-bench": { "max": 50 }
+    "bake-bench": { "max": 50 },
+    "bake-post-200k": { "max": 50 }
   }
 }

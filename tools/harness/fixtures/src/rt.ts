@@ -134,9 +134,13 @@ async function start(): Promise<void> {
   let shown: BakedLighting | null = null;
   // The camera is already set: an update re-uploads the light and draws, nothing more on the main thread.
   const show = (lighting: BakedLighting): void => {
-    if (!renderer.setLighting(lighting)) return;
-    shown = lighting;
-    renderer.render();
+    const update = (): void => {
+      if (!renderer.setLighting(lighting)) return;
+      shown = lighting;
+      renderer.render();
+    };
+    if (lag) lag.work(update);
+    else update();
   };
   const outcome = (
     result: BakeResult,
@@ -170,19 +174,23 @@ async function start(): Promise<void> {
     const progress: number[] = [];
     const progressHashes: string[] = [];
     try {
-      const result = await baker.bake(target, {
-        samples: request.samples,
-        seed: request.seed ?? bakeSeed,
-        tileSize: request.tile ?? bakeTile,
-        shadowCatcher: request.catcher ?? view.catcher,
-        countCappedTraversals: request.countCapped ?? false,
-        onProgress: ({ samplesDone, samples, lighting }) => {
-          progress.push(samplesDone);
-          if (hashes) progressHashes.push(lightingHash(lighting));
-          console.log(`[bake] ${samplesDone} / ${samples} samples`);
-          if (display) show(lighting);
-        },
-      });
+      const active = baker;
+      // The call itself (validation, the document's structured clone) is main-thread work too.
+      const call = () =>
+        active.bake(target, {
+          samples: request.samples,
+          seed: request.seed ?? bakeSeed,
+          tileSize: request.tile ?? bakeTile,
+          shadowCatcher: request.catcher ?? view.catcher,
+          countCappedTraversals: request.countCapped ?? false,
+          onProgress: ({ samplesDone, samples, lighting }) => {
+            progress.push(samplesDone);
+            if (hashes) progressHashes.push(lightingHash(lighting));
+            console.log(`[bake] ${samplesDone} / ${samples} samples`);
+            if (display) show(lighting);
+          },
+        });
+      const result = await (lag ? lag.work(call) : call());
       if (display && result.lighting) show(result.lighting);
       return outcome(result, progress, progressHashes, hashes);
     } catch (error) {
@@ -372,6 +380,7 @@ async function start(): Promise<void> {
       return renderer.setLighting(changed);
     },
     maxLag: () => lag?.max() ?? -1,
+    mainThreadBlock: () => lag?.block() ?? -1,
     resetLag: () => lag?.reset(),
   };
   api.rt = controls;

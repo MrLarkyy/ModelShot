@@ -8,8 +8,11 @@ import { median } from '../src/measure';
 
 test('frame time, time to samples and bundle size stay inside budgets.json', async ({ page }, testInfo) => {
   // The path-tracer runs and the bakes take seconds each on SwiftShader, and a CI runner is 3-5x slower than the dev
-  // machine.
-  test.setTimeout(600_000);
+  // machine. Room for three bakes at their budget max plus everything else, so a slow bake fails its budget, not the
+  // test timeout.
+  const budgets = loadBudgets();
+  const bakeMax = budgets.bakeTimeMs['bake-bench-n16']?.max ?? 0;
+  test.setTimeout(3 * bakeMax + 300_000);
 
   await openFixture(page, '/gradient.html');
   const frames = await page.evaluate(() => {
@@ -77,16 +80,48 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
   // The light bake of the benchmark scene in its worker: 16 samples with the shadow catcher, from bake() to the final
   // lighting, median of 3; and the main thread's longest event-loop lag over those bakes (posting, three progress
   // uploads per bake, drawing them).
+  // Each run is checked against the budget as it completes.
   await openFixture(page, '/rt.html?scene=bench&lag=1');
-  const bake = await page.evaluate(async () => {
-    const fixture = window.__msFixture;
-    if (!fixture?.timeBake || !fixture.rt) throw new Error('bake bench missing');
-    fixture.rt.resetLag();
-    const runs = [await fixture.timeBake(), await fixture.timeBake(), await fixture.timeBake()];
-    return { runs, lag: fixture.rt.maxLag() };
+  await page.evaluate(() => window.__msFixture?.rt?.resetLag());
+  const bakeRuns: number[] = [];
+  for (let run = 0; run < 3; run++) {
+    const ms = await page.evaluate(async () => {
+      const fixture = window.__msFixture;
+      if (!fixture?.timeBake) throw new Error('bake bench missing');
+      return fixture.timeBake();
+    });
+    expect(ms, `bake run ${run + 1}: ${ms.toFixed(0)} ms / max ${bakeMax}`).toBeLessThanOrEqual(bakeMax);
+    bakeRuns.push(ms);
+  }
+  // The block is the page's own work (long tasks, the bake calls and updates); the heartbeat lag is printed beside it
+  // but also counts the time SwiftShader's GPU process takes every core from the page (eventLoopLag.ts).
+  const bakeBlock = await page.evaluate(() => ({
+    block: window.__msFixture?.rt?.mainThreadBlock() ?? -1,
+    lag: window.__msFixture?.rt?.maxLag() ?? -1,
+  }));
+  console.log(
+    `[bench] bake runs ${bakeRuns.map((ms) => ms.toFixed(0)).join(', ')} ms, main-thread block ` +
+      `${bakeBlock.block.toFixed(1)} ms (heartbeat lag ${bakeBlock.lag.toFixed(1)} ms)`,
+  );
+
+  // What bake() itself costs the main thread for a document at the loaders' limits (200 000 triangles): validation
+  // and the structured clone of the posted document, as the longer of the call's own duration and the page's main-thread
+  // block over the whole 1-sample bake.
+  await openFixture(page, '/rt.html?scene=large-order&lag=1');
+  const post = await page.evaluate(async () => {
+    const rt = window.__msFixture?.rt;
+    if (!rt) throw new Error('rt controls missing');
+    rt.resetLag();
+    const start = performance.now();
+    const pending = rt.bake({ samples: 1 });
+    const call = performance.now() - start;
+    const result = await pending;
+    if (result.error) throw new Error(result.error);
+    return { call, block: rt.mainThreadBlock(), lag: rt.maxLag() };
   });
   console.log(
-    `[bench] bake runs ${bake.runs.map((ms) => ms.toFixed(0)).join(', ')} ms, main-thread lag ${bake.lag.toFixed(1)} ms`,
+    `[bench] bake() of 200 000 triangles: call ${post.call.toFixed(1)} ms, block ${post.block.toFixed(1)} ms ` +
+      `(heartbeat lag ${post.lag.toFixed(1)} ms)`,
   );
 
   const [app, embed] = await Promise.all([measureBundle('app'), measureBundle('embed')]);
@@ -101,14 +136,13 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
     },
     timeToSamplesMs: { 'progressive-256-n64': median(runs), 'pt-bench-128-n256': median(ptRuns) },
     bundleGzipBytes: { app: app.gzipBytes, embed: embed.gzipBytes },
-    bakeTimeMs: { 'bake-bench-n16': median(bake.runs) },
-    mainThreadBlockMs: { 'bake-bench': bake.lag },
+    bakeTimeMs: { 'bake-bench-n16': median(bakeRuns) },
+    mainThreadBlockMs: { 'bake-bench': bakeBlock.block, 'bake-post-200k': Math.max(post.call, post.block) },
   };
   const json = JSON.stringify(measured, null, 2);
   writeFileSync(join(testInfo.project.outputDir, 'budgets-measured.json'), json);
   await testInfo.attach('budgets-measured', { body: json, contentType: 'application/json' });
 
-  const budgets = loadBudgets();
   for (const line of budgetReport(budgets, measured)) {
     console.log(`[budget] ${line}`);
     testInfo.annotations.push({ type: 'budget', description: line });

@@ -104,6 +104,8 @@ export interface RtControls {
   tryLighting: (change: 'key' | 'size' | 'length') => boolean;
   /** Longest main-thread event-loop lag in milliseconds since load (lag=1), else -1. */
   maxLag: () => number;
+  /** Longest main-thread block from page work since load or `resetLag` (lag=1: long tasks, bake calls and updates). */
+  mainThreadBlock: () => number;
   resetLag: () => void;
 }
 

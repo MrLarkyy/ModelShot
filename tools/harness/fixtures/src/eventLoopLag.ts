@@ -1,7 +1,15 @@
-/** Longest event-loop delay seen since the probe started. */
+/** How long the main thread was blocked since the probe started (or was reset). */
 export interface EventLoopLag {
+  /** Longest delay of a 10 ms heartbeat: page work, but also any time the OS gave the page no CPU. */
   readonly max: () => number;
-  /** Forgets the lag so far: `max()` then covers what runs from now on. */
+  /**
+   * Longest main-thread block from page work: the longest task the browser reports as a long task (50 ms or more),
+   * or else the longest stretch run through `work`.
+   */
+  readonly block: () => number;
+  /** Runs `fn` and counts its duration as main-thread work. */
+  readonly work: <T>(fn: () => T) => T;
+  /** Forgets everything so far: the measures cover what runs from now on. */
   readonly reset: () => void;
   readonly stop: () => void;
 }
@@ -9,11 +17,15 @@ export interface EventLoopLag {
 const HEARTBEAT_MS = 10;
 
 /**
- * A 10 ms heartbeat on the main thread: each beat records how much later than due it ran, so `max()` is the longest
- * time the page could not respond (a long task, a blocking GL call) while it ran.
+ * Main-thread responsiveness probes. The heartbeat (a 10 ms timer, each beat recording how late it ran) also counts
+ * time the page did not get the CPU at all; on SwiftShader, whose GPU process spreads every draw over all cores, a
+ * bake delays it by up to 200 ms while no task of the page runs (MS-16). `block()` measures the page's own work: the
+ * Long Tasks API for any task over 50 ms, and the timed stretches of `work` below that.
  */
 export function startEventLoopLag(): EventLoopLag {
   let worst = 0;
+  let longest = 0;
+  let worked = 0;
   let due = performance.now() + HEARTBEAT_MS;
   let timer = 0;
   const beat = (): void => {
@@ -23,11 +35,29 @@ export function startEventLoopLag(): EventLoopLag {
     timer = window.setTimeout(beat, HEARTBEAT_MS);
   };
   timer = window.setTimeout(beat, HEARTBEAT_MS);
+  const observer = new PerformanceObserver((list) => {
+    for (const entry of list.getEntries()) longest = Math.max(longest, entry.duration);
+  });
+  observer.observe({ type: 'longtask' });
   return {
     max: () => worst,
+    block: () => Math.max(longest, worked),
+    work: (fn) => {
+      const start = performance.now();
+      try {
+        return fn();
+      } finally {
+        worked = Math.max(worked, performance.now() - start);
+      }
+    },
     reset: () => {
       worst = 0;
+      longest = 0;
+      worked = 0;
     },
-    stop: () => window.clearTimeout(timer),
+    stop: () => {
+      window.clearTimeout(timer);
+      observer.disconnect();
+    },
   };
 }
