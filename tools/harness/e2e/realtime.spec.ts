@@ -87,6 +87,8 @@ function changedShare(a: Image, b: Image): number {
 test.describe('realtime goldens', () => {
   for (const golden of [...GOLDENS, ...BAKED]) {
     test(`${golden.name} matches its golden`, async ({ page }, testInfo) => {
+      // One 64-sample bake: 17 s to over 30 s on a SwiftShader runner.
+      if (BAKED.includes(golden)) test.setTimeout(180_000);
       await expectGolden(page, testInfo, golden);
       const path = await page.evaluate(() => window.__msFixture?.rt?.path);
       expect(path).toBe(golden.variant?.endsWith('fallback') ? 'fallback' : 'float');

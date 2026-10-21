@@ -97,6 +97,8 @@ const at = <T extends { name: string }>(probes: readonly T[], name: string): T =
 };
 
 test.describe('path-tracer goldens', () => {
+  // Tests take 15-35 s on a SwiftShader runner (default timeout 30 s).
+  test.describe.configure({ timeout: 120_000 });
   for (const golden of GOLDENS) {
     test(`${golden.name} matches its golden`, async ({ page }, testInfo) => {
       await expectGolden(page, testInfo, golden);
@@ -107,6 +109,8 @@ test.describe('path-tracer goldens', () => {
 });
 
 test.describe('determinism', () => {
+  // Tests take 15-35 s on a SwiftShader runner (default timeout 30 s).
+  test.describe.configure({ timeout: 120_000 });
   test('the same seed and sample count render byte-identical images', async ({ page }) => {
     const first = await renderFixture(page, TURNTABLE);
     const second = await renderFixture(page, TURNTABLE);
@@ -138,6 +142,8 @@ test.describe('determinism', () => {
 });
 
 test.describe('transparency, shadows and sides (scene format rules)', () => {
+  // Tests take 15-35 s on a SwiftShader runner (default timeout 30 s).
+  test.describe.configure({ timeout: 120_000 });
   test('light passes cut-out texels and opaque texels cast pixel-shaped shadows', async ({ page }) => {
     const { image } = await render(page, 'variant=alpha-plane&seed=1&samples=128');
     const probes = await probesOf(page);
@@ -527,6 +533,8 @@ test.describe('limits and hostile input', () => {
 });
 
 test.describe('lifetime', () => {
+  // Tests take 15-35 s on a SwiftShader runner (default timeout 30 s).
+  test.describe.configure({ timeout: 120_000 });
   test('a lost context draws nothing; after the restore the same request renders byte-identically', async ({
     page,
   }) => {
