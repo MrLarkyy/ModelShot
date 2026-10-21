@@ -514,8 +514,14 @@ Measured on the local Windows dev machine (SwiftShader, 3 runs) when the budgets
 textured cubes, 2,048 cubes, 24,576 triangles, one mesh per cube in 128 group nodes of 4 x 4 cubes as the Blockbench
 loader produces a grouped model, so 512 draw calls per frame after batching per node (checked by the spec), every
 seventh with a partial-alpha face; 512 x 512, 4x MSAA, front and back face passes, opaque and transparency passes),
-median of 30 frames after 5 warm-up frames. Local SwiftShader medians 68.9, 70.2 and 80.7 ms (3 runs, 128 group
-nodes batched per node); max 750 ms is 10x the middle run (702 ms), rounded up, room for a CI runner that is 3-5x slower than the dev machine. SwiftShader cannot
+median of 30 frames after 5 warm-up frames. Max 2000 ms (MS-44), from the CI medians of the `bench` job: 608.5 ms on
+a normal runner (run 39594658979) and 944.4 ms on a runner about 1.55x slower on this bench (1.71x on the other rt-bench row; 1.33-1.46x on the remaining benches) (run 39650722835,
+where the earlier max of 750 ms failed). 2000 ms is 3.3x the normal CI median and 2.1x the slow one, the 3-4x-CI-median
+rule of `timeToSamplesMs`, because runner speed varies up to about 2x between VMs of the same image. The last local
+SwiftShader median is 375.2 ms (`budgets-measured.json` of the full build test of 2026-10-21). History: the first
+local medians were 68.9, 70.2 and 80.7 ms (3 runs, 128 group nodes batched per node) and the max of 750 ms was 10x the
+middle run, rounded up; renderer work since (MS-12's double-sided cubes and coverage per texel tap, MS-15's rounded
+edges) raised the local median about 5x, so that max had shrunk to 1.2x a normal CI median. SwiftShader cannot
 stand in for a laptop GPU: the 60 fps criterion is evidenced by a manual run of the `fps=1` page on real hardware
 (16.7 ms or less of frame work), recorded with the machine and GPU in the task.
 
@@ -525,10 +531,12 @@ de-indexed geometry and its shared-edge flags at upload: local SwiftShader 348, 
 and 527 ms with them; since round 7 436 and 447 ms; max 3500 ms (10x of the first measurement).
 
 `frameTimeMs.rt-bench-order-512` is the same scene with one mesh at render order 1, so every frame uses the exact
-depth key (fragment depth, de-indexed geometry); max 750 ms like the raster bench. MS-12 local SwiftShader medians:
-`rt-bench-512` 92, 118 and 120 ms (raster key, cubes double-sided as the loader marks free-format faces, coverage per
-texel tap), `rt-bench-order-512` 117, 145 and 148 ms with MSAA, 83 and 107 ms since exact frames draw single-sampled
-(MS-12 round 7).
+depth key (fragment depth, de-indexed geometry); max 2000 ms like the raster bench (MS-44): CI medians 537.9 ms on
+the normal runner (run 39594658979) and 919.5 ms on the slow one (run 39650722835), so 3.7x and 2.2x; last local
+median 326.8 ms (`budgets-measured.json`, 2026-10-21). History, MS-12 local SwiftShader medians: `rt-bench-512` 92,
+118 and 120 ms (raster key, cubes double-sided as the loader marks free-format faces, coverage per texel tap),
+`rt-bench-order-512` 117, 145 and 148 ms with MSAA, 83 and 107 ms since exact frames draw single-sampled (MS-12
+round 7); its max was 750 ms then.
 
 - `frameTimeMs` max 5: the median is below 1 ms and `performance.now` is coarsened to 0.1 ms without cross-origin
   isolation, so 5x the median (2 ms) would be 20 ticks and one GC pause from flaking on a shared runner. 5 ms is 12-16x the
@@ -537,12 +545,12 @@ texel tap), `rt-bench-order-512` 117, 145 and 148 ms with MSAA, 83 and 107 ms si
 - `timeToSamplesMs.pt-bench-128-n256`: the path tracer on the benchmark scene (24 576 triangles), 256 samples at
   128 x 128 (one 256-pixel tile, so one draw call per sample) until the GPU finished, median of 3. Local SwiftShader
   medians 6096, 5160 and 4970 ms (3 runs, MS-17); max 52 000 ms is 10x the middle run, rounded up, as for
-  `rt-bench-512`, until a CI artefact allows 3-4x the CI median. Under 60 s locally, so the bench stays at 128 x 128.
+  `rt-bench-512` was first set, until a CI artefact allows 3-4x the CI median. Under 60 s locally, so the bench stays at 128 x 128.
   Real hardware (RTX 3080, ANGLE D3D11): 88 ms at 128 x 128, 234 ms at 512 x 512.
 - `frameTimeMs.pt-load-200k`: `setScene` of the generated 200 000-triangle scene of
   `rt-load-first-frame-200k-order` (validate, flatten, BVH build in JavaScript, upload) plus its first sample. Local
   SwiftShader 1554, 919 and 941 ms; max 10 000 ms (10x the middle run, rounded up).
-- `bundleGzipBytes` app 2500, embed 2200: measured plus about 2 kB, so a real dependency shows up while noise does not.
+- `bundleGzipBytes` app 4500 (measured 2490; MS-31 grew the app 437 -> 2490), embed 2200: measured plus about 2 kB, so a real dependency shows up while noise does not.
   `site` 11 600 (MS-31: the landing page's js, css and html, gzip level 9; measured 9595, 9595, 9595 bytes, plus about
   2 kB) and `site-assets` 110 400 (its woff2 fonts and svg, each gzipped; measured 100 311 three times, times 1.1
   rounded up). The landing page's browser tests are described in docs/site.md.

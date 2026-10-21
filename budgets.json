@@ -2,8 +2,8 @@
   "version": 1,
   "frameTimeMs": {
     "gradient-256": { "max": 5 },
-    "rt-bench-512": { "max": 750 },
-    "rt-bench-order-512": { "max": 750 },
+    "rt-bench-512": { "max": 2000 },
+    "rt-bench-order-512": { "max": 2000 },
     "rt-load-first-frame-200k-order": { "max": 3500 },
     "rt-load-first-frame-200k-edges": { "max": 3500 },
     "rt-load-first-frame-edges-hostile": { "max": 3500 },
@@ -15,7 +15,7 @@
     "pt-bench-128-n256": { "max": 52000 }
   },
   "bundleGzipBytes": {
-    "app": { "max": 2500 },
+    "app": { "max": 4500 },
     "embed": { "max": 2200 },
     "site": { "max": 11600 },
     "site-assets": { "max": 110400 }
