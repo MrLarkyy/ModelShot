@@ -28,12 +28,13 @@ the worker count changed. For the shards to split the suite the `golden` project
 no state; with one worker nothing runs at once, it only lets a shard take part of a file), and `bench` no longer
 depends on `golden` (a dependency put every golden test into the bench's shard: shard 1 had all 219 tests, 2-4
 none). The `golden` project excludes the tests titled `baked lighting` or `like the baked preview` (`grepInvert`); the
-`bake` project runs only the first, the `pair` project (the 6 preview-vs-render pairing tests of `pathtracer.spec.ts`)
+`bake` project runs only the first, the `pair` project (the 8 preview-vs-render pairing tests of `pathtracer.spec.ts`)
 only the second: shards are contiguous ranges, so a block of slow tests always landed in one or two shards. Listed locally
-(`--list`): `golden` 190 tests in 4 shards, 48 / 48 / 47 / 47; `pair` 6 tests, 3 / 3; `bake` 23 tests, 8 / 8 / 7; `bench` 1
-test; 220 in all, each once, as the plain `playwright test` (and so `pnpm test`) runs every project. By the times of
+(`--list`, MS-19): `golden` 205 tests in 4 shards, 52 / 51 / 51 / 51; `pair` 8 tests, 4 / 4; `bake` 24 tests, 8 / 8 / 8;
+`bench` 1 test; 238 in all, each once, as the plain `playwright test` (and so `pnpm test`) runs every project. By the times of
 run 39624802150 (normal VM) the heaviest golden shard (2) takes about 5 minutes (about 10 on a 2x slow VM), a pair shard 3.8 (1.1-1.3 minutes per test; 7.6 on a 2x
-slow VM), against the 20-minute limit.
+slow VM; with the two look-preset pairs of MS-19 a pair shard holds 4 tests, about 5 minutes, 10 on a slow VM),
+against the 20-minute limit.
 
 Why: the shard holding the baked tests ran into the 20-minute job limit with 4 shards (cancelled in runs 39612706830 and
 39624802150; the 23 baked lighting tests alone took 13-15 minutes on the slow VM of the second), and the 6 pairing tests
@@ -284,18 +285,20 @@ every path-traced golden pairs with a preview of the same view, plus `seed`, `sa
 emission on the showcase's brick material. A golden spec names its view in `variant` (`PathTracedGoldenSpec.variant`,
 put in the URL, not in the file name).
 
-| golden                        | view                                            | checks                                       |
-| ----------------------------- | ----------------------------------------------- | -------------------------------------------- |
-| `pt-turntable-y030.s1.n64`    | showcase, perspective 35°                       | golden; determinism; bleeding; pair          |
-| `pt-iso.s1.n64`               | showcase, orthographic isometric                | golden; pair                                 |
-| `pt-closeup.s1.n64`           | showcase, half the fit distance (texels ~28 px) | golden                                       |
-| `pt-alpha-plane.s1.n128`      | alpha-plane.bbmodel, model-view camera          | golden; shadow probes; back side; pair       |
-| `pt-alpha-ramp-blend.s1.n128` | the 16 x 16 alpha ramp (blend, cutoff 0.01)     | golden; stochastic transparency              |
-| `pt-render-order.s1.n16`      | render-order.bbmodel, model-view camera         | golden; render-order probes                  |
-| `pt-emissive.s1.n64`          | showcase, bricks emitting (4, 2.2, 0.8)         | golden; the post beside the bricks brightens |
-| `pt-player-hold-34.s1.n64`    | MS-20 player, hold preset, cube in the hand     | golden; pair with `rt-player-hold-34`        |
-| `pt-cutout-checker.s1.n128`   | generated cut-out checker and box, `checker`    | golden; checker shadow probes; pair          |
-| `pt-edges.s1.n128`            | generated `edges` scene (MS-15)                 | golden; rounded-edge probes; pair            |
+| golden                         | view                                            | checks                                       |
+| ------------------------------ | ----------------------------------------------- | -------------------------------------------- |
+| `pt-turntable-y030.s1.n64`     | showcase, perspective 35°                       | golden; determinism; bleeding; pair          |
+| `pt-iso.s1.n64`                | showcase, orthographic isometric                | golden; pair                                 |
+| `pt-closeup.s1.n64`            | showcase, half the fit distance (texels ~28 px) | golden                                       |
+| `pt-alpha-plane.s1.n128`       | alpha-plane.bbmodel, model-view camera          | golden; shadow probes; back side; pair       |
+| `pt-alpha-ramp-blend.s1.n128`  | the 16 x 16 alpha ramp (blend, cutoff 0.01)     | golden; stochastic transparency              |
+| `pt-render-order.s1.n16`       | render-order.bbmodel, model-view camera         | golden; render-order probes                  |
+| `pt-emissive.s1.n64`           | showcase, bricks emitting (4, 2.2, 0.8)         | golden; the post beside the bricks brightens |
+| `pt-player-hold-34.s1.n64`     | MS-20 player, hold preset, cube in the hand     | golden; pair with `rt-player-hold-34`        |
+| `pt-cutout-checker.s1.n128`    | generated cut-out checker and box, `checker`    | golden; checker shadow probes; pair          |
+| `pt-edges.s1.n128`             | generated `edges` scene (MS-15)                 | golden; rounded-edge probes; pair            |
+| `pt-preset-marketplace.s1.n64` | `player-hold-34` under Marketplace (MS-19)      | golden; tile/batch determinism; pair         |
+| `pt-preset-rim.s1.n64`         | `player-hold-34` under Rim (MS-19)              | golden; pair                                 |
 
 All eight earlier `pt-*` goldens were regenerated in MS-16 on purpose (same seeds, samples and size): the key became
 a 0.04 rad cone, the shadow catcher appeared under every model, and the random dimensions per path vertex grew from
@@ -345,25 +348,59 @@ is brighter than the face centre (118.7 vs 117.4, unrounded equal); `setEdges` b
 bytes of `edges=0`, the angle round trip the initial bytes, bad values a `RangeError` naming the field).
 
 **Pair tests** (preview vs render): `rt.html` baked (`bake=64`) and `pt.html` of the same view. Framing, with the
-shadow catcher off on both sides (its edge fades into the backdrop): the backdrop masks (within 2 levels of the
-top-left pixel) must agree on every pixel off the silhouette (a pixel whose 3 x 3 neighbourhood in the preview holds
+shadow catcher off on both sides (its edge fades into the backdrop): the backdrop masks (within 2 levels of the view's
+look's backdrop in that row, `agxToneMap(backdropColor(look, y), look.toneMapping)`, so a gradient counts as backdrop;
+before MS-19 the top-left pixel) must agree on every pixel off the silhouette (a pixel whose 3 x 3 neighbourhood in the preview holds
 both classes); 0 mismatches is the limit. Radiance, catcher on both: pixelmatch `threshold 0.1` with `maxDiffRatio`
 and `maxMeanDelta` = measured x 1.25 and never above the previous limit, never widened; the render differs where it
 has interreflection and noise. Logged as `[pt pair] <view>: ...`, values in `test-results/pt-pair-<view>.json`.
 Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with rounded edges and the mirrored bounce
 (MS-16's values in brackets; every limit stayed, none widened, `edges` is new at measured x 1.25):
 
-| view             | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta           | limit: `maxDiffRatio`, `maxMeanDelta` |
-| ---------------- | ----------------------------------- | --------------------------------------------- | ------------------------------------- |
-| `turntable-y030` | 0 (1 604)                           | 201, 0.00307, 0.772 (185, 0.00282, 0.762)     | 0.00353, 0.953                        |
-| `iso`            | 0 (1 543)                           | 366, 0.00558, 0.959 (335, 0.00511, 0.942)     | 0.00639, 1.18                         |
-| `alpha-plane`    | 0 (689)                             | 2 083, 0.03178, 2.187 (2 083, 0.03178, 2.189) | 0.0398, 2.48 (2.187 x 1.25 is above)  |
-| `player-hold-34` | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295) | 0.0232, 1.62                          |
-| `cutout-checker` | 0 (3 307)                           | 293, 0.00447, 0.731 (275, 0.00420, 0.726)     | 0.00525, 0.908                        |
-| `edges`          | 0 (1 979)                           | 43, 0.00066, 0.397                            | 0.00082, 0.496                        |
+| view                 | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta           | limit: `maxDiffRatio`, `maxMeanDelta` |
+| -------------------- | ----------------------------------- | --------------------------------------------- | ------------------------------------- |
+| `turntable-y030`     | 0 (1 604)                           | 201, 0.00307, 0.772 (185, 0.00282, 0.762)     | 0.00353, 0.953                        |
+| `iso`                | 0 (1 543)                           | 366, 0.00558, 0.959 (335, 0.00511, 0.942)     | 0.00639, 1.18                         |
+| `alpha-plane`        | 0 (689)                             | 2 083, 0.03178, 2.187 (2 083, 0.03178, 2.189) | 0.0398, 2.48 (2.187 x 1.25 is above)  |
+| `player-hold-34`     | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295) | 0.0232, 1.62                          |
+| `cutout-checker`     | 0 (3 307)                           | 293, 0.00447, 0.731 (275, 0.00420, 0.726)     | 0.00525, 0.908                        |
+| `edges`              | 0 (1 979)                           | 43, 0.00066, 0.397                            | 0.00082, 0.496                        |
+| `preset-marketplace` | 0 (1 322)                           | 1 713, 0.02614, 1.414                         | 0.0327, 1.77                          |
+| `preset-rim`         | 0 (1 322)                           | 2 753, 0.04201, 1.893                         | 0.0525, 2.37                          |
+
+MS-19 measured the table again with the backdrop mask by rows: every earlier view kept its numbers and limits. The two
+look-preset pairs (`preset-marketplace`, `preset-rim`: the held-cube player baked under its look) are new at measured
+x 1.25; they are measured again when the preset numbers are tuned against the references.
 
 alpha-plane's large ground is an untextured box, baked per vertex, so its preview shows no ground shadow (world-density
 charts for untextured meshes are not in MS-16); the catcher under it darkens its mean delta a little.
+
+### Look presets
+
+MS-19 ([look-presets.md](look-presets.md)). Both fixtures take `preset=<id>` (a `LOOK_PRESETS` id, default `studio`;
+the realtime fixture bakes under it) and `rim=0` (the preset's rim light black); the variants `preset-marketplace`,
+`preset-rim` and `preset-marketplace-fallback` are the `player-hold-34` view under a look, baked with 64 samples in
+the preview. Studio is the v0 look, so every golden from before holds unregenerated. New goldens: `rt-preset-marketplace`,
+`rt-preset-rim`, `rt-preset-marketplace-fallback` (baked, default tolerance), `pt-preset-marketplace.s1.n64`,
+`pt-preset-rim.s1.n64` (path-tracer tolerance); pairs above. Tests (`look presets` describes of `realtime.spec.ts`
+and `pathtracer.spec.ts`, golden project):
+
+- the Marketplace backdrop of an empty scene, every row at three columns, within 2 levels of its TS mirror on the
+  float path, the fallback and the path tracer in 64-pixel tiles at 1 and 4 samples (measured worst 0.5 levels);
+- `setLook` draws the bytes of a renderer created with the look, an invalid look (`bad`: catcher strength 1.5) names
+  `catcher.strength` and changes no byte, Studio again gives the first bytes (preview and render);
+- a look set while the render's `setScene` decodes gives the bytes of a render under that look from the start;
+- Marketplace renders the same bytes in batches of 7 and 64-pixel tiles;
+- the rim light, unshadowed: of the pixels it brightens by more than 12 levels in the preview (Rim against `rim=0`,
+  unbaked) the render brightens 99.9 % too (3 701 preview, 6 783 render pixels: the render adds interreflected rim);
+- a lost preview context comes back with the look, byte-identical;
+- (bake project) light baked under Marketplace is refused by a Studio renderer and taken once it shows Marketplace.
+
+The look review page `review.html` (harness only, no build ships it) renders a `.bbmodel` the user picks (read from
+the file input, nothing fetched; none: the harness player with a held cube) under a preset, side by side: the baked
+preview (64 samples) and the render (seed 1, `samples`, default 256), `size` CSS pixels (default 512), yaw and pitch
+inputs, a PNG download of each. `environment.spec.ts` opens it at 4 samples and checks it finishes on the fixture
+origin. Step 14 of MS-19 compares its Marketplace output with reference renders kept outside the repository.
 
 For a manual run on real hardware open `pt.html?scene=bench&size=512&samples=256&timing=1`: one sample per animation
 frame with the elapsed time and the renderer string.
