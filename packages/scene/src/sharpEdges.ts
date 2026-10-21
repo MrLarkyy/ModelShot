@@ -58,8 +58,10 @@ export interface SharpEdgeAttributes {
 }
 
 /**
- * Dense ids of non-negative integer keys below 2^53: equal keys get equal ids. By sorting (native numeric sort, then a
- * binary search per key), so O(n log n) whatever the keys: no hash table a model could crowd into one probe chain.
+ * Dense ids of finite keys, compared exactly: equal keys get equal ids, in ascending key order. By sorting (native
+ * numeric sort, then a binary search per key), so O(n log n) whatever the keys: no hash table a model could crowd into
+ * one probe chain. Callers build keys from coordinates as they are, or from ids whose products stay below 2^53, never
+ * by shifting coordinates (a far vertex would push such a key past exact integers).
  */
 function denseIds(keys: Float64Array): { ids: Int32Array; count: number } {
   const sorted = keys.slice().sort();
@@ -103,15 +105,11 @@ function weldPositions(positions: Float32Array, vertexCount: number): Int32Array
     const z = positions[v * 3 + 2] ?? NaN;
     if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) finite.push(v);
   }
-  // Ranks are non-negative, so the coordinate keys are shifted by their minimum; + 0 turns −0 into 0.
+  // Each axis ranked on its quantised values as they are (any finite number sorts exactly); + 0 turns −0 into 0, which
+  // the numeric sort would otherwise order before 0.
   const rank = (k: number) => {
     const q = new Float64Array(finite.length);
-    let min = Infinity;
-    finite.forEach((v, i) => {
-      q[i] = Math.round((positions[v * 3 + k] ?? 0) / EDGE_WELD_DISTANCE) + 0;
-      min = Math.min(min, q[i] ?? 0);
-    });
-    for (let i = 0; i < q.length; i++) q[i] = (q[i] ?? 0) - min;
+    finite.forEach((v, i) => (q[i] = Math.round((positions[v * 3 + k] ?? 0) / EDGE_WELD_DISTANCE) + 0));
     return denseIds(q);
   };
   const x = rank(0);

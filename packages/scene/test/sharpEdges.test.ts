@@ -320,6 +320,32 @@ describe('sharpEdges', () => {
     expect(shared.used).toBeLessThan(MAX_EDGE_WORK + 404 * 16);
   });
 
+  it('keeps exact matching beside a far vertex: a unit cube with a triangle at x = -1e17 keeps its 12 edges', () => {
+    const cube = box([0, 0, 0], [1, 1, 1]);
+    const base = cube.positions.length / 3;
+    const far = quads([
+      [
+        [-1e17, 0, 0],
+        [-1e17, 1, 0],
+        [-1e17, 1, 1],
+        [-1e17, 0, 1],
+      ],
+    ]);
+    const mesh = testMesh(-1, [], {
+      positions: Float32Array.from([...cube.positions, ...far.positions]),
+      normals: Float32Array.from([...cube.normals, ...far.normals]),
+      indices: Uint32Array.from([...cube.indices, ...[...far.indices].map((i) => i + base)]),
+    });
+    expect(sharpEdges(mesh, OPTIONS).edgeCount).toBe(12);
+    // -0 and 0 still weld: a cube whose corners at the origin are written -0 keeps its edges.
+    const signed = box([0, 0, 0], [1, 1, 1]);
+    const positions = signed.positions.map((x) => (x === 0 ? -0 : x));
+    positions.forEach((x, i) => {
+      if (i % 7 === 0 && x === 0) positions[i] = 0;
+    });
+    expect(sharpEdges({ ...signed, positions }, OPTIONS).edgeCount).toBe(12);
+  });
+
   it('matches positions and edges by sorting: a coarse grid that crowds any hash stays fast', () => {
     // Every quantised coordinate a multiple of 2^20 (65 536 units): a multiplicative hash with linear probing put all
     // of them into one probe chain (120 000 vertices took 10 s). Quads with their own vertices share every edge.
