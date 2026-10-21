@@ -507,7 +507,7 @@ textured cubes, 2,048 cubes, 24,576 triangles, one mesh per cube in 128 group no
 loader produces a grouped model, so 512 draw calls per frame after batching per node (checked by the spec), every
 seventh with a partial-alpha face; 512 x 512, 4x MSAA, front and back face passes, opaque and transparency passes),
 median of 30 frames after 5 warm-up frames. Max 2000 ms (MS-44), from the CI medians of the `bench` job: 608.5 ms on
-a normal runner (run 39594658979) and 944.4 ms on a runner about 1.4x slower across every bench (run 39650722835,
+a normal runner (run 39594658979) and 944.4 ms on a runner about 1.55x slower on this bench (1.71x on the other rt-bench row; 1.33-1.46x on the remaining benches) (run 39650722835,
 where the earlier max of 750 ms failed). 2000 ms is 3.3x the normal CI median and 2.1x the slow one, the 3-4x-CI-median
 rule of `timeToSamplesMs`, because runner speed varies up to about 2x between VMs of the same image. The last local
 SwiftShader median is 375.2 ms (`budgets-measured.json` of the full build test of 2026-10-21). History: the first
@@ -542,7 +542,7 @@ round 7); its max was 750 ms then.
 - `frameTimeMs.pt-load-200k`: `setScene` of the generated 200 000-triangle scene of
   `rt-load-first-frame-200k-order` (validate, flatten, BVH build in JavaScript, upload) plus its first sample. Local
   SwiftShader 1554, 919 and 941 ms; max 10 000 ms (10x the middle run, rounded up).
-- `bundleGzipBytes` app 2500, embed 2200: measured plus about 2 kB, so a real dependency shows up while noise does not.
+- `bundleGzipBytes` app 4500 (measured 2490; MS-31 grew the app 437 -> 2490), embed 2200: measured plus about 2 kB, so a real dependency shows up while noise does not.
   `site` 11 600 (MS-31: the landing page's js, css and html, gzip level 9; measured 9595, 9595, 9595 bytes, plus about
   2 kB) and `site-assets` 110 400 (its woff2 fonts and svg, each gzipped; measured 100 311 three times, times 1.1
   rounded up). The landing page's browser tests are described in docs/site.md.
