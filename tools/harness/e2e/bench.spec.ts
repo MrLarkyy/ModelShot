@@ -97,11 +97,13 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
       bakeRuns.push(ms);
     }
   });
-  // The budget is the most CPU time one main-thread task used over the three bakes (the trace sees every task, the
-  // Playwright evaluate that calls bake() included). Wall time also counts the OS not running the thread on a loaded
-  // machine, so the wall-time block and the heartbeat lag are printed beside it, not asserted (docs/testing.md).
+  // The budget is the most one main-thread task blocked over the three bakes: its CPU time plus its synchronous waits
+  // for the GPU process (the trace sees every task, the Playwright evaluate that calls bake() included). Wall time also
+  // counts the OS not running the thread on a loaded machine, so the wall-time block and the heartbeat lag are printed
+  // beside it, not asserted (docs/testing.md).
   console.log(
-    `[bench] bake main thread (trace): ${trace.tasks} tasks, max CPU per task ${trace.maxCpu.toFixed(1)} ms; longest ` +
+    `[bench] bake main thread (trace): ${trace.tasks} tasks, max blocking per task ${trace.maxBlocking.toFixed(1)} ms ` +
+      `(CPU ${trace.maxCpu.toFixed(1)} ms, GPU wait ${trace.maxGpuWait.toFixed(1)} ms); longest ` +
       `${trace.longestWall.toFixed(1)} ms wall / ${trace.longestCpu.toFixed(1)} ms CPU, largest wall-CPU gap ` +
       `${trace.largestGap.toFixed(1)} ms`,
   );
@@ -138,7 +140,8 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
     });
   });
   console.log(
-    `[bench] bake() of 200 000 triangles: max CPU per task ${postTrace.maxCpu.toFixed(1)} ms; call ` +
+    `[bench] bake() of 200 000 triangles: max blocking per task ${postTrace.maxBlocking.toFixed(1)} ms (CPU ` +
+      `${postTrace.maxCpu.toFixed(1)} ms, GPU wait ${postTrace.maxGpuWait.toFixed(1)} ms); call ` +
       `${post.call.toFixed(1)} ms, wall-time block ${post.block.toFixed(1)} ms (heartbeat lag ${post.lag.toFixed(1)} ms)`,
   );
 
@@ -155,7 +158,7 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
     timeToSamplesMs: { 'progressive-256-n64': median(runs), 'pt-bench-128-n256': median(ptRuns) },
     bundleGzipBytes: { app: app.gzipBytes, embed: embed.gzipBytes },
     bakeTimeMs: { 'bake-bench-n16': median(bakeRuns) },
-    mainThreadBlockMs: { 'bake-bench': trace.maxCpu, 'bake-post-200k': postTrace.maxCpu },
+    mainThreadBlockMs: { 'bake-bench': trace.maxBlocking, 'bake-post-200k': postTrace.maxBlocking },
   };
   const json = JSON.stringify(measured, null, 2);
   writeFileSync(join(testInfo.project.outputDir, 'budgets-measured.json'), json);

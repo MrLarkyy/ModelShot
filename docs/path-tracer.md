@@ -238,8 +238,9 @@ take about 234 ms at 512 × 512 and 88 ms at 128 × 128 (`pt.html?scene=bench&si
 the paced manual readout).
 
 The light bake has `bakeTimeMs.bake-bench-n16` (the benchmark scene, 16 samples with the catcher, from `bake()` to
-the final lighting, median of 3, each run also checked as it completes), `mainThreadBlockMs.bake-bench` and `mainThreadBlockMs.bake-post-200k` (the most CPU time one main-thread
-task used over the bench bakes, and over a bake of a 200 000-triangle document, from a Chrome trace; both fixed at 50 ms; not
+the final lighting, median of 3, each run also checked as it completes), `mainThreadBlockMs.bake-bench` and `mainThreadBlockMs.bake-post-200k` (the most one main-thread task blocked
+over the bench bakes, and over a bake of a 200 000-triangle document: its CPU time plus its synchronous GPU waits, from a
+Chrome trace; both fixed at 50 ms; not
 measured on real hardware yet.
 
 ## What v0 lacks

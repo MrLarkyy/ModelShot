@@ -986,6 +986,43 @@ test.describe('baked lighting', () => {
     );
     expect(timer.maxCpu).toBeGreaterThanOrEqual(80);
     expect(evaluate.maxCpu).toBeGreaterThanOrEqual(80);
+    expect(timer.maxBlocking).toBeGreaterThanOrEqual(80);
+    expect(evaluate.maxBlocking).toBeGreaterThanOrEqual(80);
+  });
+
+  test('the budgeted measure also counts a synchronous wait for the GPU process, which CPU time alone misses', async ({
+    page,
+  }) => {
+    await openFixture(page, '/rt.html?scene=bench&size=512');
+    let call = 0;
+    // Heavy draws queued, then a readback: the main thread waits until the GPU process has drawn them.
+    const trace = await traceMainThread(page, async () => {
+      call = await page.evaluate(() => {
+        const rt = window.__msFixture!.rt!;
+        const canvas = document.querySelector('canvas')!;
+        const gl = canvas.getContext('webgl2')!;
+        for (let i = 0; i < 4; i++) rt.render();
+        const start = performance.now();
+        gl.readPixels(
+          0,
+          0,
+          canvas.width,
+          canvas.height,
+          gl.RGBA,
+          gl.UNSIGNED_BYTE,
+          new Uint8Array(canvas.width * canvas.height * 4),
+        );
+        return performance.now() - start;
+      });
+    });
+    console.log(
+      `[rt probe] readPixels after heavy draws: call ${call.toFixed(1)} ms, traced GPU wait ` +
+        `${trace.maxGpuWait.toFixed(1)} ms, CPU ${trace.maxCpu.toFixed(1)} ms, blocking ${trace.maxBlocking.toFixed(1)} ms`,
+    );
+    expect(call, 'the readback really waits').toBeGreaterThan(100);
+    expect(trace.maxGpuWait, 'the trace sees the wait').toBeGreaterThanOrEqual(0.9 * call);
+    expect(trace.maxCpu, 'CPU time alone would not').toBeLessThan(trace.maxGpuWait / 2);
+    expect(trace.maxBlocking).toBeGreaterThanOrEqual(0.9 * call);
   });
 
   test('banded light upload: frames keep the complete light until the next is in, whatever happens mid-upload', async ({

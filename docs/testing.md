@@ -449,19 +449,26 @@ texel tap), `rt-bench-order-512` 117, 145 and 148 ms with MSAA, 83 and 107 ms si
   SwiftShader 22 873, 22 113 and 22 141 ms; max 222 000 ms (10x the middle run, rounded up). Each run is asserted
   against the max as it completes, and the bench test's timeout is 3 x that max + 300 s, so a slow bake fails its
   budget instead of the timeout.
-- `mainThreadBlockMs.bake-bench` and `mainThreadBlockMs.bake-post-200k` (MS-16): **the most CPU time one task of
-  the page's main thread used**, from a Chrome trace over the bake window (`src/mainThreadTrace.ts`: CDP top-level
-  tasks, `tdur`, thread `CrRendererMain`): the three benchmark bakes, and the 1-sample bake of the 200 000-triangle
+- `mainThreadBlockMs.bake-bench` and `mainThreadBlockMs.bake-post-200k` (MS-16): **the most one task of the page's
+  main thread blocked**: its CPU time plus the time it waited synchronously for the GPU process, from a Chrome trace
+  over the bake window (`src/mainThreadTrace.ts`: CDP categories `toplevel,gpu`; top-level tasks `RunTask` with their
+  thread CPU time `tdur`, thread `CrRendererMain`; GPU waits are the command-buffer client's
+  `CommandBufferProxyImpl::WaitForGetOffset` (a readback or state query: `readPixels`, `getError`, `finish`) and
+  `CommandBufferProxyImpl::WaitForToken` (an upload waiting for transfer-buffer space: `texSubImage2D`), found in this
+  Chrome's traces of such calls after heavy draws, each counted as its wall minus its own CPU; the trace throws
+  without a main thread, a task, or CPU time on every task): the three benchmark bakes, and the 1-sample bake of the 200 000-triangle
   `large-order` document (its `bake()` call, mesh stream and updates). Every task counts, those Playwright's
   `evaluate` runs (which call `bake()`) included, which the Long Tasks API does not report. Max 50 ms, fixed (RAIL's
   50 ms response budget). Wall time is printed beside it, not asserted: the page-side wall-time block
   (`eventLoopLag.ts`: long tasks, timed phases), the heartbeat lag and the trace's longest task as wall / CPU with its
   largest wall − CPU gap. On a shared, loaded machine wall time also counts the OS not running the thread: full build
   tests read 72 ms of wall time for a `bake()` call doing about 1 ms of work, and under 30 local CPU spinners the
-  trace showed a 9.4 ms wall / 0.6 ms CPU task (round 6). `realtime.spec.ts` proves the measure: at least 80 ms of
-  busy work (a workload calibrated to 100 ms at its fastest measured speed) reads 99-103 ms of CPU in a timer task
-  and 99-101 ms in an `evaluate`; a wall-clock spin of 80 ms reads only 78 ms of CPU, which is why the probe counts
-  work, not time.
+  trace showed a 9.4 ms wall / 0.6 ms CPU task (round 6); that is excluded, while a wait for the GPU process (a wait
+  event, wall time without CPU too) is counted, since the page cannot respond meanwhile (round 8). `realtime.spec.ts`
+  proves both halves: at least 80 ms of busy work (a workload calibrated to 100 ms at its fastest measured speed)
+  reads 99-106 ms in a timer task and in an `evaluate` (a wall-clock spin of 80 ms reads only 78 ms of CPU, which is
+  why the probe counts work, not time); a `readPixels` after four frames of the benchmark scene at 512 x 512 waited
+  685.8 ms, the trace counted 685.4 ms of GPU wait beside 3.1 ms of CPU, blocking 688.4 ms.
   History of the earlier wall-time measure:
   - `mainThreadBlockMs.bake-bench` (MS-16): the page's longest main-thread block over those three bakes
     (`fixtures/src/eventLoopLag.ts`): the longest long task the browser reports (Long Tasks API, 50 ms or more), else the
@@ -495,7 +502,7 @@ texel tap), `rt-bench-order-512` 117, 145 and 148 ms with MSAA, 83 and 107 ms si
     tasks with no CPU behind it (the worker thread up to 82 ms): the OS not running the thread. The bench therefore
     traces the bake runs (`src/mainThreadTrace.ts`, CDP top-level tasks with thread CPU time) and prints the main
     thread's longest task as wall / CPU ms and its largest wall − CPU gap, so a slow phase on a loaded machine shows
-    whether it was page work. Limit and measure unchanged. In the same runs
+    whether it was page work. Limit and measure unchanged in round 6; round 7 made the trace the measure (above). In the same runs
     `rt-load-first-frame-200k-order` (now with the lightmap layout) measured about 600 ms of its 3500.
 
 First CI run (2026-10-20, ubuntu-latest): frame time 0.9 ms (max 5, 5.5x), time to 64 samples 80.6 ms (max 300), gzip app 437 B, embed 115 B.

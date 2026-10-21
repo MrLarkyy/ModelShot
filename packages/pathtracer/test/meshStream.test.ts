@@ -3,21 +3,49 @@ import { describe, expect, it } from 'vitest';
 import { MESH_CHUNK_BYTES, MeshAssembler, streamMeshes, type MeshMessage } from '../src/bake/meshStream';
 import { triangleMesh } from './testScenes';
 
+const FIELDS = ['positions', 'normals', 'uvs', 'uvRects', 'indices'] as const;
+
+/**
+ * A mesh of `triangles` independent triangles built straight into typed arrays, every value distinct enough that a
+ * misplaced byte shows. 15 000 triangles are 45 000 vertices of 52 bytes: just over twice MESH_CHUNK_BYTES and over
+ * MESH_TASK_BYTES, so the stream splits it and yields.
+ */
 function bigMesh(triangles: number): SceneMesh {
-  const positions = Array.from({ length: triangles * 9 }, (_, i) => (i * 7) % 101);
+  const vertices = triangles * 3;
+  const fill = (length: number, step: number) => Float32Array.from({ length }, (_, i) => ((i * step) % 1013) / 7);
   return {
-    ...triangleMesh(positions),
     name: 'big',
+    sourceId: '',
+    node: -1,
+    visible: true,
     renderOrder: 2,
-    groups: [{ material: 0, start: 0, count: triangles * 3, doubleSided: true }],
+    positions: fill(vertices * 3, 7),
+    normals: fill(vertices * 3, 11),
+    uvs: fill(vertices * 2, 13),
+    uvRects: fill(vertices * 4, 17),
+    indices: Uint32Array.from({ length: vertices }, (_, i) => i),
+    groups: [{ material: 0, start: 0, count: vertices, doubleSided: true }],
   };
+}
+
+const bytes = (array: Float32Array | Uint32Array) => Buffer.from(array.buffer, array.byteOffset, array.byteLength);
+
+/** Same scalar fields and groups, and the same bytes in every array (cheap where toEqual walks every element). */
+function expectSameMesh(actual: SceneMesh | undefined, expected: SceneMesh): void {
+  expect(actual).toBeDefined();
+  const scalars = (m: SceneMesh) => ({ ...m, positions: 0, normals: 0, uvs: 0, uvRects: 0, indices: 0 });
+  expect(scalars(actual!)).toEqual(scalars(expected));
+  for (const field of FIELDS) {
+    expect(actual![field].constructor, field).toBe(expected[field].constructor);
+    expect(bytes(actual![field]).equals(bytes(expected[field])), field).toBe(true);
+  }
 }
 
 describe('mesh stream', () => {
   it('rebuilds every mesh exactly from transferred chunks, yielding between them', async () => {
     const meshes: [number, SceneMesh][] = [
       [7, triangleMesh([0, 0, 0, 1, 0, 0, 0, 1, 0])],
-      [8, bigMesh(40_000)],
+      [8, bigMesh(15_000)],
       [9, triangleMesh([5, 5, 5, 6, 5, 5, 5, 6, 5])],
     ];
     const messages: MeshMessage[] = [];
@@ -39,9 +67,9 @@ describe('mesh stream', () => {
     const rebuilt = assembler.take([9, 7, 8]);
     expect(rebuilt).not.toBeNull();
     const [nine, seven, eight] = rebuilt!;
-    expect(seven).toEqual(meshes[0]![1]);
-    expect(eight).toEqual(meshes[1]![1]);
-    expect(nine).toEqual(meshes[2]![1]);
+    expectSameMesh(seven, meshes[0]![1]);
+    expectSameMesh(eight, meshes[1]![1]);
+    expectSameMesh(nine, meshes[2]![1]);
     // Held for the next bake, which names them without streaming.
     expect(assembler.take([8])?.[0]).toBe(eight);
     expect(assembler.take([7])).toBeNull();
@@ -63,7 +91,7 @@ describe('mesh stream', () => {
     const partial: MeshMessage[] = [];
     await streamMeshes(
       (m) => partial.push(m),
-      [[2, bigMesh(100_000)]],
+      [[2, bigMesh(15_000)]],
       () => false,
       () => Promise.resolve(),
     );
@@ -76,7 +104,7 @@ describe('mesh stream', () => {
     const messages: MeshMessage[] = [];
     const done = await streamMeshes(
       (m) => messages.push(m),
-      [[1, bigMesh(100_000)]],
+      [[1, bigMesh(15_000)]],
       () => false,
       () => Promise.resolve(),
     );
