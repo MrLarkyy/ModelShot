@@ -28,7 +28,14 @@ function bigMesh(triangles: number): SceneMesh {
   };
 }
 
-const bytes = (array: Float32Array | Uint32Array) => Buffer.from(array.buffer, array.byteOffset, array.byteLength);
+const bytes = (array: Float32Array | Uint32Array) => new Uint8Array(array.buffer, array.byteOffset, array.byteLength);
+
+/** Byte equality in a plain loop: cheap where toEqual walks every element as a value. */
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
 
 /** Same scalar fields and groups, and the same bytes in every array (cheap where toEqual walks every element). */
 function expectSameMesh(actual: SceneMesh | undefined, expected: SceneMesh): void {
@@ -37,7 +44,7 @@ function expectSameMesh(actual: SceneMesh | undefined, expected: SceneMesh): voi
   expect(scalars(actual!)).toEqual(scalars(expected));
   for (const field of FIELDS) {
     expect(actual![field].constructor, field).toBe(expected[field].constructor);
-    expect(bytes(actual![field]).equals(bytes(expected[field])), field).toBe(true);
+    expect(sameBytes(bytes(actual![field]), bytes(expected[field])), field).toBe(true);
   }
 }
 
