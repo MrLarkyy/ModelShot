@@ -35,6 +35,8 @@ import type { SceneDocument } from '@modelshot/scene';
 | `textures`      | `SceneTexture[]`                                                                   | PNG images                                  |
 | `pose?`         | `ScenePose`                                                                        | last `poseScene` pose; absent: none applied |
 | `attachments?`  | `SceneAttachment[]`                                                                | models merged under a bone; absent: none    |
+| `animations?`   | `SceneAnimation[]`                                                                 | keyframed clips; absent: none               |
+| `playback?`     | `ScenePlayback`                                                                    | last `animateScene` frame; absent: none     |
 
 `source` per format (`SceneSourceFormat`):
 
@@ -47,20 +49,24 @@ import type { SceneDocument } from '@modelshot/scene';
 
 ### `SceneNode`
 
-`{ name, sourceId, parent, children, pivot, rotation, restRotation?, translation, visible, meshes }`
+`{ name, sourceId, parent, children, pivot, rotation, restRotation?, translation, scale?, visible, meshes }`
 
 Nodes use Blockbench's rest-space convention: `pivot` is an absolute point in model space (not relative to the parent),
 and
 
 ```
-local = T(translation) · T(pivot) · Rz · Ry · Rx · T(−pivot)
+local = T(translation) · T(pivot) · Rz · Ry · Rx · S(scale) · T(−pivot)
 world = parent.world · local          (a root node: world = local)
 ```
 
 `translation` is the pose offset and 0 at rest. `visible: false` hides the node and its whole subtree. `parent` is
 always lower than the node's own index, so `worldMatrices(nodes)` computes every world matrix in one pass. `sourceId`
 is the identifier in the source file (a Blockbench uuid) or `''`. `restRotation`, absent unless `poseScene` or
-`attachModel` set it, is the rotation without the pose; absent means `rotation` is the rest rotation.
+`attachModel` set it, is the rotation without the pose; absent means `rotation` is the rest rotation. `scale`, absent
+unless `animateScene` set it (absent: 1 on every axis, which rest always is), scales about the pivot before the
+rotation (three.js `T · R · S`, as Blockbench bones); it is always positive, so no node matrix mirrors or collapses.
+With a scale the upper 3×3 of a world matrix no longer maps normals: both renderers use `mat4NormalMatrix(world)` (the
+cofactor matrix, i.e. the inverse transpose up to a positive factor) and normalise, `mat3TransformVector` applies it.
 
 ### `SceneMesh`
 
@@ -167,6 +173,58 @@ finite with |v| ≤ 4096. Bone names are looked up in a `Map`, so `__proto__` or
 `PLAYER_POSE_PRESETS` (`idle`, `walk`, `hold`, `wave`) are frozen poses for the player rig; `playerPosePreset(name)`
 looks one up by own key.
 
+## Animations
+
+`SceneDocument.animations` holds clips in scene units and axes (loaders convert from their file format once):
+`SceneAnimation { name, loop, length, channels }` with `loop` `'once' | 'hold' | 'loop'` and `length` in seconds (at
+least the last keyframe). A `SceneAnimationChannel { node, property, keyframes }` drives one node property (at most one
+channel per node and property): `rotation` (Euler degrees added to the rest rotation), `translation` (the node's
+`translation`) or `scale` (the node's `scale`). `SceneKeyframe { time, value, before?, interpolation }`: `value` holds
+from this keyframe on, `before` is what arrives at it when it differs (Blockbench's pre and post data points),
+`interpolation` `'linear' | 'catmullrom' | 'step'` says how the channel leaves it. Keyframes are sorted by time.
+
+`animateScene(doc, { animation, time, loop? })` returns `{ document, clipTime }`: `animation` is an index or the name
+of the first animation with that name, `time` seconds of playback, `loop` overrides the animation's loop mode. Every
+node of the result gets
+
+```
+rotation     = rest + rotation sample      (rest = restRotation ?? rotation)
+translation  = translation sample ?? 0
+scale        = scale sample, clamped to [1e-4, 1e4] per axis (MIN_ANIMATION_SCALE, MAX_ANIMATION_SCALE); absent without
+restRotation = rest
+```
+
+computed from rest every time, never from the previous frame: the same time gives byte-identical nodes whatever was
+played or seeked before, so live playback, seeking and export agree. The result records `playback { animation, time,
+loop }` and drops `pose` (the nodes no longer carry it); `animateScene(doc, null)` returns rest and drops `playback`.
+`poseScene` in turn drops `scale` and `playback`: a pose always applies to rest. The scale clamp keeps every matrix
+positive, so culling and winding never flip.
+
+Time (`animationTime(animation, seconds, loop?)`): negative seconds count as 0; `loop` wraps (`seconds mod length`),
+`hold` stops at `length`, `once` gives `null` after `length` and the nodes are at rest (the clip has ended, as in
+Minecraft; Blockbench's editor shows the last frame there). Frames for export (`animationFrameTimes(animation, fps,
+loop?)`) are `i / fps` per index, never accumulated: `loop` gives `max(1, round(length · fps))` frames (the frame
+equal to frame 0 left out), `hold` and `once` `floor(length · fps) + 1` (the frame at `length` included); `fps` in
+(0, 240] (`MAX_PLAYBACK_FPS`) and at most 14 400 frames (`MAX_ANIMATION_FRAMES`), else a `RangeError`.
+
+Sampling a channel at clip time t follows Blockbench's `BoneAnimator.interpolate`:
+
+- at or before the first keyframe: what arrives there (`before ?? value`); after the last: its `value`; exactly at a
+  keyframe: what arrives there. Keyframes with equal times: time reaches the first and leaves from the last.
+- between A and B: A `step` holds A's `value`; A `linear` and B `linear` or `step` interpolate linearly from A's
+  `value` to what arrives at B; otherwise (A or B `catmullrom`) a uniform Catmull-Rom spline (three.js `SplineCurve`,
+  tension 0.5) through A's predecessor, A, B and B's successor. A missing neighbour repeats the segment end; the
+  predecessor is used only when A has no `before`, the successor only when B has none. In `loop` mode with three or
+  more keyframes a missing predecessor is the next-to-last keyframe and a missing successor the second (the seam of
+  a clip whose first and last keyframes match).
+
+Validation, each a `RangeError` naming the path (`animations[0].channels[2].keyframes[1].value[0]`): options as above;
+the selected animation's name (at most 1024 characters), loop, length and keyframe times in [0, 10⁶], values finite
+with |v| ≤ 10⁶ (`MAX_ANIMATION_VALUE`), keyframes non-empty and sorted, node indices inside the document. It runs once
+per animation object (animations are treated as immutable), so a frame costs O(channels · log keyframes + nodes); a
+test keeps a frame of 10 000 nodes with 30 000 channels of 100 keyframes under 200 ms. The renderers see only nodes, so an
+animated frame is a pose-only change for them (`poseOnlyChange`): the lightmap layout and sharp edges stay.
+
 ## Attachments
 
 `attachModel(host, item, { bone, name?, offset?, rotation?, scale? })` returns `host` with `item` merged under the
@@ -180,11 +238,12 @@ world(bone) · T(pivot) · R(rotation) · (scale · x + offset)
 ```
 
 in every pose of the host; posing the merged document again keeps it attached, and the item's own nodes go back to
-their rest rotation. `scale` is uniform in (0, 16] (normals stay unit length), `offset` and `rotation` follow the pose
+their rest rotation. `scale` is uniform in (0, 16] (normals stay unit length), and an item node's own `scale` is kept, `offset` and `rotation` follow the pose
 limits; bad options throw a `RangeError` naming the path. The record `{ name, bone, node, offset, rotation, scale,
 source }` is appended to `attachments` (the item's own records follow, remapped). The host's `pose` record is kept, the
 item's dropped while its nodes keep their posed rotation and `restRotation`; the next `poseScene` of the merged
-document returns them to rest. The renderers read only the merged nodes and
+document returns them to rest. The host's `animations` and `playback` are kept (they address host nodes, which keep
+their indices); the item's are not merged. The renderers read only the merged nodes and
 meshes, so the realtime preview and the path tracer cannot disagree on where an attachment is.
 
 ## Sharp edges
@@ -249,6 +308,11 @@ fields draws a posed or attached scene correctly; no migration.
 Added within version 1 (MS-15): no field. Sharp edges are derived from the meshes (`sharpEdges`, `sceneSharpEdges`,
 `SharpEdgeAttributes`, `NO_EDGE` and the constants above, see Sharp edges), and how they are rounded is look data
 (`EdgeLook`), so documents do not change and nothing migrates.
+Added within version 1 (MS-21), each optional: `SceneNode.scale` (absent: 1), `SceneDocument.animations` (absent: none)
+and `SceneDocument.playback` (absent: no frame applied); `mat4NodeLocal` takes an optional `scale`. A consumer that
+ignores `animations` draws the rest pose, which a document meant before; one that draws node matrices must map normals
+with `mat4NormalMatrix` once `scale` can be present (both renderers do). Loaders leave `animations` out when the file
+has none, so such documents are unchanged; no migration.
 
 ## Loaders
 

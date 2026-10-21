@@ -1,4 +1,11 @@
-import { NO_EDGE, sharpEdges, type SceneDocument } from '@modelshot/scene';
+import {
+  NO_EDGE,
+  mat3TransformVector,
+  mat4NodeLocal,
+  mat4NormalMatrix,
+  sharpEdges,
+  type SceneDocument,
+} from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
 import { flatEdges, flattenScene } from '../src/flattenScene';
 import { PathTracerError } from '../src/PathTracerError';
@@ -30,6 +37,29 @@ describe('flattenScene', () => {
     expect(Array.from(flat.uvs.subarray(0, 6))).toEqual([0, 0, 1, 0, 0, 1]);
     expect(Array.from(flat.sources)).toEqual([0, 0, 1, 0]);
     expect(flat.skipped).toBe(0);
+  });
+
+  it('scales a node about its pivot and maps normals with the shared normal matrix', () => {
+    // A triangle in the plane x + y = 1 (normal (1,1,0)/√2) under scale (2,1,1) about the pivot (1,0,0).
+    const sloped = [1, 0, 0, 0, 1, 0, 1, 0, 1];
+    const normal = 1 / Math.SQRT2;
+    const mesh = triangleMesh(sloped, {
+      node: 0,
+      normals: new Float32Array([0, 1, 2].flatMap(() => [normal, normal, 0])),
+    });
+    const doc = sceneOf([mesh], [node({ pivot: [1, 0, 0], scale: [2, 1, 1], meshes: [0] })]);
+    const flat = flattenScene(doc);
+    expect(Array.from(flat.positions.subarray(0, 9))).toEqual([1, 0, 0, -1, 1, 0, 1, 0, 1]);
+    // The scaled plane x/2 + y = 1/2 has the normal (1/2, 1, 0)/|…|, what mat4NormalMatrix gives normalised.
+    const expected = [0.5, 1, 0].map((v) => v / Math.hypot(0.5, 1));
+    Array.from(flat.normals.subarray(0, 3)).forEach((v, k) => expect(v).toBeCloseTo(expected[k] ?? NaN, 6));
+    const shared = mat3TransformVector(mat4NormalMatrix(mat4NodeLocal([0, 0, 0], [1, 0, 0], [0, 0, 0], [2, 1, 1])), [
+      normal,
+      normal,
+      0,
+    ]);
+    const length = Math.hypot(...shared);
+    Array.from(flat.normals.subarray(0, 3)).forEach((v, k) => expect(v).toBeCloseTo((shared[k] ?? NaN) / length, 6));
   });
 
   it('names the mesh and first index of every kept triangle, skipped ones left out', () => {

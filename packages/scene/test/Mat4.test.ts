@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  mat3TransformVector,
   mat4Identity,
   mat4Multiply,
   mat4NodeLocal,
+  mat4NormalMatrix,
   mat4Rotation,
   mat4TransformDirection,
   mat4TransformPoint,
@@ -16,9 +18,24 @@ function expectClose(actual: readonly number[], expected: readonly number[]): vo
   actual.forEach((value, i) => expect(value).toBeCloseTo(expected[i] ?? NaN, 12));
 }
 
-function node(parent: number, pivot: Vec3, rotation: Vec3, translation: Vec3 = [0, 0, 0]): SceneNode {
-  return { name: 'n', sourceId: '', parent, children: [], pivot, rotation, translation, visible: true, meshes: [] };
+function node(parent: number, pivot: Vec3, rotation: Vec3, translation: Vec3 = [0, 0, 0], scale?: Vec3): SceneNode {
+  const base = {
+    name: 'n',
+    sourceId: '',
+    parent,
+    children: [],
+    pivot,
+    rotation,
+    translation,
+    visible: true,
+    meshes: [],
+  };
+  return scale ? { ...base, scale } : base;
 }
+
+const dot = (a: readonly number[], b: readonly number[]): number =>
+  (a[0] ?? NaN) * (b[0] ?? NaN) + (a[1] ?? NaN) * (b[1] ?? NaN) + (a[2] ?? NaN) * (b[2] ?? NaN);
+const unit = (v: readonly number[]): number[] => v.map((x) => x / Math.hypot(...v));
 
 describe('Mat4', () => {
   it('identity leaves points alone and is neutral in multiply', () => {
@@ -58,6 +75,43 @@ describe('Mat4', () => {
     expect(mat4TransformPoint(moved, [5, 0, 0])).toEqual([5, 3, 3]);
   });
 
+  it('scales about the pivot before rotating, then translates', () => {
+    const scaled = mat4NodeLocal([0, 0, 0], [4, 0, 0], [0, 0, 0], [2, 3, 1]);
+    expect(mat4TransformPoint(scaled, [4, 0, 0])).toEqual([4, 0, 0]);
+    expect(mat4TransformPoint(scaled, [5, 1, 1])).toEqual([6, 3, 1]);
+    // (5,0,0) − pivot = (1,0,0) → S (2,0,0) → Z 90 (0,2,0) → + pivot (4,2,0) → + (1,2,3).
+    const all = mat4NodeLocal([1, 2, 3], [4, 0, 0], [0, 0, 90], [2, 1, 1]);
+    expect(mat4TransformPoint(all, [5, 0, 0])).toEqual([5, 4, 3]);
+    expect([...mat4NodeLocal([1, 2, 3], [4, 0, 0], [0, 0, 90], [1, 1, 1])]).toEqual([
+      ...mat4NodeLocal([1, 2, 3], [4, 0, 0], [0, 0, 90]),
+    ]);
+  });
+
+  it('the normal matrix of a rotation is the rotation', () => {
+    const m = mat4NodeLocal([7, -2, 3], [1, 2, 3], [10, 20, 30]);
+    const n = mat4NormalMatrix(m);
+    for (let col = 0; col < 3; col++) {
+      for (let row = 0; row < 3; row++) expect(n[col * 3 + row]).toBeCloseTo(m[col * 4 + row] ?? NaN, 12);
+    }
+  });
+
+  it('maps a sloped normal under non-uniform scale to the inverse transpose', () => {
+    // The plane x + y = c, normal (1,1,0)/√2; x scaled by 2 gives x/2 + y = c, normal ∝ (1/2, 1, 0).
+    const n = mat4NormalMatrix(mat4NodeLocal([0, 0, 0], [3, 1, 0], [0, 0, 0], [2, 1, 1]));
+    expectClose(unit(mat3TransformVector(n, [1, 1, 0])), unit([0.5, 1, 0]));
+    // With rotation as well: the mapped normal stays perpendicular to every mapped tangent of the surface.
+    const m = mat4NodeLocal([1, 2, 3], [3, 1, 0], [10, 20, 30], [2, 0.5, 3]);
+    const normal = mat3TransformVector(mat4NormalMatrix(m), [1, 2, 3]);
+    for (const tangent of [
+      [2, -1, 0],
+      [3, 0, -1],
+      [0, 3, -2],
+    ] as const) {
+      expect(dot(normal, mat4TransformDirection(m, tangent))).toBeCloseTo(0, 12);
+    }
+    expect(dot(normal, mat4TransformDirection(m, [1, 2, 3]))).toBeGreaterThan(0);
+  });
+
   it('maps directions without translation', () => {
     const m = mat4NodeLocal([7, 7, 7], [4, 0, 0], [0, 90, 0]);
     expect(mat4TransformDirection(m, [1, 0, 0])).toEqual([0, 0, -1]);
@@ -72,6 +126,16 @@ describe('worldMatrices', () => {
     // Child: (1,0,0) → (0,0,−1); parent: (0,0,−1) − (0,8,0) = (0,−8,−1) → Z 90 → (8,0,−1) + (0,8,0).
     const point = mat4TransformPoint(world[1] ?? mat4Identity(), [1, 0, 0]);
     expectClose(point, [8, 8, -1]);
+  });
+
+  it('scales a child with its parent, each about its own pivot', () => {
+    const nodes = [
+      node(-1, [0, 8, 0], [0, 0, 0], [0, 0, 0], [2, 2, 2]),
+      node(0, [1, 0, 0], [0, 0, 0], [0, 0, 0], [1, 3, 1]),
+    ];
+    const world = worldMatrices(nodes);
+    // Child: (1,1,0) − (1,0,0) → (0,3,0) + (1,0,0) = (1,3,0); parent: 2 · ((1,3,0) − (0,8,0)) + (0,8,0) = (2,−2,0).
+    expectClose(mat4TransformPoint(world[1] ?? mat4Identity(), [1, 1, 0]), [2, -2, 0]);
   });
 
   it('rejects a parent listed after its child', () => {

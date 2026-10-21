@@ -49,7 +49,10 @@ export interface LightmapLayout {
    * unoccluded); `null` for a hidden mesh.
    */
   readonly vertexData: readonly (Float32Array | null)[];
-  /** World size of the finest texture texel of any texel chart (rigid node matrices keep it); Infinity without one. */
+  /**
+   * Size of the finest texture texel of any texel chart in mesh units, which are world units at rest (the layout is
+   * pose-independent; an animated node scale stretches the texels with the mesh); Infinity without one.
+   */
   readonly finestTexel: number;
   /** Changes whenever the layout or what it was built from (other than the pose) changes. */
   readonly layoutKey: string;

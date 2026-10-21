@@ -8,9 +8,11 @@ export {
   type TexelCoverage,
 } from './materialAlpha';
 export {
+  mat3TransformVector,
   mat4Identity,
   mat4Multiply,
   mat4NodeLocal,
+  mat4NormalMatrix,
   mat4Rotation,
   mat4TransformDirection,
   mat4TransformPoint,
@@ -65,3 +67,21 @@ export { MAX_POSE_BONES, MAX_POSE_ROTATION_DEG, MAX_POSE_TRANSLATION, poseScene,
 export { PLAYER_POSE_PRESETS, playerPosePreset, type PlayerPosePresetName } from './playerPosePresets';
 export type { SceneAttachment } from './SceneAttachment';
 export { MAX_ATTACH_SCALE, attachModel, type AttachOptions } from './attachModel';
+export type {
+  SceneAnimation,
+  SceneAnimationChannel,
+  SceneAnimationLoop,
+  SceneAnimationProperty,
+  SceneInterpolation,
+  SceneKeyframe,
+  ScenePlayback,
+} from './SceneAnimation';
+export type { AnimationPlaybackOptions } from './AnimationPlaybackOptions';
+export { MAX_ANIMATION_FRAMES, MAX_PLAYBACK_FPS, animationFrameTimes, animationTime } from './animationTime';
+export {
+  MAX_ANIMATION_SCALE,
+  MAX_ANIMATION_VALUE,
+  MIN_ANIMATION_SCALE,
+  animateScene,
+  type AnimateResult,
+} from './animateScene';

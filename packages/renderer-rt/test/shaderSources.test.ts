@@ -96,6 +96,15 @@ describe('shader sources', () => {
     expect(deleted.filter((d) => d === 'shader').length).toBe(4);
   });
 
+  it('maps normals with the normal matrix, never the upper 3x3 of the model matrix', () => {
+    for (const name of ['opaque', 'oitAccum', 'fallback'] as const) {
+      const { vertex } = shaderProgramSource(name);
+      expect(vertex).toContain('uniform mat3 u_normalMatrix;');
+      expect(vertex).toContain('v_normal = u_normalMatrix * a_normal;');
+      expect(vertex).not.toContain('mat3(u_model)');
+    }
+  });
+
   it('prepares the edge derivatives before the first discard and shades with the rounded normal', () => {
     for (const name of ['opaque', 'oitAccum', 'fallback'] as const) {
       for (const depthKey of ['raster', 'exact'] as const) {

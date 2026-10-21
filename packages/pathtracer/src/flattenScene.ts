@@ -2,7 +2,8 @@ import {
   EDGE_SLOTS,
   NO_EDGE,
   sceneSharpEdges,
-  mat4TransformDirection,
+  mat3TransformVector,
+  mat4NormalMatrix,
   mat4TransformPoint,
   meshVisible,
   nodeVisibility,
@@ -52,8 +53,8 @@ const finite = (values: ArrayLike<number>, start: number, count: number): boolea
 
 /**
  * Sharp-edge distances and angles (`sceneSharpEdges` of the document, looked up once) of the triangles listed in `sources`
- * (`FlatScene.sources`); `null` options fill empty slots. Distances are in the mesh's rest space: node world matrices
- * are rigid, so they hold in world space too.
+ * (`FlatScene.sources`); `null` options fill empty slots. Distances are in the mesh's rest space, as the preview's
+ * vertex attributes are, so an animated node scale widens or narrows the edge band alike in both renderers.
  */
 export function flatEdges(
   doc: SceneDocument,
@@ -120,6 +121,7 @@ export function flattenScene(
   doc.meshes.forEach((mesh, m) => {
     if (!visibleMeshes[m]) return;
     const matrix: Mat4 | undefined = mesh.node >= 0 ? world[mesh.node] : undefined;
+    const normalMatrix = matrix ? mat4NormalMatrix(matrix) : undefined;
     const order = mesh.renderOrder ?? 0;
     for (const group of mesh.groups) {
       for (let i = group.start; i < group.start + group.count; i += 3) {
@@ -166,8 +168,8 @@ export function flattenScene(
             mesh.normals[k * 3 + 1] ?? 0,
             mesh.normals[k * 3 + 2] ?? 0,
           ];
-          // Node world matrices are rigid, so their upper 3x3 maps normals too (as in the preview's vertex shader).
-          const w = matrix ? mat4TransformDirection(matrix, n) : n;
+          // The same normal matrix as the preview's u_normalMatrix, so both renderers shade a scaled node alike.
+          const w = normalMatrix ? mat3TransformVector(normalMatrix, n) : n;
           const length = Math.hypot(w[0], w[1], w[2]);
           normals.set(length > 0 ? [w[0] / length, w[1] / length, w[2] / length] : [0, 0, 0], count * 9 + j * 3);
           uvs[count * 6 + j * 2] = mesh.uvs[k * 2] ?? 0;

@@ -29,6 +29,13 @@ function checkFiniteVec3(value: unknown, path: string): void {
   }
 }
 
+function checkPositiveVec3(value: unknown, path: string): void {
+  checkFiniteVec3(value, path);
+  (value as number[]).forEach((item, k) => {
+    if (!(item > 0)) fail(`${path}[${k}]`, `expected a positive number, got ${item}`);
+  });
+}
+
 function validateMesh(mesh: SceneMesh, path: string, doc: SceneDocument): void {
   checkIndex(mesh.node, doc.nodes.length, `${path}.node`, true);
   const order: unknown = mesh.renderOrder;
@@ -72,7 +79,7 @@ function validateMesh(mesh: SceneMesh, path: string, doc: SceneDocument): void {
 
 /**
  * Checks every cross reference, buffer length and node transform (finite `pivot`, `rotation`, `translation` and
- * `restRotation`) the renderer relies on, so a malformed document fails with a
+ * `restRotation`; `scale` finite and positive, so no matrix mirrors or collapses) the renderer relies on, so a malformed document fails with a
  * `RendererError` `INVALID_SCENE` naming the path instead of reading out of bounds on the GPU; also `renderOrder`
  * (an integer in ±1024, the range the exact depth key maps into depth, `exactDepthRange`) and `doubleSided` (a boolean). Material
  * `alphaMode` / `alphaCutoff` are not checked: `resolveMaterialAlpha` turns any value into a valid rule.
@@ -83,6 +90,7 @@ export function validateScene(doc: SceneDocument): void {
     if (node.parent !== -1) checkIndex(node.parent, n, `${path}.parent`, false);
     for (const key of ['pivot', 'rotation', 'translation'] as const) checkFiniteVec3(node[key], `${path}.${key}`);
     if (node.restRotation !== undefined) checkFiniteVec3(node.restRotation, `${path}.restRotation`);
+    if (node.scale !== undefined) checkPositiveVec3(node.scale, `${path}.scale`);
     node.meshes.forEach((mesh, i) => checkIndex(mesh, doc.meshes.length, `${path}.meshes[${i}]`, false));
     node.children.forEach((child, i) => checkIndex(child, doc.nodes.length, `${path}.children[${i}]`, false));
   });

@@ -135,6 +135,23 @@ describe('validateScene', () => {
     expectInvalid({ ...doc, nodes: [{ ...node, [key]: triple }] }, `nodes[0].${key}[${k}]`);
   });
 
+  it.each([
+    [0, 0],
+    [1, NaN],
+    [2, -1],
+    [0, Infinity],
+  ] as const)('rejects node scale component %i = %d', (k, value) => {
+    const doc = quadScene();
+    const scale: [number, number, number] = [1, 1, 1];
+    scale[k] = value;
+    expectInvalid({ ...doc, nodes: [{ ...doc.nodes[0]!, scale }] }, `nodes[0].scale[${k}]`);
+  });
+
+  it('accepts a positive node scale', () => {
+    const doc = quadScene();
+    expect(() => validateScene({ ...doc, nodes: [{ ...doc.nodes[0]!, scale: [1e-4, 2, 1e4] }] })).not.toThrow();
+  });
+
   it('rejects a node rotation with a hole', () => {
     const doc = quadScene();
     // eslint-disable-next-line no-sparse-arrays

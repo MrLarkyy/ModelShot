@@ -61,7 +61,9 @@ computed in `setScene` with the scene and kept through a context loss.
 1. `validateScene` (the realtime renderer's, so both reject the same documents; its error becomes
    `PathTracerError` `INVALID_SCENE` with the path).
 2. `flattenScene`: the visible meshes (own flag and node visibility) placed by their node's world matrix; per triangle
-   its corners, vertex normals, UVs, the face's UV rectangle, material, sidedness and render order. Triangles with a
+   its corners, vertex normals (mapped by `mat4NormalMatrix` of the node's world matrix and normalised, as the
+   preview's `u_normalMatrix`, so a scaled node shades alike), UVs, the face's UV rectangle, material, sidedness and
+   render order. Edge distances stay in mesh units, as in the preview. Triangles with a
    non-finite position, normal, UV or rectangle, or with no area, are skipped and counted (`DEGENERATE_TRIANGLES`
    warning). More visible triangles than `maxTriangles` throw `SCENE_TOO_LARGE` before anything is read or allocated.
    With edge options (the render; the bake passes none) each triangle also carries its corners' four sharp-edge

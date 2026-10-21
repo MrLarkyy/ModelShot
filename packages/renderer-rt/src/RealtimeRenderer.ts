@@ -701,6 +701,7 @@ export class RealtimeRenderer {
       gl.bindTexture(gl.TEXTURE_2D, this.textureFor(gpu, item.texture));
       gl.uniform2f(pass.lightmapTextureSize, item.textureSize[0], item.textureSize[1]);
       gl.uniformMatrix4fv(pass.model, false, item.model);
+      gl.uniformMatrix3fv(pass.normalMatrix, false, item.normal);
       const exactVao = exact?.vaos.get(item.batch);
       if (exactVao) {
         gl.bindVertexArray(exactVao);

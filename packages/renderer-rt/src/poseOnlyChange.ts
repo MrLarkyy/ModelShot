@@ -13,9 +13,10 @@ function sameRestNode(a: SceneNode, b: SceneNode): boolean {
 }
 
 /**
- * Whether `next` differs from `previous` at most in its pose (node rotations and translations, `pose`): the same
+ * Whether `next` differs from `previous` at most in its pose (node rotations, translations and scales, `pose`,
+ * `playback`), as `poseScene` and `animateScene` return them: the same
  * meshes, materials and textures arrays and nodes with the same parents, pivots, rest rotations, visibility and
- * meshes, as `poseScene` returns them. Everything a lightmap layout reads is then unchanged, so it can be kept.
+ * meshes. Everything a lightmap layout reads is then unchanged, so it can be kept.
  */
 export function poseOnlyChange(previous: SceneDocument, next: SceneDocument): boolean {
   if (previous === next) return true;
