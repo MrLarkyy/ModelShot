@@ -119,3 +119,65 @@ test('the app refuses a record it does not understand', async ({ page }) => {
   await expect(page.getByRole('status')).toContainText('Nothing to open: unreadable handoff (VERSION)');
   expect(await pendingRecords(page)).toBe(0);
 });
+
+function chosenFiles(page: Page): Promise<number> {
+  return page.locator('#model-input').evaluate((input: HTMLInputElement) => input.files?.length ?? 0);
+}
+
+test('the picker is emptied after a refused choice and after a storage failure', async ({ page }) => {
+  await openLanding(page, 1440);
+  await page
+    .locator('#model-input')
+    .setInputFiles({ name: 'setup.exe', mimeType: 'text/plain', buffer: Buffer.from('MZ') });
+  await expect(page.getByRole('alert')).toContainText('setup.exe');
+  expect(await chosenFiles(page)).toBe(0);
+
+  await page.evaluate(() => {
+    indexedDB.open = () => {
+      throw new Error('storage blocked by the test');
+    };
+  });
+  await page.locator('#model-input').setInputFiles(CUBE);
+  await expect(page.getByRole('alert')).toContainText('storage blocked by the test');
+  expect(await chosenFiles(page)).toBe(0);
+  expect(new URL(page.url()).pathname).toBe('/');
+});
+
+test('coming back from the app leaves an empty picker and the same file opens again', async ({ page }) => {
+  await openLanding(page, 1440);
+  await page.locator('#model-input').setInputFiles(CUBE);
+  await expect(page).toHaveURL(APP_URL);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/$/);
+  expect(await chosenFiles(page)).toBe(0);
+  await page.locator('#model-input').setInputFiles(CUBE);
+  await expect(page).toHaveURL(APP_URL);
+  await expect(page.getByRole('status').getByRole('listitem')).toHaveText([/^cube\.bbmodel/]);
+});
+
+test('the landing page removes an expired record on load and keeps a fresh one', async ({ page }) => {
+  await openLanding(page, 1440);
+  await writeRecord(page, { v: 1, ageMs: 11 * 60 * 1000 });
+  await page.reload();
+  await expect.poll(() => pendingRecords(page)).toBe(0);
+
+  await writeRecord(page, { v: 1, ageMs: 0 });
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  expect(await pendingRecords(page)).toBe(1);
+});
+
+// Headless Chromium reloads instead of restoring from the back/forward cache, so the restore is fired directly.
+test('a page restored from the back/forward cache shows an empty picker and no old alert', async ({ page }) => {
+  await openLanding(page, 1440);
+  await page.evaluate(() => {
+    const input = document.querySelector<HTMLInputElement>('#model-input')!;
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(['{}'], 'cube.bbmodel'));
+    input.files = transfer.files;
+    document.querySelector('#drop-error')!.textContent = 'an old message';
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+  });
+  expect(await chosenFiles(page)).toBe(0);
+  await expect(page.locator('#drop-error')).toHaveText('');
+});

@@ -29,7 +29,6 @@ export function wireDropZone(
     const error = checkHandoffFiles(files);
     if (error) {
       alert.textContent = error.message;
-      input.value = '';
       return;
     }
     try {
@@ -42,7 +41,17 @@ export function wireDropZone(
   }
 
   for (const button of parts.openButtons) button.addEventListener('click', () => input.click());
-  input.addEventListener('change', () => void handOff(Array.from(input.files ?? [])));
+  // The selection is taken and the input emptied on every attempt, so choosing the same file again after a refusal,
+  // a storage failure or coming Back from the app fires change again.
+  input.addEventListener('change', () => {
+    const files = Array.from(input.files ?? []);
+    input.value = '';
+    void handOff(files);
+  });
+  view.addEventListener('pageshow', () => {
+    input.value = '';
+    alert.textContent = '';
+  });
 
   zone.addEventListener('dragover', (event) => {
     event.preventDefault();

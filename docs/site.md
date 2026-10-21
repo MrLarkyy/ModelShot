@@ -39,31 +39,37 @@ browser and opens the app, which takes them:
    256 MiB in total, extensions `.bbmodel .gltf .glb .bin .obj .mtl .png` (any case). A failure is shown in the
    `role="alert"` element under the drop zone with a message naming the limit (`EMPTY`, `TOO_MANY`,
    `UNSUPPORTED_TYPE`, `TOO_LARGE`), and the page stays.
-2. `putHandoffFiles` writes one record to IndexedDB database `modelshot-handoff`, store `pending`, key `current`:
-   `{ v: 1, files: File[], createdAt: <ms since epoch> }`, replacing any earlier record.
+2. `putHandoffFiles` empties IndexedDB database `modelshot-handoff`, store `pending`, and writes one record under
+   key `current`: `{ v: 1, files: File[], createdAt: <ms since epoch> }`, in one transaction. A write that does not
+   finish within 5 s is aborted and reported in the alert, so no copy is stored after the page gave up.
 3. The site navigates to `./app/?open=handoff`.
 4. The app (`packages/app/src/showHandoff.ts`) calls `takeHandoffFiles`, which reads and deletes the record in one
-   transaction, then validates it as untrusted (`readHandoffRecord`): own data properties only, `v === 1`, a
-   `createdAt` that is not in the future, real `File` objects only, the same limits again. A record older than
-   10 minutes is discarded. Nothing throws past this boundary; the result is `files`, `none`, `expired` or
-   `invalid` with a reason code.
+   transaction, then validates it as untrusted (`readHandoffRecord`): own data properties only, `v === 1`, a finite
+   `createdAt` at most 60 s in the future (clock skew between tabs), real `File` objects only, the same limits
+   again. A record older than 10 minutes is discarded. The validation never throws; its result is `files`, `none`,
+   `expired` or `invalid` with a reason code. `takeHandoffFiles` itself rejects when IndexedDB is missing, fails
+   or does not answer within 5 s; the app then shows that error instead of a list.
 5. The app lists the file names and sizes as text in its `role="status"` element. Parsing the files is the editor's
    job (MS-23 wires `takeHandoffFiles` into its loader).
 
-Every IndexedDB step gives up after 5 s with an error naming the step, so a stuck database never hangs either page.
+Every IndexedDB step gives up after 5 s with an error naming the step (the transaction is aborted), so a stuck
+database never hangs either page. On load the landing page deletes a record the app can no longer take (expired or
+unreadable, `discardStaleHandoff`), so files that were never opened do not stay on disk; a fresh record is kept. The
+picker is emptied after every attempt and when the page is shown again from the back/forward cache, so the same file
+can be chosen again.
 A file dropped anywhere else on the landing page is ignored rather than opened by the browser.
 
 ## Motion
 
 CSS only (`src/styles/motion.css`), and only `transform` and `opacity` move, so nothing reflows:
 
-| motion       | where                        | loop                                                  |
-| ------------ | ---------------------------- | ----------------------------------------------------- |
-| float        | hero island                  | 6 s, up 10 px                                         |
-| glow pulse   | island glow, lights swatches | 2.6 s, opacity and scale                              |
-| render sweep | hero tile                    | 5 s, a light band under the tile's text               |
-| hover lift   | highlight tiles              | 200 ms, up 4 px; the shadow is a layer that fades in  |
-| looks cycle  | looks tiles                  | 8 s, a ring fades in on each tile in turn (0/2/4/6 s) |
+| motion       | where                        | loop                                                                       |
+| ------------ | ---------------------------- | -------------------------------------------------------------------------- |
+| float        | hero island                  | 6 s, up 10 px                                                              |
+| glow pulse   | island glow, lights swatches | 2.6 s, opacity and scale                                                   |
+| render sweep | hero tile                    | 5 s, a light band under the tile's text; at rest it waits outside the tile |
+| hover lift   | highlight tiles              | 200 ms, up 4 px; the shadow is a layer that fades in                       |
+| looks cycle  | looks tiles                  | 8 s, a ring fades in on each tile in turn (0/2/4/6 s)                      |
 
 With `prefers-reduced-motion: reduce` every animation and transition is off. The six fonts are preloaded and use
 `font-display: block`, so the page has no layout shift while loading.
@@ -89,5 +95,5 @@ With `prefers-reduced-motion: reduce` every animation and transition is off. The
 `pnpm test` runs them after the harness (`pnpm test:browser`); the port is `MS_SITE_PORT`, else a stable per-checkout
 port derived from the site directory. CI uploads `packages/site/test-results/` with the harness results.
 
-Goldens change only deliberately: `pnpm golden:update:site` (refused when `CI` is set), then review the images beside
-the landing page canvas at the same widths before committing.
+Goldens change only deliberately: `pnpm golden:update:site` (rewrites all three; refused when `CI` is set), then
+review the images beside the landing page canvas at the same widths before committing.
