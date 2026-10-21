@@ -1,0 +1,115 @@
+/* Generated from packages/brand/src/tokens.ts by renderTokensCss; run pnpm golden:update:data. */
+:root {
+  --ms-ill-grass-top: #9BE37F;
+  --ms-ill-grass-left: #55B04A;
+  --ms-ill-grass-right: #3C8A3A;
+  --ms-ill-wood-top: #E0A464;
+  --ms-ill-wood-left: #A8703D;
+  --ms-ill-wood-right: #7C4F2A;
+  --ms-ill-foliage-top: #FFE36E;
+  --ms-ill-foliage-left: #FFB23F;
+  --ms-ill-foliage-right: #FF6A3D;
+  --ms-ill-lantern-top: #FFF6D6;
+  --ms-ill-lantern-left: #FFE07A;
+  --ms-ill-lantern-right: #FFC24A;
+  --ms-ill-glow-core: #FFE07A;
+  --ms-ill-glow-mid: #FFB23F;
+  --ms-ill-glow-edge: #FF6A3D;
+  --ms-ill-island-shadow: #1A2CB8;
+  --ms-ill-ember: #6A4527;
+  --ms-ill-sweep: rgb(255 255 255 / 0.18);
+  --ms-ill-marketplace-ground: #2A3A7C;
+  --ms-ill-marketplace-ground-deep: #0B1230;
+  --ms-ill-marketplace-top: #F3F5FC;
+  --ms-ill-marketplace-left: #5B6BA8;
+  --ms-ill-marketplace-right: #1F2A5C;
+  --ms-ill-marketplace-rim: #FFB547;
+  --ms-ill-daylight-ground: #BFE3FF;
+  --ms-ill-daylight-top: #FFFFFF;
+  --ms-ill-daylight-left: #A9C4E0;
+  --ms-ill-daylight-right: #7397BC;
+  --ms-ill-sunset-ground: #FF6A3D;
+  --ms-ill-sunset-top: #FFE3B0;
+  --ms-ill-sunset-left: #FFB27A;
+  --ms-ill-sunset-right: #A8452A;
+  --ms-ill-noir-ground: #121318;
+  --ms-ill-noir-top: #D5D9E2;
+  --ms-ill-noir-left: #4E5361;
+  --ms-ill-noir-right: #23252D;
+  --ms-ill-noir-rim: #FFFFFF;
+}
+
+.isl {
+  overflow: visible;
+}
+
+.isl-grass .t {
+  fill: var(--ms-ill-grass-top);
+}
+
+.isl-grass .l {
+  fill: var(--ms-ill-grass-left);
+}
+
+.isl-grass .r {
+  fill: var(--ms-ill-grass-right);
+}
+
+.isl-wood .t {
+  fill: var(--ms-ill-wood-top);
+}
+
+.isl-wood .l {
+  fill: var(--ms-ill-wood-left);
+}
+
+.isl-wood .r {
+  fill: var(--ms-ill-wood-right);
+}
+
+.isl-foliage .t {
+  fill: var(--ms-ill-foliage-top);
+}
+
+.isl-foliage .l {
+  fill: var(--ms-ill-foliage-left);
+}
+
+.isl-foliage .r {
+  fill: var(--ms-ill-foliage-right);
+}
+
+.isl-lantern .t {
+  fill: var(--ms-ill-lantern-top);
+}
+
+.isl-lantern .l {
+  fill: var(--ms-ill-lantern-left);
+}
+
+.isl-lantern .r {
+  fill: var(--ms-ill-lantern-right);
+}
+
+.isl-post {
+  fill: var(--ms-ill-wood-right);
+}
+
+.isl-shadow {
+  fill: var(--ms-ill-island-shadow);
+}
+
+.isl-stop-core {
+  stop-color: var(--ms-ill-glow-core);
+  stop-opacity: 0.9;
+}
+
+.isl-stop-mid {
+  stop-color: var(--ms-ill-glow-mid);
+  stop-opacity: 0.3;
+}
+
+.isl-stop-edge {
+  stop-color: var(--ms-ill-glow-edge);
+  stop-opacity: 0;
+}

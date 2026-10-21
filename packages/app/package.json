@@ -3,9 +3,18 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./handoff": {
+      "types": "./src/handoff/index.ts",
+      "default": "./src/handoff/index.ts"
+    }
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelshot/brand": "workspace:*"
   }
 }

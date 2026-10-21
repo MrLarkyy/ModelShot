@@ -1,0 +1,81 @@
+/* The 1200 x 630 social preview (CSocial canvas), rendered to assets/public/social-preview.png by scripts/renderPngs.mjs. */
+body {
+  margin: 0;
+}
+
+.card {
+  box-sizing: border-box;
+  display: flex;
+  gap: 40px;
+  width: 1200px;
+  height: 630px;
+  padding: var(--ms-space-7);
+  background: var(--ms-color-cloud);
+  color: var(--ms-color-ink);
+  font-family: var(--ms-font-body);
+}
+
+.copy {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.lockup {
+  display: flex;
+  align-items: center;
+  gap: var(--ms-space-3);
+}
+
+.mark svg {
+  display: block;
+  width: 48px;
+  height: 48px;
+}
+
+.wordmark {
+  font: var(--ms-weight-heavy) 30px var(--ms-font-display);
+  letter-spacing: -0.04em;
+}
+
+h1 {
+  margin: 0;
+  font: var(--ms-weight-heavy) 76px / 0.98 var(--ms-font-display);
+  letter-spacing: -0.05em;
+}
+
+.accent {
+  color: var(--ms-color-shot-blue);
+}
+
+p {
+  margin: 0;
+  color: var(--ms-color-slate);
+  font: var(--ms-weight-medium) 24px / 1.4 var(--ms-font-body);
+}
+
+.tile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 440px;
+  border-radius: var(--ms-radius-panel);
+  background: var(--ms-color-shot-blue);
+}
+
+.tile svg {
+  width: 300px;
+  height: 380px;
+}
+
+.flash {
+  position: absolute;
+  top: 28px;
+  right: 28px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--ms-color-flash);
+}
