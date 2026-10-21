@@ -68,4 +68,10 @@ test('reduced motion stops every animation and transition', async ({ page }) => 
   expect(await page.evaluate(() => document.getAnimations().length)).toBe(0);
   await hoverEverything(page);
   expect(await page.evaluate(() => document.getAnimations().length)).toBe(0);
+  // At rest the sweep band is parked left of the hero tile, so it never sits under text.
+  const { band, tile } = await page.evaluate(() => ({
+    band: document.querySelector('.sweep')!.getBoundingClientRect().right,
+    tile: document.querySelector('.tile-hero')!.getBoundingClientRect().left,
+  }));
+  expect(band).toBeLessThanOrEqual(tile);
 });

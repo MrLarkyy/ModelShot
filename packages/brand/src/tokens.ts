@@ -74,7 +74,8 @@ export const tokens = {
     glow: { core: '#FFE07A', mid: '#FFB23F', edge: '#FF6A3D' },
     islandShadow: '#1A2CB8',
     ember: '#6A4527',
-    sweep: 'rgb(255 255 255 / 0.18)',
+    // Peak of the render sweep over shot blue: 0.12 keeps paper text at 4.76:1 (test/contrast.test.ts).
+    sweep: 'rgb(255 255 255 / 0.12)',
     marketplace: {
       ground: '#2A3A7C',
       groundDeep: '#0B1230',

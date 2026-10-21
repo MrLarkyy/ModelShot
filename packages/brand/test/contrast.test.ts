@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { compositeOver } from '../src/compositeOver';
 import { CONTRAST_PAIRS, MIN_CONTRAST } from '../src/contrastPairs';
 import { contrastRatio } from '../src/contrastRatio';
 import { tokens } from '../src/tokens';
@@ -46,5 +47,23 @@ describe('contrast pairs', () => {
   it('has a focus ring pair for every ground that holds a focusable control', () => {
     const rings = CONTRAST_PAIRS.filter((p) => p.use === 'ring').map((p) => `${p.fg}/${p.bg}`);
     expect(rings).toEqual(expect.arrayContaining(['ink/cloud', 'ink/paper', 'sun/ink', 'sun/shotBlue']));
+  });
+});
+
+describe('the render sweep', () => {
+  it('composites like the browser', () => {
+    expect(compositeOver('rgb(255 255 255 / 0.5)', '#000000')).toBe('#808080');
+    expect(compositeOver('rgb(0 0 0 / 0)', color.shotBlue)).toBe(color.shotBlue);
+    expect(() => compositeOver('#FFFFFF', color.ink)).toThrow(/expected rgb\(r g b \/ a\)/);
+  });
+
+  // axe reports text over a gradient as "incomplete", so the peak of the band is checked here.
+  it('keeps every text colour on shot blue at AA under its brightest point', () => {
+    const peak = compositeOver(tokens.illustration.sweep, color.shotBlue);
+    const onBlue = CONTRAST_PAIRS.filter((p) => p.bg === 'shotBlue' && p.use !== 'ring');
+    expect(onBlue.map((p) => p.fg)).toContain('paper');
+    for (const pair of onBlue) {
+      expect(contrastRatio(color[pair.fg], peak), pair.where).toBeGreaterThanOrEqual(MIN_CONTRAST[pair.use]);
+    }
   });
 });

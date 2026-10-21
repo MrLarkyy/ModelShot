@@ -181,6 +181,8 @@
   left: 0;
   width: 30%;
   background: linear-gradient(90deg, transparent, var(--ms-ill-sweep), transparent);
+  /* At rest (reduced motion, stopped animations) the band waits outside the tile, never under the text. */
+  transform: translateX(-120%);
 }
 
 .hero-art {

@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test:browser": "playwright test",
-    "golden:update": "node scripts/refuseInCi.mjs && playwright test --update-snapshots=changed landing.golden"
+    "golden:update": "node scripts/refuseInCi.mjs && playwright test --update-snapshots=all landing.golden"
   },
   "dependencies": {
     "@modelshot/app": "workspace:*",
