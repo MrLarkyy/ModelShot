@@ -7,6 +7,7 @@ import type { BbmodelWarningList } from './BbmodelWarning';
 import { childPath, field, type JsonObject } from '../json/JsonObject';
 import { readArray, readObject, readOptionalString, readPositiveNumber, readString } from './JsonFields';
 import { quoteValue } from '../text/quoteValue';
+import { RENDER_MODES, type RenderMode } from './RenderMode';
 import { RENDER_SIDES, type RenderSides } from './RenderSides';
 import { readTextureFrameSettings, textureFrames, type TextureFrameSettings } from './textureFrames';
 
@@ -23,6 +24,11 @@ export interface TextureEntry {
   readonly uvWidth: number;
   readonly uvHeight: number;
   readonly renderSides: RenderSides;
+  readonly renderMode: RenderMode;
+  /** Blockbench texture `visible`: a hidden texture is left out of a layer stack and the layered default texture. */
+  readonly visible: boolean;
+  /** Blockbench `use_as_default`, the default texture of `single_texture_default` formats. */
+  readonly useAsDefault: boolean;
   /** Animation fields; `undefined` in a format without animated textures. */
   readonly frameSettings: TextureFrameSettings | undefined;
 }
@@ -103,6 +109,9 @@ function readTextureEntry(
     uvWidth: uvSize.width,
     uvHeight: uvSize.height,
     renderSides: readRenderSides(texture, path, warnings),
+    renderMode: readRenderMode(texture, path, warnings),
+    visible: readLenientBoolean(texture, 'visible', path, true, warnings),
+    useAsDefault: readLenientBoolean(texture, 'use_as_default', path, false, warnings),
     frameSettings: readTextureFrameSettings(texture, path, modelFormat, warnings),
   };
 }
@@ -121,6 +130,44 @@ function readRenderSides(texture: JsonObject, path: string, warnings: BbmodelWar
     return 'auto';
   }
   return sides;
+}
+
+/**
+ * Absent: `default`; anything else that is not a known mode warns and counts as `default`. Unlike `render_sides`, a
+ * non-string does not fail the file: the field was ignored before render modes were read.
+ */
+function readRenderMode(texture: JsonObject, path: string, warnings: BbmodelWarningList): RenderMode {
+  const value = field(texture, 'render_mode');
+  if (value === undefined) return 'default';
+  const mode = RENDER_MODES.find((candidate) => candidate === value);
+  if (mode === undefined) {
+    const valuePath = childPath(path, 'render_mode');
+    warnings.add(
+      'UNSUPPORTED_VALUE',
+      valuePath,
+      `${quoteValue(value)} is not default, emissive, additive or layered; using default`,
+    );
+    return 'default';
+  }
+  return mode;
+}
+
+/** A flag the loader did not read before: a non-boolean warns and counts as `fallback` instead of failing the file. */
+function readLenientBoolean(
+  texture: JsonObject,
+  key: string,
+  path: string,
+  fallback: boolean,
+  warnings: BbmodelWarningList,
+): boolean {
+  const value = field(texture, key);
+  if (value === undefined || typeof value === 'boolean') return value ?? fallback;
+  warnings.add(
+    'UNSUPPORTED_VALUE',
+    childPath(path, key),
+    `expected true or false, got ${quoteValue(value)}; using ${fallback}`,
+  );
+  return fallback;
 }
 
 function readOptionalPositive(texture: JsonObject, key: string, path: string, fallback: number): number {

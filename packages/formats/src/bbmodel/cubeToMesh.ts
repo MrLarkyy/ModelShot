@@ -16,7 +16,7 @@ const NO_TRANSLATION = [0, 0, 0] as const;
  * Four vertices and two triangles per face, the cube's rotation about its origin baked in. Faces are ordered by
  * material, then single- before double-sided, so each such pair is one group. Corners are top-left, top-right, bottom-right, bottom-left seen from
  * outside; the triangles (TL, BL, BR) and (TL, BR, TR) are therefore counter-clockwise from outside whatever the UVs.
- * A face on a texture of `textureFrameCounts[material]` frames (absent: 1) maps into frame 0: v is divided by the count
+ * A face on a texture of `textureFrameCounts[frameTexture ?? material]` frames (absent: 1) maps into frame 0: v is divided by the count
  * after normalising, Blockbench's `updateUV` order.
  */
 export function cubeToMesh(cube: CubeSpec, node: number, textureFrameCounts: readonly number[] = []): SceneMesh {
@@ -35,7 +35,7 @@ export function cubeToMesh(cube: CubeSpec, node: number, textureFrameCounts: rea
     const corners = faceCornerPositions(face.direction, cube.min, cube.max);
     const cornerUvs = faceCornerUvs(face.uv, face.rotation);
     const [uMin, vMin, uMax, vMax] = faceUvRect(face.uv);
-    const frames = textureFrameCounts[face.material] ?? 1;
+    const frames = textureFrameCounts[face.frameTexture ?? face.material] ?? 1;
     const rect = [
       uMin / face.uvWidth,
       vMin / face.uvHeight / frames,

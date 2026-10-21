@@ -5,8 +5,8 @@ import { quoteValue } from '../text/quoteValue';
 
 /**
  * Blockbench's face texture: `null` is returned for an explicit `null` (a cube drops that face, a mesh draws it
- * untextured); absent or `false` is a blank face drawn untextured (−1); a number is a texture index, a string a texture
- * uuid.
+ * untextured); absent or `false` is a blank face (−1: untextured unless `faceMaterial` gives it the default texture); a number
+ * is a texture index, a string a texture uuid.
  */
 export function readFaceTexture(
   face: JsonObject,
@@ -33,6 +33,52 @@ export function readFaceTexture(
     );
   }
   return value;
+}
+
+/** What a face draws with once the model format's texture rules are applied. */
+export interface FaceMaterial {
+  /** Material index, −1 for none. */
+  readonly material: number;
+  /** Texture the face shows (its UV size and frame count apply), −1 for none. */
+  readonly texture: number;
+  readonly doubleSided: boolean;
+}
+
+/**
+ * Applies Blockbench's `Face.getTexture` to `stored` (`readFaceTexture`; `null` only reaches here from a mesh, which
+ * draws such a face untextured): a parent group texture wins in per-group formats; `single` formats show the default
+ * texture on every face, `singleDefault` formats on blank faces (on every face with per-group textures). With a layer
+ * composite every face draws with it, sided as the model format's default (`Canvas.getRenderSide`).
+ */
+export function faceMaterial(
+  stored: number | null,
+  context: Pick<
+    ConverterContext,
+    | 'textureDoubleSided'
+    | 'untexturedDoubleSided'
+    | 'textureRule'
+    | 'perGroupTexture'
+    | 'defaultTexture'
+    | 'groupTexture'
+    | 'layeredMaterial'
+  >,
+): FaceMaterial {
+  const texture = stored === null ? -1 : shownTexture(stored, context);
+  if (context.layeredMaterial !== undefined) {
+    return { material: context.layeredMaterial, texture, doubleSided: context.untexturedDoubleSided };
+  }
+  return { material: texture, texture, doubleSided: faceDoubleSided(texture, context) };
+}
+
+function shownTexture(
+  stored: number,
+  context: Pick<ConverterContext, 'textureRule' | 'perGroupTexture' | 'defaultTexture' | 'groupTexture'>,
+): number {
+  if (context.groupTexture !== undefined && context.groupTexture >= 0) return context.groupTexture;
+  const rule = context.textureRule ?? 'perFace';
+  const useDefault =
+    rule === 'single' || (rule === 'singleDefault' && (context.perGroupTexture === true || stored < 0));
+  return useDefault ? (context.defaultTexture ?? -1) : stored;
 }
 
 /** Whether faces with `material` (a texture index, −1 for none) show their back. */

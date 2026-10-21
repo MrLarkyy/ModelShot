@@ -2,7 +2,7 @@ import type { Vec3 } from '@modelshot/scene';
 import { BbmodelError } from './BbmodelError';
 import { FACE_DIRECTIONS, faceArea, type FaceDirection } from './CubeFace';
 import type { ConverterContext } from './ElementConverter';
-import { faceDoubleSided, readFaceTexture } from './FaceTexture';
+import { faceMaterial, readFaceTexture } from './FaceTexture';
 import { boxUvLayout, toFaceRotation, type FaceRotation, type FaceUv } from './faceUv';
 import { childPath, field, type JsonObject } from '../json/JsonObject';
 import {
@@ -22,8 +22,10 @@ export interface CubeFaceSpec {
   readonly direction: FaceDirection;
   readonly uv: FaceUv;
   readonly rotation: FaceRotation;
-  /** Texture index, −1 for none. */
+  /** Material index, −1 for none. */
   readonly material: number;
+  /** Texture whose frame count divides v; absent: `material`. */
+  readonly frameTexture?: number;
   /** UV size the face's uv is expressed in. */
   readonly uvWidth: number;
   readonly uvHeight: number;
@@ -155,8 +157,8 @@ function readFace(
   const value = field(faces, direction);
   if (value === undefined) return undefined;
   const face = readObject(value, path);
-  const material = readFaceTexture(face, path, context);
-  if (material === null) return undefined;
+  const stored = readFaceTexture(face, path, context);
+  if (stored === null) return undefined;
   const uvValue = field(face, 'uv');
   let uv: FaceUv;
   if (uvValue === undefined && boxUv) uv = boxUv;
@@ -174,14 +176,16 @@ function readFace(
       `expected 0, 90, 180 or 270, got ${quoteValue(rotationValue)}`,
     );
   }
-  const uvSize = material >= 0 ? context.textureUvSizes[material] : context.resolution;
+  const { material, texture, doubleSided } = faceMaterial(stored, context);
+  const uvSize = texture >= 0 ? context.textureUvSizes[texture] : context.resolution;
   return {
     direction,
     uv,
     rotation,
     material,
+    frameTexture: texture,
     uvWidth: uvSize?.width ?? context.resolution.width,
     uvHeight: uvSize?.height ?? context.resolution.height,
-    doubleSided: faceDoubleSided(material, context),
+    doubleSided,
   };
 }

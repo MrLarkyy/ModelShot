@@ -29,7 +29,12 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
 - **Render sides** (texture `render_sides`: `auto`, `front`, `double`) set `SceneMeshGroup.doubleSided` of every face
   with that texture; untextured faces follow the format.
 - **Per-texel alpha**: every material is `alphaMode: "blend"` with `alphaCutoff: 0.01`, as Blockbench draws textures
-  (see the [scene format](scene-format.md#scenematerial) for what each pass does with a texel).
+  (see the [scene format](scene-format.md#scenematerial) for what each pass does with a texel), except an `emissive`
+  texture's (below).
+- **Render modes** (MS-29, texture `render_mode`: `default`, `emissive`, `additive`, `layered`) map to the
+  optional [`SceneMaterial`](scene-format.md#scenematerial) fields `alphaMode`, `blending`, `alphaEmission` and
+  `layers` (Conversion); an unknown value warns and loads as `default`. In the single-texture formats a face shows
+  the format's default texture, as Blockbench draws it (Conversion, Blockbench conventions 15).
 - **Box UV** (`meta.box_uv` or the cube's `box_uv`): faces without a `uv` get Blockbench's box layout from
   `uv_offset`, the cube size and `mirror_uv`. The size is `to − from` of the plain cube (inflate and stretch ignored),
   floored as `floor(to − from + 1e-7)`, except in `modded_entity` where Blockbench keeps fractional box-UV sizes. In a
@@ -60,8 +65,10 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
 ## Not yet supported
 
 Skipped with an `UNSUPPORTED_ELEMENT` warning: `locator`, `null_object`, `texture_mesh`, `billboard`, `spline_mesh`,
-armatures and any other element type except `cube` and `mesh`. A texture `render_mode` (emissive, additive, layered)
-is not carried. Frame-strip textures load with their frame data (Supported) but no renderer or app plays them yet, and
+armatures and any other element type except `cube` and `mesh`. Render modes load into material fields (Supported)
+that no renderer draws yet (MS-32): emissive textures draw plainly lit, additive ones blended normally and a layer
+composite as its bottom texture. A texture's `pbr_channel`, `wrap_mode` and per-layer paint data (`layers`) are not
+read. Frame-strip textures load with their frame data (Supported) but no renderer or app plays them yet, and
 the per-frame times of a `custom` `frame_order` (`2:5`) are ignored, as in Blockbench's preview; a picked image's
 `.mcmeta` file is not read.
 
@@ -86,7 +93,8 @@ scale (played as the smallest positive scale).
   inflate change geometry only, never UVs.
 - Faces: `texture: null` removes the face (no triangles, its other fields are not read, it does not count towards
   `maxTriangles`); no `texture` key or `texture: false` is a blank face drawn untextured (material −1, UVs normalised
-  by the project resolution); a number is a texture index and a string a texture uuid (unknown → `INVALID_FIELD`).
+  by the project resolution) unless the format's default texture applies (below); a number is a texture index and a
+  string a texture uuid (unknown → `INVALID_FIELD`).
   A face object missing from `faces` produces no triangles. A face with zero area produces no triangles, so a flat
   cube keeps only its large faces, single-sided when both are drawn (see sidedness below). Blockbench instead pads the cube by
   0.001 and draws all six faces with the texture's sidedness; there, with a double-sided texture, both large faces
@@ -116,7 +124,31 @@ scale (played as the smallest positive scale).
   removed or absent, e.g. a glass pane) keeps its texture's sidedness, so it still shows from behind where the
   texture is double-sided, as in Blockbench.
 - `render_order`: `default` (or absent) → `renderOrder` 0, `behind` → −1, `in_front` → 1.
-- One material per texture, same index, `alphaMode: "blend"`, `alphaCutoff: 0.01`.
+- One material per texture, same index, by its `render_mode`; keys are present only when set, so a file without
+  render modes gives the same materials as before:
+
+  | `render_mode`                                 | material                                                          |
+  | --------------------------------------------- | ----------------------------------------------------------------- |
+  | `default` or absent                           | `alphaMode: "blend"`, `alphaCutoff: 0.01`                         |
+  | `emissive`                                    | `alphaMode: "mask"`, `alphaCutoff: 0.01`, `alphaEmission: true`   |
+  | `additive`                                    | `alphaMode: "blend"`, `alphaCutoff: 0.01`, `blending: "additive"` |
+  | `layered`                                     | as `default` (its own material); see the layer composite below    |
+  | anything else (unknown string, number, null…) | as `default`, `UNSUPPORTED_VALUE` at `$.textures[i].render_mode`  |
+
+- Layer composite: in a single-texture format (`bedrock`, `bedrock_old`, `modded_entity`, `skin`, `image`,
+  `bedrock_block`, `optifine_entity`, `optifine_part`) with two or more textures, one of them `layered` and at least
+  one `visible`, one more material follows the texture materials: `name: "layered"`, `alphaMode: "blend"`,
+  `alphaCutoff: 0.05`, `layers` the last three visible textures in file order, bottom first (a missing texture keeps
+  its slot), and `texture` the bottom layer. Every face the loader draws uses it, sided as the format's default (the
+  textures' `render_sides` and their own render modes do not apply); a cube face with `texture: null` stays removed.
+  In any other format `layered` is `default`.
+- Default texture (Blockbench conventions 15): in `bedrock`, `bedrock_old`, `modded_entity`, `skin` and `image`
+  every face (except `texture: null`) shows the default texture, whatever it stores; in `bedrock_block` blank faces do;
+  in `optifine_entity` and `optifine_part` every face shows its parent group's `texture` (a texture uuid; unknown →
+  `UNKNOWN_REFERENCE`, ignored) or else the default texture. The default texture is the first with `use_as_default`
+  (`bedrock_block`, `optifine_*`), else the last `visible` texture when there are two or more and one is `layered`,
+  else the first; none leaves the face untextured. UV size, frame division and sidedness follow the texture shown.
+  `free`, `java_block` and other formats keep each face's own texture.
 - Animations: keyframes of a format 5.0 file are taken in Blockbench's own convention, which is the scene's:
   Blockbench adds a keyframe's rotation (degrees) and position to the bone's three.js rotation and position, set from
   the group's `rotation` and `origin` as the loader reads them, and multiplies its scale. Files before format 5.0
@@ -143,8 +175,8 @@ format, quad order and split, normal sign, `render_sides`, `render_order` and th
 3. **Format 5.x groups**: group data (name, origin, rotation, visibility) lives in `groups`, the outliner holds
    `{ uuid, children }`; an outliner object whose uuid is not in `groups` is read as an inline group.
 4. **Face `texture`**: in a saved file `null` is a removed face (Blockbench does not draw it); an absent key is a blank
-   face (in memory `false`) drawn without texture; an integer is a texture index, a string a texture uuid from older
-   saves.
+   face (in memory `false`) drawn without texture, except where the format's default texture applies (15); an
+   integer is a texture index, a string a texture uuid from older saves.
 5. **Box UV layout** (w, h, d = box-UV size x, y, z): east at (0, d) d×h, north at (d, d) w×h, west at (d + w, d)
    d×h, south at (2d + w, d) w×h, up in (d, 0)–(d + w, d) stored turned 180° (`[d + w, d, d, 0]`), down in
    (d + w, 0)–(d + 2w, d) stored mirrored horizontally (`[d + 2w, 0, d + w, d]`), all shifted by `uv_offset`;
@@ -191,6 +223,21 @@ format, quad order and split, normal sign, `render_sides`, `render_order` and th
     order, only words) is left out as `loop`. A negative or infinite token leaves Blockbench's frame negative or NaN,
     which its cube preview draws as frame 0; ModelShot plays 0 there. Blockbench reads a numeric string in
     `frame_time` or `fps` as a number; ModelShot warns and uses the default.
+15. **Render modes and default texture** (MS-29, checked against the Blockbench 5 desktop bundle): the texture shader
+    discards texels with alpha below 0.01 in every mode. `emissive` (`EMISSIVE` branch) then forces the output alpha to
+    1 and lights each channel by `L + (1 − L)(1 − a)`, so a texel of colour c shows `c · a · L + c · (1 − a)`: alpha is
+    an inverted emission mask (Bedrock's `entity_emissive_alpha`), an opaque texel is plainly lit. `additive` is lit
+    like `default` with `AdditiveBlending`; Blockbench writes its depth, ModelShot keeps it order-independent and
+    non-occluding. `layered`: the cube and mesh controllers give every element one `Canvas.getLayeredMaterial` when
+    `Format.single_texture` or `Format.single_texture_default` holds, there are two or more textures and one is
+    `layered`; it composites up to three visible textures from the end of the list (last on top) with the over
+    operator, lit, discarding composite alpha below 0.05, sided by `Canvas.getRenderSide()`. Elsewhere
+    `Texture.getMaterial` returns the texture's own material, so `layered` draws as `default`. `Face.getTexture`:
+    a parent group's `texture` under `Format.per_group_texture`; else, unless the face is `null`, `Texture.getDefault()`
+    under `single_texture`, or under `single_texture_default` with per-group textures or on a blank face; else the
+    stored texture. `Texture.getDefault`: a `use_as_default` texture under `single_texture_default`, else the selected
+    texture (runtime state, never saved: ModelShot treats it as unset, as in a freshly opened project), else the last
+    visible texture when there are two or more and one is `layered`, else the first.
 
 ## Limits
 
@@ -260,8 +307,8 @@ The model still loads; at most 100 warnings are kept (`MAX_BBMODEL_WARNINGS`). E
 | code                  | when                                                                                                   |
 | --------------------- | ------------------------------------------------------------------------------------------------------ |
 | `UNSUPPORTED_ELEMENT` | an element type other than `cube` or `mesh`; skipped                                                   |
-| `UNSUPPORTED_VALUE`   | an unknown `render_order`, `render_sides` or `shading` string; the default is used                     |
-| `UNKNOWN_REFERENCE`   | an outliner entry names a uuid no element has; skipped                                                 |
+| `UNSUPPORTED_VALUE`   | an unknown `render_order`, `render_sides`, `render_mode` or `shading` string; the default is used      |
+| `UNKNOWN_REFERENCE`   | an outliner entry names a uuid no element has, or an optifine group `texture` no texture has; skipped  |
 | `SOURCE_NOT_FETCHED`  | a texture `source` that is not a data URI (a URL or file path); never fetched                          |
 | `MISSING_TEXTURE`     | no embedded image and no matching picked file; the texture is `missing`                                |
 | `UNSUPPORTED_CHANNEL` | an animation part not played as authored (Not yet supported); once per animation, animator and channel |
@@ -272,6 +319,11 @@ over `MAX_FRAME_ORDER_CHARS` (plain order), for `custom` tokens that are negativ
 for a `custom` order whose tokens that are no number repeat over more than `MAX_FRAME_ORDER_LENGTH` steps (those
 tokens are dropped), and for a strip whose frames would be under one pixel tall (more frames than image rows; drawn
 as one image).
+
+Textures also warn `UNSUPPORTED_VALUE` for a `render_mode` that is no known mode, of any type (`default` is used),
+and for a `visible` or `use_as_default` that is no boolean (`true` and `false` are used); in `optifine_entity` and
+`optifine_part` a group `texture` that is no string warns `UNSUPPORTED_VALUE` and one naming no texture
+`UNKNOWN_REFERENCE`, both ignored. None of these fails a file: the fields were ignored before MS-29.
 
 Animations also warn `UNSUPPORTED_VALUE` for an unknown `loop` (played `once`) or interpolation (played linear),
 `anim_time_update`, `start_delay`, `loop_delay`, `blend_weight` other than their defaults and negative scale, and
@@ -299,6 +351,15 @@ on a strip texture now maps into frame 0, as Blockbench shows it, where it used 
 squeezed onto the face), and the texture gains `frames`. Such models render differently from earlier releases.
 Every other file loads exactly as before, and frame fields only ever warn (wrong types, an over-long `frame_order`),
 so no file that loaded before fails.
+
+MS-29 reads texture render modes and Blockbench's default-texture rule, a behaviour change for files that loaded
+before: an `emissive` texture's material becomes `alphaMode: "mask"` with `alphaEmission` (its partly transparent
+texels now draw opaque, as in Blockbench); `additive` gains `blending`; in the single-texture formats a file with a
+`layered` texture gets one more material that every face uses, and faces show the default texture (Conversion), so
+blank faces of a `bedrock` model that used to draw untextured now show its texture, and faces that stored another
+texture show the default one. Files in `free` and `java_block` without render modes load exactly as before; the new
+fields only ever warn, so no file that loaded before fails. Reload affected models; scene documents need no
+migration (scene format version 1, [Versioning](scene-format.md#versioning)).
 
 ## Local-first
 

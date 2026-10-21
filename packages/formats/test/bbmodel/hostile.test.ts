@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cubeToMesh } from '../../src/bbmodel/cubeToMesh';
 import { meshElementToMesh } from '../../src/bbmodel/meshToMesh';
 import { decodeDataUri } from '../../src/dataUri/decodeDataUri';
-import { BbmodelError, loadBbmodel, type BbmodelErrorCode, type BbmodelLoadOptions } from '../../src/index';
+import {
+  BbmodelError,
+  DEFAULT_BBMODEL_LIMITS,
+  loadBbmodel,
+  type BbmodelErrorCode,
+  type BbmodelLoadOptions,
+} from '../../src/index';
 import { cube, mesh, meshFace, model, pngDataUri } from './fixtures';
 
 // Spies on the two places that allocate buffers proportional to the input: geometry and texture bytes.
@@ -336,6 +342,17 @@ describe('hostile content is inert', () => {
       ['MISSING_TEXTURE', '$.textures[0]'],
     ]);
     for (const warning of warnings) expect(warning.message).not.toMatch(/A{33}/);
+  });
+
+  it('the most textures, all layered, composite at most three and load within a second', () => {
+    const max = DEFAULT_BBMODEL_LIMITS.maxTextures;
+    const textures = Array.from({ length: max }, (_, i) => ({ name: `t${i}`, render_mode: 'layered', uuid: LONG + i }));
+    const start = performance.now();
+    const { scene } = loadBbmodel(json(model({ meta: { format_version: '4.5', model_format: 'bedrock' }, textures })));
+    expect(performance.now() - start).toBeLessThan(1000);
+    expect(scene.materials).toHaveLength(max + 1);
+    expect(scene.materials[max]?.layers).toEqual([max - 3, max - 2, max - 1]);
+    expect(scene.meshes[0]?.groups.map((g) => g.material)).toEqual([max]);
   });
 
   it('a texture is matched only against files the caller picked', () => {

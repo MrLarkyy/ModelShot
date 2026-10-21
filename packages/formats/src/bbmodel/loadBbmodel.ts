@@ -1,10 +1,10 @@
 import { SCENE_FORMAT_VERSION, type SceneMesh, type SceneNode } from '@modelshot/scene';
 import { BbmodelError } from './BbmodelError';
-import { BLOCKBENCH_ALPHA_CUTOFF } from './blockbenchAlpha';
 import { resolveBbmodelLimits, type BbmodelLimits, type BbmodelLoadOptions } from './BbmodelLoadOptions';
 import type { BbmodelLoadResult } from './BbmodelLoadResult';
+import { bbmodelMaterials, layeredStack } from './bbmodelMaterials';
 import { BbmodelWarningList } from './BbmodelWarning';
-import { buildHierarchy, type ElementPlacement } from './buildHierarchy';
+import { buildHierarchy, type ElementPlacement, type GroupTexture } from './buildHierarchy';
 import type { ConverterContext, PreparedElement } from './ElementConverter';
 import { ELEMENT_CONVERTERS } from './elementConverters';
 import { formatVersionBefore } from './formatVersionBefore';
@@ -22,6 +22,7 @@ import { readTextureEntries, resolveTextures, textureIdIndex, type UvSize } from
 import { quoteValue } from '../text/quoteValue';
 import { readJson } from './readJson';
 import { formatDoubleSided, isDoubleSided } from './RenderSides';
+import { defaultTexture, formatPerGroupTexture, formatTextureRule } from './TextureRule';
 
 const SUPPORTED_MAJOR_VERSIONS = [3, 4, 5];
 const DEFAULT_RESOLUTION: UvSize = { width: 16, height: 16 };
@@ -64,17 +65,27 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
   const elementObjects = elements.map((item, index) => readObject(item, childPath('$.elements', index)));
   // Before 3.2 Blockbench stored group z rotations with the opposite sign and negates them on import.
   const invertGroupZ = formatVersionBefore(formatVersion, '3.2');
+  const perGroupTexture = formatPerGroupTexture(modelFormat);
   const hierarchy = buildHierarchy(root, elementIds(elementObjects, limits), elements.length, limits, warnings, {
     invertGroupZ,
+    readGroupTextures: perGroupTexture,
   });
   const boxUv = readOptionalBoolean(meta, 'box_uv', '$.meta', false);
 
+  const textureIds = textureIdIndex(textureEntries);
+  const textureRule = formatTextureRule(modelFormat);
+  const stack = layeredStack(textureEntries, modelFormat);
   const context: ConverterContext = {
     textureUvSizes: textureEntries.map((entry) => ({ width: entry.uvWidth, height: entry.uvHeight })),
     resolution,
-    textureIds: textureIdIndex(textureEntries),
+    textureIds,
     textureDoubleSided: textureEntries.map((entry) => isDoubleSided(entry.renderSides, formatDefaultSides)),
     untexturedDoubleSided: formatDefaultSides,
+    textureRule,
+    perGroupTexture,
+    defaultTexture: defaultTexture(textureRule, textureEntries),
+    // The composite follows the texture materials, so material i stays texture i.
+    ...(stack ? { layeredMaterial: textureEntries.length } : {}),
     boxUv,
     // Before 4.5 a box-UV project kept "mirror UV" in the cube's `shade` flag; Blockbench reads `shade: false` as
     // mirrored on import.
@@ -85,7 +96,8 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
     maxFaceVertices: limits.maxFaceVertices,
     warnings,
   };
-  const placed = prepareElements(elementObjects, hierarchy.placements, context, limits, warnings);
+  const nodeTextures = hierarchy.groupTextures.map((texture) => groupTextureIndex(texture, textureIds, warnings));
+  const placed = prepareElements(elementObjects, hierarchy.placements, nodeTextures, context, limits, warnings);
   const animations = parseAnimations(root, hierarchy.nodes, { formatVersion, modelFormat }, limits, warnings);
 
   // Every limit has passed; only now are texture bytes decoded and geometry buffers allocated.
@@ -108,12 +120,7 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
       source: { format: 'bbmodel', formatVersion, modelFormat },
       nodes,
       meshes,
-      materials: textures.map((texture, index) => ({
-        name: texture.name,
-        texture: index,
-        alphaMode: 'blend',
-        alphaCutoff: BLOCKBENCH_ALPHA_CUTOFF,
-      })),
+      materials: bbmodelMaterials(textures, textureEntries, stack),
       textures,
       rootNodes: hierarchy.rootNodes,
       // Absent rather than empty, so a file without animations loads exactly as before animations were read.
@@ -147,6 +154,19 @@ function readResolution(root: JsonObject): UvSize {
   };
 }
 
+/** A group texture uuid as a texture index; −1 when unset or unknown (warned and ignored). */
+function groupTextureIndex(
+  texture: GroupTexture | undefined,
+  textureIds: ReadonlyMap<string, number>,
+  warnings: BbmodelWarningList,
+): number {
+  if (texture === undefined) return -1;
+  const index = textureIds.get(texture.uuid);
+  if (index !== undefined) return index;
+  warnings.add('UNKNOWN_REFERENCE', texture.path, `no texture with uuid ${quoteValue(texture.uuid)}`);
+  return -1;
+}
+
 function elementIds(elements: readonly JsonObject[], limits: BbmodelLimits): Map<string, number> {
   const ids = new Map<string, number>();
   elements.forEach((element, index) => {
@@ -165,6 +185,7 @@ function elementIds(elements: readonly JsonObject[], limits: BbmodelLimits): Map
 function prepareElements(
   elements: readonly JsonObject[],
   placements: readonly ElementPlacement[],
+  nodeTextures: readonly number[],
   context: ConverterContext,
   limits: BbmodelLimits,
   warnings: BbmodelWarningList,
@@ -182,7 +203,8 @@ function prepareElements(
       warnings.add('UNSUPPORTED_ELEMENT', path, `type ${quoteValue(type)} is not supported yet`);
       continue;
     }
-    const prepared = converter.prepare(element, path, context);
+    const groupTexture = node >= 0 ? (nodeTextures[node] ?? -1) : -1;
+    const prepared = converter.prepare(element, path, groupTexture >= 0 ? { ...context, groupTexture } : context);
     triangles += prepared.triangleCount;
     if (triangles > limits.maxTriangles) {
       throw new BbmodelError('TOO_MANY_TRIANGLES', path, `more than ${limits.maxTriangles} triangles`);

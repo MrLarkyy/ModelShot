@@ -6,3 +6,6 @@ to these files. See https://creativecommons.org/publicdomain/zero/1.0/
 
 frame-strip.bbmodel (MS-27) is ours too: its two embedded PNGs (a 16×64 strip of four flat colours and a 16×16
 checker) were generated for this test, CC0-1.0 like the rest.
+
+render-modes.bbmodel and layered.bbmodel (MS-29) are ours too: their embedded 2×2 PNGs (flat colours, stripes, spots and
+a half-transparent emission mask) were generated for this test, CC0-1.0 like the rest.
