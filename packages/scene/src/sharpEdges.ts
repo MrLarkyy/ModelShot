@@ -41,47 +41,74 @@ export interface SharpEdgeAttributes {
   readonly edgeCount: number;
 }
 
-/** One side of a sharp edge: what a triangle of the patch on that side needs to measure its distance to the edge. */
-interface EdgeSide {
-  readonly a: readonly [number, number, number];
-  readonly b: readonly [number, number, number];
-  /** Unit direction in the owning triangle's plane, perpendicular to the edge, toward the interior. */
-  readonly inward: readonly [number, number, number];
-  readonly angle: number;
-  /** Bounds of the segment grown by the reach: [minX, minY, minZ, maxX, maxY, maxZ]. */
-  readonly box: readonly number[];
+function tableSize(entries: number): number {
+  let size = 2;
+  while (size < entries * 2) size *= 2;
+  return size;
 }
 
-type V3 = [number, number, number];
-
-const sub = (a: readonly number[], b: readonly number[]): V3 => [
-  (a[0] ?? 0) - (b[0] ?? 0),
-  (a[1] ?? 0) - (b[1] ?? 0),
-  (a[2] ?? 0) - (b[2] ?? 0),
-];
-const dot = (a: readonly number[], b: readonly number[]): number =>
-  (a[0] ?? 0) * (b[0] ?? 0) + (a[1] ?? 0) * (b[1] ?? 0) + (a[2] ?? 0) * (b[2] ?? 0);
-const cross = (a: readonly number[], b: readonly number[]): V3 => [
-  (a[1] ?? 0) * (b[2] ?? 0) - (a[2] ?? 0) * (b[1] ?? 0),
-  (a[2] ?? 0) * (b[0] ?? 0) - (a[0] ?? 0) * (b[2] ?? 0),
-  (a[0] ?? 0) * (b[1] ?? 0) - (a[1] ?? 0) * (b[0] ?? 0),
-];
-
-function pointSegmentDistance(p: readonly number[], a: readonly number[], b: readonly number[]): number {
-  const ab = sub(b, a);
-  const length = dot(ab, ab);
-  const t = length > 0 ? Math.min(1, Math.max(0, dot(sub(p, a), ab) / length)) : 0;
-  return Math.hypot(...sub(p, [(a[0] ?? 0) + ab[0] * t, (a[1] ?? 0) + ab[1] * t, (a[2] ?? 0) + ab[2] * t]));
+/**
+ * One id per distinct position (quantised to `EDGE_WELD_DISTANCE`), in vertex order, so faces with their own vertices
+ * (every Blockbench cube face) still meet; −1 for a vertex with a non-finite coordinate. Open addressing: the large
+ * meshes the loaders allow weld in milliseconds.
+ */
+function weldPositions(positions: Float32Array, vertexCount: number): { ids: Int32Array; count: number } {
+  const ids = new Int32Array(vertexCount).fill(-1);
+  const quantised = new Float64Array(vertexCount * 3);
+  const size = tableSize(vertexCount);
+  const table = new Int32Array(size).fill(-1);
+  let count = 0;
+  for (let v = 0; v < vertexCount; v++) {
+    const x = positions[v * 3] ?? NaN;
+    const y = positions[v * 3 + 1] ?? NaN;
+    const z = positions[v * 3 + 2] ?? NaN;
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+    // + 0 turns −0 into 0, so a position on either side of zero welds.
+    const qx = Math.round(x / EDGE_WELD_DISTANCE) + 0;
+    const qy = Math.round(y / EDGE_WELD_DISTANCE) + 0;
+    const qz = Math.round(z / EDGE_WELD_DISTANCE) + 0;
+    quantised[v * 3] = qx;
+    quantised[v * 3 + 1] = qy;
+    quantised[v * 3 + 2] = qz;
+    let slot = (Math.imul(qx | 0, 73856093) ^ Math.imul(qy | 0, 19349663) ^ Math.imul(qz | 0, 83492791)) & (size - 1);
+    for (;;) {
+      const other = table[slot] ?? -1;
+      if (other < 0) {
+        table[slot] = v;
+        ids[v] = count++;
+        break;
+      }
+      if (quantised[other * 3] === qx && quantised[other * 3 + 1] === qy && quantised[other * 3 + 2] === qz) {
+        ids[v] = ids[other] ?? -1;
+        break;
+      }
+      slot = (slot + 1) & (size - 1);
+    }
+  }
+  return { ids, count };
 }
 
-/** Distance between two segments that do not cross (edges of one surface): the nearest of their endpoints' distances. */
-function segmentDistance(a: readonly number[], b: readonly number[], c: readonly number[], d: readonly number[]) {
-  return Math.min(
-    pointSegmentDistance(a, c, d),
-    pointSegmentDistance(b, c, d),
-    pointSegmentDistance(c, a, b),
-    pointSegmentDistance(d, a, b),
-  );
+/** Squared distance from point p to the segment a-b. */
+function pointSegmentSquared(
+  px: number,
+  py: number,
+  pz: number,
+  ax: number,
+  ay: number,
+  az: number,
+  bx: number,
+  by: number,
+  bz: number,
+): number {
+  const ex = bx - ax;
+  const ey = by - ay;
+  const ez = bz - az;
+  const length = ex * ex + ey * ey + ez * ez;
+  const t = length > 0 ? Math.min(1, Math.max(0, ((px - ax) * ex + (py - ay) * ey + (pz - az) * ez) / length)) : 0;
+  const dx = px - (ax + ex * t);
+  const dy = py - (ay + ey * t);
+  const dz = pz - (az + ez * t);
+  return dx * dx + dy * dy + dz * dz;
 }
 
 function find(parent: Int32Array, i: number): number {
@@ -112,52 +139,76 @@ export function sharpEdges(mesh: SceneMesh, options: SharpEdgeOptions): SharpEdg
   for (let i = 0; i < triangles * 3; i++) {
     if ((indices[i] ?? 0) >= vertexCount) throw new RangeError(`sharpEdges: index ${i} is out of range`);
   }
-  const point = (v: number): V3 => [positions[v * 3] ?? 0, positions[v * 3 + 1] ?? 0, positions[v * 3 + 2] ?? 0];
   const corner = (t: number, c: number): number => indices[t * 3 + c] ?? 0;
-
-  // One id per distinct position, so faces with their own vertices (every Blockbench cube face) still meet.
-  const ids = new Int32Array(vertexCount).fill(-1);
-  const byPosition = new Map<string, number>();
-  for (let v = 0; v < vertexCount; v++) {
-    const p = point(v);
-    if (!p.every(Number.isFinite)) continue;
-    const key = p.map((x) => Math.round(x / EDGE_WELD_DISTANCE)).join(',');
-    let id = byPosition.get(key);
-    if (id === undefined) {
-      id = byPosition.size;
-      byPosition.set(key, id);
-    }
-    ids[v] = id;
-  }
+  const px = (v: number): number => positions[v * 3] ?? 0;
+  const py = (v: number): number => positions[v * 3 + 1] ?? 0;
+  const pz = (v: number): number => positions[v * 3 + 2] ?? 0;
+  const { ids } = weldPositions(positions, vertexCount);
 
   const faceNormals = new Float64Array(triangles * 3);
   const valid = new Uint8Array(triangles);
   for (let t = 0; t < triangles; t++) {
-    if (![0, 1, 2].every((c) => (ids[corner(t, c)] ?? -1) >= 0)) continue;
-    const p0 = point(corner(t, 0));
-    const n = cross(sub(point(corner(t, 1)), p0), sub(point(corner(t, 2)), p0));
-    const length = Math.hypot(...n);
+    const v0 = corner(t, 0);
+    const v1 = corner(t, 1);
+    const v2 = corner(t, 2);
+    const i0 = ids[v0] ?? -1;
+    const i1 = ids[v1] ?? -1;
+    const i2 = ids[v2] ?? -1;
+    if (i0 < 0 || i1 < 0 || i2 < 0 || i0 === i1 || i1 === i2 || i0 === i2) continue;
+    const ux = px(v1) - px(v0);
+    const uy = py(v1) - py(v0);
+    const uz = pz(v1) - pz(v0);
+    const wx = px(v2) - px(v0);
+    const wy = py(v2) - py(v0);
+    const wz = pz(v2) - pz(v0);
+    const nx = uy * wz - uz * wy;
+    const ny = uz * wx - ux * wz;
+    const nz = ux * wy - uy * wx;
+    const length = Math.hypot(nx, ny, nz);
     if (!(length > 0) || !Number.isFinite(length)) continue;
-    const distinct = new Set([0, 1, 2].map((c) => ids[corner(t, c)]));
-    if (distinct.size < 3) continue;
     valid[t] = 1;
-    faceNormals.set([n[0] / length, n[1] / length, n[2] / length], t * 3);
+    faceNormals[t * 3] = nx / length;
+    faceNormals[t * 3 + 1] = ny / length;
+    faceNormals[t * 3 + 2] = nz / length;
   }
 
-  // Edge key → its first and second triangle side (t * 3 + i, edge i from corner i to i + 1); more marks non-manifold.
-  const distinctIds = byPosition.size;
-  const first = new Map<number, number>();
-  const second = new Map<number, number>();
-  const crowded = new Set<number>();
+  // Edges in order of first appearance: their two id ends, first and second triangle side (t * 3 + i, edge i from
+  // corner i to i + 1) and how many sides meet there (3 or more: not manifold).
+  const maxEdges = triangles * 3;
+  const edgeLow = new Int32Array(maxEdges);
+  const edgeHigh = new Int32Array(maxEdges);
+  const edgeFirst = new Int32Array(maxEdges);
+  const edgeSecond = new Int32Array(maxEdges);
+  const edgeSides = new Uint8Array(maxEdges);
+  const edgeSize = tableSize(maxEdges);
+  const edgeTable = new Int32Array(edgeSize).fill(-1);
+  let edges = 0;
   for (let t = 0; t < triangles; t++) {
     if (!valid[t]) continue;
     for (let i = 0; i < 3; i++) {
       const a = ids[corner(t, i)] ?? 0;
       const b = ids[corner(t, (i + 1) % 3)] ?? 0;
-      const key = Math.min(a, b) * distinctIds + Math.max(a, b);
-      if (!first.has(key)) first.set(key, t * 3 + i);
-      else if (!second.has(key)) second.set(key, t * 3 + i);
-      else crowded.add(key);
+      const low = Math.min(a, b);
+      const high = Math.max(a, b);
+      let slot = (Math.imul(low, 0x9e3779b1) ^ Math.imul(high, 0x85ebca77)) & (edgeSize - 1);
+      for (;;) {
+        const e = edgeTable[slot] ?? -1;
+        if (e < 0) {
+          edgeTable[slot] = edges;
+          edgeLow[edges] = low;
+          edgeHigh[edges] = high;
+          edgeFirst[edges] = t * 3 + i;
+          edgeSides[edges] = 1;
+          edges++;
+          break;
+        }
+        if (edgeLow[e] === low && edgeHigh[e] === high) {
+          if (edgeSides[e] === 1) edgeSecond[e] = t * 3 + i;
+          edgeSides[e] = Math.min(3, (edgeSides[e] ?? 0) + 1);
+          break;
+        }
+        slot = (slot + 1) & (edgeSize - 1);
+      }
     }
   }
 
@@ -166,32 +217,32 @@ export function sharpEdges(mesh: SceneMesh, options: SharpEdgeOptions): SharpEdg
   const foldCos = Math.cos((MAX_SHARP_ANGLE_DEG * Math.PI) / 180);
   const sameNormal = (v: number, w: number): boolean =>
     v === w ||
-    dot(
-      [normals[v * 3] ?? 0, normals[v * 3 + 1] ?? 0, normals[v * 3 + 2] ?? 0],
-      [normals[w * 3] ?? 0, normals[w * 3 + 1] ?? 0, normals[w * 3 + 2] ?? 0],
-    ) >
+    (normals[v * 3] ?? 0) * (normals[w * 3] ?? 0) +
+      (normals[v * 3 + 1] ?? 0) * (normals[w * 3 + 1] ?? 0) +
+      (normals[v * 3 + 2] ?? 0) * (normals[w * 3 + 2] ?? 0) >
       1 - 1e-6;
-  const faceNormal = (t: number): V3 => [
-    faceNormals[t * 3] ?? 0,
-    faceNormals[t * 3 + 1] ?? 0,
-    faceNormals[t * 3 + 2] ?? 0,
-  ];
-  const sharpPairs: [number, number, number][] = [];
-  for (const [key, sideA] of first) {
-    const sideB = second.get(key);
-    if (sideB === undefined || crowded.has(key)) continue;
+  const faceDot = (s: number, t: number): number =>
+    (faceNormals[s * 3] ?? 0) * (faceNormals[t * 3] ?? 0) +
+    (faceNormals[s * 3 + 1] ?? 0) * (faceNormals[t * 3 + 1] ?? 0) +
+    (faceNormals[s * 3 + 2] ?? 0) * (faceNormals[t * 3 + 2] ?? 0);
+  // Per sharp edge: its two sides and its signed angle.
+  const pairs: number[] = [];
+  for (let e = 0; e < edges; e++) {
+    if (edgeSides[e] !== 2) continue;
+    const sideA = edgeFirst[e] ?? 0;
+    const sideB = edgeSecond[e] ?? 0;
     const ta = Math.floor(sideA / 3);
     const tb = Math.floor(sideB / 3);
     if (ta === tb) continue;
-    const cos = dot(faceNormal(ta), faceNormal(tb));
+    const cos = faceDot(ta, tb);
     if (cos <= foldCos) continue;
     // Endpoints of the edge in each triangle, matched by position id.
     const a0 = corner(ta, sideA % 3);
     const a1 = corner(ta, ((sideA % 3) + 1) % 3);
     const b0 = corner(tb, sideB % 3);
     const b1 = corner(tb, ((sideB % 3) + 1) % 3);
-    const [m0, m1] = ids[a0] === ids[b0] ? [b0, b1] : [b1, b0];
-    const smooth = sameNormal(a0, m0) && sameNormal(a1, m1);
+    const sameOrder = ids[a0] === ids[b0];
+    const smooth = sameNormal(a0, sameOrder ? b0 : b1) && sameNormal(a1, sameOrder ? b1 : b0);
     if (cos > sharpCos || smooth) {
       parent[find(parent, ta)] = find(parent, tb);
       continue;
@@ -199,11 +250,15 @@ export function sharpEdges(mesh: SceneMesh, options: SharpEdgeOptions): SharpEdg
     const angle = Math.acos(Math.max(-1, Math.min(1, cos)));
     // Convex where the other face's far corner lies below this face's plane.
     const far = corner(tb, ((sideB % 3) + 2) % 3);
-    const convex = dot(faceNormal(ta), sub(point(far), point(a0))) < 0;
-    sharpPairs.push([sideA, sideB, convex ? angle : -angle]);
+    const below =
+      (faceNormals[ta * 3] ?? 0) * (px(far) - px(a0)) +
+      (faceNormals[ta * 3 + 1] ?? 0) * (py(far) - py(a0)) +
+      (faceNormals[ta * 3 + 2] ?? 0) * (pz(far) - pz(a0));
+    pairs.push(sideA, sideB, below < 0 ? angle : -angle);
   }
+  const edgeCount = pairs.length / 3;
 
-  if (sharpPairs.length === 0) {
+  if (edgeCount === 0) {
     return {
       vertexOf: Uint32Array.from({ length: vertexCount }, (_, i) => i),
       indices: Uint32Array.from(indices.subarray(0, triangles * 3)),
@@ -213,112 +268,262 @@ export function sharpEdges(mesh: SceneMesh, options: SharpEdgeOptions): SharpEdg
     };
   }
 
-  // Each sharp edge has a side in the patch of either triangle.
-  const sidesByPatch = new Map<number, number[]>();
-  const sides: EdgeSide[] = [];
+  // Each sharp edge has a side in the patch of either triangle: its segment, the unit direction in the owning
+  // triangle's plane perpendicular to it toward the interior, its angle and its bounds grown by the reach.
+  const sides = edgeCount * 2;
+  const sideA = new Float64Array(sides * 3);
+  const sideB = new Float64Array(sides * 3);
+  const inward = new Float64Array(sides * 3);
+  const sideAngle = new Float64Array(sides);
+  const sideBox = new Float64Array(sides * 6);
+  const sidePatch = new Int32Array(sides);
   const reach = Math.max(0, options.reach);
-  for (const [sideA, sideB, angle] of sharpPairs) {
-    for (const side of [sideA, sideB]) {
-      const t = Math.floor(side / 3);
-      const a = point(corner(t, side % 3));
-      const b = point(corner(t, ((side % 3) + 1) % 3));
-      const opposite = point(corner(t, ((side % 3) + 2) % 3));
-      const along = sub(b, a);
-      const inward = cross(faceNormal(t), along);
-      const length = Math.hypot(...inward);
-      const unit: V3 = [inward[0] / length, inward[1] / length, inward[2] / length];
-      if (dot(unit, sub(opposite, a)) < 0) unit.forEach((x, k) => (unit[k] = -x));
-      const box = [0, 1, 2].map((k) => Math.min(a[k] ?? 0, b[k] ?? 0) - reach);
-      box.push(...[0, 1, 2].map((k) => Math.max(a[k] ?? 0, b[k] ?? 0) + reach));
-      const patch = find(parent, t);
-      let list = sidesByPatch.get(patch);
-      if (!list) {
-        list = [];
-        sidesByPatch.set(patch, list);
-      }
-      list.push(sides.length);
-      sides.push({ a, b, inward: unit, angle, box });
+  for (let s = 0; s < sides; s++) {
+    const side = pairs[Math.floor(s / 2) * 3 + (s % 2)] ?? 0;
+    const t = Math.floor(side / 3);
+    const va = corner(t, side % 3);
+    const vb = corner(t, ((side % 3) + 1) % 3);
+    const vo = corner(t, ((side % 3) + 2) % 3);
+    const ax = px(va);
+    const ay = py(va);
+    const az = pz(va);
+    const bx = px(vb);
+    const by = py(vb);
+    const bz = pz(vb);
+    const ex = bx - ax;
+    const ey = by - ay;
+    const ez = bz - az;
+    const fx = faceNormals[t * 3] ?? 0;
+    const fy = faceNormals[t * 3 + 1] ?? 0;
+    const fz = faceNormals[t * 3 + 2] ?? 0;
+    let ix = fy * ez - fz * ey;
+    let iy = fz * ex - fx * ez;
+    let iz = fx * ey - fy * ex;
+    const length = Math.hypot(ix, iy, iz);
+    ix /= length;
+    iy /= length;
+    iz /= length;
+    if (ix * (px(vo) - ax) + iy * (py(vo) - ay) + iz * (pz(vo) - az) < 0) {
+      ix = -ix;
+      iy = -iy;
+      iz = -iz;
     }
+    sideA[s * 3] = ax;
+    sideA[s * 3 + 1] = ay;
+    sideA[s * 3 + 2] = az;
+    sideB[s * 3] = bx;
+    sideB[s * 3 + 1] = by;
+    sideB[s * 3 + 2] = bz;
+    inward[s * 3] = ix;
+    inward[s * 3 + 1] = iy;
+    inward[s * 3 + 2] = iz;
+    sideAngle[s] = pairs[Math.floor(s / 2) * 3 + 2] ?? 0;
+    sideBox[s * 6] = Math.min(ax, bx) - reach;
+    sideBox[s * 6 + 1] = Math.min(ay, by) - reach;
+    sideBox[s * 6 + 2] = Math.min(az, bz) - reach;
+    sideBox[s * 6 + 3] = Math.max(ax, bx) + reach;
+    sideBox[s * 6 + 4] = Math.max(ay, by) + reach;
+    sideBox[s * 6 + 5] = Math.max(az, bz) + reach;
+    sidePatch[s] = find(parent, t);
+  }
+  // Sides grouped by patch (the root triangle), in side order.
+  const patchStart = new Int32Array(triangles + 1);
+  for (let s = 0; s < sides; s++) {
+    const next = (sidePatch[s] ?? 0) + 1;
+    patchStart[next] = (patchStart[next] ?? 0) + 1;
+  }
+  for (let t = 0; t < triangles; t++) patchStart[t + 1] = (patchStart[t + 1] ?? 0) + (patchStart[t] ?? 0);
+  const patchSides = new Int32Array(sides);
+  const filled = new Int32Array(triangles);
+  for (let s = 0; s < sides; s++) {
+    const patch = sidePatch[s] ?? 0;
+    patchSides[(patchStart[patch] ?? 0) + (filled[patch] ?? 0)] = s;
+    filled[patch] = (filled[patch] ?? 0) + 1;
   }
 
-  // Slots per triangle: side ids in ascending order.
-  const slots: (number[] | null)[] = new Array<number[] | null>(triangles).fill(null);
+  // Slots per triangle: up to EDGE_SLOTS side ids, ascending.
+  const slots = new Int32Array(triangles * EDGE_SLOTS).fill(-1);
+  const bestDistance = new Float64Array(EDGE_SLOTS);
+  const bestSide = new Int32Array(EDGE_SLOTS);
+  const q = new Float64Array(9);
   let checks = 0;
   for (let t = 0; t < triangles && checks < MAX_EDGE_CHECKS; t++) {
     if (!valid[t]) continue;
-    const list = sidesByPatch.get(find(parent, t));
-    if (!list) continue;
-    const p = [0, 1, 2].map((c) => point(corner(t, c)));
-    const min = [0, 1, 2].map((k) => Math.min(...p.map((q) => q[k] ?? 0)));
-    const max = [0, 1, 2].map((k) => Math.max(...p.map((q) => q[k] ?? 0)));
-    const near: [number, number][] = [];
-    for (const id of list) {
-      if (++checks > MAX_EDGE_CHECKS) break;
-      const side = sides[id];
-      if (!side) continue;
-      if ([0, 1, 2].some((k) => (min[k] ?? 0) > (side.box[k + 3] ?? 0) || (max[k] ?? 0) < (side.box[k] ?? 0))) continue;
-      if (p.some((q) => dot(sub(q, side.a), side.inward) < -EDGE_WELD_DISTANCE)) continue;
-      let distance = Infinity;
-      for (let c = 0; c < 3; c++) {
-        distance = Math.min(distance, segmentDistance(p[c] ?? [0, 0, 0], p[(c + 1) % 3] ?? [0, 0, 0], side.a, side.b));
-      }
-      if (distance <= reach) near.push([distance, id]);
+    const patch = find(parent, t);
+    const start = patchStart[patch] ?? 0;
+    const end = patchStart[patch + 1] ?? 0;
+    if (start === end) continue;
+    for (let c = 0; c < 3; c++) {
+      const v = corner(t, c);
+      q[c * 3] = px(v);
+      q[c * 3 + 1] = py(v);
+      q[c * 3 + 2] = pz(v);
     }
-    if (near.length === 0) continue;
-    near.sort((x, y) => x[0] - y[0] || x[1] - y[1]);
-    slots[t] = near
-      .slice(0, EDGE_SLOTS)
-      .map(([, id]) => id)
-      .sort((x, y) => x - y);
+    let found = 0;
+    for (let j = start; j < end; j++) {
+      if (++checks > MAX_EDGE_CHECKS) break;
+      const s = patchSides[j] ?? 0;
+      let outside = false;
+      for (let k = 0; k < 3 && !outside; k++) {
+        const low = Math.min(q[k] ?? 0, q[3 + k] ?? 0, q[6 + k] ?? 0);
+        const high = Math.max(q[k] ?? 0, q[3 + k] ?? 0, q[6 + k] ?? 0);
+        outside = low > (sideBox[s * 6 + 3 + k] ?? 0) || high < (sideBox[s * 6 + k] ?? 0);
+      }
+      if (outside) continue;
+      const ax = sideA[s * 3] ?? 0;
+      const ay = sideA[s * 3 + 1] ?? 0;
+      const az = sideA[s * 3 + 2] ?? 0;
+      const bx = sideB[s * 3] ?? 0;
+      const by = sideB[s * 3 + 1] ?? 0;
+      const bz = sideB[s * 3 + 2] ?? 0;
+      const ix = inward[s * 3] ?? 0;
+      const iy = inward[s * 3 + 1] ?? 0;
+      const iz = inward[s * 3 + 2] ?? 0;
+      let behind = false;
+      for (let c = 0; c < 3 && !behind; c++) {
+        const d = ((q[c * 3] ?? 0) - ax) * ix + ((q[c * 3 + 1] ?? 0) - ay) * iy + ((q[c * 3 + 2] ?? 0) - az) * iz;
+        behind = d < -EDGE_WELD_DISTANCE;
+      }
+      if (behind) continue;
+      // Distance between the triangle's edges and the segment (they do not cross): the nearest endpoint distance.
+      let nearest = Infinity;
+      for (let c = 0; c < 3 && nearest > 0; c++) {
+        const ux = q[c * 3] ?? 0;
+        const uy = q[c * 3 + 1] ?? 0;
+        const uz = q[c * 3 + 2] ?? 0;
+        const n = ((c + 1) % 3) * 3;
+        const wx = q[n] ?? 0;
+        const wy = q[n + 1] ?? 0;
+        const wz = q[n + 2] ?? 0;
+        nearest = Math.min(
+          nearest,
+          pointSegmentSquared(ux, uy, uz, ax, ay, az, bx, by, bz),
+          pointSegmentSquared(wx, wy, wz, ax, ay, az, bx, by, bz),
+          pointSegmentSquared(ax, ay, az, ux, uy, uz, wx, wy, wz),
+          pointSegmentSquared(bx, by, bz, ux, uy, uz, wx, wy, wz),
+        );
+      }
+      const distance = Math.sqrt(nearest);
+      if (!(distance <= reach)) continue;
+      // Keep the EDGE_SLOTS nearest, ties to the lower side id (sides come in ascending order).
+      let at = Math.min(found, EDGE_SLOTS);
+      while (at > 0 && (bestDistance[at - 1] ?? 0) > distance) at--;
+      if (at >= EDGE_SLOTS) continue;
+      for (let k = Math.min(found, EDGE_SLOTS - 1); k > at; k--) {
+        bestDistance[k] = bestDistance[k - 1] ?? 0;
+        bestSide[k] = bestSide[k - 1] ?? 0;
+      }
+      bestDistance[at] = distance;
+      bestSide[at] = s;
+      found++;
+    }
+    // Ascending side ids (insertion sort of at most EDGE_SLOTS).
+    const kept = Math.min(found, EDGE_SLOTS);
+    for (let k = 0; k < kept; k++) {
+      const value = bestSide[k] ?? 0;
+      let at = t * EDGE_SLOTS + k;
+      while (at > t * EDGE_SLOTS && (slots[at - 1] ?? 0) > value) {
+        slots[at] = slots[at - 1] ?? 0;
+        at--;
+      }
+      slots[at] = value;
+    }
+  }
+
+  // A set id per triangle (0: no slot), equal slots equal ids; neighbours on one face usually share their set.
+  const setOf = new Int32Array(triangles);
+  const setSize = tableSize(triangles);
+  const setTable = new Int32Array(setSize).fill(-1);
+  let setCount = 1;
+  const sameSlots = (t: number, u: number): boolean => {
+    for (let k = 0; k < EDGE_SLOTS; k++) if (slots[t * EDGE_SLOTS + k] !== slots[u * EDGE_SLOTS + k]) return false;
+    return true;
+  };
+  for (let t = 0; t < triangles; t++) {
+    if ((slots[t * EDGE_SLOTS] ?? -1) < 0) continue;
+    if (t > 0 && sameSlots(t, t - 1)) {
+      setOf[t] = setOf[t - 1] ?? 0;
+      continue;
+    }
+    let hash = 0;
+    for (let k = 0; k < EDGE_SLOTS; k++) hash = Math.imul(hash ^ (slots[t * EDGE_SLOTS + k] ?? 0), 0x9e3779b1);
+    let slot = (hash ^ (hash >>> 15)) & (setSize - 1);
+    for (;;) {
+      const owner = setTable[slot] ?? -1;
+      if (owner < 0) {
+        setTable[slot] = t;
+        setOf[t] = setCount++;
+        break;
+      }
+      if (sameSlots(t, owner)) {
+        setOf[t] = setOf[owner] ?? 0;
+        break;
+      }
+      slot = (slot + 1) & (setSize - 1);
+    }
   }
 
   // Split vertices by the slot set of the triangles using them.
-  const outVertex = new Map<string, number>();
-  const vertexOf: number[] = [];
+  const maxOut = triangles * 3 + vertexCount;
+  const vertexOf = new Uint32Array(maxOut);
+  const distances = new Float32Array(maxOut * EDGE_SLOTS);
+  const angles = new Float32Array(maxOut * EDGE_SLOTS);
   const outIndices = new Uint32Array(triangles * 3);
-  const distances: number[] = [];
-  const angles: number[] = [];
+  const firstSet = new Int32Array(vertexCount).fill(-1);
+  const firstOut = new Int32Array(vertexCount);
+  const moreOut = new Map<number, number>();
+  let out = 0;
   for (let t = 0; t < triangles; t++) {
-    const set = slots[t] ?? [];
-    const setKey = set.join(',');
+    const set = setOf[t] ?? 0;
     for (let c = 0; c < 3; c++) {
       const v = corner(t, c);
-      const key = `${v}|${setKey}`;
-      let out = outVertex.get(key);
-      if (out === undefined) {
-        out = vertexOf.length;
-        outVertex.set(key, out);
-        vertexOf.push(v);
-        const q = point(v);
+      let o = -1;
+      if (firstSet[v] === set) o = firstOut[v] ?? 0;
+      else if ((firstSet[v] ?? -1) >= 0) o = moreOut.get(v * setCount + set) ?? -1;
+      if (o < 0) {
+        o = out++;
+        if ((firstSet[v] ?? -1) < 0) {
+          firstSet[v] = set;
+          firstOut[v] = o;
+        } else moreOut.set(v * setCount + set, o);
+        vertexOf[o] = v;
+        const qx = px(v);
+        const qy = py(v);
+        const qz = pz(v);
         for (let k = 0; k < EDGE_SLOTS; k++) {
-          const side = set[k] === undefined ? undefined : sides[set[k] ?? 0];
-          distances.push(side ? Math.max(0, dot(sub(q, side.a), side.inward)) : NO_EDGE);
-          angles.push(side ? side.angle : 0);
+          const s = slots[t * EDGE_SLOTS + k] ?? -1;
+          if (s < 0) {
+            distances[o * EDGE_SLOTS + k] = NO_EDGE;
+            continue;
+          }
+          const d =
+            (qx - (sideA[s * 3] ?? 0)) * (inward[s * 3] ?? 0) +
+            (qy - (sideA[s * 3 + 1] ?? 0)) * (inward[s * 3 + 1] ?? 0) +
+            (qz - (sideA[s * 3 + 2] ?? 0)) * (inward[s * 3 + 2] ?? 0);
+          distances[o * EDGE_SLOTS + k] = Math.max(0, d);
+          angles[o * EDGE_SLOTS + k] = sideAngle[s] ?? 0;
         }
       }
-      outIndices[t * 3 + c] = out;
+      outIndices[t * 3 + c] = o;
     }
   }
   // Vertices no triangle uses keep their place, so a mesh without sharp edges maps one to one.
-  const identity = vertexOf.length === vertexCount && vertexOf.every((v, i) => v === i);
+  let identity = out === vertexCount;
+  for (let i = 0; i < out && identity; i++) identity = vertexOf[i] === i;
   if (!identity) {
-    const used = new Uint8Array(vertexCount);
-    for (const v of vertexOf) used[v] = 1;
     for (let v = 0; v < vertexCount; v++) {
-      if (used[v]) continue;
-      vertexOf.push(v);
-      for (let k = 0; k < EDGE_SLOTS; k++) {
-        distances.push(NO_EDGE);
-        angles.push(0);
-      }
+      if ((firstSet[v] ?? -1) >= 0) continue;
+      vertexOf[out] = v;
+      distances.fill(NO_EDGE, out * EDGE_SLOTS, out * EDGE_SLOTS + EDGE_SLOTS);
+      out++;
     }
   }
   return {
-    vertexOf: Uint32Array.from(vertexOf),
+    vertexOf: vertexOf.slice(0, out),
     indices: outIndices,
-    distances: Float32Array.from(distances),
-    angles: Float32Array.from(angles),
-    edgeCount: sharpPairs.length,
+    distances: distances.slice(0, out * EDGE_SLOTS),
+    angles: angles.slice(0, out * EDGE_SLOTS),
+    edgeCount,
   };
 }
 

@@ -208,8 +208,10 @@ per-vertex data both renderers shade with (`EdgeLook` of `@modelshot/looks`, see
 - Per vertex and slot: the distance to the edge's line in the triangle's plane toward the interior (never negative;
   affine over the triangle, so interpolation is exact), `NO_EDGE` (10⁶) in an empty slot; and the angle between the
   face normals in radians, negative for a crease, 0 when empty.
-- Pure and deterministic (insertion-ordered maps, no hashing of floats beyond the quantised position). A hostile mesh
-  is bounded: past `MAX_EDGE_CHECKS` (2 · 10⁷) candidate checks the remaining triangles round nothing.
+- Pure and deterministic (edges, patches and slot sets in order of first appearance; positions and edges welded by
+  open-addressing tables of exact quantised values). Linear in the triangles for separate solids (about 0.2 s for
+  200 000 triangles of cubes); a hostile mesh is bounded: past `MAX_EDGE_CHECKS` (2 · 10⁷) candidate checks the
+  remaining triangles round nothing.
 
 ## Versioning
 

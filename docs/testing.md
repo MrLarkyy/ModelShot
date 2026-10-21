@@ -558,7 +558,9 @@ fragment work on the CPU), `rt-bench-order-512` 201.0 and 241.3 ms, `rt-load-fir
 1300.9 ms (its quads have no sharp edge), `pt-load-200k` 954.9 and 1344.3 ms, `pt-bench-128-n256` 3567.9 and
 4862.3 ms, `bake-bench-n16` 18.6 and 24.9 s (the bake binds width 0), `bake-bench` 3.3 and 2.8 ms, `bake-post-200k`
 8.0 and 9.1 ms; bundles 437 and 115 B (no dependency). The spread between the two runs is the machine's; real hardware
-is not measured here.
+is not measured here. The load budget's 200 000-triangle scene is quads without a sharp edge, so it does not time the
+detection itself: `sharpEdges` of 16 667 separate cubes in one mesh (200 004 triangles, 200 004 sharp edges) takes
+0.19 s in Node on the dev machine (2.2 s before welding and slot search moved to typed arrays and hashing in round 1).
 
 First CI run (2026-10-20, ubuntu-latest): frame time 0.9 ms (max 5, 5.5x), time to 64 samples 80.6 ms (max 300), gzip app 437 B, embed 115 B.
 Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact, with the numbers in the commit.
