@@ -140,6 +140,21 @@ if the surface had a hole there (in a rasteriser: discarded in the depth, shadow
 texel stops every ray. A `partial` texel is drawn order-independently (never by draw order) with weight `a`, and lets
 `1 − a` of the light through shadow rays. A texel exactly at the cutoff is visible.
 
+Three more optional fields (MS-29) say how a covered texel draws; they are read through
+`resolveMaterialRenderMode(material)`, the one definition (absent or unknown `blending`: `normal`; `alphaEmission`
+only when `true`; absent, empty or non-array `layers`: `[texture]`; a longer stack keeps its first
+`MAX_MATERIAL_LAYERS` (3) entries, a non-integer entry is −1):
+
+| field           | meaning                                                                                                                                                                                                                                                             |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `blending`      | `normal` follows `alphaMode`; `additive` adds `rgb · a` of the shaded texel to what lies behind, independent of draw order, and never occludes camera, shadow or ambient-occlusion rays (coverage still decides which texels add at all)                            |
+| `alphaEmission` | alpha is an inverted emission mask: a covered texel of colour `c` reflects `c · a` and emits `c · (1 − a)`, relative to unshaded white light; the radiance scale is the renderer's (MS-32 maps it). Authored emission (MS-32) adds to this split, never replaces it |
+| `layers`        | texture indices bottom to top, composited with the over operator at the face UV; the alpha rule applies to the composite alpha. Consumers bounds-check each index like `texture` (out of range: no texture)                                                         |
+
+A consumer that ignores them still draws coverage right (`alphaMode` / `alphaCutoff` stay the rule): an
+`alphaEmission` material plainly lit, an additive one blended normally, a layer stack as its `texture`. No renderer
+reads them yet.
+
 ### `SceneTexture`
 
 `{ name, mimeType: 'image/png', bytes, width, height, uvWidth, uvHeight, missing, frames? }`
@@ -330,6 +345,11 @@ Added within version 1 (MS-27), optional: `SceneTexture.frames` (absent: a still
 `SceneTextureFrames` and the export `DEFAULT_TEXTURE_FRAME_TIME`. UVs map into frame 0, so a consumer that ignores
 `frames` draws the still frame as the source's own preview does; loaders leave the key out for every other texture,
 so those documents are unchanged; no migration.
+Added within version 1 (MS-29), each optional: `SceneMaterial.blending` (absent: `normal`), `alphaEmission`
+(absent: `false`) and `layers` (absent: `[texture]`), with the type `SceneBlending`, the export
+`resolveMaterialRenderMode` (type `MaterialRenderMode`) and `MAX_MATERIAL_LAYERS`. A consumer that ignores them draws
+what the document meant before; the bbmodel loader leaves the keys out where a texture has no render mode, so those
+documents are unchanged; no migration.
 
 ## Loaders
 

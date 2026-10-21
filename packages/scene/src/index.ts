@@ -7,6 +7,7 @@ export {
   type MaterialAlpha,
   type TexelCoverage,
 } from './materialAlpha';
+export { MAX_MATERIAL_LAYERS, resolveMaterialRenderMode, type MaterialRenderMode } from './materialRenderMode';
 export {
   mat4Identity,
   mat4Multiply,
@@ -20,7 +21,7 @@ export {
 export { normalMatrixTransform } from './normalMatrixTransform';
 export { BACK_SIDE_RENDER_ORDER, MAX_ABS_RENDER_ORDER, RENDER_ORDER_TIE_DISTANCE } from './renderOrder';
 export { SCENE_FORMAT_VERSION, type SceneDocument, type SceneSource, type SceneSourceFormat } from './SceneDocument';
-export type { SceneAlphaMode, SceneMaterial } from './SceneMaterial';
+export type { SceneAlphaMode, SceneBlending, SceneMaterial } from './SceneMaterial';
 export type { SceneMesh, SceneMeshGroup } from './SceneMesh';
 export type { SceneNode } from './SceneNode';
 export type { SceneTexture } from './SceneTexture';
