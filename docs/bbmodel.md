@@ -43,6 +43,13 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
   space; in every other format, and when absent, the project `resolution` (default 16×16) does. Bedrock's per-texture
   UV size exists only with a multi-file ruleset, which is Blockbench runtime state not saved in the file, so bedrock
   models use the project resolution.
+- **Frame-strip (animated) textures** (MS-27): in the formats where Blockbench animates textures (`free`,
+  `java_block`, `bedrock`, `bedrock_block`, `bedrock_old`) an image whose aspect ratio differs from its UV space's is
+  a vertical strip of frames, counted as Blockbench does (Blockbench conventions 14). Faces on it show frame 0, as the
+  Blockbench still preview does, and the texture carries [`SceneTexture.frames`](scene-format.md#scenetexture): the
+  count, the frame time in seconds (`java_block`: `frame_time` ticks; the others: `fps`), the play order from
+  `frame_order_type` (`loop`, `backwards`, `back_and_forth`, `custom` with `frame_order`) and `frame_interpolate`. In
+  any other format the strip is one image and the fields are ignored. Nothing plays the frames yet.
 - **Animations** (`animations`): every animation becomes a [`SceneAnimation`](scene-format.md#animations) with its
   `name`, `loop` (`once`, `hold`, `loop`) and `length`. Bone animators play their `rotation`, `position` and `scale`
   keyframes with `linear`, `catmullrom` and `step` interpolation, pre/post data points and numeric data points (a
@@ -53,9 +60,10 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
 ## Not yet supported
 
 Skipped with an `UNSUPPORTED_ELEMENT` warning: `locator`, `null_object`, `texture_mesh`, `billboard`, `spline_mesh`,
-armatures and any other element type except `cube` and `mesh`. An animated (strip) texture is
-carried as one image. A texture `render_mode` (emissive,
-additive, layered) is not carried.
+armatures and any other element type except `cube` and `mesh`. A texture `render_mode` (emissive, additive, layered)
+is not carried. Frame-strip textures load with their frame data (Supported) but no renderer or app plays them yet, and
+the per-frame times of a `custom` `frame_order` (`2:5`) are ignored, as in Blockbench's preview; a picked image's
+`.mcmeta` file is not read.
 
 Animation parts that are not played as authored, each reported (see Warnings) and the rest of the clip played:
 Molang expressions (the keyframe is skipped; constants play), `bezier` keyframes (played linear), effect animators
@@ -95,6 +103,10 @@ scale (played as the smallest positive scale).
   that one stays inside a concave quad; 5 to 16 vertices are ear-clipped, and a polygon that crosses itself falls
   back to a fan. Triangles wind counter-clockwise about the face normal (Newell's method over the vertex loop).
 - Faces of a mesh are grouped by material, then single- before double-sided; cube faces likewise.
+- Frame strips: on a texture of n frames (Supported) v and the v entries of `uvRects` are divided by n after
+  normalising, for cube and mesh faces alike (Blockbench's `updateUV` order), so frame 0 spans v in [0, 1/n] of the
+  whole image and frame k is the same UV plus k/n. `width`/`height` stay the full image; untextured faces and faces on
+  other textures are unchanged.
 - Sidedness: a face is double-sided when its texture's `render_sides` is `double`, or `auto` in any format but
   `java_block`; untextured faces are double-sided except in `java_block`. A cube face lying in the plane of a
   zero-thickness axis (a flat cube) whose opposite face is drawn too is single-sided: the two are coincident and face
@@ -163,6 +175,22 @@ format, quad order and split, normal sign, `render_sides`, `render_order` and th
     before 5.0 every rotation keyframe's x and y and every position keyframe's x are negated. Blockbench's 5.0
     migration walks only `animators`, so it leaves pre-3.7 `bones` files unchanged; Blockbench 4 played those mirrored
     like every other 4.x file, and ModelShot negates them too, so they move as their author saw them.
+14. **Frame strips** (MS-27, checked against the Blockbench 5 desktop bundle): `Texture.frameCount` exists only when
+    `Format.animated_textures` (`free`, `java_block`, `bedrock`, `bedrock_block`, `bedrock_old`) and the image ratio
+    `width / height` differs (`!==`) from `uvWidth / uvHeight`; it is `ceil(uvWidth / uvHeight / ratio − 0.05)` when
+    above 1, so a strip slightly taller than whole frames rounds down and frames may be fractional pixels tall. The cube
+    `updateUV` sets v to `(v / uvHeight) / frameCount` (+ frame / frameCount when playing), and the mesh `updateUV`
+    `(v / uvHeight + frame) / frameCount`: both show frame 0 at rest. `TextureAnimator.playAnimationFrame`: with
+    `Format.texture_mcmeta` (`java_block`) a frame lasts `max(16.66, 50 · frame_time)` ms, else `1 / max(1, fps)` s
+    (`fps` default 7, `frame_time` default 1); the order is `backwards` n − 1 − i, `back_and_forth` i for i < n then
+    2n − 2 − i over 2n − 2 frames; `custom` (when `frame_order` is not empty) splits `frame_order` on whitespace and
+    reads each token through `parseInt`, so a timed `index:time` token as Blockbench's `.mcmeta` import writes it plays
+    its index. At counter step a it takes token a mod t (t tokens): a number k plays k mod n, a token that is no number
+    plays a mod n. ModelShot stores that as an explicit list: the tokens mod n, or, with tokens that are no number, the
+    whole period of lcm(t, n) steps (`"0 x"` on 4 frames plays 0, 1, 0, 3); a list equal to plain looping (a blank
+    order, only words) is left out as `loop`. A negative or infinite token leaves Blockbench's frame negative or NaN,
+    which its cube preview draws as frame 0; ModelShot plays 0 there. Blockbench reads a numeric string in
+    `frame_time` or `fps` as a number; ModelShot warns and uses the default.
 
 ## Limits
 
@@ -192,6 +220,12 @@ built. Ear clipping is O(k³) for k ≤ 16, so `maxTriangles` faces load in well
 
 Every animation, animator (at most `maxGroups + maxElements + 1` per animation) and keyframe is counted before any
 keyframe is read. Only the first two data points of a keyframe are read.
+
+A strip has at most as many frames as its image has rows (so ≤ `maxTextureSide`, and a `back_and_forth` order ≤
+2 · `maxTextureSide` entries). `frame_order` has its own bound, `MAX_FRAME_ORDER_CHARS` (65 536 characters, not
+`maxStringChars`: imported `.mcmeta` animations write `index:time` tokens and run long), and a `custom` order with
+tokens that are no number is expanded only up to `MAX_FRAME_ORDER_LENGTH` (8192 steps). Over either bound the load
+warns and goes on; neither ever fails it.
 
 Numbers must be finite and within ±10 000 000; keyframe values, keyframe times and animation lengths within ±10⁶
 (`MAX_ANIMATION_VALUE`, what `animateScene` accepts), times not negative. The outliner is walked with an explicit stack, so nesting depth is
@@ -232,6 +266,13 @@ The model still loads; at most 100 warnings are kept (`MAX_BBMODEL_WARNINGS`). E
 | `MISSING_TEXTURE`     | no embedded image and no matching picked file; the texture is `missing`                                |
 | `UNSUPPORTED_CHANNEL` | an animation part not played as authored (Not yet supported); once per animation, animator and channel |
 
+Textures in an animating format warn `UNSUPPORTED_VALUE` for a `frame_time`, `fps`, `frame_order_type`,
+`frame_order` or `frame_interpolate` of the wrong type or out of range (the default is used), for a `frame_order`
+over `MAX_FRAME_ORDER_CHARS` (plain order), for `custom` tokens that are negative or too large (frame 0 plays there),
+for a `custom` order whose tokens that are no number repeat over more than `MAX_FRAME_ORDER_LENGTH` steps (those
+tokens are dropped), and for a strip whose frames would be under one pixel tall (more frames than image rows; drawn
+as one image).
+
 Animations also warn `UNSUPPORTED_VALUE` for an unknown `loop` (played `once`) or interpolation (played linear),
 `anim_time_update`, `start_delay`, `loop_delay`, `blend_weight` other than their defaults and negative scale, and
 `UNKNOWN_REFERENCE` for an animator whose uuid or name matches no group.
@@ -252,6 +293,12 @@ MS-21 also applies Blockbench's import migrations (Blockbench conventions 13), w
 a file before format 3.2 now has its groups' z rotation negated (it used to load turned the wrong way about z), and a
 box-UV cube with `shade: false` in a file before 4.5 now has mirrored UV. Keyframes of files before 5.0 are negated
 in rotation x, y and position x; no earlier release read animations, so nothing that loaded before changes there.
+
+MS-27 reads frame strips, a behaviour change for files that loaded before: in the five animating formats every face
+on a strip texture now maps into frame 0, as Blockbench shows it, where it used to span the whole strip (all frames
+squeezed onto the face), and the texture gains `frames`. Such models render differently from earlier releases.
+Every other file loads exactly as before, and frame fields only ever warn (wrong types, an over-long `frame_order`),
+so no file that loaded before fails.
 
 ## Local-first
 

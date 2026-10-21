@@ -65,7 +65,8 @@ function meshUvSize(scene: SceneDocument, index: number): { width: number; heigh
 
 /**
  * Golden form of a load result: node transforms (world matrix rounded to 1e-6), meshes in world space (1e-5) with
- * render order and group sidedness, materials with their alpha rule, textures without their bytes, animations when
+ * render order and group sidedness, materials with their alpha rule, textures without their bytes (with their frames
+ * when they are strips), animations when
  * the file has any, warnings. Number arrays print on one line.
  */
 export function serializeResult(result: LoadResult): string {
@@ -109,6 +110,7 @@ export function serializeResult(result: LoadResult): string {
       uvHeight: texture.uvHeight,
       missing: texture.missing,
       byteLength: texture.bytes?.byteLength ?? null,
+      ...(texture.frames ? { frames: texture.frames } : {}),
     })),
     ...(scene.animations ? { animations: scene.animations } : {}),
     warnings: result.warnings,

@@ -59,7 +59,7 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
         });
   const resolution = readResolution(root);
   // Blockbench formats with per-texture UV size: only `free` (bedrock's multi-file ruleset is runtime-only state).
-  const textureEntries = readTextureEntries(root, resolution, modelFormat === 'free', limits, warnings);
+  const textureEntries = readTextureEntries(root, resolution, modelFormat === 'free', modelFormat, limits, warnings);
   const formatDefaultSides = formatDoubleSided(modelFormat);
   const elementObjects = elements.map((item, index) => readObject(item, childPath('$.elements', index)));
   // Before 3.2 Blockbench stored group z rotations with the opposite sign and negates them on import.
@@ -90,10 +90,11 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
 
   // Every limit has passed; only now are texture bytes decoded and geometry buffers allocated.
   const textures = resolveTextures(textureEntries, options.textureFiles, limits, warnings);
+  const textureFrameCounts = textures.map((texture) => texture.frames?.count ?? 1);
   const nodeMeshes = hierarchy.nodes.map((): number[] => []);
   const meshes: SceneMesh[] = placed.map(({ prepared, node }, index) => {
     nodeMeshes[node]?.push(index);
-    return prepared.build(node);
+    return prepared.build(node, textureFrameCounts);
   });
   const nodes: SceneNode[] = hierarchy.nodes.map((node, index) => ({
     ...node,

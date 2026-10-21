@@ -94,6 +94,11 @@ image code uses no clock or random source (lint rule; timing lives in `fixtures/
   `animated-unsupported.json` (every unsupported animation part, with its warnings) are loader goldens like the
   others. Hand-computed values for each pair rule sit beside them in `loadBbmodel.golden.test.ts`. Rendered clip
   frames belong to the export goldens (MS-22).
+- Frame-strip textures (MS-27) are pinned by the data golden `frame-strip.json` (a `java_block` cube on a 16×64
+  four-frame strip and a 16×16 still: strip faces with v in [0, 4] of the 16-unit UV space, `frames` with count 4,
+  frame time 0.15 s, order [0, 2, 1, 3] and interpolate), by `texelExact.test.ts` (strip faces scaled back by uv height
+  × count give the authored corners exactly) and by `textureFrames.test.ts` (count formula, timing, order, hostile
+  fields). No render golden: renderers sample the same document UVs, which put frame 0 inside the image.
 - A per-golden tolerance override (`threshold`, `maxDiffRatio`, `maxMeanDelta`, each range-checked) needs a non-empty `reason` in the spec, and GPU-variance evidence (the CI diff
   artefact) in the commit.
 

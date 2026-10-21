@@ -33,7 +33,11 @@ export interface PreparedElement {
   readonly triangleCount: number;
   /** Upper bound of the vertices `build` produces. */
   readonly vertexCount: number;
-  build(node: number): SceneMesh;
+  /**
+   * `textureFrameCounts` holds the frame count of each texture (1 for a still); v of a face on a strip is divided by
+   * it, so the face shows frame 0.
+   */
+  build(node: number, textureFrameCounts: readonly number[]): SceneMesh;
 }
 
 /**
