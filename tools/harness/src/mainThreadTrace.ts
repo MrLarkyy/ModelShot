@@ -30,7 +30,7 @@ interface TraceEvent {
  * main thread (`CrRendererMain`). A task whose wall time far exceeds its CPU time was descheduled by the OS, not busy
  * with page work: what tells a slow phase of a loaded machine from a slow phase of the page.
  */
-export async function traceMainThread(page: Page, body: () => Promise<void>): Promise<MainThreadTrace> {
+export async function traceMainThread(page: Page, body: () => Promise<unknown>): Promise<MainThreadTrace> {
   const cdp = await page.context().newCDPSession(page);
   const events: TraceEvent[] = [];
   cdp.on('Tracing.dataCollected', (event) => {

@@ -959,29 +959,26 @@ test.describe('baked lighting', () => {
       }
       return Math.ceil(best * 100);
     });
-    const work = (count: number): number => {
-      let x = 0;
-      for (let n = 0; n < count; n++) for (let i = 0; i < 1000; i++) x += Math.sqrt(i + x);
-      return x;
-    };
     const timer = await traceMainThread(page, () =>
       page.evaluate(
-        ({ count, body }) =>
-          new Promise<void>((resolve) =>
+        (count) =>
+          new Promise<number>((resolve) =>
             setTimeout(() => {
-              new Function('count', body)(count);
-              resolve();
+              let x = 0;
+              for (let n = 0; n < count; n++) for (let i = 0; i < 1000; i++) x += Math.sqrt(i + x);
+              resolve(x);
             }, 0),
           ),
-        { count: iterations, body: `return (${work.toString()})(count);` },
+        iterations,
       ),
     );
     // The bench calls bake() from a Playwright evaluate, which the Long Tasks API does not report: the trace must.
     const evaluate = await traceMainThread(page, () =>
-      page.evaluate(({ count, body }) => void new Function('count', body)(count), {
-        count: iterations,
-        body: `return (${work.toString()})(count);`,
-      }),
+      page.evaluate((count) => {
+        let x = 0;
+        for (let n = 0; n < count; n++) for (let i = 0; i < 1000; i++) x += Math.sqrt(i + x);
+        return x;
+      }, iterations),
     );
     console.log(
       `[rt probe] 100 ms of busy work at best speed, max CPU per task: timer task ${timer.maxCpu.toFixed(1)} ms, evaluate ` +
