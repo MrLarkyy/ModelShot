@@ -17,7 +17,9 @@ export default defineConfig({
   updateSnapshots: 'none',
   reporter: [['list']],
   expect: {
-    toHaveScreenshot: { animations: 'disabled', caret: 'hide', maxDiffPixelRatio: 0.01, threshold: 0.2 },
+    // About 5x the Windows vs Ubuntu difference measured on these pages (at most 0.00042); 0.01 let a wrong tile
+    // layout at 768 px pass.
+    toHaveScreenshot: { animations: 'disabled', caret: 'hide', maxDiffPixelRatio: 0.002, threshold: 0.2 },
   },
   webServer: {
     command: `pnpm run build:with-app && pnpm exec vite preview --port ${port} --strictPort`,
