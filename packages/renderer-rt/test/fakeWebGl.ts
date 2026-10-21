@@ -10,6 +10,8 @@ export interface FakeWebGl {
   calls(name: string): unknown[][];
   /** How many calls of any of `names`. */
   count(...names: string[]): number;
+  /** Runs the canvas listeners registered for `type` (a context loss or restore). */
+  fire(type: string): void;
 }
 
 export function fakeWebGl(): FakeWebGl {
@@ -37,6 +39,7 @@ export function fakeWebGl(): FakeWebGl {
     getAttribLocation: () => 0,
     getUniformBlockIndex: () => 0,
   };
+  const listeners = new Map<string, Set<(event: Event) => void>>();
   const gl = new Proxy(
     {},
     {
@@ -59,13 +62,22 @@ export function fakeWebGl(): FakeWebGl {
     width: 64,
     height: 64,
     getContext: (kind: string) => (kind === 'webgl2' ? gl : null),
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
+    addEventListener: (type: string, listener: (event: Event) => void) => {
+      const set = listeners.get(type) ?? new Set();
+      set.add(listener);
+      listeners.set(type, set);
+    },
+    removeEventListener: (type: string, listener: (event: Event) => void) => {
+      listeners.get(type)?.delete(listener);
+    },
   } as unknown as HTMLCanvasElement;
   return {
     gl,
     canvas,
     calls: (name) => log.get(name) ?? [],
     count: (...names) => names.reduce((sum, name) => sum + (log.get(name)?.length ?? 0), 0),
+    fire: (type) => {
+      for (const listener of [...(listeners.get(type) ?? [])]) listener({ preventDefault: () => undefined } as Event);
+    },
   };
 }

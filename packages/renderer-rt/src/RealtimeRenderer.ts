@@ -247,7 +247,10 @@ export class RealtimeRenderer {
    *
    * Another pose of the shown document (`poseOnlyChange`: an animation frame, a `poseScene` result) applies at once:
    * the decoded textures, their alpha tables, the layout and the uploaded geometry stay, and only each draw's matrices
-   * change, so playback costs no decode, readback or upload per frame.
+   * change, so playback costs no decode, readback or upload per frame. Content edited inside the shared meshes,
+   * materials or textures arrays is neither re-validated nor re-uploaded there: pass new arrays for a changed one.
+   * Await the first call of a model before sending playback frames, or each frame supersedes the last load and the
+   * model may never appear.
    */
   async setScene(doc: SceneDocument): Promise<SetSceneResult> {
     if (this.disposed) return { applied: false, warnings: [] };

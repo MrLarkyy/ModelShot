@@ -238,6 +238,11 @@ matrix (and the bounds of a closed batch) are rewritten from the new world matri
 node space, so no buffer is touched; a frame costs O(nodes + draws). The call still supersedes a pending `setScene`,
 resolves with the warnings of the shown textures, and a lost context restores the newest pose.
 
+The fast path trusts that the `meshes`, `materials` and `textures` arrays are the shown ones (same array objects):
+content edited inside them is neither re-validated nor re-uploaded, so pass new arrays for a changed mesh, material
+or texture. The first `setScene` of a model must be awaited before playback frames are sent: until it has loaded,
+every frame is a full layout and decode that supersedes the previous one, and the model may never appear.
+
 ## Limits and warnings
 
 - `setScene` validates the document first (`validateScene`): buffer lengths (3 / 3 / 2 / 4 floats per vertex),

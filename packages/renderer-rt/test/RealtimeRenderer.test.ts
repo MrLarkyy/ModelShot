@@ -117,4 +117,24 @@ describe('RealtimeRenderer.setScene with another pose of the shown document', ()
     expect(fake.count(...READBACKS)).toBe(1);
     renderer.dispose();
   });
+
+  it('keeps a pose set while the context is lost and uploads the newest one on restore', async () => {
+    const renderer = RealtimeRenderer.create(fake.canvas);
+    renderer.setCamera(camera);
+    const doc = animatedQuad();
+    await renderer.setScene(doc);
+    fake.fire('webglcontextlost');
+    const frame = animateScene(doc, { animation: 0, time: 0.5 }).document;
+    expect(await renderer.setScene(frame)).toEqual({ applied: true, warnings: [] });
+    expect(decode).toHaveBeenCalledTimes(1);
+
+    fake.fire('webglcontextrestored');
+    const world = worldMatrices(frame.nodes)[0] ?? mat4Identity();
+    const call = fake
+      .calls('uniformMatrix4fv')
+      .findLast(([location]) => (location as { name: string }).name === 'u_model');
+    expect(Array.from((call?.[2] as Float32Array | undefined) ?? [])).toEqual(Array.from(new Float32Array(world)));
+    expect(decode).toHaveBeenCalledTimes(1);
+    renderer.dispose();
+  });
 });

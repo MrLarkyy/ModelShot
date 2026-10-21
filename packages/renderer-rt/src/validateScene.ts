@@ -86,7 +86,8 @@ function validateMesh(mesh: SceneMesh, path: string, doc: SceneDocument): void {
  *
  * `validated`, a document this function accepted before: when `doc` shares its meshes, materials and textures arrays
  * and node count (another pose of it, `poseOnlyChange`), only the nodes are checked again, so a frame of animation
- * does not walk every index buffer.
+ * does not walk every index buffer. Content edited inside those shared arrays is not checked again: pass new arrays
+ * for a changed mesh, material or texture.
  */
 export function validateScene(doc: SceneDocument, validated: SceneDocument | null = null): void {
   doc.nodes.forEach((node, n) => {
