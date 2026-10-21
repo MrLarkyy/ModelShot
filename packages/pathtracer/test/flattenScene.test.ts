@@ -1,8 +1,8 @@
-import type { SceneDocument } from '@modelshot/scene';
+import { NO_EDGE, sharpEdges, type SceneDocument } from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
-import { flattenScene } from '../src/flattenScene';
+import { flatEdges, flattenScene } from '../src/flattenScene';
 import { PathTracerError } from '../src/PathTracerError';
-import { node, sceneOf, triangleMesh } from './testScenes';
+import { boxMesh, node, sceneOf, triangleMesh } from './testScenes';
 
 const TRI = [0, 0, 0, 1, 0, 0, 0, 1, 0];
 
@@ -92,5 +92,34 @@ describe('flattenScene', () => {
     expect((error as PathTracerError).code).toBe('SCENE_TOO_LARGE');
     expect((error as PathTracerError).message).toContain('3 visible triangles; the limit is 2');
     expect(flattenScene(sceneOf([mesh]), 3).count).toBe(3);
+  });
+
+  it('carries the sharp-edge distances of every corner and the angles of its slots', () => {
+    const box = boxMesh([0, 0, 0], [2, 2, 2], { node: 0 });
+    const doc = sceneOf([triangleMesh(TRI), box], [node({ translation: [5, 0, 0], meshes: [1] })]);
+    const options = { sharpAngleDeg: 30, reach: 4 };
+    const flat = flattenScene(doc, undefined, options);
+    expect(flat.count).toBe(13);
+    // The lone triangle has no sharp edge.
+    expect(Array.from(flat.edgeDistances.subarray(0, 12))).toEqual(new Array(12).fill(NO_EDGE));
+    expect(Array.from(flat.edgeAngles.subarray(0, 4))).toEqual([0, 0, 0, 0]);
+    const attributes = sharpEdges(box, options);
+    for (let t = 1; t < 13; t++) {
+      const first = flat.sources[t * 2 + 1] ?? 0;
+      for (let c = 0; c < 3; c++) {
+        const v = attributes.indices[first + c] ?? 0;
+        expect(Array.from(flat.edgeDistances.subarray((t * 3 + c) * 4, (t * 3 + c) * 4 + 4))).toEqual(
+          Array.from(attributes.distances.subarray(v * 4, v * 4 + 4)),
+        );
+      }
+      for (let k = 0; k < 4; k++) expect(flat.edgeAngles[t * 4 + k]).toBeCloseTo(Math.PI / 2, 6);
+    }
+    // Without options (the light bake) every slot is empty; flatEdges rebuilds the same data from the sources.
+    const plain = flattenScene(doc);
+    expect(plain.edgeDistances.every((d) => d === NO_EDGE)).toBe(true);
+    expect(plain.edgeAngles.every((a) => a === 0)).toBe(true);
+    const again = flatEdges(doc, plain.sources, options);
+    expect(Array.from(again.edgeDistances)).toEqual(Array.from(flat.edgeDistances));
+    expect(Array.from(again.edgeAngles)).toEqual(Array.from(flat.edgeAngles));
   });
 });

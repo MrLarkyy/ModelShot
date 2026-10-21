@@ -70,4 +70,21 @@ describe('path tracer shaders', () => {
     expect(bake).toContain('shadowTransmittance(origin, cone, skip)');
     expect(trace).toContain('shadowTransmittance(leave(s.position, s.side), cone, hit.triangle)');
   });
+
+  it('rounds the shading normal at sharp edges with the shared chunk before the back side flips it', () => {
+    const trace = pathTracerProgramSource('trace').fragment;
+    expect(trace).toContain('vec3 roundedNormal(vec3 n, vec4 d, vec4 angle, vec3 t[4], float width, vec4 footprint)');
+    const surface = trace.slice(trace.indexOf('Surface surfaceAt(Hit hit)'));
+    const round = surface.indexOf('if (u_edgeWidth > 0.0) n = edgeRoundedNormal(');
+    expect(round).toBeGreaterThan(-1);
+    expect(round).toBeLessThan(surface.indexOf('s.normal = hit.back ? -n : n;'));
+    // The path tracer averages its jittered samples: no footprint filter.
+    expect(trace).toContain('roundedNormal(n, d, angle, t, u_edgeWidth, vec4(0.0))');
+  });
+
+  it('mirrors a bounce below the surface instead of ending the path', () => {
+    const trace = pathTracerProgramSource('trace').fragment;
+    expect(trace).toContain('vec3 aboveSurface(vec3 d, vec3 side)');
+    expect(trace).toMatch(/vec3 next = aboveSurface\(\s*cosineDirection\(s\.normal/);
+  });
 });

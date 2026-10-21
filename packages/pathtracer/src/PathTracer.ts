@@ -19,17 +19,18 @@ import {
   type SceneCamera,
   type SceneDocument,
 } from '@modelshot/scene';
-import { LIGHT_RIG_V0 } from '@modelshot/looks';
+import { LIGHT_RIG_V0, MAX_EDGE_WIDTH, checkEdgeLook, type EdgeLook } from '@modelshot/looks';
 import { AccumulationTargets } from './accumulationTargets';
 import { buildBvh } from './buildBvh';
 import { cameraUniforms, type CameraUniforms } from './cameraUniforms';
-import { flattenScene, DEFAULT_MAX_TRIANGLES } from './flattenScene';
+import { flatEdges, flattenScene, DEFAULT_MAX_TRIANGLES } from './flattenScene';
 import { disposeGpuScene, uploadGpuScene, type GpuScene } from './gpuScene';
 import {
   DATA_TEXTURE_WIDTH,
   checkMaterialCount,
   packGeometry,
   packMaterials,
+  packTriangleEdges,
   type PackedGeometry,
 } from './packSceneData';
 import { PathTracerError } from './PathTracerError';
@@ -70,6 +71,10 @@ export interface PathTracerCapabilities {
 
 /** A scene as kept on the CPU, so a lost context can be rebuilt without decoding or building again. */
 interface LoadedScene {
+  readonly doc: SceneDocument;
+  /** `FlatScene.sources` and the BVH order: what rewriting the edge texels for another sharp angle needs. */
+  readonly sources: Uint32Array;
+  readonly order: Uint32Array;
   readonly geometry: PackedGeometry;
   readonly materials: ReturnType<typeof packMaterials>;
   readonly plan: TextureLayerPlan;
@@ -119,6 +124,7 @@ export class PathTracer {
   private readonly background: readonly [number, number, number];
   private readonly maxBounces: number;
   private readonly tileSize: number;
+  private edges: EdgeLook;
 
   private constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -128,6 +134,7 @@ export class PathTracer {
     this.background = options.background ?? LIGHT_RIG_V0.background;
     this.maxBounces = checkInteger('maxBounces', options.maxBounces ?? DEFAULT_MAX_BOUNCES, 1, MAX_BOUNCES);
     this.tileSize = checkInteger('tileSize', options.tileSize ?? DEFAULT_TILE_SIZE, 16, 4096);
+    this.edges = checkEdgeLook(options.edges);
     canvas.addEventListener('webglcontextlost', this.handleContextLost);
     canvas.addEventListener('webglcontextrestored', this.handleContextRestored);
     try {
@@ -210,8 +217,9 @@ export class PathTracer {
     }
     const capabilities = this.capabilities ?? this.queryCapabilities();
     checkMaterialCount(doc.materials.length);
-    const flat = flattenScene(doc, this.options.maxTriangles ?? DEFAULT_MAX_TRIANGLES);
-    const geometry = packGeometry(flat, buildBvh(flat.positions, flat.count), capabilities.maxTextureSize);
+    const flat = flattenScene(doc, this.options.maxTriangles ?? DEFAULT_MAX_TRIANGLES, this.sharpEdgeOptions());
+    const bvh = buildBvh(flat.positions, flat.count);
+    const geometry = packGeometry(flat, bvh, capabilities.maxTextureSize);
     // The catcher's height and rectangle do not depend on its texel size, which only the light bake needs.
     const catcher =
       options.shadowCatcher === false ? null : shadowCatcherPlane(sceneBounds(doc), LIGHT_RIG_V0.keyDirection, 1);
@@ -227,6 +235,9 @@ export class PathTracer {
     try {
       const layout = layoutTextures(decoded.bitmaps, capabilities.layerSide, capabilities.maxArrayTextureLayers);
       loaded = {
+        doc,
+        sources: flat.sources,
+        order: bvh.order,
         geometry,
         materials: packMaterials(doc, layout.textures, options.emission),
         plan: layout.plan,
@@ -252,6 +263,35 @@ export class PathTracer {
     }
     for (const warning of decoded.warnings) warnings.push({ ...warning });
     return { applied: true, warnings, triangles: flat.count };
+  }
+
+  /** The rounded edges drawn with (`RendererOptions.edges` of the preview takes the same). */
+  get edgeLook(): EdgeLook {
+    return this.edges;
+  }
+
+  /**
+   * Changes the rounded edges; fields left out keep their current value. A value out of range throws a `RangeError`
+   * naming the field and changes nothing. A new width only restarts the accumulation; a new sharp angle detects the
+   * edges again and uploads the triangle data again.
+   */
+  setEdges(edges: Partial<EdgeLook>): void {
+    const next = checkEdgeLook(edges, this.edges);
+    const angleChanged = next.sharpAngleDeg !== this.edges.sharpAngleDeg;
+    if (!angleChanged && next.width === this.edges.width) return;
+    this.edges = next;
+    const loaded = this.loaded;
+    if (angleChanged && loaded) {
+      const flat = flatEdges(loaded.doc, loaded.sources, this.sharpEdgeOptions());
+      packTriangleEdges(loaded.geometry.triAttributes, flat, loaded.order, loaded.geometry.triangleCount);
+      const gpu = this.gpu;
+      if (gpu?.scene && !this.lost) {
+        disposeGpuScene(this.gl, gpu.scene);
+        gpu.scene = null;
+        this.uploadLoaded(gpu);
+      }
+    }
+    this.restart();
   }
 
   /** The shared camera; an unusable projection or clip range throws a `RangeError`. Restarts the accumulation. */
@@ -366,6 +406,10 @@ export class PathTracer {
     this.restoredListeners.clear();
   }
 
+  private sharpEdgeOptions(): { sharpAngleDeg: number; reach: number } {
+    return { sharpAngleDeg: this.edges.sharpAngleDeg, reach: MAX_EDGE_WIDTH };
+  }
+
   private isCurrent(generation: number): boolean {
     return generation === this.generation && !this.disposed;
   }
@@ -460,6 +504,7 @@ export class PathTracer {
     gl.uniform1ui(uniform('u_seed'), seed);
     gl.uniform1i(uniform('u_maxBounces'), this.maxBounces);
     gl.uniform3fv(uniform('u_background'), this.background);
+    gl.uniform1f(uniform('u_edgeWidth'), this.edges.width);
     const catcher = this.loaded?.catcher ?? null;
     gl.uniform1i(uniform('u_catcherOn'), catcher ? 1 : 0);
     gl.uniform1f(uniform('u_catcherY'), catcher?.y ?? 0);

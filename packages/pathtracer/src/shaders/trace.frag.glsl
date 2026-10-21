@@ -102,7 +102,8 @@ vec3 tracePath(uint key, vec2 pixel) {
       radiance += throughput * s.albedo * KEY_COLOR * (cosKey * visible);
     }
     if (pathVertex >= u_maxBounces) break;
-    vec3 next = cosineDirection(s.normal, unitRandom(key, dimension, 0u), unitRandom(key, dimension + 1u, 0u));
+    vec3 next = aboveSurface(
+      cosineDirection(s.normal, unitRandom(key, dimension, 0u), unitRandom(key, dimension + 1u, 0u)), s.side);
     if (dot(next, s.side) <= 0.0) break;
     // Lambert with cosine sampling: albedo / pi * cos / (cos / pi).
     throughput *= s.albedo;

@@ -145,6 +145,8 @@ export class BakeSession {
     gl.uniform1f(uniform('u_maxRenderOrder'), textures.gpu.maxRenderOrder);
     gl.uniform1f(uniform('u_orderTie'), 0);
     gl.uniform1f(uniform('u_backSideOrder'), 0);
+    // Lightmap texels are coarser than the rounded band: the bake lights the unrounded surface.
+    gl.uniform1f(uniform('u_edgeWidth'), 0);
     gl.uniform1ui(uniform('u_seed'), seed);
     gl.uniform1ui(uniform('u_sample'), sample);
     const catcher = scene.catcher;

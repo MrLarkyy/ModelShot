@@ -1,3 +1,4 @@
+import type { EdgeLook } from '@modelshot/looks';
 import type { PathTracerWarning } from './PathTracerWarning';
 
 export interface PathTracerOptions {
@@ -17,6 +18,11 @@ export interface PathTracerOptions {
   readonly maxPixels?: number;
   /** Keep the drawn image readable after the frame (screenshots, tests). Default `false`. */
   readonly preserveDrawingBuffer?: boolean;
+  /**
+   * Rounded sharp edges, the preview's (`RendererOptions.edges`): fields left out take `EDGE_LOOK_V0`. A value out of
+   * range throws a `RangeError` naming `edges.width` or `edges.sharpAngleDeg`.
+   */
+  readonly edges?: Partial<EdgeLook>;
 }
 
 export interface SetSceneOptions {

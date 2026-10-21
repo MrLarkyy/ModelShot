@@ -10,7 +10,7 @@ uniform int u_nodeCount;
 
 const int NODE_TEXELS = 2;
 const int TRIANGLE_POSITION_TEXELS = 3;
-const int TRIANGLE_ATTRIBUTE_TEXELS = 5;
+const int TRIANGLE_ATTRIBUTE_TEXELS = 9;
 const int MATERIAL_TEXELS = 3;
 
 vec4 dataTexel(highp sampler2D data, int index) {

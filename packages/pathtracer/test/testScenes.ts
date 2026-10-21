@@ -67,3 +67,79 @@ export function randomTriangles(count: number, seed: number): number[] {
   }
   return out;
 }
+
+/** An axis-aligned box as a Blockbench cube: six faces with their own four vertices and flat outward normals. */
+export function boxMesh(min: readonly number[], max: readonly number[], overrides: Partial<SceneMesh> = {}): SceneMesh {
+  const [x0 = 0, y0 = 0, z0 = 0] = min;
+  const [x1 = 0, y1 = 0, z1 = 0] = max;
+  const faces: [number[][], number[]][] = [
+    [
+      [
+        [x1, y0, z1],
+        [x1, y0, z0],
+        [x1, y1, z0],
+        [x1, y1, z1],
+      ],
+      [1, 0, 0],
+    ],
+    [
+      [
+        [x0, y0, z0],
+        [x0, y0, z1],
+        [x0, y1, z1],
+        [x0, y1, z0],
+      ],
+      [-1, 0, 0],
+    ],
+    [
+      [
+        [x0, y1, z1],
+        [x1, y1, z1],
+        [x1, y1, z0],
+        [x0, y1, z0],
+      ],
+      [0, 1, 0],
+    ],
+    [
+      [
+        [x0, y0, z0],
+        [x1, y0, z0],
+        [x1, y0, z1],
+        [x0, y0, z1],
+      ],
+      [0, -1, 0],
+    ],
+    [
+      [
+        [x0, y0, z1],
+        [x1, y0, z1],
+        [x1, y1, z1],
+        [x0, y1, z1],
+      ],
+      [0, 0, 1],
+    ],
+    [
+      [
+        [x1, y0, z0],
+        [x0, y0, z0],
+        [x0, y1, z0],
+        [x1, y1, z0],
+      ],
+      [0, 0, -1],
+    ],
+  ];
+  const indices = faces.flatMap((_, f) => [0, 1, 2, 0, 2, 3].map((c) => f * 4 + c));
+  return {
+    name: 'box',
+    sourceId: '',
+    node: -1,
+    visible: true,
+    positions: new Float32Array(faces.flatMap(([corners]) => corners.flat())),
+    normals: new Float32Array(faces.flatMap(([, n]) => [n, n, n, n].flat())),
+    uvs: new Float32Array(faces.flatMap(() => [0, 1, 1, 1, 1, 0, 0, 0])),
+    uvRects: new Float32Array(Array.from({ length: 24 }, () => [0, 0, 1, 1]).flat()),
+    indices: new Uint32Array(indices),
+    groups: [{ material: 0, start: 0, count: 36 }],
+    ...overrides,
+  };
+}
