@@ -4,6 +4,10 @@
 #include "sceneData"
 #include "texelAlpha"
 #include "faceTexels"
+#include "edgeRounding"
+
+// EdgeLook width of the rounded edges (model units); 0 rounds nothing (the light bake).
+uniform float u_edgeWidth;
 
 struct Hit {
   int triangle;
@@ -43,9 +47,33 @@ int hitCoverage(int triangle, int materialSlot, vec2 b, out float alpha) {
   return texelCoverage(alpha, m.alphaMode, m.cutoffByte);
 }
 
+// The interpolated normal n of the hit rounded at the triangle's sharp edges (edgeRounding). Each slot's direction
+// toward its edge is minus the gradient of its distance, which is affine over the triangle: exact, where the preview
+// takes it from screen derivatives.
+vec3 edgeRoundedNormal(int attributes, vec3 n, vec3 p0, vec3 p1, vec3 p2, vec2 b) {
+  vec4 d0 = dataTexel(u_triAttributes, attributes + 5);
+  vec4 d1 = dataTexel(u_triAttributes, attributes + 6);
+  vec4 d2 = dataTexel(u_triAttributes, attributes + 7);
+  vec4 angle = dataTexel(u_triAttributes, attributes + 8);
+  vec3 e1 = p1 - p0;
+  vec3 e2 = p2 - p0;
+  vec3 g = cross(e1, e2);
+  float area2 = dot(g, g);
+  vec3 grad1 = cross(e2, g) / area2;
+  vec3 grad2 = cross(g, e1) / area2;
+  vec3 t[4];
+  for (int k = 0; k < 4; k++) {
+    vec3 gradient = (d1[k] - d0[k]) * grad1 + (d2[k] - d0[k]) * grad2;
+    float length2 = dot(gradient, gradient);
+    t[k] = length2 > 0.0 ? -gradient * inversesqrt(length2) : vec3(0.0);
+  }
+  vec4 d = d0 * (1.0 - b.x - b.y) + d1 * b.x + d2 * b.y;
+  return roundedNormal(n, d, angle, t, u_edgeWidth, vec4(0.0));
+}
+
 struct Surface {
   vec3 position;
-  // Interpolated vertex normal, flipped toward the ray on a back side.
+  // Interpolated vertex normal, rounded at sharp edges (edgeRounding), flipped toward the ray on a back side.
   vec3 normal;
   // Geometric normal on the side the ray came from: rays leaving the surface start on this side.
   vec3 side;
@@ -65,6 +93,7 @@ Surface surfaceAt(Hit hit) {
     dataTexel(u_triAttributes, attributes + 2).xyz * b.y;
   vec3 geometric = normalize(cross(p1 - p0.xyz, p2 - p0.xyz));
   n = dot(n, n) > 0.0 ? normalize(n) : geometric;
+  if (u_edgeWidth > 0.0) n = edgeRoundedNormal(attributes, n, p0.xyz, p1, p2, b);
   int slot = int(p0.w);
   Surface s;
   s.position = p0.xyz * w0 + p1 * b.x + p2 * b.y;

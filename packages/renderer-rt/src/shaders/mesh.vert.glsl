@@ -7,6 +7,9 @@ layout(location = 2) in vec2 a_uv;
 layout(location = 3) in vec4 a_uvRect;
 // Where the vertex's light lies in the lightmap (lightmapLayout.ts); locations 4-7 carry the exact depth key.
 layout(location = 8) in vec4 a_lightmap;
+// Distances to the triangle's sharp-edge slots and their angles (sharpEdges of @modelshot/scene, batchScene.ts).
+layout(location = 9) in vec4 a_edgeDistances;
+layout(location = 10) in vec4 a_edgeAngles;
 
 uniform mat4 u_model;
 uniform mat4 u_view;
@@ -25,6 +28,10 @@ flat out vec4 v_lightmap;
 // Vertex charts: the vertex's light for the front and the back side.
 out vec4 v_vertexLight;
 out vec4 v_vertexLightBack;
+out vec3 v_worldPosition;
+out vec4 v_edgeDistances;
+// The same on every corner of a triangle.
+flat out vec4 v_edgeAngles;
 #include "depthKeyVertex"
 
 void main() {
@@ -33,6 +40,8 @@ void main() {
   v_uv = a_uv;
   v_uvRect = a_uvRect;
   v_lightmap = a_lightmap;
+  v_edgeDistances = a_edgeDistances;
+  v_edgeAngles = a_edgeAngles;
   v_vertexLight = vec4(1.0);
   v_vertexLightBack = vec4(1.0);
   if (u_bakeOn && a_lightmap.z == 0.0) {
@@ -41,6 +50,7 @@ void main() {
     v_vertexLightBack = texelFetch(u_lightmap, texel + ivec2(int(a_lightmap.w), 0), 0);
   }
   vec4 world = u_model * vec4(a_position, 1.0);
+  v_worldPosition = world.xyz;
   passDepthKey(world);
   gl_Position = u_viewProjection * world + u_depthPull;
 }

@@ -31,7 +31,8 @@ import {
 // aa=0|1, fallback=1, reverse=1, look=model-view|above|below with depth=framed|inside, hide=<mesh name>; size (CSS pixels, default 256), maxTextureSide, track=1 (count GL objects),
 // fps=1 (continuous drawing with a frame-time readout, for a manual run on real hardware); bake=<samples> (bake the
 // light before the first frame; 0 none), catcher=0|1, bakeSeed (default 1), bakeTile (default 64), pose=<player
-// preset> (the scene re-posed, framed as loaded), lag=1 (main-thread event-loop lag probe).
+// preset> (the scene re-posed, framed as loaded), lag=1 (main-thread event-loop lag probe), edges=<width> (rounded
+// edges, 0 none; default the renderer's look).
 const params = new URLSearchParams(location.search);
 
 function intParam(name: string, fallback: number, min: number, max: number): number {
@@ -98,6 +99,7 @@ async function start(): Promise<void> {
     texelAntialias: view.texelAntialias,
     preserveDrawingBuffer: !continuous,
     maxTextureSide,
+    ...(view.edges !== null ? { edges: { width: view.edges } } : {}),
   });
   const capabilities = renderer.capabilities;
   if (!capabilities) throw new Error('renderer has no capabilities');
@@ -215,8 +217,9 @@ async function start(): Promise<void> {
   });
 
   installFrameBench(api, gl, () => renderer.render());
-  installSceneBench(api, gl, async () => {
-    doc = sceneOf('large-order');
+  installSceneBench(api, gl, async (scene = 'large-order') => {
+    if (!isRtSceneName(scene)) throw new Error(`unknown scene "${scene}"`);
+    doc = sceneOf(scene);
     warnings = (await renderer.setScene(doc)).warnings;
     frame();
   });
@@ -244,6 +247,15 @@ async function start(): Promise<void> {
     liveGlObjects: () => tracker?.liveGlObjects() ?? -1,
     openBitmaps: () => tracker?.openBitmaps() ?? -1,
     render: () => renderer.render(),
+    setEdges: (edges) => {
+      try {
+        renderer.setEdges(edges);
+        frame();
+        return 'ok';
+      } catch (error) {
+        return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      }
+    },
     drawCallsPerFrame: () => {
       let calls = 0;
       const drawElements = gl.drawElements.bind(gl);

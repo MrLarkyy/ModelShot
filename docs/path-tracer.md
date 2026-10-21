@@ -24,7 +24,9 @@ requestAnimationFrame(frame);
 - `PathTracer.create(canvas, options)`: creates the WebGL2 context. Options: `background` (scene-linear, default the
   look's backdrop, as in the preview), `maxBounces` (1..16, default 4), `maxTriangles` (default 200 000, the loaders'
   limit), `maxTextureSide` (default 4096, capped by `MAX_TEXTURE_SIZE`), `maxTexturePixelsTotal` (default 64 Mi),
-  `tileSize` (16..4096, default 256), `maxPixels`, `preserveDrawingBuffer`.
+  `tileSize` (16..4096, default 256), `maxPixels`, `preserveDrawingBuffer`, `edges` (`Partial<EdgeLook>`, the
+  preview's rounded edges, default `EDGE_LOOK_V0`; out of range a `RangeError` naming `edges.width` or
+  `edges.sharpAngleDeg`).
 - `setScene(doc, { emission, shadowCatcher })`: validates, checks the material count, flattens, builds the BVH and packs the data
   (synchronously, before its first `await`), then decodes the textures, lays them out and swaps the scene in. Resolves
   `{ applied, warnings, triangles }`. A call that fails keeps the current scene and closes whatever it decoded.
@@ -32,6 +34,10 @@ requestAnimationFrame(frame);
   resolves `{ applied: false }` and closes what it decoded; a later call rejected by those checks (`INVALID_SCENE`,
   `SCENE_TOO_LARGE` for materials, triangles or data rows) does not, and the pending one still applies.
 - `setCamera(camera)`, `resize(cssSize)`: the shared `SceneCamera` and the canvas size, as for the preview.
+- `setEdges(edges)`, `edgeLook`: the rounded edges (fields left out keep theirs; a bad value throws as for the option
+  and changes nothing). A new width restarts the accumulation; a new sharp angle detects the edges again and rewrites
+  the triangles' edge texels (`packTriangleEdges`) before uploading them. A scene whose `setScene` was still decoding
+  when the angle changed is packed again with the current angle before its first upload.
 - `start({ seed, samples })`: a request for exactly `samples` samples per pixel (1..65 536) from `seed`
   (0..2^32 − 1); anything else throws a `RangeError`.
 - `step(maxSamples = 1)`: draws up to `maxSamples` more samples, never past the request, presents the mean and returns
@@ -43,7 +49,7 @@ requestAnimationFrame(frame);
   the per-ray node cap (not divided; 0 in ordinary scenes, see Limits and errors).
 - `onContextRestored(listener)`, `dispose()` (every GL object, decoded image and listener).
 
-`setScene`, `setCamera`, `resize` and `start` restart the accumulation at sample 0.
+`setScene`, `setCamera`, `resize`, `setEdges` and `start` restart the accumulation at sample 0.
 
 Emission is a per-material linear RGB input (`SetSceneOptions.emission`, indexed like `materials`; negative or
 non-finite channels count as 0). The scene format has no emission field yet; MS-32 maps one here.
@@ -58,13 +64,17 @@ computed in `setScene` with the scene and kept through a context loss.
    its corners, vertex normals, UVs, the face's UV rectangle, material, sidedness and render order. Triangles with a
    non-finite position, normal, UV or rectangle, or with no area, are skipped and counted (`DEGENERATE_TRIANGLES`
    warning). More visible triangles than `maxTriangles` throw `SCENE_TOO_LARGE` before anything is read or allocated.
+   With edge options (the render; the bake passes none) each triangle also carries its corners' four sharp-edge
+   distances and the slots' angles (`flatEdges`, from `sceneSharpEdges` of the document, looked up once).
 3. `buildBvh`: binned SAH (12 bins per axis), leaves of at most 4 triangles, in JavaScript on the main thread (with
    upload and a first sample about 1 s for 200 000 triangles on the dev machine, `pt-load-200k`). Deterministic: ties go to the lower axis and
    bin, partitions are stable. Depth is at most 31 for any input: a node whose triangles would need every remaining
    level if split at the median, or whose centroids coincide, is split at its index median instead; the shader's
    32-entry traversal stack therefore never overflows.
 4. `packGeometry` / `packMaterials`: RGBA32F data textures 2048 texels wide (nodes 2 texels, triangle positions 3,
-   attributes 5, materials 3); rows over `MAX_TEXTURE_SIZE` throw `SCENE_TOO_LARGE` before allocating.
+   attributes 9, materials 3); rows over `MAX_TEXTURE_SIZE` throw `SCENE_TOO_LARGE` before allocating. Attribute
+   texels: normals and UVs (0-3), the UV rectangle (4), corner k's edge distances (5 + k, `NO_EDGE` when empty) and
+   the slots' angles (8).
 5. Textures are decoded by the realtime renderer's `decodeTextures` (the same header checks, limits, placeholders and
    warnings; bytes go through a Blob, nothing is fetched) and shelf-packed into one SRGB8_ALPHA8 `TEXTURE_2D_ARRAY`
    (GLSL ES 3.00 cannot pick a sampler by a dynamic index): one layer of the smallest power-of-two width that holds
@@ -138,8 +148,16 @@ Materials are Lambert (albedo = the texel's linear colour) plus emission. The li
   ray's, so a catcher point seen through glass still has the glass's fill shadow, as in the bake. The shade
   is affine in fill and key, so the mean over samples equals the preview's shade of its baked means. The plane is
   invisible to every other ray, so the model renders exactly as without it.
+- Rounded edges: `surfaceAt` bends the interpolated normal with the shared `roundedNormal` (`edgeRounding` chunk of
+  `@modelshot/looks`, the preview's function) before a back side flips it. Each slot's direction toward its edge is
+  minus the gradient of its distance over the triangle, computed exactly from the corners (the preview takes it from
+  screen derivatives); the footprint is 0, as the jittered samples average the band over the pixel. `u_edgeWidth` is
+  `EdgeLook.width`; the light bake binds 0 (its lightmap texels are coarser than the band).
 - Cosine-weighted bounces up to `maxBounces`, Russian roulette from the third bounce (survival = the largest
-  throughput channel, at least 5 %). A sample whose radiance is NaN or infinite counts as 0 instead of poisoning the sum.
+  throughput channel, at least 5 %). A direction drawn around a shading normal bent away from the geometric one
+  (rounded edges, smooth shading) can point into the surface: it is mirrored about the surface plane
+  (`aboveSurface`, `pathSampling.glsl`) instead of ending the path, which lost that light and darkened bent normals
+  against the preview's fill. No random number is added. A sample whose radiance is NaN or infinite counts as 0 instead of poisoning the sum.
 
 ## Limits and errors
 
@@ -167,9 +185,9 @@ cover).
 
 Shaders are static `.glsl` files under `src/shaders/` (`trace.frag`, `bake.frag`, `present.frag`, `fullscreen.vert`
 and the chunks `rng`, `sceneData`, `primaryRay`, `surfaceHit`, `bvhTraverse`, `pathSampling`, `keyLight`) composed by
-`linkShader` with the shared look chunks (`agx`, `texelAlpha`, `faceTexels`, `lightRig`, `shadowCatcher`); no shader
-text is built from user input. The shading normal is
-computed in one place (`surfaceAt` in `surfaceHit.glsl`), where edge rounding (MS-15) will plug in.
+`linkShader` with the shared look chunks (`agx`, `texelAlpha`, `faceTexels`, `lightRig`, `shadowCatcher`,
+`edgeRounding`); no shader text is built from user input. The shading normal is computed in one place (`surfaceAt` in
+`surfaceHit.glsl`), rounded at sharp edges there (Lighting).
 
 ## Light baker
 
@@ -246,8 +264,8 @@ measured on real hardware yet.
 ## What v0 lacks
 
 Denoising and supersampling (MS-18), look presets (MS-19; the key radius and catcher strength are rig data for them),
-emission from the scene format (MS-32), user lights (MS-33; one directional key and the environment here), edge
-rounding (MS-15), a Web Worker or WASM build of the render's BVH (the bake builds its own in its worker), glossy or
+emission from the scene format (MS-32), user lights (MS-33; one directional key and the environment here), geometric
+bevels (edges are rounded in shading only), a Web Worker or WASM build of the render's BVH (the bake builds its own in its worker), glossy or
 transmissive materials, textured environments, and WebGPU. The bake has no interreflection, no animated GI, and bakes
 untextured meshes per vertex (no world-density charts yet), so a large untextured ground such as alpha-plane's shows no
 baked shadow in the preview while the render has one.

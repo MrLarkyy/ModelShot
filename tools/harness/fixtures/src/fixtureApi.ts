@@ -11,7 +11,8 @@ export interface MsFixture {
   renderFrames?: (count: number) => number[];
   timeToSamples?: (samples: number) => number;
   /** Load-and-first-frame bench (rt.html): milliseconds until the GPU finished. */
-  timeScene?: () => Promise<number>;
+  /** setScene and the first frame of a scene (the realtime fixture: default `large-order`, else that scene), in ms. */
+  timeScene?: (scene?: string) => Promise<number>;
   /** Light-bake bench (rt.html): milliseconds from the call to the final lighting. */
   timeBake?: () => Promise<number>;
   /** Model-view fixture: pixels to check in the rendered image. */
@@ -73,6 +74,8 @@ export interface RtControls {
   disposeDuringDecode: () => Promise<boolean>;
   /** Depth-key variant (`raster` or `exact`) of the last frame, `none` before one. */
   depthKeyMode: () => string;
+  /** `setEdges` then a frame: `ok`, or the error it threw (`name: message`). */
+  setEdges: (edges: { width?: number; sharpAngleDeg?: number }) => string;
   /** Image position (pixels, top-left origin) of a world point under the current camera. */
   project: (x: number, y: number, z: number) => [number, number];
   /** World position of a model-space point under the first node named `name` (its world matrix in the shown pose). */
@@ -158,6 +161,10 @@ export interface PtControls {
   tryStart: (seed: number, samples: number) => string;
   /** The error `setCamera` throws for the page's camera with this vertical field of view, or `ok`. */
   tryFov: (fovYDeg: number) => string;
+  /** setScene of the page's scene anew, `setEdges` while it decodes, then the request drawn: whether it applied. */
+  setSceneDuringEdges: (edges: { width?: number; sharpAngleDeg?: number }) => Promise<boolean>;
+  /** `setEdges` then the page's request drawn to the end: `ok`, or the error it threw (`name: message`). */
+  setEdges: (edges: { width?: number; sharpAngleDeg?: number }) => string;
   /** Image position (pixels, top-left origin) of a world point under the current camera. */
   project: (x: number, y: number, z: number) => [number, number];
 }

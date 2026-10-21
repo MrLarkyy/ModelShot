@@ -5,9 +5,11 @@ import { encodeFlipped, expectGolden, openFixture, renderFixture, type FixtureIn
 import type { RasterGoldenSpec } from '../src/goldenSpec';
 import { goldenPath } from '../src/goldenStore';
 import { expect, test } from '../src/harnessTest';
-import { decodePng, hueMatch, modelBox, near, pixel, sentinelPixels, type Image } from '../src/imageMetrics';
+import { differenceMask, pixelsFarFrom } from '../src/edgeProbes';
+import { decodePng, hueMatch, luminance, modelBox, near, pixel, sentinelPixels, type Image } from '../src/imageMetrics';
 import { traceMainThread } from '../src/mainThreadTrace';
 import { shadowStep } from '../src/shadowStep';
+import { edgesSceneSharpEdges } from '../fixtures/src/edgesScene';
 import type { ModelViewProbe, PtProbe, RtBakeOutcome, RtBakeRequest } from '../fixtures/src/fixtureApi';
 
 const spec = (name: string, variant: string): RasterGoldenSpec => ({
@@ -39,6 +41,8 @@ const GOLDENS = [
   spec('gltf-nodes-y030', 'gltf-nodes-y030'),
   spec('obj-shapes-y030', 'obj-shapes-y030'),
   ...PLAYER,
+  // MS-15: rounded edges on a cube and a wedge, none on a plane, a card and a sphere; paired with pt-edges.
+  spec('edges', 'edges'),
 ];
 // Baked light (MS-16): 64 samples, seed 1, shadow catcher on; the cut-out checker's pair is pt-cutout-checker.
 const BAKED = ['bake-cutout-checker', 'bake-cutout-checker-fallback', 'bake-alpha-plane', 'bake-turntable-y030'].map(
@@ -468,10 +472,10 @@ test.describe('closed double-sided boxes: no hidden face at any sample', () => {
         // edge-on no MSAA sample shows a hidden face.
         for (const look of looks) {
           // The open variant has only the faces in view; the hidden (blue) faces must not change a single pixel.
-          const closed = await render(page, `scene=${scene}${query}&look=${look}`);
+          const closed = await render(page, `scene=${scene}${query}&look=${look}&edges=0`);
           expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe(mode);
           expect(modelBox(closed.image).x1 - modelBox(closed.image).x0, `${look}: drawn`).toBeGreaterThan(20);
-          const open = await render(page, `scene=${scene}-open${query}&look=${look}`);
+          const open = await render(page, `scene=${scene}-open${query}&look=${look}&edges=0`);
           expect(differingPixels(closed.image, open.image), `${look}: pixels touched by a hidden face`).toBe(0);
         }
       });
@@ -500,9 +504,9 @@ test.describe('raster back pass of closed meshes', () => {
         ['cube', 0],
         ['cube-grazing-1', bound],
       ] as const) {
-        const closed = await render(page, `scene=closed-cube-cutout${query}&look=${look}`);
+        const closed = await render(page, `scene=closed-cube-cutout${query}&look=${look}&edges=0`);
         expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('raster');
-        const open = await render(page, `scene=closed-cube-open${query}&look=${look}`);
+        const open = await render(page, `scene=closed-cube-open${query}&look=${look}&edges=0`);
         expect(
           differingPixels(closed.image, open.image),
           `${look}: pixels touched by a hidden face`,
@@ -1103,5 +1107,126 @@ test.describe('baked lighting', () => {
     const origin = new URL(page.url()).origin;
     expect(requests.length).toBeGreaterThan(0);
     expect(requests.filter((url) => !url.startsWith(`${origin}/`))).toEqual([]);
+  });
+});
+
+/**
+ * Edge rounding (MS-15) on the `edges` scene: the pixels of the plane, the card and the sphere (those that change when
+ * the mesh is hidden) are byte-identical with rounding on and off, and every pixel rounding changes lies within the
+ * projected rounding band (+ 2 px) of a sharp edge of the cube or the wedge.
+ */
+test.describe('rounded edges', () => {
+  test.describe.configure({ timeout: 120_000 });
+  for (const [label, query] of [
+    ['float', ''],
+    ['fallback', '&fallback=1'],
+  ] as const) {
+    test(`${label}: planes, cards and smooth areas do not change; sharp-edged meshes change only beside their edges`, async ({
+      page,
+    }) => {
+      const off = await render(page, `variant=edges&edges=0${query}`);
+      const on = await render(page, `variant=edges${query}`);
+      const pixelsOf = async (mesh: string) =>
+        differenceMask(off.image, (await render(page, `variant=edges&edges=0&hide=${mesh}${query}`)).image);
+      // MSAA silhouette pixels of the cube or the wedge over another mesh belong to both; they are the cube's.
+      const sharpMeshes = [await pixelsOf('cube'), await pixelsOf('wedge')];
+      const rounded = differenceMask(on.image, off.image);
+      for (const mesh of ['plane', 'card', 'sphere']) {
+        const own = await pixelsOf(mesh);
+        for (const other of sharpMeshes) for (let p = 0; p < own.length; p++) if (other[p]) own[p] = 0;
+        const shown = own.reduce((sum, v) => sum + v, 0);
+        expect(shown, `${mesh}: pixels`).toBeGreaterThan(200);
+        let changed = 0;
+        for (let p = 0; p < own.length; p++) if (own[p] && rounded[p]) changed++;
+        console.log(`[edges probe] ${label} ${mesh}: ${changed} of ${shown} pixels change with rounding / max 0`);
+        expect(changed, `${mesh}: pixels changed by rounding`).toBe(0);
+      }
+      const segments = await page.evaluate(
+        (edges) =>
+          edges.map(
+            ([a, b]) =>
+              [window.__msFixture!.rt!.project(...a), window.__msFixture!.rt!.project(...b)] as [
+                [number, number],
+                [number, number],
+              ],
+          ),
+        edgesSceneSharpEdges(),
+      );
+      // The band's width on screen: 0.5 units (EDGE_LOOK_V0) along any axis at any edge's midpoint, the largest.
+      const band = await page.evaluate((edges) => {
+        const rt = window.__msFixture!.rt!;
+        let widest = 0;
+        for (const [a, b] of edges) {
+          const mid = [0, 1, 2].map((k) => ((a[k] ?? 0) + (b[k] ?? 0)) / 2) as [number, number, number];
+          const [x, y] = rt.project(...mid);
+          for (const axis of [0, 1, 2]) {
+            const moved = [...mid] as [number, number, number];
+            moved[axis] = (moved[axis] ?? 0) + 0.5;
+            const [mx, my] = rt.project(...moved);
+            widest = Math.max(widest, Math.hypot(mx - x, my - y));
+          }
+        }
+        return widest;
+      }, edgesSceneSharpEdges());
+      const changed = differenceMask(on.image, off.image);
+      const total = changed.reduce((sum, v) => sum + v, 0);
+      const far = pixelsFarFrom(changed, on.image.width, segments, band + 2);
+      console.log(
+        `[edges probe] ${label}: ${total} pixels change, ${far} farther than ${(band + 2).toFixed(2)} px from a sharp edge`,
+      );
+      expect(total, 'rounding changes the cube and the wedge').toBeGreaterThan(100);
+      expect(far, 'changed pixels away from every sharp edge').toBe(0);
+    });
+  }
+
+  test('a cube edge facing the key is brighter than its face centre', async ({ page }) => {
+    const { image } = await render(page, 'variant=edges');
+    const at = async (x: number, y: number, z: number) => {
+      const [px, py] = await page.evaluate((p) => window.__msFixture!.rt!.project(...p), [x, y, z] as const);
+      return luminance(pixel(image, px, py));
+    };
+    // The cube's up face (y 8) beside its south edge (z 10), inside the 0.5-unit band, and its centre.
+    const edge = await at(-8, 8, 9.85);
+    const centre = await at(-8, 8, 6);
+    console.log(`[edges probe] up face beside the south edge ${edge.toFixed(1)}, centre ${centre.toFixed(1)}`);
+    expect(edge).toBeGreaterThan(centre + 1);
+    const flat = await render(page, 'variant=edges&edges=0');
+    const [px, py] = await page.evaluate(() => window.__msFixture!.rt!.project(-8, 8, 9.85));
+    expect(luminance(pixel(flat.image, px, py)), 'unrounded: as the centre').toBeLessThan(centre + 1);
+  });
+
+  test('setEdges: a width is a uniform, an angle detects again, a bad value names its field', async ({ page }) => {
+    const off = await render(page, 'variant=edges&edges=0');
+    const info = (await render(page, 'variant=edges')).info;
+    const initial = await readPng(page, info);
+    const set = (edges: { width?: number; sharpAngleDeg?: number }) =>
+      page.evaluate((e) => window.__msFixture!.rt!.setEdges(e), edges);
+    expect(await set({ width: 0 })).toBe('ok');
+    expect((await readPng(page, info)).equals(off.png), 'width 0 draws as edges=0').toBe(true);
+    expect(await set({ width: 0.5 })).toBe('ok');
+    expect((await readPng(page, info)).equals(initial)).toBe(true);
+    // 100 degrees: the cube's 90-degree edges are no longer sharp, the wedge's 135-degree ones still are.
+    expect(await set({ sharpAngleDeg: 100 })).toBe('ok');
+    const steep = decodePng(await readPng(page, info));
+    expect(differingPixels(steep, decodePng(initial))).toBeGreaterThan(50);
+    expect(differingPixels(steep, off.image)).toBeGreaterThan(50);
+    expect(await set({ sharpAngleDeg: 30 })).toBe('ok');
+    expect((await readPng(page, info)).equals(initial)).toBe(true);
+    expect(await set({ width: -1 })).toMatch(/^RangeError: edges\.width must be a finite number in 0\.\.4/);
+    expect(await set({ width: Number.NaN })).toMatch(/edges\.width/);
+    expect(await set({ sharpAngleDeg: 180 })).toMatch(/^RangeError: edges\.sharpAngleDeg/);
+    expect((await readPng(page, info)).equals(initial), 'a rejected value changes nothing').toBe(true);
+    await expect(openFixture(page, '/rt.html?variant=edges&edges=5')).rejects.toThrow(/query parameter edges/);
+  });
+
+  test('a lost and restored context uploads the edge attributes again: the same bytes', async ({ page }) => {
+    const info = await openFixture(page, '/rt.html?variant=edges');
+    const before = await readPng(page, info);
+    await page.evaluate(async () => {
+      const rt = window.__msFixture!.rt!;
+      await rt.lose();
+      await rt.restore();
+    });
+    expect((await readPng(page, info)).equals(before)).toBe(true);
   });
 });

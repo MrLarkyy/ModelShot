@@ -9,7 +9,7 @@ import type { TexturePlacement } from './textureLayers';
 export const DATA_TEXTURE_WIDTH = 2048;
 export const NODE_TEXELS = 2;
 export const TRIANGLE_POSITION_TEXELS = 3;
-export const TRIANGLE_ATTRIBUTE_TEXELS = 5;
+export const TRIANGLE_ATTRIBUTE_TEXELS = 9;
 export const MATERIAL_TEXELS = 3;
 
 /** RGBA32F texels, `DATA_TEXTURE_WIDTH` per row, padded to whole rows. */
@@ -21,8 +21,10 @@ export interface DataTexture {
 /**
  * The geometry as the trace shader reads it (sceneData.glsl), triangles in BVH leaf order. Nodes: 2 texels each, the
  * `Bvh` layout. Triangle positions: 3 texels, corner k in xyz; w holds the material slot (texel 0), 1 for double-sided
- * (texel 1) and the render order (texel 2). Attributes: 5 texels, normals in xyz of texels 0-2 with the UVs in their w
- * and texel 3 (u0, v0, u1 | v1, u2, v2), the face's UV rectangle in texel 4.
+ * (texel 1) and the render order (texel 2). Attributes: 9 texels, normals in xyz of texels 0-2 with the UVs in their w
+ * and texel 3 (u0, v0, u1 | v1, u2, v2), the face's UV rectangle in texel 4, corner k's four sharp-edge distances in
+ * texel 5 + k (`NO_EDGE` in an empty slot) and the slots' signed angles in texel 8 (`FlatScene.edgeDistances`,
+ * `edgeAngles`).
  */
 export interface PackedGeometry {
   readonly nodeCount: number;
@@ -87,7 +89,27 @@ export function packGeometry(flat: FlatScene, bvh: Bvh, maxTextureSize: number):
     a[att + 14] = uv[5] ?? 0;
     a.set(flat.uvRects.subarray(t * 4, t * 4 + 4), att + 16);
   }
+  packTriangleEdges(triAttributes, flat, bvh.order, count);
   return { nodeCount: bvh.nodeCount, triangleCount: count, nodes, triPositions, triAttributes, maxRenderOrder };
+}
+
+/**
+ * Writes the sharp-edge texels (5-8) of `count` triangles into packed attributes, in the BVH `order`: what an edge
+ * angle change rewrites without packing the rest again.
+ */
+export function packTriangleEdges(
+  triAttributes: DataTexture,
+  edges: Pick<FlatScene, 'edgeDistances' | 'edgeAngles'>,
+  order: Uint32Array,
+  count: number,
+): void {
+  const a = triAttributes.data;
+  for (let i = 0; i < count; i++) {
+    const t = order[i] ?? 0;
+    const att = i * TRIANGLE_ATTRIBUTE_TEXELS * 4;
+    a.set(edges.edgeDistances.subarray(t * 12, t * 12 + 12), att + 20);
+    a.set(edges.edgeAngles.subarray(t * 4, t * 4 + 4), att + 32);
+  }
 }
 
 /** Where each image the materials read lies in the texture layers (`planTextureLayers`, same order). */

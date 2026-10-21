@@ -10,10 +10,12 @@ import {
   TRIANGLE_POSITION_TEXELS,
   packGeometry,
   packMaterials,
+  packTriangleEdges,
   type MaterialTextures,
 } from '../src/packSceneData';
 import { PathTracerError } from '../src/PathTracerError';
-import { randomTriangles, sceneOf, triangleMesh } from './testScenes';
+import { NO_EDGE } from '@modelshot/scene';
+import { boxMesh, randomTriangles, sceneOf, triangleMesh } from './testScenes';
 
 const place = (layer: number, x: number) => ({ layer, x, y: 2, width: 16, height: 8 });
 
@@ -48,16 +50,40 @@ describe('packGeometry', () => {
       expect([a[0], a[1], a[2]]).toEqual([0, 0, 1]);
       expect([a[3], a[7], a[11], a[12], a[13], a[14]]).toEqual([0, 0, 1, 0, 0, 1]);
       expect(Array.from(a.subarray(16, 20))).toEqual(Array.from(flat.uvRects.subarray(t * 4, t * 4 + 4)));
+      // No edge detection: every slot empty.
+      expect(Array.from(a.subarray(20, 32))).toEqual(new Array(12).fill(NO_EDGE));
+      expect(Array.from(a.subarray(32, 36))).toEqual([0, 0, 0, 0]);
     }
+  });
+
+  it('packs corner edge distances in texels 5-7 and angles in texel 8, and rewrites only them', () => {
+    const doc = sceneOf([boxMesh([0, 0, 0], [2, 2, 2])]);
+    const flat = flattenScene(doc, undefined, { sharpAngleDeg: 30, reach: 4 });
+    const bvh = buildBvh(flat.positions, flat.count);
+    const packed = packGeometry(flat, bvh, 4096);
+    const texels = TRIANGLE_ATTRIBUTE_TEXELS * 4;
+    for (let i = 0; i < flat.count; i++) {
+      const t = bvh.order[i] ?? 0;
+      const a = packed.triAttributes.data.subarray(i * texels, (i + 1) * texels);
+      expect(Array.from(a.subarray(20, 32))).toEqual(Array.from(flat.edgeDistances.subarray(t * 12, t * 12 + 12)));
+      expect(Array.from(a.subarray(32, 36))).toEqual(Array.from(flat.edgeAngles.subarray(t * 4, t * 4 + 4)));
+    }
+    const before = Array.from(packed.triAttributes.data.subarray(0, flat.count * texels));
+    packTriangleEdges(packed.triAttributes, flattenScene(doc), bvh.order, flat.count);
+    const after = packed.triAttributes.data;
+    before.forEach((value, i) => {
+      const texel = Math.floor(i / 4) % TRIANGLE_ATTRIBUTE_TEXELS;
+      expect(after[i]).toBe(texel < 5 ? value : texel < 8 ? NO_EDGE : 0);
+    });
   });
 
   it('throws SCENE_TOO_LARGE when a data texture would need more rows than the GPU allows', () => {
     const flat = flattenScene(sceneOf([triangleMesh(randomTriangles(1400, 2))]));
     const bvh = buildBvh(flat.positions, flat.count);
-    // 1400 triangles x 5 attribute texels = 7000 texels = 4 rows of 2048.
-    expect(() => packGeometry(flat, bvh, 3)).toThrow(PathTracerError);
-    expect(() => packGeometry(flat, bvh, 3)).toThrow(/triangle attributes need 4 rows/);
-    expect(packGeometry(flat, bvh, 4).triAttributes.rows).toBe(4);
+    // 1400 triangles x 9 attribute texels = 12 600 texels = 7 rows of 2048.
+    expect(() => packGeometry(flat, bvh, 6)).toThrow(PathTracerError);
+    expect(() => packGeometry(flat, bvh, 6)).toThrow(/triangle attributes need 7 rows/);
+    expect(packGeometry(flat, bvh, 7).triAttributes.rows).toBe(7);
   });
 });
 

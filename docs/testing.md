@@ -1,6 +1,7 @@
 # Testing
 
-`pnpm test` runs two layers, in order; either failing fails the command and the CI job.
+`pnpm test` runs two layers, in order; either failing fails the command. CI runs the same layers in separate jobs
+(CI, below).
 
 1. `pnpm test:unit`: Vitest, every package plus `tools/harness/test` (comparator, golden store, budgets, bundle size,
    model-view helpers).
@@ -8,6 +9,26 @@
 
 Run `pnpm browsers` once per machine (and after a Playwright version bump) to install the browser. Playwright is pinned
 to an exact version in `tools/harness/package.json`, which pins the Chromium revision.
+
+## CI
+
+`.github/workflows/ci.yml` has two jobs, each with `timeout-minutes: 20`:
+
+- `check`: install, typecheck, lint, format check, `pnpm -r build`, `pnpm run test:unit` (Vitest, bundle size
+  included).
+- `e2e`: a matrix of 4 shards (`fail-fast: false`), each on its own VM: install, the pinned Chromium, `pnpm -r build`,
+  then `playwright test --shard=<k>/4`, uploading `tools/harness/test-results/` as `browser-test-results-<k>`.
+
+Why: on one runner the browser suite alone outran the 20-minute limit (run 39545935955 on 4861384 was cancelled in
+`pnpm test`; the e2e part ran over 19 minutes with one worker, the baked-light tests about 37 s each). Shards are
+separate VMs, so each keeps one worker and the budgets measure an otherwise idle machine; neither the timeout nor
+the worker count changed. For the shards to split the suite the `golden` project is `fullyParallel` (its tests share
+no state; with one worker nothing runs at once, it only lets a shard take part of a file), and `bench` no longer
+depends on `golden` (a dependency put every golden test into the bench's shard: shard 1 had all 219 tests, 2-4
+none). Listed locally (`--list`): shard 1 55 tests (environment, golden, goldenFailure, modelView, 18 of
+pathtracer), 2 55 (31 pathtracer, 24 realtime), 3 55 (realtime), 4 54 (53 realtime and `bench.spec.ts`), 219 in all as
+without `--shard`. By the local test times the heaviest shard (the last realtime tests, the bakes, and the bench)
+takes about 6 + 3 minutes.
 
 ## Browser tests
 
@@ -28,8 +49,8 @@ image code uses no clock or random source (lint rule; timing lives in `fixtures/
   check, `maxMeanDelta 1`: the mean absolute channel delta over the whole image, in 0..255 levels. pixelmatch alone
   ignores a uniform shift of up to about 25 levels; the mean catches exposure-like changes. A failure writes
   `<name>-actual.png`, `<name>-expected.png` and `<name>-diff.png` into the per-test subfolder of
-  `tools/harness/test-results/` (the path is in the failure message); CI uploads `test-results/` as the
-  `browser-test-results` artefact.
+  `tools/harness/test-results/` (the path is in the failure message); CI uploads `test-results/` of each shard as the
+  `browser-test-results-<shard>` artefact.
 - What fails for a wrong sample count: the fixture counts the draws it really made and the spec rejects a count that
   differs from the request (`assertSampleCount`); for the same seed, 63 or 65 samples instead of 64 also fail the
   comparison by themselves, with 0 differing pixels but a mean delta of 1.40..1.42 levels against the limit of 1 (seed 8:
@@ -180,6 +201,40 @@ textures generated in code, `look=checker` from behind the plane), `rt-bake-alph
   (4 samples) or the cut-out plant field (1 sample) counts a capped traversal, while 107 795 texels of the coincident
   cubes do.
 
+**Rounded edges** (MS-15, `test.describe('rounded edges')`; the fixture's `edges=<width>` sets `EdgeLook.width`, 0
+none, else the renderers' default `EDGE_LOOK_V0`, and its `rt.setEdges` / `pt.setEdges` change it on the page). The
+generated `edges` scene (`fixtures/src/edgesScene.ts`, code-built, no licensed asset): a Blockbench cube and a
+zero-thickness double-faced card through `loadBbmodel` (alpha-plane's texture), a Blockbench-style wedge mesh (flat
+faces with their own vertices, a 45° slope), a single-sided plane and a smooth welded sphere; variant `edges` (yaw 30°,
+pitch 35°). Golden `rt-edges`, default tolerance.
+
+- Planes, cards and smooth areas: the pixels of the plane, the card and the sphere (those that change when the mesh is
+  hidden, `hide=`, less the cube's and the wedge's MSAA silhouette pixels) are byte-identical with rounding on and
+  `edges=0`, float and fallback (0 of 1 014 / 1 272 / 1 584 float, 982 / 1 210 / 1 544 fallback).
+- Sharp-edged meshes change only beside their edges: every pixel that rounding changes (1 895 float, 1 729 fallback)
+  lies within the band's projected width plus 2 px (4.82 px) of a projected sharp edge of the cube or the wedge.
+- The cube's up face 0.15 units from its south edge, which faces the key, is brighter than the face centre (120.4 vs
+  117.4 levels; unrounded it equals the centre).
+- `setEdges`: width 0 draws the bytes of `edges=0`, width 0.5 again the initial bytes (a uniform); sharp angle 100°
+  (the cube's 90° edges no longer sharp, the wedge's 135° ones still) differs from both, and 30° again gives the
+  initial bytes (detection again, geometry uploaded again); `width -1`, NaN and `sharpAngleDeg 180` throw a `RangeError`
+  naming `edges.width` / `edges.sharpAngleDeg` and change nothing; `edges=5` is a malformed parameter.
+- Context loss: after a loss and restore the `edges` view has the same bytes (attributes 9-10 uploaded again).
+- The hidden-face comparisons above (`closed-cube`, `step`, `closed-cube-cutout` against their `-open` variants) run
+  with `edges=0`: an open variant lacks faces, so its edges there are boundaries that are not rounded, which is a
+  difference of rounding, not a hidden face showing.
+
+Goldens regenerated on purpose in MS-15 (default rounded edges, and in the render the bounce mirrored below the
+surface; same views, seeds and samples): `rt-turntable-y000`, `-y030`, `-y060`, `-y090`, `rt-iso`, `rt-closeup`,
+`rt-fallback`, `rt-player-classic-front`, `-classic-back`, `-slim-34`, `-legacy-34`, `-walk-hold-34`, `-slim-fallback`,
+`-wave-front`, `rt-bake-turntable-y030`, `rt-bake-cutout-checker-fallback`; `pt-turntable-y030`, `pt-iso`,
+`pt-closeup`, `pt-emissive`, `pt-player-hold-34`, `pt-cutout-checker`, `pt-alpha-plane` and `pt-render-order` (181
+pixels along the ground box's back edges, at most 14 levels; its probes pass unchanged). The changes sit on the cube
+edges (largest `rt-closeup`: 7 013 pixels, mean 0.93 levels; `pt-closeup` 9 754, 0.93). Within tolerance and so not
+rewritten: `rt-far`, `rt-gltf-nodes-y030`, `rt-obj-shapes-y030`, `rt-player-hold-34`, `rt-player-legacy-opaque-hat-34`,
+`rt-bake-cutout-checker`, `rt-bake-alpha-plane`, and as required `rt-fit-flat-cube`, `pt-alpha-ramp-blend`,
+`gradient`, `progressive.s7.n64` and every model-view golden (their fixture has its own shaders).
+
 For a manual run on real hardware open `rt.html?scene=bench&size=512&fps=1`: it draws continuously and shows the
 median frame work (draw until the GPU finished) and display interval over the last 120 frames, with the renderer
 string.
@@ -207,6 +262,7 @@ put in the URL, not in the file name).
 | `pt-emissive.s1.n64`          | showcase, bricks emitting (4, 2.2, 0.8)         | golden; the post beside the bricks brightens |
 | `pt-player-hold-34.s1.n64`    | MS-20 player, hold preset, cube in the hand     | golden; pair with `rt-player-hold-34`        |
 | `pt-cutout-checker.s1.n128`   | generated cut-out checker and box, `checker`    | golden; checker shadow probes; pair          |
+| `pt-edges.s1.n128`            | generated `edges` scene (MS-15)                 | golden; rounded-edge probes; pair            |
 
 All eight earlier `pt-*` goldens were regenerated in MS-16 on purpose (same seeds, samples and size): the key became
 a 0.04 rad cone, the shadow catcher appeared under every model, and the random dimensions per path vertex grew from
@@ -249,21 +305,29 @@ again, by at most 5 levels (mean 1) over their whole catcher; the others did not
   scene over the material limit (1.4 M materials) fails with `SCENE_TOO_LARGE` before decoding anything and the
   current scene keeps rendering the same bytes; `dispose()` leaves no WebGL object or ImageBitmap (`track=1`).
 
+**Rounded edges** (MS-15): on the `edges` scene, 128 samples, the plane, card and sphere pixels (the preview's masks)
+of the render with rounding stay within the default golden tolerance of the render with `edges=0` (0 of 3 870 pixels
+differ, mean delta 0.0025: only light bounced off rounded neighbours moves); the cube's key-facing edge (3 x 3 mean)
+is brighter than the face centre (118.7 vs 117.4, unrounded equal); `setEdges` behaves as in the preview (width 0 the
+bytes of `edges=0`, the angle round trip the initial bytes, bad values a `RangeError` naming the field).
+
 **Pair tests** (preview vs render): `rt.html` baked (`bake=64`) and `pt.html` of the same view. Framing, with the
 shadow catcher off on both sides (its edge fades into the backdrop): the backdrop masks (within 2 levels of the
 top-left pixel) must agree on every pixel off the silhouette (a pixel whose 3 x 3 neighbourhood in the preview holds
 both classes); 0 mismatches is the limit. Radiance, catcher on both: pixelmatch `threshold 0.1` with `maxDiffRatio`
 and `maxMeanDelta` = measured x 1.25 and never above the previous limit, never widened; the render differs where it
 has interreflection and noise. Logged as `[pt pair] <view>: ...`, values in `test-results/pt-pair-<view>.json`.
-Measured on SwiftShader (local Windows dev machine, deterministic), MS-16 (MS-17's unbaked values in brackets):
+Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with rounded edges and the mirrored bounce
+(MS-16's values in brackets; every limit stayed, none widened, `edges` is new at measured x 1.25):
 
 | view             | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta           | limit: `maxDiffRatio`, `maxMeanDelta` |
 | ---------------- | ----------------------------------- | --------------------------------------------- | ------------------------------------- |
-| `turntable-y030` | 0 (1 606)                           | 185, 0.00282, 0.762 (715, 0.01091, 0.784)     | 0.00353, 0.953                        |
-| `iso`            | 0 (1 543)                           | 335, 0.00511, 0.942 (835, 0.01274, 1.049)     | 0.00639, 1.18                         |
-| `alpha-plane`    | 0 (689)                             | 2 083, 0.03178, 2.189 (2 158, 0.03293, 1.984) | 0.0398, 2.48 (2.189 x 1.25 is above)  |
-| `player-hold-34` | 0 (1 322)                           | 1 215, 0.01854, 1.295 (1 596, 0.02435, 1.443) | 0.0232, 1.62                          |
-| `cutout-checker` | 0 (3 310)                           | 275, 0.00420, 0.726                           | 0.00525, 0.908                        |
+| `turntable-y030` | 0 (1 604)                           | 201, 0.00307, 0.772 (185, 0.00282, 0.762)     | 0.00353, 0.953                        |
+| `iso`            | 0 (1 543)                           | 366, 0.00558, 0.959 (335, 0.00511, 0.942)     | 0.00639, 1.18                         |
+| `alpha-plane`    | 0 (689)                             | 2 083, 0.03178, 2.187 (2 083, 0.03178, 2.189) | 0.0398, 2.48 (2.187 x 1.25 is above)  |
+| `player-hold-34` | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295) | 0.0232, 1.62                          |
+| `cutout-checker` | 0 (3 307)                           | 293, 0.00447, 0.731 (275, 0.00420, 0.726)     | 0.00525, 0.908                        |
+| `edges`          | 0 (1 979)                           | 43, 0.00066, 0.397                            | 0.00082, 0.496                        |
 
 alpha-plane's large ground is an untextured box, baked per vertex, so its preview shows no ground shadow (world-density
 charts for untextured meshes are not in MS-16); the catcher under it darkens its mean delta a little.
@@ -506,7 +570,49 @@ texel tap), `rt-bench-order-512` 117, 145 and 148 ms with MSAA, 83 and 107 ms si
     whether it was page work. Limit and measure unchanged in round 6; round 7 made the trace the measure (above). In the same runs
     `rt-load-first-frame-200k-order` (now with the lightmap layout) measured about 600 ms of its 3500.
 
+MS-15 (rounded edges: sharp-edge detection at `setScene`, two more vertex attributes and the rounding in every mesh
+fragment, 9 instead of 5 attribute texels per triangle in the path tracer): `budgets.json` unchanged, every budget
+passes. Two bench-only runs on the local Windows dev machine (SwiftShader), against MS-16's last full test runs on the
+same machine (215-217, 208, 1140-1230, 945-970, 6126-6320 ms and 25.8-29.3 s): `rt-bench-512` 274.8 and 285.5 ms
+(about +30 %: the bench's 2 048 small cubes are nearly all within the rounding band, and SwiftShader runs the
+fragment work on the CPU), `rt-bench-order-512` 201.0 and 241.3 ms, `rt-load-first-frame-200k-order` 956.3 and
+1300.9 ms (its quads have no sharp edge), `pt-load-200k` 954.9 and 1344.3 ms, `pt-bench-128-n256` 3567.9 and
+4862.3 ms, `bake-bench-n16` 18.6 and 24.9 s (the bake binds width 0), `bake-bench` 3.3 and 2.8 ms, `bake-post-200k`
+8.0 and 9.1 ms; bundles 437 and 115 B (no dependency). The spread between the two runs is the machine's; real hardware
+is not measured here. `sharpEdges` alone of 16 667 separate cubes in one mesh (200 004 triangles, 200 004 sharp
+edges) takes 0.19 s in Node on the dev machine (2.2 s before welding and slot search moved to typed arrays and hashing
+in round 1).
+
+`frameTimeMs.rt-load-first-frame-200k-edges` and `frameTimeMs.rt-load-first-frame-edges-hostile` (MS-15) time
+`setScene` plus the first frame like `rt-load-first-frame-200k-order`, on generated scenes whose detection runs on
+fresh meshes (`fixtures/src/edgesScene.ts`): `edges-200k`, those 16 667 cubes (200 004 triangles at the loaders'
+limit, every edge sharp), and `edges-hostile`, nine meshes that are each a plate of 100 x 100 cells of 0.01 units
+walled on all four sides (20 800 triangles each, 187 200 in all). Within the 4-unit reach every plate triangle visits
+all 404 sharp edges of its patch: about 5 · 10⁷ work units per plate, so the document's `MAX_EDGE_WORK` (10⁸) stops
+the slot search in the third plate (round 2: the earlier cap counted checks per mesh, so one such plate at that cell
+size took 10 s and nine about 30 s; unit-tested in `sharpEdges.test.ts`). Local SwiftShader 997, 1215 and 913 ms;
+hostile (one 300 x 300 plate, round 1) 891 and 938 ms, the nine plates 951 ms; the large-order load beside them 1254,
+1149 and 797 ms. Max 3500 ms each, the limit of the load budget they extend: about 3x the measurement, so a return of
+the first detection (2 s more on `edges-200k`) or an unbudgeted hostile document fails it, while the CI runner keeps
+its margin as for the sibling.
+
+`frameTimeMs.rt-load-first-frame-edges-weld` (MS-15 round 3): the same load of `edges-weld`, 100 000 quads (200 000
+triangles, 400 000 vertices) on a grid of 65 536-unit steps, each quad with its own vertices: every quantised
+coordinate is a multiple of 2^20 and every edge is shared, the worst case of the multiplicative hash with linear
+probing that matching used before (about two minutes at this size; `sharpEdges` alone took 2.0 s for 60 000 such
+vertices). Matching sorts now: 752 ms local SwiftShader for the whole load (`sharpEdges` alone 0.15 s for 400 000
+vertices), max 3500 ms as for the other load budgets. The same run: `edges-200k` 1158 ms, `edges-hostile` 1194 ms,
+`large-order` 896 ms.
+
+Memory of detection at the loaders' vertex limit (MS-15 round 4): `sharpEdges` of the `edges-weld` mesh (400 000
+vertices, 200 000 triangles, input 11.4 MB) in Node 22 with `--expose-gc`, a fresh Vitest worker, collected before:
+the process's peak resident set grows by 62.8, 62.9 and 63.9 MB (`process.resourceUsage().maxRSS`, three runs; to
+about 143 MB), in 264-419 ms. Of that the result kept with the mesh is 16.0 MB (`vertexOf`, `indices`, `distances`,
+`angles`); the rest is sort keys, ranks and edge tables, garbage once it returns (right after: heap +29 MB, array
+buffers +38 MB before collection). The renderers keep one result per document (`sceneSharpEdges`, latest options).
+
 First CI run (2026-10-20, ubuntu-latest): frame time 0.9 ms (max 5, 5.5x), time to 64 samples 80.6 ms (max 300), gzip app 437 B, embed 115 B.
-Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact, with the numbers in the commit.
+Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact (in the e2e shard that ran
+`bench.spec.ts`), with the numbers in the commit.
 Changing a `max` is a reviewed change: explain it in the commit with the measured numbers, never raise it to hide a
 regression.
