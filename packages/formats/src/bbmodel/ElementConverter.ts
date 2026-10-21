@@ -17,6 +17,8 @@ export interface ConverterContext {
   readonly resolution: UvSize;
   /** Project-wide box UV (`meta.box_uv`); an element may override it. */
   readonly boxUv: boolean;
+  /** A box-UV project before format 4.5: a cube's `shade: false` means mirrored UV (Blockbench's import). */
+  readonly shadeMirrorsUv?: boolean;
   /** Box-UV sizes are not floored (Blockbench `box_uv_float_size`, only `modded_entity`). */
   readonly boxUvFloatSize: boolean;
   readonly maxStringChars: number;

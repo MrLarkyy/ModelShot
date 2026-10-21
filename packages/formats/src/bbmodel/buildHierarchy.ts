@@ -45,6 +45,11 @@ interface Pending {
   readonly depth: number;
 }
 
+export interface HierarchyOptions {
+  /** Negate every group's z rotation (files before format 3.2, as Blockbench imports them). */
+  readonly invertGroupZ?: boolean;
+}
+
 interface GroupData {
   readonly data: JsonObject;
   readonly path: string;
@@ -63,6 +68,7 @@ export function buildHierarchy(
   elementCount: number,
   limits: BbmodelLimits,
   warnings: BbmodelWarningList,
+  options: HierarchyOptions = {},
 ): Hierarchy {
   const groupData = readGroupData(root, limits);
   const maxItems = limits.maxElements + limits.maxGroups;
@@ -124,7 +130,7 @@ export function buildHierarchy(
       parent,
       children: [],
       pivot: readOptionalVec3(group.data, 'origin', group.path, ZERO),
-      rotation: readOptionalVec3(group.data, 'rotation', group.path, ZERO),
+      rotation: groupRotation(readOptionalVec3(group.data, 'rotation', group.path, ZERO), options),
       visible: readOptionalBoolean(group.data, 'visibility', group.path, true),
     });
     if (parent < 0) rootNodes.push(index);
@@ -139,6 +145,11 @@ export function buildHierarchy(
     if (!placedElements.has(element)) placements.push({ element, node: -1 });
   }
   return { nodes, rootNodes, placements };
+}
+
+function groupRotation(rotation: Vec3, options: HierarchyOptions): Vec3 {
+  // `0 - z` rather than `-z`, so a zero stays +0.
+  return options.invertGroupZ ? [rotation[0], rotation[1], 0 - rotation[2]] : rotation;
 }
 
 /** Format 5.x keeps group data in a top-level `groups` array and only uuids and children in the outliner. */

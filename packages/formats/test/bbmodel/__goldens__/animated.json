@@ -156,17 +156,17 @@
           "keyframes": [
             {
               "time": 0,
-              "value": [1, 0, 0],
-              "interpolation": "step"
-            },
-            {
-              "time": 0.5,
               "value": [-1, 0, 0],
               "interpolation": "step"
             },
             {
-              "time": 1,
+              "time": 0.5,
               "value": [1, 0, 0],
+              "interpolation": "step"
+            },
+            {
+              "time": 1,
+              "value": [-1, 0, 0],
               "interpolation": "step"
             }
           ]
@@ -189,17 +189,17 @@
             },
             {
               "time": 0.5,
-              "value": [0, 90, 0],
+              "value": [0, -90, 0],
               "interpolation": "catmullrom"
             },
             {
               "time": 1,
-              "value": [0, 360, 0],
+              "value": [0, -360, 0],
               "interpolation": "catmullrom"
             },
             {
               "time": 2,
-              "value": [0, 720, 0],
+              "value": [0, -720, 0],
               "interpolation": "catmullrom"
             }
           ]
@@ -245,7 +245,7 @@
           "keyframes": [
             {
               "time": 0,
-              "value": [10, 0, -2.5],
+              "value": [-10, 0, -2.5],
               "interpolation": "linear"
             },
             {
@@ -255,7 +255,7 @@
             },
             {
               "time": 1.5,
-              "value": [5, 5, 5],
+              "value": [-5, -5, 5],
               "interpolation": "step"
             },
             {

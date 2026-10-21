@@ -39,7 +39,10 @@ export interface SceneAnimationChannel {
 export interface SceneAnimation {
   readonly name: string;
   readonly loop: SceneAnimationLoop;
-  /** Seconds, ≥ 0; loaders make it at least the time of the last keyframe. */
+  /**
+   * Seconds, ≥ 0: the clip's period. Keyframes may lie past it (they shape the curve, the clip never reaches them);
+   * a loader without a length takes the time of the last keyframe.
+   */
   readonly length: number;
   readonly channels: readonly SceneAnimationChannel[];
 }

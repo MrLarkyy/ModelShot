@@ -12,6 +12,7 @@ import { BbmodelError } from './BbmodelError';
 import type { BbmodelLimits } from './BbmodelLoadOptions';
 import type { BbmodelWarningList } from './BbmodelWarning';
 import type { HierarchyNode } from './buildHierarchy';
+import { formatVersionBefore } from './formatVersionBefore';
 import { childPath, field, isJsonObject, type JsonObject } from '../json/JsonObject';
 import { readArray, readBoolean, readFiniteNumber, readObject, readOptionalString, readString } from './JsonFields';
 import { keyframeValue } from './keyframeValue';
@@ -27,9 +28,22 @@ const LOOPS: readonly string[] = ['once', 'hold', 'loop'] satisfies SceneAnimati
 const INTERPOLATIONS: readonly string[] = ['linear', 'catmullrom', 'step'] satisfies SceneInterpolation[];
 const AXES = ['x', 'y', 'z'] as const;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Blockbench formats that honour an animator's `quaternion_interpolation` (`per_animator_rotation_interpolation`). */
+const PER_ANIMATOR_ROTATION_INTERPOLATION: readonly string[] = ['free'];
+
+/** The file's `meta.format_version` and `meta.model_format`. */
+export interface AnimationSource {
+  readonly formatVersion: string;
+  readonly modelFormat: string;
+}
 
 interface Context {
-  readonly nodes: readonly HierarchyNode[];
+  /** Node by group uuid and by lowercased name (first in outliner order), built once per load. */
+  readonly byUuid: ReadonlyMap<string, number>;
+  readonly byName: ReadonlyMap<string, number>;
+  /** Format before 5.0: keyframes are in the old sign convention (`legacyKeyframe`). */
+  readonly legacy: boolean;
+  readonly quaternionFlag: boolean;
   readonly limits: BbmodelLimits;
   readonly warnings: BbmodelWarningList;
   /** (animation, animator, channel) paths already warned about, so a long channel warns once. */
@@ -40,13 +54,15 @@ interface Context {
  * The `animations` of a `.bbmodel` as scene animations; `undefined` when the file has none. Counts every animation,
  * animator and keyframe against the limits before reading one (`TOO_MANY_KEYFRAMES`). Played: bone animators'
  * `rotation`, `position` and `scale` keyframes with numeric data points and linear, catmull-rom or step
- * interpolation. Blockbench keeps keyframes in the convention of its group rotations and positions, which the scene
- * shares, so values are taken as they are (only Blockbench's Bedrock export flips axes). Whatever is not played as
- * authored is a warning, once per animation, animator and channel; a wrong JSON type is an `INVALID_FIELD`.
+ * interpolation. Files from format 5.0 keep keyframes in the convention of their group rotations and positions, which
+ * the scene shares; older files are converted as Blockbench converts them on import (`legacyKeyframe`). Whatever is
+ * not played as authored is a warning, once per animation, animator and channel; a wrong JSON type is an
+ * `INVALID_FIELD`.
  */
 export function parseAnimations(
   root: JsonObject,
   nodes: readonly HierarchyNode[],
+  source: AnimationSource,
   limits: BbmodelLimits,
   warnings: BbmodelWarningList,
 ): SceneAnimation[] | undefined {
@@ -60,7 +76,22 @@ export function parseAnimations(
   if (items.length === 0) return undefined;
   const animations = items.map((item, index) => readObject(item, childPath('$.animations', index)));
   countKeyframes(animations, limits);
-  const context: Context = { nodes, limits, warnings, warned: new Set() };
+  const byUuid = new Map<string, number>();
+  const byName = new Map<string, number>();
+  nodes.forEach((node, index) => {
+    if (node.sourceId !== '' && !byUuid.has(node.sourceId)) byUuid.set(node.sourceId, index);
+    const name = node.name.toLowerCase();
+    if (!byName.has(name)) byName.set(name, index);
+  });
+  const context: Context = {
+    byUuid,
+    byName,
+    legacy: formatVersionBefore(source.formatVersion, '5.0'),
+    quaternionFlag: PER_ANIMATOR_ROTATION_INTERPOLATION.includes(source.modelFormat),
+    limits,
+    warnings,
+    warned: new Set(),
+  };
   return animations.map((animation, index) => readAnimation(animation, childPath('$.animations', index), context));
 }
 
@@ -129,8 +160,13 @@ function readAnimation(animation: JsonObject, path: string, context: Context): S
     }
   }
   const channels = [...byNode.values()].flat();
-  const lastKeyframe = channels.reduce((last, channel) => Math.max(last, channel.keyframes.at(-1)?.time ?? 0), 0);
-  return { name, loop, length: Math.max(fileLength, lastKeyframe), channels };
+  // Blockbench keeps the file's length even with keyframes past it (a trailing catmull-rom keyframe shapes the loop's
+  // tangent); a file without one plays to its last keyframe.
+  const length =
+    fileLength > 0
+      ? fileLength
+      : channels.reduce((last, channel) => Math.max(last, channel.keyframes.at(-1)?.time ?? 0), 0);
+  return { name, loop, length, channels };
 }
 
 /** Animation fields that change playback in Minecraft; ModelShot plays the clip as if they had their defaults. */
@@ -175,6 +211,8 @@ function readAnimator(
           code: 'TOO_MANY_KEYFRAMES',
           what: 'keyframes',
         });
+  // Nothing to play or report; skipped before the node lookup, which a file may otherwise repeat for every group.
+  if (items.length === 0) return null;
   const keyframes = items.map((item, k) => ({
     data: readObject(item, childPath(keyframesPath, k)),
     path: childPath(keyframesPath, k),
@@ -199,7 +237,7 @@ function readAnimator(
     }
     return null;
   }
-  const index = resolveNode(key, context.nodes);
+  const index = resolveNode(key, context);
   if (index < 0) {
     if (byChannel.size > 0) warnings.add('UNKNOWN_REFERENCE', path, `no group with uuid or name ${quoteValue(key)}`);
     return null;
@@ -226,11 +264,11 @@ function readAnimator(
 }
 
 /** The node of an animator key: the group with that uuid, else (a key that is no uuid) the first group with that name, ignoring case as Blockbench does; −1 for none. */
-function resolveNode(key: string, nodes: readonly HierarchyNode[]): number {
-  const byUuid = nodes.findIndex((node) => node.sourceId !== '' && node.sourceId === key);
-  if (byUuid >= 0 || UUID.test(key)) return byUuid;
-  const name = key.toLowerCase();
-  return nodes.findIndex((node) => node.name.toLowerCase() === name);
+function resolveNode(key: string, context: Context): number {
+  const byUuid = context.byUuid.get(key);
+  if (byUuid !== undefined) return byUuid;
+  if (UUID.test(key)) return -1;
+  return context.byName.get(key.toLowerCase()) ?? -1;
 }
 
 function checkRotationFlags(animator: JsonObject, path: string, channelPath: string, context: Context): void {
@@ -239,7 +277,10 @@ function checkRotationFlags(animator: JsonObject, path: string, channelPath: str
     ['quaternion_interpolation', 'quaternion interpolation played as Euler angles'],
   ] as const) {
     const value = field(animator, flag);
-    if (value !== undefined && readBoolean(value, childPath(path, flag))) {
+    // Blockbench reads the animator's quaternion flag only in formats that offer it per animator; elsewhere it plays
+    // Euler angles, as ModelShot does.
+    const honoured = flag !== 'quaternion_interpolation' || context.quaternionFlag;
+    if (value !== undefined && readBoolean(value, childPath(path, flag)) && honoured) {
       warnOnce(context, 'UNSUPPORTED_CHANNEL', `${channelPath}#${flag}`, detail, childPath(path, flag));
     }
   }
@@ -316,8 +357,21 @@ function readKeyframe(
       path,
     );
   }
-  const keyframe: SceneKeyframe = { time, value: post, interpolation };
-  return points.length > 1 ? { ...keyframe, before: pre } : keyframe;
+  const value = context.legacy ? legacyKeyframe(post, property) : post;
+  const keyframe: SceneKeyframe = { time, value, interpolation };
+  return points.length > 1 ? { ...keyframe, before: context.legacy ? legacyKeyframe(pre, property) : pre } : keyframe;
+}
+
+/**
+ * A keyframe value of a file before format 5.0 in the 5.0 convention: Blockbench 5 negates rotation x and y and
+ * position x of such files on import (js/formats/bbmodel.js), as its 4.x player applied them mirrored. Scale is
+ * unchanged. `0 - v` rather than `-v`, so a zero stays +0.
+ */
+function legacyKeyframe(value: Vec3, property: SceneAnimationProperty): Vec3 {
+  const [x, y, z] = value;
+  if (property === 'rotation') return [0 - x, 0 - y, z];
+  if (property === 'translation') return [0 - x, y, z];
+  return value;
 }
 
 /** `null` when an axis holds a Molang expression. */

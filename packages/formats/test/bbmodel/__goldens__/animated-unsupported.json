@@ -84,7 +84,7 @@
             },
             {
               "time": 0.5,
-              "value": [0, 45, 0],
+              "value": [0, -45, 0],
               "interpolation": "linear"
             }
           ]

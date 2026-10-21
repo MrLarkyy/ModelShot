@@ -32,9 +32,11 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
   (see the [scene format](scene-format.md#scenematerial) for what each pass does with a texel).
 - **Box UV** (`meta.box_uv` or the cube's `box_uv`): faces without a `uv` get Blockbench's box layout from
   `uv_offset`, the cube size and `mirror_uv`. The size is `to − from` of the plain cube (inflate and stretch ignored),
-  floored as `floor(to − from + 1e-7)`, except in `modded_entity` where Blockbench keeps fractional box-UV sizes.
+  floored as `floor(to − from + 1e-7)`, except in `modded_entity` where Blockbench keeps fractional box-UV sizes. In a
+  box-UV project (`meta.box_uv`) before format 4.5 a cube's `shade: false` means mirrored UV, as Blockbench reads it.
 - **Groups / bones**: `name`, `origin` (pivot), `rotation`, `visibility`; inline in the outliner (format ≤ 4.x) or in the
-  top-level `groups` array referenced by uuid from the outliner (format 5.x). Both give the same node tree.
+  top-level `groups` array referenced by uuid from the outliner (format 5.x). Both give the same node tree. Files before
+  format 3.2 stored the z rotation of groups with the opposite sign; it is negated on load, as Blockbench does.
 - **Textures**: PNG only. Embedded `data:image/png;base64,…` sources are decoded; any other texture is matched by the
   case-insensitive base name of its `relative_path`, then `path`, then `name` against `options.textureFiles`.
   In the `free` format (Blockbench's only format with per-texture UV size) `uv_width`/`uv_height` set a texture's UV
@@ -58,7 +60,8 @@ additive, layered) is not carried.
 Animation parts that are not played as authored, each reported (see Warnings) and the rest of the clip played:
 Molang expressions (the keyframe is skipped; constants play), `bezier` keyframes (played linear), effect animators
 (`sound`, `particle`, `timeline`), animators of other elements (null objects, cubes, meshes, …), unknown channels,
-`rotation_global` (played in local space), `quaternion_interpolation` (played as Euler angles), `anim_time_update`,
+`rotation_global` (played in local space), `quaternion_interpolation` (played as Euler angles; reported only in the
+`free` format, the one format where Blockbench honours the animator's flag, elsewhere it plays Euler angles too), `anim_time_update`,
 `start_delay`, `loop_delay` and `blend_weight` (played at normal speed, without delay, at full weight), and negative
 scale (played as the smallest positive scale).
 
@@ -102,12 +105,16 @@ scale (played as the smallest positive scale).
   texture is double-sided, as in Blockbench.
 - `render_order`: `default` (or absent) → `renderOrder` 0, `behind` → −1, `in_front` → 1.
 - One material per texture, same index, `alphaMode: "blend"`, `alphaCutoff: 0.01`.
-- Animations: keyframes are taken in Blockbench's own convention, which is the scene's: Blockbench adds a keyframe's
-  rotation (degrees) and position to the bone's three.js rotation and position, set from the group's `rotation` and
-  `origin` as the loader reads them, and multiplies its scale (only the Bedrock export flips rotation x, y and
-  position x). `position` becomes `translation`. Keyframes are sorted by time (stable), and `length` is raised to
-  the last keyframe, as Blockbench does. A later animator for the same group replaces an earlier one. A file without
-  `animations` (or with an empty list) gives a document without `animations`.
+- Animations: keyframes of a format 5.0 file are taken in Blockbench's own convention, which is the scene's:
+  Blockbench adds a keyframe's rotation (degrees) and position to the bone's three.js rotation and position, set from
+  the group's `rotation` and `origin` as the loader reads them, and multiplies its scale. Files before format 5.0
+  (including the pre-3.7 `bones` form) store rotation x, y and position x with the opposite sign: the loader negates
+  them, pre and post data points alike, as Blockbench 5 does when it opens such a file; scale is unchanged.
+  `position` becomes `translation`. Keyframes are sorted by time (stable). `length` is the file's `length` when it is
+  above 0, even with keyframes past it (a trailing catmull-rom keyframe shapes the loop's tangent and does not change
+  its period), else the time of the last keyframe. An animator without keyframes is skipped; a later animator for the
+  same group replaces an earlier one. A file without `animations` (or with an empty list) gives a document without
+  `animations`.
 
 ### Blockbench conventions assumed
 
@@ -151,6 +158,11 @@ format, quad order and split, normal sign, `render_sides`, `render_order` and th
     modes. ModelShot compares times exactly where Blockbench snaps within 1/1200 s, maps `loop` time with a plain
     modulo (Blockbench shows the end frame at exactly `length`), and returns a `once` clip to rest after its end
     (Blockbench's editor keeps the last frame; the game resets).
+13. **Import migrations** (`js/formats/bbmodel.js` at commit `ec0b282`, the project codec's version gates): before 3.2
+    every group's z rotation is negated; before 4.5 a box-UV project's cube with `shade: false` gets `mirror_uv`;
+    before 5.0 every rotation keyframe's x and y and every position keyframe's x are negated. Blockbench's 5.0
+    migration walks only `animators`, so it leaves pre-3.7 `bones` files unchanged; Blockbench 4 played those mirrored
+    like every other 4.x file, and ModelShot negates them too, so they move as their author saw them.
 
 ## Limits
 
@@ -235,6 +247,11 @@ MS-21 adds animations: the error code `TOO_MANY_KEYFRAMES`, the warning code `UN
 load exactly as before; files with animations that are malformed (a wrong JSON type, a negative time, a value beyond
 ±10⁶) now fail with `INVALID_FIELD` where they used to load with the animations ignored. Exhaustive switches over the
 code unions get a compile error, as above.
+
+MS-21 also applies Blockbench's import migrations (Blockbench conventions 13), which changes how some old files load:
+a file before format 3.2 now has its groups' z rotation negated (it used to load turned the wrong way about z), and a
+box-UV cube with `shade: false` in a file before 4.5 now has mirrored UV. Keyframes of files before 5.0 are negated
+in rotation x, y and position x; no earlier release read animations, so nothing that loaded before changes there.
 
 ## Local-first
 

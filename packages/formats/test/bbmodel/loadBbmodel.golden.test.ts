@@ -182,7 +182,8 @@ describe('hand-checked transforms', () => {
     const scene = load('animated').scene;
     const at = (animation: string, time: number) => animateScene(scene, { animation, time }).document.nodes;
 
-    it('loads four animations without warnings, keyframes sorted and numeric strings read', () => {
+    // The fixture is format 4.10: rotation x, y and position x are negated on load, as Blockbench 5 imports it.
+    it('loads four animations without warnings, keyframes sorted, numeric strings read, 4.x axes converted', () => {
       const { warnings } = load('animated');
       expect(warnings).toEqual([]);
       expect(scene.animations?.map((a) => [a.name, a.loop, a.length, a.channels.length])).toEqual([
@@ -194,9 +195,9 @@ describe('hand-checked transforms', () => {
       const mixed = scene.animations?.[3]?.channels[0];
       expect(mixed?.node).toBe(1);
       expect(mixed?.keyframes.map((k) => [k.time, k.value, k.interpolation])).toEqual([
-        [0, [10, 0, -2.5], 'linear'],
+        [0, [-10, 0, -2.5], 'linear'],
         [1, [0, 0, 45], 'catmullrom'],
-        [1.5, [5, 5, 5], 'step'],
+        [1.5, [-5, -5, 5], 'step'],
         [2, [0, 0, 0], 'linear'],
       ]);
     });
@@ -206,14 +207,14 @@ describe('hand-checked transforms', () => {
       expect(at('bob', 0.5)[0]?.translation).toEqual([0, 2, 0]);
       expect(at('bob', 0.75)[0]?.translation).toEqual([0, 2, 0]);
       expect(at('bob', 1.25)[0]?.translation).toEqual([0, 1, 0]);
-      expect(at('bob', 0.25)[1]?.translation).toEqual([1, 0, 0]);
-      expect(at('bob', 0.5)[1]?.translation).toEqual([-1, 0, 0]);
+      expect(at('bob', 0.25)[1]?.translation).toEqual([-1, 0, 0]);
+      expect(at('bob', 0.5)[1]?.translation).toEqual([1, 0, 0]);
     });
 
     it('spin: catmull-rom past 360°, added to the rest rotation, held after the end', () => {
       const y = at('spin', 0.25)[1]?.rotation[1] ?? NaN;
-      expect(y).toBeCloseTo(catmullRom(0.5, 0, 0, 90, 360), 9);
-      expect(at('spin', 3)[1]?.rotation).toEqual([0, 720, 10]);
+      expect(y).toBeCloseTo(catmullRom(0.5, 0, 0, -90, -360), 9);
+      expect(at('spin', 3)[1]?.rotation).toEqual([0, -720, 10]);
     });
 
     it('squash: scale about the pivot, clamped at 0, rest after a once clip ends', () => {
@@ -223,14 +224,19 @@ describe('hand-checked transforms', () => {
       // Trunk corner (2, 8, 2) scaled by (2, 0.5, 1) about the body pivot (0, 0, 0).
       const squashed = { ...scene, nodes: at('squash', 0.5) };
       expect(hasVertex(worldVertices(squashed, 0), [4, 4, 2])).toBe(true);
+      // Normals go through the normal matrix and stay unit length under the non-uniform scale.
+      for (const vertex of worldVertices(squashed, 0)) expect(Math.hypot(...vertex.slice(3, 6))).toBeCloseTo(1, 5);
     });
 
     it('mixed: a name-keyed animator, linear into catmull-rom wrapping its neighbours, step', () => {
-      expect(at('mixed', 0)[1]?.rotation).toEqual([10, 0, 7.5]);
+      expect(at('mixed', 0)[1]?.rotation).toEqual([-10, 0, 7.5]);
       const half = at('mixed', 0.5)[1]?.rotation ?? [];
-      const expected = [0, 1, 2].map((k) => catmullRom(0.5, 5, [10, 0, -2.5][k] ?? 0, [0, 0, 45][k] ?? 0, 5));
+      const neighbour = [-5, -5, 5];
+      const expected = [0, 1, 2].map((k) =>
+        catmullRom(0.5, neighbour[k] ?? 0, [-10, 0, -2.5][k] ?? 0, [0, 0, 45][k] ?? 0, neighbour[k] ?? 0),
+      );
       expected.forEach((value, k) => expect(half[k]).toBeCloseTo(value + (k === 2 ? 10 : 0), 9));
-      expect(at('mixed', 1.75)[1]?.rotation).toEqual([5, 5, 15]);
+      expect(at('mixed', 1.75)[1]?.rotation).toEqual([-5, -5, 15]);
       expect(at('mixed', 1)[1]?.translation).toEqual([0, 0, 0]);
       expect(at('mixed', 0)[1]?.translation).toEqual([0, 1, 0]);
     });

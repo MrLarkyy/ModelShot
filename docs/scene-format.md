@@ -176,8 +176,10 @@ looks one up by own key.
 ## Animations
 
 `SceneDocument.animations` holds clips in scene units and axes (loaders convert from their file format once):
-`SceneAnimation { name, loop, length, channels }` with `loop` `'once' | 'hold' | 'loop'` and `length` in seconds (at
-least the last keyframe). A `SceneAnimationChannel { node, property, keyframes }` drives one node property (at most one
+`SceneAnimation { name, loop, length, channels }` with `loop` `'once' | 'hold' | 'loop'` and `length` in seconds (the
+clip's period; keyframes may lie past it and only shape the curve before it, as a trailing catmull-rom keyframe does;
+the bbmodel loader takes the last keyframe's time only when the file has no length above 0). A
+`SceneAnimationChannel { node, property, keyframes }` drives one node property (at most one
 channel per node and property): `rotation` (Euler degrees added to the rest rotation), `translation` (the node's
 `translation`) or `scale` (the node's `scale`). `SceneKeyframe { time, value, before?, interpolation }`: `value` holds
 from this keyframe on, `before` is what arrives at it when it differs (Blockbench's pre and post data points),
