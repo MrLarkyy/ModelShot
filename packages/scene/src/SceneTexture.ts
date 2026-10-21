@@ -3,7 +3,8 @@ import type { SceneTextureFrames } from './SceneTextureFrames';
 /**
  * A PNG image carried as its encoded bytes, unchanged by the loader (only `loadSkin` decodes pixels, of a legacy skin,
  * once, to apply the legacy hat rule). `width` × `height` is the pixel size from the PNG header; UVs are normalised by
- * `uvWidth` × `uvHeight` (the model's texture space), so one UV unit covers `width / uvWidth` pixels.
+ * `uvWidth` × `uvHeight` (the model's texture space), so one UV unit covers `width / uvWidth` pixels. On a strip
+ * (`frames`) v is normalised by `uvHeight` × `frames.count`, so the UVs fall in frame 0.
  */
 export interface SceneTexture {
   readonly name: string;

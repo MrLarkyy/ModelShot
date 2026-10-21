@@ -1,7 +1,7 @@
 import type { SceneTextureFrames } from '@modelshot/scene';
 import type { BbmodelWarningList } from './BbmodelWarning';
 import { childPath, field, type JsonObject } from '../json/JsonObject';
-import { MAX_ABS_NUMBER, readString } from './JsonFields';
+import { MAX_ABS_NUMBER } from './JsonFields';
 import type { UvSize } from './parseTextures';
 import { quoteValue } from '../text/quoteValue';
 
@@ -15,6 +15,18 @@ const ANIMATED_TEXTURE_FORMATS: ReadonlySet<string> = new Set([
 ]);
 
 const FRAME_ORDER_TYPES = ['loop', 'backwards', 'back_and_forth', 'custom'] as const;
+
+/**
+ * Longest `frame_order` read. Its own bound, not `maxStringChars`: Blockbench's `.mcmeta` import writes `index:time`
+ * tokens, so a long timed animation exceeds 1024 characters. A longer one warns and plays in plain order.
+ */
+export const MAX_FRAME_ORDER_CHARS = 65_536;
+
+/**
+ * Longest play order expanded from a `custom` order with counter slots (twice the default `maxTextureSide`); a longer
+ * period keeps only the numbered tokens, with a warning.
+ */
+export const MAX_FRAME_ORDER_LENGTH = 8192;
 
 type FrameOrderType = (typeof FRAME_ORDER_TYPES)[number];
 
@@ -34,14 +46,13 @@ export interface TextureFrameSettings {
 /**
  * Reads `frame_time` (default 1), `fps` (7), `frame_order_type` (`loop`), `frame_order` (`''`) and
  * `frame_interpolate` (false) in the formats that animate textures; `undefined` in the others. A malformed value warns
- * and takes its default, so a file that loaded before these fields were read still loads; only a `frame_order` over
- * `maxStringChars` fails, like every other string.
+ * and takes its default, so a file that loaded before these fields were read still loads; none of them ever fails the
+ * load. A `frame_order` over `MAX_FRAME_ORDER_CHARS` warns and counts as empty.
  */
 export function readTextureFrameSettings(
   texture: JsonObject,
   path: string,
   modelFormat: string,
-  maxStringChars: number,
   warnings: BbmodelWarningList,
 ): TextureFrameSettings | undefined {
   if (!ANIMATED_TEXTURE_FORMATS.has(modelFormat)) return undefined;
@@ -67,7 +78,7 @@ export function readTextureFrameSettings(
     frameTicks: read('frame_time', 1, isNumber, number),
     fps: read('fps', 7, isNumber, number),
     orderType: read('frame_order_type', 'loop', isOrderType, 'loop, backwards, back_and_forth or custom'),
-    order: readString(read('frame_order', '', isString, 'a string'), childPath(path, 'frame_order'), maxStringChars),
+    order: boundedOrder(read('frame_order', '', isString, 'a string'), path, warnings),
     interpolate: read('frame_interpolate', false, isBoolean, 'true or false'),
   };
 }
@@ -124,26 +135,65 @@ function frameOrder(settings: TextureFrameSettings, count: number, warnings: Bbm
   }
 }
 
+function boundedOrder(order: string, path: string, warnings: BbmodelWarningList): string {
+  if (order.length <= MAX_FRAME_ORDER_CHARS) return order;
+  warnings.add(
+    'UNSUPPORTED_VALUE',
+    childPath(path, 'frame_order'),
+    `${order.length} characters, the limit is ${MAX_FRAME_ORDER_CHARS}; frames play in plain order`,
+  );
+  return '';
+}
+
 /**
- * Blockbench splits `frame_order` on whitespace and reads each token with `parseInt` (so `2:5` is frame 2, the time
- * suffix ignored as in its preview) and plays `index % count`. A token that is not a number plays whichever frame the
- * running counter is on, which no fixed order expresses: it is dropped with a warning, as is a negative one (Blockbench
- * would show no frame). An order of such tokens only (a blank one) plays plain looping in Blockbench, so it is that.
+ * Blockbench's `TextureAnimator.playAnimationFrame`: `frame_order` split on whitespace, each token through `parseInt`
+ * (so `2:5` is frame 2, the time suffix ignored as in its preview). At counter step a it takes token a % tokens; a
+ * number n plays n % count, a token that is no number (NaN) plays a % count. With such counter slots the order repeats
+ * after lcm(tokens, count) steps and is expanded to that list up to `MAX_FRAME_ORDER_LENGTH`; beyond, the counter slots
+ * are dropped with a warning. A negative or infinite number leaves Blockbench's frame index negative or NaN, which its
+ * cube preview draws as frame 0: it plays 0, with a warning. An order equal to plain looping is left out.
  */
 function customOrder(
   settings: TextureFrameSettings,
   count: number,
   warnings: BbmodelWarningList,
 ): number[] | undefined {
-  const parsed = settings.order.split(/\s+/).map((token) => parseInt(token));
-  if (parsed.every((index) => Number.isNaN(index))) return undefined;
-  const valid = parsed.filter((index) => Number.isFinite(index) && index >= 0);
-  if (valid.length < parsed.length) {
+  const path = childPath(settings.path, 'frame_order');
+  const tokens = settings.order.split(/\s+/).map((token) => parseInt(token));
+  if (tokens.every((index) => Number.isNaN(index))) return undefined;
+  const invalid = tokens.filter((index) => !Number.isNaN(index) && !(Number.isFinite(index) && index >= 0)).length;
+  if (invalid > 0) {
     warnings.add(
       'UNSUPPORTED_VALUE',
-      childPath(settings.path, 'frame_order'),
-      `${parsed.length - valid.length} of ${parsed.length} entries are not frame numbers and are dropped`,
+      path,
+      `${invalid} of ${tokens.length} entries are negative or too large; frame 0 plays there`,
     );
   }
-  return valid.length === 0 ? undefined : valid.map((index) => index % count);
+  // NaN marks a counter slot; every other entry is a frame index.
+  const slots = tokens.map((index) =>
+    Number.isNaN(index) ? NaN : Number.isFinite(index) && index >= 0 ? index % count : 0,
+  );
+  let order = slots;
+  if (slots.some((slot) => Number.isNaN(slot))) {
+    const period = (slots.length / greatestCommonDivisor(slots.length, count)) * count;
+    if (period <= MAX_FRAME_ORDER_LENGTH) {
+      order = Array.from({ length: period }, (_, step) => {
+        const slot = slots[step % slots.length] ?? NaN;
+        return Number.isNaN(slot) ? step % count : slot;
+      });
+    } else {
+      order = slots.filter((slot) => !Number.isNaN(slot));
+      warnings.add(
+        'UNSUPPORTED_VALUE',
+        path,
+        `entries that are no frame number repeat over ${period} steps, the limit is ${MAX_FRAME_ORDER_LENGTH}; dropped`,
+      );
+    }
+  }
+  const plainLoop = order.length % count === 0 && order.every((frame, step) => frame === step % count);
+  return plainLoop ? undefined : order;
+}
+
+function greatestCommonDivisor(a: number, b: number): number {
+  return b === 0 ? a : greatestCommonDivisor(b, a % b);
 }

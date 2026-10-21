@@ -103,7 +103,7 @@ function readTextureEntry(
     uvWidth: uvSize.width,
     uvHeight: uvSize.height,
     renderSides: readRenderSides(texture, path, warnings),
-    frameSettings: readTextureFrameSettings(texture, path, modelFormat, limits.maxStringChars, warnings),
+    frameSettings: readTextureFrameSettings(texture, path, modelFormat, warnings),
   };
 }
 

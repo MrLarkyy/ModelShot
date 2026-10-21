@@ -183,9 +183,14 @@ format, quad order and split, normal sign, `render_sides`, `render_order` and th
     `(v / uvHeight + frame) / frameCount`: both show frame 0 at rest. `TextureAnimator.playAnimationFrame`: with
     `Format.texture_mcmeta` (`java_block`) a frame lasts `max(16.66, 50 · frame_time)` ms, else `1 / max(1, fps)` s
     (`fps` default 7, `frame_time` default 1); the order is `backwards` n − 1 − i, `back_and_forth` i for i < n then
-    2n − 2 − i over 2n − 2 frames, `custom` each whitespace token through `parseInt` modulo n, and a token that is no
-    number plays the running frame (ModelShot drops it with a warning; an order of only such tokens is `loop`).
-    Blockbench reads a numeric string as a number; ModelShot warns and uses the default.
+    2n − 2 − i over 2n − 2 frames; `custom` (when `frame_order` is not empty) splits `frame_order` on whitespace and
+    reads each token through `parseInt`, so a timed `index:time` token as Blockbench's `.mcmeta` import writes it plays
+    its index. At counter step a it takes token a mod t (t tokens): a number k plays k mod n, a token that is no number
+    plays a mod n. ModelShot stores that as an explicit list: the tokens mod n, or, with tokens that are no number, the
+    whole period of lcm(t, n) steps (`"0 x"` on 4 frames plays 0, 1, 0, 3); a list equal to plain looping (a blank
+    order, only words) is left out as `loop`. A negative or infinite token leaves Blockbench's frame negative or NaN,
+    which its cube preview draws as frame 0; ModelShot plays 0 there. Blockbench reads a numeric string in
+    `frame_time` or `fps` as a number; ModelShot warns and uses the default.
 
 ## Limits
 
@@ -217,7 +222,10 @@ Every animation, animator (at most `maxGroups + maxElements + 1` per animation) 
 keyframe is read. Only the first two data points of a keyframe are read.
 
 A strip has at most as many frames as its image has rows (so ≤ `maxTextureSide`, and a `back_and_forth` order ≤
-2 · `maxTextureSide` entries); `frame_order` is a string under `maxStringChars`.
+2 · `maxTextureSide` entries). `frame_order` has its own bound, `MAX_FRAME_ORDER_CHARS` (65 536 characters, not
+`maxStringChars`: imported `.mcmeta` animations write `index:time` tokens and run long), and a `custom` order with
+tokens that are no number is expanded only up to `MAX_FRAME_ORDER_LENGTH` (8192 steps). Over either bound the load
+warns and goes on; neither ever fails it.
 
 Numbers must be finite and within ±10 000 000; keyframe values, keyframe times and animation lengths within ±10⁶
 (`MAX_ANIMATION_VALUE`, what `animateScene` accepts), times not negative. The outliner is walked with an explicit stack, so nesting depth is
@@ -259,9 +267,11 @@ The model still loads; at most 100 warnings are kept (`MAX_BBMODEL_WARNINGS`). E
 | `UNSUPPORTED_CHANNEL` | an animation part not played as authored (Not yet supported); once per animation, animator and channel |
 
 Textures in an animating format warn `UNSUPPORTED_VALUE` for a `frame_time`, `fps`, `frame_order_type`,
-`frame_order` or `frame_interpolate` of the wrong type or out of range (the default is used), for `custom`
-`frame_order` tokens that are negative or no number (dropped), and for a strip whose frames would be under one pixel
-tall (more frames than image rows; drawn as one image).
+`frame_order` or `frame_interpolate` of the wrong type or out of range (the default is used), for a `frame_order`
+over `MAX_FRAME_ORDER_CHARS` (plain order), for `custom` tokens that are negative or too large (frame 0 plays there),
+for a `custom` order whose tokens that are no number repeat over more than `MAX_FRAME_ORDER_LENGTH` steps (those
+tokens are dropped), and for a strip whose frames would be under one pixel tall (more frames than image rows; drawn
+as one image).
 
 Animations also warn `UNSUPPORTED_VALUE` for an unknown `loop` (played `once`) or interpolation (played linear),
 `anim_time_update`, `start_delay`, `loop_delay`, `blend_weight` other than their defaults and negative scale, and
@@ -284,9 +294,11 @@ a file before format 3.2 now has its groups' z rotation negated (it used to load
 box-UV cube with `shade: false` in a file before 4.5 now has mirrored UV. Keyframes of files before 5.0 are negated
 in rotation x, y and position x; no earlier release read animations, so nothing that loaded before changes there.
 
-MS-27 reads frame strips: in the five animating formats a strip texture's faces now map into frame 0 (they used to
-span the whole strip) and the texture gains `frames`. Every other file loads exactly as before, and malformed frame
-fields only warn, so no file that loaded before fails.
+MS-27 reads frame strips, a behaviour change for files that loaded before: in the five animating formats every face
+on a strip texture now maps into frame 0, as Blockbench shows it, where it used to span the whole strip (all frames
+squeezed onto the face), and the texture gains `frames`. Such models render differently from earlier releases.
+Every other file loads exactly as before, and frame fields only ever warn (wrong types, an over-long `frame_order`),
+so no file that loaded before fails.
 
 ## Local-first
 
