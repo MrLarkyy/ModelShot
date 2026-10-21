@@ -12,6 +12,7 @@ import alphaRampUri from '../models/rt-alpha-ramp.png?inline';
 import showcaseSource from '../models/rt-showcase.bbmodel?raw';
 import { benchScene } from './benchScene';
 import { cutoutChecker } from './cutoutChecker';
+import { edgesBbmodel, edgesHostileScene, edgesLoadScene, edgesScene, edgesWeldScene } from './edgesScene';
 import { MODEL_VIEW_LOOK, type Point3 } from './modelViewCamera';
 import { holdingCube, playerScene, posedPlayer } from './playerScenes';
 
@@ -64,6 +65,10 @@ export const RT_SCENE_NAMES = [
   'grass-field',
   'cutout-checker',
   'lightmap-overflow',
+  'edges',
+  'edges-200k',
+  'edges-hostile',
+  'edges-weld',
 ] as const;
 export type RtSceneName = (typeof RT_SCENE_NAMES)[number];
 
@@ -100,6 +105,8 @@ export interface RtView {
   readonly bake: number;
   /** The shadow catcher: baked with the light in the realtime fixture, traced by the path tracer. */
   readonly catcher: boolean;
+  /** Rounded-edge width (`EdgeLook.width`, `edges=<width>`, 0 none); null keeps the renderers' default look. */
+  readonly edges: number | null;
 }
 
 export type RtLook =
@@ -160,6 +167,7 @@ export const DEFAULT_RT_VIEW: RtView = {
   hide: null,
   bake: 0,
   catcher: true,
+  edges: null,
 };
 
 /** Golden presets, selected by the `variant` URL parameter. */
@@ -197,6 +205,8 @@ export const RT_VARIANTS: Readonly<Record<string, Partial<RtView>>> = {
   'bake-cutout-checker-fallback': { scene: 'cutout-checker', look: 'checker', bake: 64, fallback: true },
   'bake-alpha-plane': { scene: 'alpha-plane', look: 'model-view', bake: 64 },
   'bake-turntable-y030': { yawDeg: 30, bake: 64 },
+  // Edge rounding (MS-15): sharp-edged cube and wedge beside a plane, a card and a smooth sphere.
+  edges: { scene: 'edges', yawDeg: 30, pitchDeg: 35 },
 };
 
 function load(source: string): SceneDocument {
@@ -320,6 +330,14 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return cutoutChecker(load(showcaseSource));
     case 'lightmap-overflow':
       return lightmapOverflow(load(showcaseSource));
+    case 'edges-200k':
+      return edgesLoadScene(load(showcaseSource));
+    case 'edges-weld':
+      return edgesWeldScene(load(showcaseSource));
+    case 'edges-hostile':
+      return edgesHostileScene(load(showcaseSource));
+    case 'edges':
+      return edgesScene(load(edgesBbmodel((JSON.parse(alphaPlaneSource) as { textures: unknown[] }).textures[0])));
     case 'player-classic':
       return playerScene('classic', 'classic');
     case 'player-slim':
@@ -460,6 +478,7 @@ export function parseRtView(params: URLSearchParams): RtView {
   view.reverse = flag('reverse') ?? view.reverse;
   view.isometric = flag('iso') ?? view.isometric;
   view.catcher = flag('catcher') ?? view.catcher;
+  view.edges = number('edges', 0, 4) ?? view.edges;
   const bake = params.get('bake');
   if (bake !== null) {
     if (!/^\d{1,4}$/.test(bake) || Number(bake) > 1024)

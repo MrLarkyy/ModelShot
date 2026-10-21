@@ -15,7 +15,7 @@ import { computePtProbes, sceneProbes } from './ptProbes';
 import { isRtSceneName, parseRtView, reverseMeshOrder, rtCamera, rtScene, type RtSceneName } from './rtScenes';
 
 // URL parameters: the realtime fixture's view (variant, scene, yaw, pitch, proj, fov, zoom, iso, reverse, look, depth;
-// rtScenes.ts; catcher=0|1 the shadow catcher, default on) plus the path-tracer-only variant `emissive`; seed (default 1), samples (default 64), batch (samples
+// rtScenes.ts; catcher=0|1 the shadow catcher, default on; edges=<width> the rounded edges, 0 none) plus the path-tracer-only variant `emissive`; seed (default 1), samples (default 64), batch (samples
 // per step, default all), tile (tile side, default 256), size (CSS pixels, default 256), maxTriangles, track=1 (count
 // GL objects), timing=1 (one sample per frame with a time readout, for a manual run on real hardware).
 const params = new URLSearchParams(location.search);
@@ -73,7 +73,12 @@ async function start(): Promise<void> {
   canvas.style.width = `${size}px`;
   canvas.style.height = `${size}px`;
 
-  const tracer = PathTracer.create(canvas, { preserveDrawingBuffer: !timing, tileSize, maxTriangles });
+  const tracer = PathTracer.create(canvas, {
+    preserveDrawingBuffer: !timing,
+    tileSize,
+    maxTriangles,
+    ...(view.edges !== null ? { edges: { width: view.edges } } : {}),
+  });
   const capabilities = tracer.capabilities;
   if (!capabilities) throw new Error('path tracer has no capabilities');
   // The same context the tracer created (getContext returns it again).
@@ -242,6 +247,24 @@ async function start(): Promise<void> {
     tryFov: (fovYDeg) => {
       try {
         tracer.setCamera({ ...camera(), projection: { kind: 'perspective', fovYDeg } });
+        return 'ok';
+      } catch (error) {
+        return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      }
+    },
+    setSceneDuringEdges: async (edges) => {
+      const next = sceneOf(view.scene);
+      const pending = tracer.setScene(next, sceneOptions);
+      tracer.setEdges(edges);
+      const result = await pending;
+      if (result.applied) doc = next;
+      render();
+      return result.applied;
+    },
+    setEdges: (edges) => {
+      try {
+        tracer.setEdges(edges);
+        render();
         return 'ok';
       } catch (error) {
         return error instanceof Error ? `${error.name}: ${error.message}` : String(error);

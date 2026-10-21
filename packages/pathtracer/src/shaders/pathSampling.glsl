@@ -19,6 +19,14 @@ vec3 cosineDirection(vec3 n, float u1, float u2) {
   return normalize(tangent * (r * cos(phi)) + bitangent * (r * sin(phi)) + n * sqrt(max(0.0, 1.0 - u1)));
 }
 
+// d mirrored about the plane with unit normal `side` when it points below it. A cosine-weighted direction around a
+// shading normal bent away from the geometric one (rounded edges, smooth shading) can point into the surface; ending
+// the path there would lose that energy and darken bent normals against the preview's fill, mirroring keeps it.
+vec3 aboveSurface(vec3 d, vec3 side) {
+  float below = dot(d, side);
+  return below < 0.0 ? d - 2.0 * below * side : d;
+}
+
 // Start of a ray leaving the surface at p on the side `side`, clear of it at float precision for the scene's scale.
 vec3 leave(vec3 p, vec3 side) {
   float scale = max(1.0, max(abs(p.x), max(abs(p.y), abs(p.z))));

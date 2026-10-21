@@ -4,11 +4,12 @@ import {
   cameraProjection,
   cameraView,
   mat4Multiply,
+  sceneSharpEdges,
   type Mat4,
   type SceneCamera,
   type SceneDocument,
 } from '@modelshot/scene';
-import { LIGHT_RIG_V0 } from '@modelshot/looks';
+import { LIGHT_RIG_V0, MAX_EDGE_WIDTH, checkEdgeLook, type EdgeLook } from '@modelshot/looks';
 import type { BakedLighting } from './BakedLighting';
 import { checkLighting } from './checkLighting';
 import { canvasSize, type CanvasCssSize, type CanvasSize } from './canvasSize';
@@ -51,6 +52,11 @@ export interface RendererOptions {
   readonly maxMsaaSamples?: number;
   /** Keep the drawn image readable after the frame (screenshots, tests). Default `false`. */
   readonly preserveDrawingBuffer?: boolean;
+  /**
+   * Rounded sharp edges, the path tracer's (`PathTracerOptions.edges`): fields left out take `EDGE_LOOK_V0`. A value
+   * out of range throws a `RangeError` naming `edges.width` or `edges.sharpAngleDeg`.
+   */
+  readonly edges?: Partial<EdgeLook>;
 }
 
 export interface RendererCapabilities {
@@ -155,6 +161,7 @@ export class RealtimeRenderer {
   private lighting: BakedLighting | null = null;
   private readonly restoredListeners = new Set<() => void>();
   private readonly background: readonly [number, number, number];
+  private edges: EdgeLook;
 
   private constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -162,6 +169,7 @@ export class RealtimeRenderer {
     private readonly options: RendererOptions,
   ) {
     this.background = options.background ?? LIGHT_RIG_V0.background;
+    this.edges = checkEdgeLook(options.edges);
     canvas.addEventListener('webglcontextlost', this.handleContextLost);
     canvas.addEventListener('webglcontextrestored', this.handleContextRestored);
     try {
@@ -172,7 +180,10 @@ export class RealtimeRenderer {
     }
   }
 
-  /** Creates the WebGL2 context on `canvas`; throws `RendererError` `WEBGL2_UNAVAILABLE` or a shader error. */
+  /**
+   * Creates the WebGL2 context on `canvas`; throws `RendererError` `WEBGL2_UNAVAILABLE` or a shader error, and a
+   * `RangeError` for `edges` out of range.
+   */
   static create(canvas: HTMLCanvasElement, options: RendererOptions = {}): RealtimeRenderer {
     const gl = canvas.getContext('webgl2', {
       alpha: false,
@@ -310,6 +321,30 @@ export class RealtimeRenderer {
 
   setCamera(camera: SceneCamera): void {
     this.camera = camera;
+    this.dirty = true;
+  }
+
+  /** The rounded edges drawn with. */
+  get edgeLook(): EdgeLook {
+    return this.edges;
+  }
+
+  /**
+   * Changes the rounded edges; fields left out keep their current value. A value out of range throws a `RangeError`
+   * naming the field and changes nothing. A new width is a uniform; a new sharp angle detects the edges again (once per
+   * document and angle, `sceneSharpEdges`) and uploads the geometry again.
+   */
+  setEdges(edges: Partial<EdgeLook>): void {
+    const next = checkEdgeLook(edges, this.edges);
+    const angleChanged = next.sharpAngleDeg !== this.edges.sharpAngleDeg;
+    if (!angleChanged && next.width === this.edges.width) return;
+    this.edges = next;
+    const gpu = this.gpu;
+    if (angleChanged && gpu?.scene && this.loaded && !this.lost) {
+      disposeGpuScene(this.gl, gpu.scene);
+      gpu.scene = null;
+      gpu.scene = this.uploadGeometry(this.loaded);
+    }
     this.dirty = true;
   }
 
@@ -555,7 +590,21 @@ export class RealtimeRenderer {
         alpha.map((texture) => texture?.opacity ?? 'opaque'),
       );
     }
-    gpu.scene = uploadScene(gl, loaded.doc, loaded.alphaLevels, loaded.closedOpaque, loaded.layout.vertexData);
+    gpu.scene = this.uploadGeometry(loaded);
+  }
+
+  /** Uploads the loaded scene's geometry with its sharp edges under the current angle. */
+  private uploadGeometry(loaded: LoadedScene): GpuScene {
+    const { doc } = loaded;
+    const edges = sceneSharpEdges(doc.meshes, { sharpAngleDeg: this.edges.sharpAngleDeg, reach: MAX_EDGE_WIDTH });
+    return uploadScene(
+      this.gl,
+      doc,
+      loaded.alphaLevels ?? [],
+      loaded.closedOpaque ?? [],
+      loaded.layout.vertexData,
+      edges,
+    );
   }
 
   private releaseScene(): void {
@@ -641,6 +690,7 @@ export class RealtimeRenderer {
     gl.bindTexture(gl.TEXTURE_2D, gpu.lighting?.lightmap ?? gpu.unbakedLight);
     gl.uniform1i(pass.lightmap, 1);
     gl.uniform1i(pass.bakeOn, gpu.lighting ? 1 : 0);
+    gl.uniform1f(pass.edgeWidth, this.edges.width);
     gl.activeTexture(gl.TEXTURE0);
     gl.enable(gl.CULL_FACE);
     const draw = (item: DrawItem, order: number): void => {

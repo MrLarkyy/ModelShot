@@ -1,11 +1,14 @@
 import { ALPHA_MODE_ID, alphaCutoffByte, type AlphaModeId } from '@modelshot/looks';
 import {
+  EDGE_SLOTS,
+  NO_EDGE,
   meshVisible,
   nodeVisibility,
   resolveMaterialAlpha,
   type SceneDocument,
   type SceneMesh,
   type SceneMeshGroup,
+  type SharpEdgeAttributes,
 } from '@modelshot/scene';
 
 /** A material's alpha rule as the shaders take it (texelAlpha): mode id and cutoff byte. */
@@ -37,6 +40,10 @@ export interface SceneBatch {
   readonly uvRects: Float32Array;
   /** 4 per vertex: where its baked light lies (`LightmapLayout.vertexData`); (0, 0, −1, 0) without a layout. */
   readonly lightmap: Float32Array;
+  /** 4 per vertex: distances to its sharp-edge slots (`SharpEdgeAttributes.distances`); `NO_EDGE` without them. */
+  readonly edgeDistances: Float32Array;
+  /** 4 per vertex: the slots' signed angles (`SharpEdgeAttributes.angles`); 0 without them. */
+  readonly edgeAngles: Float32Array;
   readonly indices: Uint32Array;
 }
 
@@ -64,10 +71,23 @@ function alphaOf(doc: SceneDocument, group: SceneMeshGroup, texture: number): Ba
   return { modeId: ALPHA_MODE_ID[rule.mode], cutoffByte: alphaCutoffByte(rule.cutoff) };
 }
 
+/** Copies `size` floats per vertex of `from` into `to` at vertex `base`, vertex i taking source vertex `vertexOf[i]`. */
+function gather(to: Float32Array, from: Float32Array, size: number, base: number, vertexOf: Uint32Array | null): void {
+  if (!vertexOf) {
+    to.set(from, base * size);
+    return;
+  }
+  for (let i = 0; i < vertexOf.length; i++) {
+    const v = vertexOf[i] ?? 0;
+    for (let k = 0; k < size; k++) to[(base + i) * size + k] = from[v * size + k] ?? 0;
+  }
+}
+
 function merge(
   key: BatchKey,
   parts: readonly Part[],
   lightmapOf: (mesh: SceneMesh) => Float32Array | null,
+  edgesOf: (mesh: SceneMesh) => SharpEdgeAttributes | null,
 ): SceneBatch {
   const bases = new Map<SceneMesh, number>();
   let vertices = 0;
@@ -75,7 +95,7 @@ function merge(
   for (const { mesh, group } of parts) {
     if (!bases.has(mesh)) {
       bases.set(mesh, vertices);
-      vertices += mesh.positions.length / 3;
+      vertices += edgesOf(mesh)?.vertexOf.length ?? mesh.positions.length / 3;
     }
     indexCount += group.count;
   }
@@ -86,21 +106,32 @@ function merge(
     uvs: new Float32Array(vertices * 2),
     uvRects: new Float32Array(vertices * 4),
     lightmap: new Float32Array(vertices * 4),
+    edgeDistances: new Float32Array(vertices * EDGE_SLOTS).fill(NO_EDGE),
+    edgeAngles: new Float32Array(vertices * EDGE_SLOTS),
     indices: new Uint32Array(indexCount),
   };
   for (const [mesh, base] of bases) {
-    batch.positions.set(mesh.positions, base * 3);
-    batch.normals.set(mesh.normals, base * 3);
-    batch.uvs.set(mesh.uvs, base * 2);
-    batch.uvRects.set(mesh.uvRects, base * 4);
+    const edges = edgesOf(mesh);
+    // A vertex split by the sharp edges copies every attribute of its source vertex.
+    const vertexOf = edges?.vertexOf ?? null;
+    gather(batch.positions, mesh.positions, 3, base, vertexOf);
+    gather(batch.normals, mesh.normals, 3, base, vertexOf);
+    gather(batch.uvs, mesh.uvs, 2, base, vertexOf);
+    gather(batch.uvRects, mesh.uvRects, 4, base, vertexOf);
     const light = lightmapOf(mesh);
-    if (light) batch.lightmap.set(light, base * 4);
-    else for (let v = base; v < base + mesh.positions.length / 3; v++) batch.lightmap[v * 4 + 2] = -1;
+    const count = vertexOf?.length ?? mesh.positions.length / 3;
+    if (light) gather(batch.lightmap, light, 4, base, vertexOf);
+    else for (let v = base; v < base + count; v++) batch.lightmap[v * 4 + 2] = -1;
+    if (edges) {
+      batch.edgeDistances.set(edges.distances, base * EDGE_SLOTS);
+      batch.edgeAngles.set(edges.angles, base * EDGE_SLOTS);
+    }
   }
   let at = 0;
   for (const { mesh, group } of parts) {
     const base = bases.get(mesh) ?? 0;
-    const source = mesh.indices.subarray(group.start, group.start + group.count);
+    const indices = edgesOf(mesh)?.indices ?? mesh.indices;
+    const source = indices.subarray(group.start, group.start + group.count);
     for (let i = 0; i < source.length; i++) batch.indices[at + i] = (source[i] ?? 0) + base;
     at += source.length;
   }
@@ -111,15 +142,18 @@ function merge(
  * Groups the visible triangles of a validated document by (node, texture, alpha mode, cutoff byte, sidedness, render
  * order, closed and opaque), in order of first appearance; within a batch triangles keep the document's mesh and group
  * order. `closedOpaque[m]` marks mesh `m` closed and opaque on every face (`closedOpaqueMeshes`; default none);
- * `lightmap[m]` holds mesh `m`'s per-vertex lightmap data (`LightmapLayout.vertexData`; default none).
+ * `lightmap[m]` holds mesh `m`'s per-vertex lightmap data (`LightmapLayout.vertexData`; default none); `edges[m]` its
+ * sharp-edge attributes (`sceneSharpEdges`; default none), whose split vertices replace the mesh's.
  */
 export function batchScene(
   doc: SceneDocument,
   closedOpaque: readonly boolean[] = [],
   lightmap: readonly (Float32Array | null)[] = [],
+  edges: readonly (SharpEdgeAttributes | null)[] = [],
 ): SceneBatch[] {
   const meshIndex = new Map(doc.meshes.map((mesh, m) => [mesh, m]));
   const lightmapOf = (mesh: SceneMesh) => lightmap[meshIndex.get(mesh) ?? -1] ?? null;
+  const edgesOf = (mesh: SceneMesh) => edges[meshIndex.get(mesh) ?? -1] ?? null;
   const visibility = nodeVisibility(doc);
   const parts = new Map<string, { key: BatchKey; parts: Part[] }>();
   doc.meshes.forEach((mesh, index) => {
@@ -153,5 +187,5 @@ export function batchScene(
       entry.parts.push({ mesh, group });
     }
   });
-  return [...parts.values()].map((entry) => merge(entry.key, entry.parts, lightmapOf));
+  return [...parts.values()].map((entry) => merge(entry.key, entry.parts, lightmapOf, edgesOf));
 }

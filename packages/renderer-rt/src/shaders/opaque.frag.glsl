@@ -22,10 +22,11 @@ out vec4 outColor;
 // Opaque texels only: invisible texels are discarded before any depth write, partial ones are left to the OIT pass.
 void main() {
   prepareDepthKey();
+  prepareEdges();
   TexelSample s = sampleTexels(u_texture, v_uv, v_uvRect, u_texelAntialias, u_alphaMode, u_alphaCutoffByte);
   vec4 light = vec4(1.0);
   if (u_bakeOn) light = sampleBakedLight(v_uv, v_uvRect);
   if (s.coverage != COVERAGE_OPAQUE) discard;
-  outColor = vec4(shadeLit(sampleColor(s), surfaceNormal(v_normal), light), 1.0);
+  outColor = vec4(shadeLit(sampleColor(s), shadingNormal(v_normal), light), 1.0);
   writeDepthKey();
 }

@@ -20,6 +20,7 @@ import {
   type Image,
 } from '../src/imageMetrics';
 import { shadowStep } from '../src/shadowStep';
+import { differenceMask, maskedPng } from '../src/edgeProbes';
 
 /**
  * Path-traced images converge: at the default threshold 0.1 another seed or one sample more or less passes (seed 2 at
@@ -51,6 +52,8 @@ const EMISSIVE = pt('emissive', 'emissive', 64);
 const PLAYER_HOLD = pt('player-hold-34', 'player-hold-34', 64);
 // MS-16: shadows of cut-out texels on the shadow catcher and a box, paired with rt-bake-cutout-checker.
 const CUTOUT_CHECKER = pt('cutout-checker', 'cutout-checker', 128);
+// MS-15: rounded edges on a cube and a wedge, none on a plane, a card and a sphere; paired with rt-edges.
+const EDGES = pt('edges', 'edges', 128);
 const GOLDENS: readonly PathTracedGoldenSpec[] = [
   TURNTABLE,
   pt('iso', 'iso', 64),
@@ -61,6 +64,7 @@ const GOLDENS: readonly PathTracedGoldenSpec[] = [
   EMISSIVE,
   PLAYER_HOLD,
   CUTOUT_CHECKER,
+  EDGES,
 ];
 
 async function render(page: Page, query: string): Promise<{ png: Buffer; image: Image; info: FixtureInfo }> {
@@ -324,9 +328,10 @@ const PT_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions>> = {
   'alpha-plane': { threshold: 0.1, maxDiffRatio: 0.0398, maxMeanDelta: 2.48 },
   'player-hold-34': { threshold: 0.1, maxDiffRatio: 0.0232, maxMeanDelta: 1.62 },
   'cutout-checker': { threshold: 0.1, maxDiffRatio: 0.00525, maxMeanDelta: 0.908 },
+  edges: { threshold: 0.1, maxDiffRatio: 0.00082, maxMeanDelta: 0.496 },
 };
 
-const PAIR_SAMPLES: Readonly<Record<string, number>> = { 'alpha-plane': 128, 'cutout-checker': 128 };
+const PAIR_SAMPLES: Readonly<Record<string, number>> = { 'alpha-plane': 128, 'cutout-checker': 128, edges: 128 };
 
 test.describe('the render frames and lights like the baked preview', () => {
   for (const [variant, tolerance] of Object.entries(PT_PAIR_TOLERANCE)) {
@@ -356,6 +361,83 @@ test.describe('the render frames and lights like the baked preview', () => {
       expect(radiance.pass, line).toBe(true);
     });
   }
+});
+
+/**
+ * Edge rounding (MS-15) in the render: the plane, the card and the sphere (their pixels from the preview, where hiding
+ * the mesh changes them, less the cube's and the wedge's) stay within the default golden tolerance of the render
+ * without rounding (indirect light off rounded neighbours may move a level); the key-facing edge brightens.
+ */
+test.describe('rounded edges', () => {
+  test.describe.configure({ timeout: 180_000 });
+
+  test('planes, cards and smooth areas render as without rounding; a key-facing edge brightens', async ({ page }) => {
+    const pixelsOf = async (mesh: string) =>
+      differenceMask(
+        decodePng(encodeFlipped(await openFixture(page, '/rt.html?variant=edges&edges=0'))),
+        decodePng(encodeFlipped(await openFixture(page, `/rt.html?variant=edges&edges=0&hide=${mesh}`))),
+      );
+    const sharp = [await pixelsOf('cube'), await pixelsOf('wedge')];
+    const own = new Uint8Array(256 * 256);
+    for (const mesh of ['plane', 'card', 'sphere']) {
+      const mask = await pixelsOf(mesh);
+      mask.forEach((v, p) => {
+        if (v && !sharp.some((other) => other[p])) own[p] = 1;
+      });
+    }
+    const off = await render(page, 'variant=edges&seed=1&samples=128&edges=0');
+    const on = await render(page, 'variant=edges&seed=1&samples=128');
+    const result = compareImages(maskedPng(on.image, off.image, own), off.png);
+    console.log(
+      `[pt probe] edges: plane, card and sphere (${own.reduce((s, v) => s + v, 0)} px) with rounding: ` +
+        `${result.diffPixels} px differ, mean delta ${result.meanDelta.toFixed(4)}`,
+    );
+    expect(result.pass, 'plane, card and sphere within the default tolerance').toBe(true);
+    const lum = (image: Image, x: number, y: number) => {
+      let sum = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) sum += luminance(pixel(image, x + dx, y + dy));
+      return sum / 9;
+    };
+    const [ex, ey] = await page.evaluate(() => window.__msFixture!.pt!.project(-8, 8, 9.75));
+    const [cx, cy] = await page.evaluate(() => window.__msFixture!.pt!.project(-8, 8, 6));
+    const edge = lum(on.image, ex, ey);
+    const centre = lum(on.image, cx, cy);
+    console.log(`[pt probe] edges: up face beside the south edge ${edge.toFixed(1)}, centre ${centre.toFixed(1)}`);
+    expect(edge).toBeGreaterThan(centre + 1);
+    expect(lum(off.image, ex, ey), 'unrounded: as the centre').toBeLessThan(centre + 1);
+  });
+
+  test('setEdges: a width restarts, an angle detects again, a bad value names its field', async ({ page }) => {
+    const off = await render(page, 'variant=edges&seed=1&samples=4&edges=0');
+    const { info, png: initial } = await render(page, 'variant=edges&seed=1&samples=4');
+    const set = (edges: { width?: number; sharpAngleDeg?: number }) =>
+      page.evaluate((e) => window.__msFixture!.pt!.setEdges(e), edges);
+    expect(await set({ width: 0 })).toBe('ok');
+    expect((await readPng(page, info)).equals(off.png), 'width 0 renders as edges=0').toBe(true);
+    expect(await set({ width: 0.5 })).toBe('ok');
+    expect((await readPng(page, info)).equals(initial)).toBe(true);
+    expect(await set({ sharpAngleDeg: 100 })).toBe('ok');
+    const steep = await readPng(page, info);
+    expect(steep.equals(initial)).toBe(false);
+    expect(steep.equals(off.png)).toBe(false);
+    expect(await set({ sharpAngleDeg: 30 })).toBe('ok');
+    expect((await readPng(page, info)).equals(initial)).toBe(true);
+    expect(await set({ width: 4.5 })).toMatch(/^RangeError: edges\.width must be a finite number in 0\.\.4/);
+    expect(await set({ sharpAngleDeg: 0 })).toMatch(/^RangeError: edges\.sharpAngleDeg/);
+    expect((await readPng(page, info)).equals(initial), 'a rejected value changes nothing').toBe(true);
+  });
+
+  test('an angle set while setScene decodes applies to the new scene', async ({ page }) => {
+    const { info, png: initial } = await render(page, 'variant=edges&seed=1&samples=4');
+    expect(await page.evaluate(() => window.__msFixture!.pt!.setSceneDuringEdges({ sharpAngleDeg: 100 }))).toBe(true);
+    const during = await readPng(page, info);
+    // The reference packs the new scene at 100 degrees by a change of angle after it loaded.
+    await page.evaluate(() => window.__msFixture!.pt!.setEdges({ sharpAngleDeg: 30 }));
+    await page.evaluate(() => window.__msFixture!.pt!.setEdges({ sharpAngleDeg: 100 }));
+    const after = await readPng(page, info);
+    expect(during.equals(initial), 'the new scene is not drawn with the old angle').toBe(false);
+    expect(during.equals(after), 'the same bytes as packed at 100 degrees after loading').toBe(true);
+  });
 });
 
 test.describe('limits and hostile input', () => {

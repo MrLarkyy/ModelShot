@@ -95,4 +95,40 @@ describe('shader sources', () => {
     );
     expect(deleted.filter((d) => d === 'shader').length).toBe(4);
   });
+
+  it('prepares the edge derivatives before the first discard and shades with the rounded normal', () => {
+    for (const name of ['opaque', 'oitAccum', 'fallback'] as const) {
+      for (const depthKey of ['raster', 'exact'] as const) {
+        const { fragment } = shaderProgramSource(name, depthKey);
+        const body = fragment.slice(fragment.indexOf('void main()'));
+        const prepare = body.indexOf('prepareEdges();');
+        expect(prepare, `${name} ${depthKey}`).toBeGreaterThan(-1);
+        expect(prepare, `${name} ${depthKey}`).toBeLessThan(body.indexOf('discard'));
+        expect(body).toContain('shadingNormal(v_normal)');
+        expect(body).not.toContain('surfaceNormal(');
+        expect(fragment).toContain(
+          'vec3 roundedNormal(vec3 n, vec4 d, vec4 angle, vec3 t[4], float width, vec4 footprint)',
+        );
+      }
+    }
+  });
+
+  it('stays within the WebGL2 minimums of 16 attributes and 15 varyings in every mesh pass and variant', () => {
+    for (const name of ['opaque', 'oitAccum', 'fallback'] as const) {
+      for (const depthKey of ['raster', 'exact'] as const) {
+        const { vertex, fragment } = shaderProgramSource(name, depthKey);
+        const locations = [...vertex.matchAll(/layout\(location = (\d+)\) in /g)].map((m) => Number(m[1]));
+        expect(Math.max(...locations), `${name} ${depthKey}`).toBeLessThan(16);
+        expect(locations).toContain(9);
+        expect(locations).toContain(10);
+        // Every varying counted as a whole vector, the most it can take after packing.
+        const varyings = vertex.match(/^\s*(flat )?out \w+ v_\w+;/gm) ?? [];
+        expect(varyings.length, `${name} ${depthKey}`).toBeLessThanOrEqual(15);
+        for (const varying of ['v_worldPosition', 'v_edgeDistances', 'v_edgeAngles']) {
+          expect(vertex).toContain(varying);
+          expect(fragment).toContain(varying);
+        }
+      }
+    }
+  });
 });

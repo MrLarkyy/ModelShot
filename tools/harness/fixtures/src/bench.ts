@@ -19,10 +19,14 @@ export function installFrameBench(api: MsFixture, gl: WebGL2RenderingContext, dr
 }
 
 /** Times one asynchronous step (a scene load and its first frame) until the GPU finished. */
-export function installSceneBench(api: MsFixture, gl: WebGL2RenderingContext, run: () => Promise<void>): void {
-  api.timeScene = async () => {
+export function installSceneBench(
+  api: MsFixture,
+  gl: WebGL2RenderingContext,
+  run: (scene?: string) => Promise<void>,
+): void {
+  api.timeScene = async (scene?: string) => {
     const start = performance.now();
-    await run();
+    await run(scene);
     finish(gl);
     return performance.now() - start;
   };

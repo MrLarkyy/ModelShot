@@ -1,4 +1,7 @@
 import {
+  EDGE_SLOTS,
+  NO_EDGE,
+  sceneSharpEdges,
   mat4TransformDirection,
   mat4TransformPoint,
   meshVisible,
@@ -6,6 +9,7 @@ import {
   worldMatrices,
   type Mat4,
   type SceneDocument,
+  type SharpEdgeOptions,
 } from '@modelshot/scene';
 import { PathTracerError } from './PathTracerError';
 
@@ -28,6 +32,13 @@ export interface FlatScene {
   readonly renderOrders: Float32Array;
   /** 2 per triangle: the index of its mesh in `SceneDocument.meshes` and of its first index in that mesh's `indices`. */
   readonly sources: Uint32Array;
+  /**
+   * 12 per triangle: per corner the distances to its four sharp-edge slots (`SharpEdgeAttributes.distances`), `NO_EDGE`
+   * without edge detection.
+   */
+  readonly edgeDistances: Float32Array;
+  /** 4 per triangle: the slots' signed angles (`SharpEdgeAttributes.angles`), 0 without edge detection. */
+  readonly edgeAngles: Float32Array;
   /** Triangles left out: a non-finite position, normal, UV or UV rectangle, or no area. */
   readonly skipped: number;
 }
@@ -40,11 +51,45 @@ const finite = (values: ArrayLike<number>, start: number, count: number): boolea
 };
 
 /**
- * The visible triangles of `doc` (a mesh's own flag and its node's effective visibility, groups only) placed by their
- * node's world matrix. Over `maxTriangles` throws `PathTracerError` `SCENE_TOO_LARGE` before allocating anything.
- * `doc` must have passed `validateScene` (indices and lengths are trusted, numbers are not).
+ * Sharp-edge distances and angles (`sceneSharpEdges` of the document, looked up once) of the triangles listed in `sources`
+ * (`FlatScene.sources`); `null` options fill empty slots. Distances are in the mesh's rest space: node world matrices
+ * are rigid, so they hold in world space too.
  */
-export function flattenScene(doc: SceneDocument, maxTriangles = DEFAULT_MAX_TRIANGLES): FlatScene {
+export function flatEdges(
+  doc: SceneDocument,
+  sources: Uint32Array,
+  edges: SharpEdgeOptions | null,
+): Pick<FlatScene, 'edgeDistances' | 'edgeAngles'> {
+  const count = Math.floor(sources.length / 2);
+  const edgeDistances = new Float32Array(count * 3 * EDGE_SLOTS).fill(NO_EDGE);
+  const edgeAngles = new Float32Array(count * EDGE_SLOTS);
+  if (!edges) return { edgeDistances, edgeAngles };
+  const byMesh = sceneSharpEdges(doc.meshes, edges);
+  for (let t = 0; t < count; t++) {
+    const attributes = byMesh[sources[t * 2] ?? 0];
+    if (!attributes) continue;
+    const first = sources[t * 2 + 1] ?? 0;
+    for (let c = 0; c < 3; c++) {
+      const v = attributes.indices[first + c] ?? 0;
+      edgeDistances.set(attributes.distances.subarray(v * EDGE_SLOTS, v * EDGE_SLOTS + EDGE_SLOTS), (t * 3 + c) * 4);
+    }
+    const v0 = attributes.indices[first] ?? 0;
+    edgeAngles.set(attributes.angles.subarray(v0 * EDGE_SLOTS, v0 * EDGE_SLOTS + EDGE_SLOTS), t * 4);
+  }
+  return { edgeDistances, edgeAngles };
+}
+
+/**
+ * The visible triangles of `doc` (a mesh's own flag and its node's effective visibility, groups only) placed by their
+ * node's world matrix, with sharp-edge data under `edges` (`null`: none, as the light bake needs). Over `maxTriangles`
+ * throws `PathTracerError` `SCENE_TOO_LARGE` before allocating anything. `doc` must have passed `validateScene`
+ * (indices and lengths are trusted, numbers are not).
+ */
+export function flattenScene(
+  doc: SceneDocument,
+  maxTriangles = DEFAULT_MAX_TRIANGLES,
+  edges: SharpEdgeOptions | null = null,
+): FlatScene {
   const visibility = nodeVisibility(doc);
   const visibleMeshes = doc.meshes.map((_, m) => meshVisible(doc, m, visibility));
   let total = 0;
@@ -139,6 +184,7 @@ export function flattenScene(doc: SceneDocument, maxTriangles = DEFAULT_MAX_TRIA
     }
   });
 
+  const flatSources = sources.subarray(0, count * 2);
   return {
     count,
     positions: positions.subarray(0, count * 9),
@@ -148,7 +194,8 @@ export function flattenScene(doc: SceneDocument, maxTriangles = DEFAULT_MAX_TRIA
     materials: materials.subarray(0, count),
     doubleSided: doubleSided.subarray(0, count),
     renderOrders: renderOrders.subarray(0, count),
-    sources: sources.subarray(0, count * 2),
+    sources: flatSources,
+    ...flatEdges(doc, flatSources, edges),
     skipped,
   };
 }
