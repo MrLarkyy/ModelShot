@@ -604,6 +604,13 @@ vertices). Matching sorts now: 752 ms local SwiftShader for the whole load (`sha
 vertices), max 3500 ms as for the other load budgets. The same run: `edges-200k` 1158 ms, `edges-hostile` 1194 ms,
 `large-order` 896 ms.
 
+Memory of detection at the loaders' vertex limit (MS-15 round 4): `sharpEdges` of the `edges-weld` mesh (400 000
+vertices, 200 000 triangles, input 11.4 MB) in Node 22 with `--expose-gc`, a fresh Vitest worker, collected before:
+the process's peak resident set grows by 62.8, 62.9 and 63.9 MB (`process.resourceUsage().maxRSS`, three runs; to
+about 143 MB), in 264-419 ms. Of that the result kept with the mesh is 16.0 MB (`vertexOf`, `indices`, `distances`,
+`angles`); the rest is sort keys, ranks and edge tables, garbage once it returns (right after: heap +29 MB, array
+buffers +38 MB before collection). The renderers keep one result per document (`sceneSharpEdges`, latest options).
+
 First CI run (2026-10-20, ubuntu-latest): frame time 0.9 ms (max 5, 5.5x), time to 64 samples 80.6 ms (max 300), gzip app 437 B, embed 115 B.
 Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact (in the e2e shard that ran
 `bench.spec.ts`), with the numbers in the commit.
