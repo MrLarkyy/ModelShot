@@ -8,6 +8,12 @@ function glslVec3(name: string): number[] {
   return match[1].split(',').map(Number);
 }
 
+function glslFloat(name: string): number {
+  const match = new RegExp(`const float ${name} = ([0-9.eE+-]+);`).exec(lightRigSource);
+  if (!match?.[1]) throw new Error(`${name} not found in lightRig.glsl`);
+  return Number(match[1]);
+}
+
 type V3 = readonly [number, number, number];
 
 const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
@@ -41,6 +47,8 @@ describe('light rig v0', () => {
     expect(glslVec3('KEY_DIRECTION')).toEqual([...LIGHT_RIG_V0.keyDirection]);
     expect(glslVec3('KEY_COLOR')).toEqual([...LIGHT_RIG_V0.keyColor]);
     expect(Math.hypot(...LIGHT_RIG_V0.keyDirection)).toBeCloseTo(1, 4);
+    expect(glslFloat('KEY_ANGULAR_RADIUS')).toBe(LIGHT_RIG_V0.keyAngularRadius);
+    expect(glslFloat('CATCHER_STRENGTH')).toBe(LIGHT_RIG_V0.catcherStrength);
   });
 
   it('shades like the preview: fill by the normal plus the key', () => {

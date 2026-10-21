@@ -1,11 +1,11 @@
 import {
   DEFAULT_MAX_TEXTURE_PIXELS_TOTAL,
-  PLACEHOLDER_IMAGE,
   RendererError,
-  UNTEXTURED_IMAGE,
   canvasSize,
   decodeTextures,
+  shadowCatcherPlane,
   validateScene,
+  type ShadowCatcherPlane,
   type CanvasCssSize,
   type CanvasSize,
   type RawImage,
@@ -15,6 +15,7 @@ import {
   BACK_SIDE_RENDER_ORDER,
   RENDER_ORDER_TIE_DISTANCE,
   SCENE_FORMAT_VERSION,
+  sceneBounds,
   type SceneCamera,
   type SceneDocument,
 } from '@modelshot/scene';
@@ -29,14 +30,15 @@ import {
   checkMaterialCount,
   packGeometry,
   packMaterials,
-  type MaterialTextures,
   type PackedGeometry,
 } from './packSceneData';
 import { PathTracerError } from './PathTracerError';
 import type { PathTracerOptions, RenderRequest, SetSceneOptions, SetSceneResult } from './PathTracerOptions';
 import type { PathTracerWarning } from './PathTracerWarning';
 import { sampleTiles, samplesToDraw } from './sampleSchedule';
-import { planTextureLayers, type TextureLayerPlan } from './textureLayers';
+import { requireExactAccumulation } from './requireExactAccumulation';
+import { layoutTextures } from './layoutTextures';
+import type { TextureLayerPlan } from './textureLayers';
 import { createTracerPrograms, disposeTracerPrograms, type TracerPrograms } from './tracerPrograms';
 
 const DEFAULT_MAX_BOUNCES = 4;
@@ -73,6 +75,8 @@ interface LoadedScene {
   readonly plan: TextureLayerPlan;
   readonly images: readonly (ImageBitmap | RawImage)[];
   readonly bitmaps: readonly (ImageBitmap | null)[];
+  /** The shadow catcher camera rays see, `null` when `SetSceneOptions.shadowCatcher` is false. */
+  readonly catcher: ShadowCatcherPlane | null;
 }
 
 interface Gpu {
@@ -92,24 +96,6 @@ function checkInteger(label: string, value: unknown, min: number, max: number): 
     throw new RangeError(`${label} must be an integer in ${min}..${max}, got ${String(value)}`);
   }
   return value;
-}
-
-/** Places the untextured colour, the placeholder and every decoded image in texture layers. */
-function layoutTextures(bitmaps: readonly (ImageBitmap | null)[], side: number, maxLayers: number) {
-  const images: (ImageBitmap | RawImage)[] = [UNTEXTURED_IMAGE, PLACEHOLDER_IMAGE];
-  const slotOf = bitmaps.map((bitmap) => (bitmap ? images.push(bitmap) - 1 : -1));
-  const plan = planTextureLayers(images, side, maxLayers);
-  const at = (index: number) => {
-    const place = plan.placements[index];
-    if (!place) throw new Error(`texture image ${index} has no placement`);
-    return place;
-  };
-  const textures: MaterialTextures = {
-    untextured: at(0),
-    placeholder: at(1),
-    textures: slotOf.map((slot) => (slot >= 0 ? at(slot) : null)),
-  };
-  return { plan, images, textures };
 }
 
 /**
@@ -226,6 +212,9 @@ export class PathTracer {
     checkMaterialCount(doc.materials.length);
     const flat = flattenScene(doc, this.options.maxTriangles ?? DEFAULT_MAX_TRIANGLES);
     const geometry = packGeometry(flat, buildBvh(flat.positions, flat.count), capabilities.maxTextureSize);
+    // The catcher's height and rectangle do not depend on its texel size, which only the light bake needs.
+    const catcher =
+      options.shadowCatcher === false ? null : shadowCatcherPlane(sceneBounds(doc), LIGHT_RIG_V0.keyDirection, 1);
     // Only a scene that passed every limit supersedes a pending one.
     const generation = ++this.generation;
     const decoded = await decodeTextures(doc.textures, this.textureLimits(capabilities), () =>
@@ -243,6 +232,7 @@ export class PathTracer {
         plan: layout.plan,
         images: layout.images,
         bitmaps: decoded.bitmaps,
+        catcher,
       };
     } catch (error) {
       for (const bitmap of decoded.bitmaps) bitmap?.close();
@@ -402,17 +392,7 @@ export class PathTracer {
 
   private createGpu(): Gpu {
     const gl = this.gl;
-    if (gl.getExtension('EXT_color_buffer_float') === null) {
-      throw new PathTracerError(
-        'FLOAT_TARGETS_UNAVAILABLE',
-        'EXT_color_buffer_float is missing: the path tracer needs RGBA32F render targets',
-      );
-    }
-    const float = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT);
-    const int = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_INT);
-    if (!float || float.precision < 23 || !int || int.rangeMax < 30) {
-      throw new PathTracerError('HIGHP_UNAVAILABLE', 'fragment shaders lack 32-bit highp floats and integers');
-    }
+    requireExactAccumulation(gl);
     const capabilities = this.queryCapabilities();
     const programs = createTracerPrograms(gl);
     return { capabilities, programs, vao: gl.createVertexArray(), scene: null, targets: null };
@@ -480,6 +460,10 @@ export class PathTracer {
     gl.uniform1ui(uniform('u_seed'), seed);
     gl.uniform1i(uniform('u_maxBounces'), this.maxBounces);
     gl.uniform3fv(uniform('u_background'), this.background);
+    const catcher = this.loaded?.catcher ?? null;
+    gl.uniform1i(uniform('u_catcherOn'), catcher ? 1 : 0);
+    gl.uniform1f(uniform('u_catcherY'), catcher?.y ?? 0);
+    gl.uniform4fv(uniform('u_catcherRect'), catcher?.rect ?? [0, 0, 0, 0]);
   }
 
   /** Data for a tracer without a scene: no nodes, so every camera ray shows the background. */

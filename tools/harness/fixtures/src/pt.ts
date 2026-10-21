@@ -11,11 +11,11 @@ import { installSampleBench, installSampleReadout, installSceneBench } from './b
 import { readDrawingBufferBase64 } from './context';
 import type { MsFixture, PtControls, PtProbe } from './fixtureApi';
 import { installGlTracker } from './glTracker';
-import { ALPHA_PLANE_PROBES, computePtProbes } from './ptProbes';
+import { computePtProbes, sceneProbes } from './ptProbes';
 import { isRtSceneName, parseRtView, reverseMeshOrder, rtCamera, rtScene, type RtSceneName } from './rtScenes';
 
 // URL parameters: the realtime fixture's view (variant, scene, yaw, pitch, proj, fov, zoom, iso, reverse, look, depth;
-// rtScenes.ts) plus the path-tracer-only variant `emissive`; seed (default 1), samples (default 64), batch (samples
+// rtScenes.ts; catcher=0|1 the shadow catcher, default on) plus the path-tracer-only variant `emissive`; seed (default 1), samples (default 64), batch (samples
 // per step, default all), tile (tile side, default 256), size (CSS pixels, default 256), maxTriangles, track=1 (count
 // GL objects), timing=1 (one sample per frame with a time readout, for a manual run on real hardware).
 const params = new URLSearchParams(location.search);
@@ -69,7 +69,7 @@ async function start(): Promise<void> {
   const viewParams = new URLSearchParams(params);
   if (ptVariant) viewParams.set('variant', ptVariant.view);
   const view = parseRtView(viewParams);
-  const sceneOptions = ptVariant?.options ?? {};
+  const sceneOptions: SetSceneOptions = { ...(ptVariant?.options ?? {}), shadowCatcher: view.catcher };
   canvas.style.width = `${size}px`;
   canvas.style.height = `${size}px`;
 
@@ -100,8 +100,7 @@ async function start(): Promise<void> {
     const w = row(3);
     return [((row(0) / w) * 0.5 + 0.5) * canvas.width, (0.5 - (row(1) / w) * 0.5) * canvas.height];
   };
-  const probes = (): PtProbe[] =>
-    view.scene === 'alpha-plane' ? computePtProbes(doc, ALPHA_PLANE_PROBES, (p) => project(...p)) : [];
+  const probes = (): PtProbe[] => computePtProbes(doc, sceneProbes(view.scene), (p) => project(...p));
   const render = (): number => {
     tracer.start({ seed, samples });
     while (tracer.step(batch) > 0);
@@ -136,7 +135,7 @@ async function start(): Promise<void> {
   });
   installSceneBench(api, gl, async () => {
     doc = sceneOf('large-order');
-    const loaded = await tracer.setScene(doc);
+    const loaded = await tracer.setScene(doc, { shadowCatcher: view.catcher });
     warnings = loaded.warnings;
     triangles = loaded.triangles;
     tracer.setCamera(camera());

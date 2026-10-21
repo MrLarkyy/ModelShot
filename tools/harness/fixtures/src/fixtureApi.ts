@@ -1,3 +1,5 @@
+import type { BlockReport } from './eventLoopLag';
+
 export interface MsFixture {
   ready: Promise<void>;
   renderer: string;
@@ -10,6 +12,8 @@ export interface MsFixture {
   timeToSamples?: (samples: number) => number;
   /** Load-and-first-frame bench (rt.html): milliseconds until the GPU finished. */
   timeScene?: () => Promise<number>;
+  /** Light-bake bench (rt.html): milliseconds from the call to the final lighting. */
+  timeBake?: () => Promise<number>;
   /** Model-view fixture: pixels to check in the rendered image. */
   probes?: ModelViewProbe[];
   rt?: RtControls;
@@ -22,6 +26,27 @@ export interface ModelViewProbe {
   x: number;
   y: number;
   texel: number[];
+}
+
+/** A light bake of the realtime fixture (LightBaker options). */
+export interface RtBakeRequest {
+  samples: number;
+  seed?: number;
+  tile?: number;
+  catcher?: boolean;
+  /** Test hook: texels count capped traversals instead of light. */
+  countCapped?: boolean;
+}
+
+/** How a bake ended: the samples of each progress update, the final lighting's hash, or the error (`code: message`). */
+export interface RtBakeOutcome {
+  applied: boolean;
+  progress: number[];
+  /** Hash of the lighting at each progress update. */
+  progressHashes: string[];
+  warnings: { code: string; texture?: number }[];
+  hash: string;
+  error: string;
 }
 
 /** Extra controls of the realtime renderer fixture (rt.html). */
@@ -54,6 +79,45 @@ export interface RtControls {
   nodePoint: (name: string, x: number, y: number, z: number) => [number, number, number];
   /** Sets the canvas CSS size; resolves after the resize observer resized the backing store and redrew. */
   setCssSize: (width: number, height: number) => Promise<void>;
+  /** Pixels of the scene's shadow probes (ptProbes.ts) under the current camera; empty for other scenes. */
+  readonly probes: readonly PtProbe[];
+  /** Bakes the shown document, drawing each update; a failure comes back as `error`. */
+  bake: (request: RtBakeRequest) => Promise<RtBakeOutcome>;
+  /** Starts two bakes of the shown document back to back: their applied flags and the shown lighting's hash. */
+  bakeTwice: (first: RtBakeRequest, second: RtBakeRequest) => Promise<{ applied: boolean[]; hash: string }>;
+  /** Bakes a named scene without showing it. */
+  bakeScene: (name: string, samples: number) => Promise<RtBakeOutcome>;
+  /** Bakes a named scene counting the traversals its rays stop at the node cap: texels with any, or the error. */
+  bakeCapped: (name: string, samples: number) => Promise<{ texels: number; error: string }>;
+  /**
+   * Bakes the shown document's textures with lightmap-overflow's meshes (refused with SCENE_TOO_LARGE after the bytes
+   * were posted), then the shown document with the same textures array: both outcomes.
+   */
+  bakeAfterFailure: (request: RtBakeRequest) => Promise<RtBakeOutcome[]>;
+  /**
+   * Drives the renderer's banded light upload through its states with three bakes (seeds 1, 2, 3) of the shown
+   * document: frame hashes and `lightingPending` at each step.
+   */
+  uploadStates: () => Promise<Record<string, string | boolean>>;
+  /** Shows the document in a player pose preset (setScene of the posed document; baked light of the same layout stays). */
+  pose: (preset: string) => Promise<void>;
+  /** Hash of the lighting the renderer shows, '' for none. */
+  readonly lightingHash: string;
+  /** The worker loses its WebGL context and gets it back (LightBaker test hook), now or before a progress mark. */
+  loseBakerContext: (options?: { beforeMark?: number; failRestore?: boolean }) => void;
+  disposeBaker: () => void;
+  readonly bakerTerminated: boolean;
+  /** setLighting with the shown lighting changed in one way: whether the renderer took it. */
+  tryLighting: (change: 'key' | 'size' | 'length') => boolean;
+  /** Longest main-thread event-loop lag in milliseconds since load (lag=1), else -1. */
+  maxLag: () => number;
+  /** Longest main-thread block from page work since load or `resetLag` (lag=1: long tasks, bake calls and updates). */
+  mainThreadBlock: () => number;
+  /** Per-phase maxima, long tasks and slow phases since load or `resetLag` (lag=1). */
+  blockReport: () => BlockReport;
+  /** Busy main thread for `ms` outside any timed bake work (checks that `mainThreadBlock` sees long tasks). */
+  spinMainThread: (ms: number) => Promise<void>;
+  resetLag: () => void;
 }
 
 /** A point of interest in a path-traced image: x right, y down from the top-left, in pixels (not rounded). */

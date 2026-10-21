@@ -14,5 +14,12 @@
   "bundleGzipBytes": {
     "app": { "max": 2500 },
     "embed": { "max": 2200 }
+  },
+  "bakeTimeMs": {
+    "bake-bench-n16": { "max": 222000 }
+  },
+  "mainThreadBlockMs": {
+    "bake-bench": { "max": 50 },
+    "bake-post-200k": { "max": 50 }
   }
 }

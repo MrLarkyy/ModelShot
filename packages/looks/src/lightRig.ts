@@ -9,6 +9,13 @@ export interface LightRig {
   readonly keyColor: Rgb;
   /** Scene-linear backdrop behind the model: the preview's clear colour and the path tracer's escaped camera rays. */
   readonly background: Rgb;
+  /**
+   * Angular radius in radians of the key light's disc: its shadows soften with the distance to the occluder. The path
+   * tracer and the light bake sample visibility in this cone; the key's cosine stays that of `keyDirection`.
+   */
+  readonly keyAngularRadius: number;
+  /** How much of the light a fully shadowed shadow-catcher point loses (0 none, 1 all): `catcherShade`. */
+  readonly catcherStrength: number;
 }
 
 export const LIGHT_RIG_V0: LightRig = Object.freeze({
@@ -17,6 +24,8 @@ export const LIGHT_RIG_V0: LightRig = Object.freeze({
   keyDirection: [0.39904, 0.79808, 0.4514],
   keyColor: [1.25, 1.22, 1.18],
   background: [0.14, 0.15, 0.17],
+  keyAngularRadius: 0.04,
+  catcherStrength: 1,
 } as const);
 
 /**

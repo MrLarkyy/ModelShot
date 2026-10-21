@@ -26,6 +26,8 @@ export interface FlatScene {
   readonly doubleSided: Uint8Array;
   /** Per triangle: the mesh's `renderOrder` (absent: 0). */
   readonly renderOrders: Float32Array;
+  /** 2 per triangle: the index of its mesh in `SceneDocument.meshes` and of its first index in that mesh's `indices`. */
+  readonly sources: Uint32Array;
   /** Triangles left out: a non-finite position, normal, UV or UV rectangle, or no area. */
   readonly skipped: number;
 }
@@ -61,6 +63,7 @@ export function flattenScene(doc: SceneDocument, maxTriangles = DEFAULT_MAX_TRIA
   const materials = new Int32Array(total);
   const doubleSided = new Uint8Array(total);
   const renderOrders = new Float32Array(total);
+  const sources = new Uint32Array(total * 2);
   let count = 0;
   let skipped = 0;
   const corner: [number, number, number][] = [
@@ -129,6 +132,8 @@ export function flattenScene(doc: SceneDocument, maxTriangles = DEFAULT_MAX_TRIA
         materials[count] = group.material;
         doubleSided[count] = group.doubleSided === true ? 1 : 0;
         renderOrders[count] = order;
+        sources[count * 2] = m;
+        sources[count * 2 + 1] = i;
         count++;
       }
     }
@@ -143,6 +148,7 @@ export function flattenScene(doc: SceneDocument, maxTriangles = DEFAULT_MAX_TRIA
     materials: materials.subarray(0, count),
     doubleSided: doubleSided.subarray(0, count),
     renderOrders: renderOrders.subarray(0, count),
+    sources: sources.subarray(0, count * 2),
     skipped,
   };
 }

@@ -34,7 +34,8 @@ export interface PackedGeometry {
   readonly maxRenderOrder: number;
 }
 
-function rowsFor(texels: number, maxTextureSize: number, what: string): number {
+/** Rows of `DATA_TEXTURE_WIDTH` texels holding `texels`; over `maxTextureSize` throws `SCENE_TOO_LARGE`. */
+export function rowsFor(texels: number, maxTextureSize: number, what: string): number {
   const rows = Math.max(1, Math.ceil(texels / DATA_TEXTURE_WIDTH));
   if (rows > maxTextureSize) {
     throw new PathTracerError(
@@ -45,7 +46,7 @@ function rowsFor(texels: number, maxTextureSize: number, what: string): number {
   return rows;
 }
 
-function dataTexture(rows: number): DataTexture {
+export function dataTexture(rows: number): DataTexture {
   return { rows, data: new Float32Array(rows * DATA_TEXTURE_WIDTH * 4) };
 }
 

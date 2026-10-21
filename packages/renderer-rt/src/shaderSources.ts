@@ -1,6 +1,9 @@
 import { linkShader, lookShaderChunks, type ShaderChunks } from '@modelshot/looks';
 import type { DepthKeyMode } from './depthKeyMode';
 import backdropFrag from './shaders/backdrop.frag.glsl?raw';
+import bakedLight from './shaders/bakedLight.glsl?raw';
+import catcherFrag from './shaders/catcher.frag.glsl?raw';
+import catcherVert from './shaders/catcher.vert.glsl?raw';
 import depthKeyExact from './shaders/depthKeyExact.glsl?raw';
 import depthKeyVertexExact from './shaders/depthKeyVertexExact.glsl?raw';
 import depthKeyVertexRaster from './shaders/depthKeyVertexRaster.glsl?raw';
@@ -16,7 +19,8 @@ import presentFrag from './shaders/present.frag.glsl?raw';
 import shading from './shaders/shading.glsl?raw';
 import texelSample from './shaders/texelSample.glsl?raw';
 
-export type ShaderProgramName = 'opaque' | 'oitAccum' | 'oitComposite' | 'present' | 'fallback' | 'backdrop';
+export type ShaderProgramName =
+  'opaque' | 'oitAccum' | 'oitComposite' | 'present' | 'fallback' | 'backdrop' | 'catcher';
 
 export interface ShaderProgramSource {
   readonly vertex: string;
@@ -29,6 +33,7 @@ export const RENDERER_SHADER_CHUNKS: ShaderChunks = Object.freeze({
   texelSample,
   shading,
   hashAlpha,
+  bakedLight,
 });
 
 /** `#include "depthKey"` (fragment) and `#include "depthKeyVertex"` per depth-key variant of the mesh passes. */
@@ -44,6 +49,7 @@ const PROGRAMS: Readonly<Record<ShaderProgramName, readonly [string, string]>> =
   present: [fullscreenVert, presentFrag],
   fallback: [meshVert, fallbackFrag],
   backdrop: [fullscreenVert, backdropFrag],
+  catcher: [catcherVert, catcherFrag],
 };
 
 /** Linked GLSL of one program; mesh passes come in a `raster` (default) and an `exact` depth-key variant. */

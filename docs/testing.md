@@ -140,6 +140,46 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
   (`rt.nodePoint`) at 1.5 units below the anchor, in `hold` and in `walk`. Offsetting the hat's skin offset by one
   row puts 203 sentinel pixels into `rt-player-classic-front`.
 
+**Baked lighting** (MS-16, `test.describe('baked lighting')`; the fixture's `bake=<samples>` bakes with `LightBaker`
+before the first frame, `catcher=0|1`, `bakeSeed`, `bakeTile`, `pose=<player preset>`, `lag=1`; its `rt` controls
+bake, re-pose, lose the worker's context and hash the shown lighting). Every existing `rt-*` golden is drawn without
+lighting and stays byte-identical. New goldens, 64 samples, seed 1, catcher on, default tolerance:
+`rt-bake-cutout-checker` (and `-fallback`: the generated `cutout-checker` scene, an 8 x 8 checker of cut-out and
+opaque texels 1 unit each, bottom row 1 unit above the catcher, facing the key, half a unit in front of a grey box;
+textures generated in code, `look=checker` from behind the plane), `rt-bake-alpha-plane` (model-view camera) and
+`rt-bake-turntable-y030`.
+
+- Pixel-shaped shadows (probes of `ptProbes.ts` projected along the key from the document, as for the path tracer):
+  hole and opaque texel shadows on the catcher 48.8 levels apart with a 0.99 px step, on the box top 54.0 levels with
+  1.47 px (at least 40, at most 2; float path and fallback alike). The box top first sat 6.3 units below its
+  occluding texels: the cone's penumbra (2 · 0.04 · 6.3 = 0.5 units) measured 3.93 px there, so the box moved, the
+  threshold stayed.
+- Determinism: the same bake twice, in 32- and 64-texel tiles, and the 16-sample progress update of a 64-sample bake
+  against a 16-sample bake: identical lighting hashes; seed 2 differs. Progress comes after 4 and 16 of 64 samples.
+- Supersede: of two bakes started back to back the first resolves `applied: false`, and the shown lighting equals the
+  second baked alone.
+- Pose: `player-hold-34` baked, re-posed to `wave` (same layout key): the old lighting stays until the re-bake's
+  first update; the final image equals a fresh bake of the posed document (`pose=wave`), and differs from the old
+  light under the moved arm.
+- Exact depth key (`render-order`, always exact): baking with and without the catcher changes no model pixel.
+- Context loss: a lost and restored renderer re-uploads the light (same bytes); a lost and restored worker context
+  restarts the bake and reaches the reference hash and image.
+- `dispose()` with `track=1`: no WebGL object or ImageBitmap left on the page, the worker terminated.
+- `setLighting` refuses another layout key, size or data length and keeps the shown light.
+- Hostile: 10 000 coincident cubes bake a sample (node cap) without a lost context; `lightmap-overflow` (350 000
+  double-sided untextured triangles: 2.1 M vertex texels) is refused with `SCENE_TOO_LARGE` by the bake and by
+  `setScene`; a corrupt texture bakes with the placeholder and `TEXTURE_DECODE_FAILED`; an empty scene has no catcher
+  and its backdrop stays (0 levels).
+- Shimmer with baked light (`bake=4`): anti-aliased 0.00000 vs nearest 0.00020 (`far`), 0.00168 vs 0.01076
+  (`closeup`): light and albedo share the seam taps.
+- Local-first: every request of a baked page (the worker's modules included) goes to the page's origin.
+- Round 2 (review findings): a bake refused with `SCENE_TOO_LARGE` after it posted the checker's textures, then a bake
+  of the checker with the same textures array, gives no warning and the hash of a fresh bake; a bake asked for right
+  after the worker lost its context, and one whose context is lost right before the readback after 16 samples
+  (progress 4, 4, 16), reach the reference hash; with `countCappedTraversals` no texel of the benchmark scene
+  (4 samples) or the cut-out plant field (1 sample) counts a capped traversal, while 107 795 texels of the coincident
+  cubes do.
+
 For a manual run on real hardware open `rt.html?scene=bench&size=512&fps=1`: it draws continuously and shows the
 median frame work (draw until the GPU finished) and display interval over the last 120 frames, with the renderer
 string.
@@ -166,6 +206,14 @@ put in the URL, not in the file name).
 | `pt-render-order.s1.n16`      | render-order.bbmodel, model-view camera         | golden; render-order probes                  |
 | `pt-emissive.s1.n64`          | showcase, bricks emitting (4, 2.2, 0.8)         | golden; the post beside the bricks brightens |
 | `pt-player-hold-34.s1.n64`    | MS-20 player, hold preset, cube in the hand     | golden; pair with `rt-player-hold-34`        |
+| `pt-cutout-checker.s1.n128`   | generated cut-out checker and box, `checker`    | golden; checker shadow probes; pair          |
+
+All eight earlier `pt-*` goldens were regenerated in MS-16 on purpose (same seeds, samples and size): the key became
+a 0.04 rad cone, the shadow catcher appeared under every model, and the random dimensions per path vertex grew from
+4 to 6. Their probes were measured again (below). Round 2 gave the catcher's fill ray its own number for partial
+texels (it shared the camera ray's): `pt-turntable-y030`, `pt-iso`, `pt-closeup`, `pt-emissive` and
+`pt-alpha-ramp-blend`, where catcher fill rays meet partial texels (the glass panes, the ramp), were regenerated
+again, by at most 5 levels (mean 1) over their whole catcher; the others did not change.
 
 - Tolerance: an override of `threshold 0` only (its reason in the spec); `maxDiffRatio 0.001` and `maxMeanDelta 1`
   stay the defaults. The tracer converges, so at the default threshold 0.1 another seed or one sample more or less
@@ -177,9 +225,13 @@ put in the URL, not in the file name).
   tolerant golden comparison reads); `samplesDone` is checked against the request (`assertSampleCount`).
 - Probes (`fixtures/src/ptProbes.ts`, from the document, never from a renderer; logged as `[pt probe] ...`): the cutout
   plane's hole (2, 14) and opaque texel (6, 14) followed along the key direction to the ground: lit 199.4, shadowed
-  146.6 levels (at least 40 apart), and the lit/shadowed step between them spans 0.49 px (at most 2); on the flat cube,
-  whose coincident single-sided faces the light meets from the south, the ground north of it, seen from the
-  `flat-shadow` look: 49.5 levels between the hole and the opaque texel (at least 40); from below, the single-sided
+  145.6 levels (at least 40 apart), and the lit/shadowed step between them spans 0.99 px (at most 2; 0.49 px with the
+  delta key of MS-17, 2.96 px with a 0.05 rad cone, so the cone is 0.04 rad); on the flat cube, whose coincident
+  single-sided faces the light meets from the south, the ground north of it, seen from the `flat-shadow` look: 49.7
+  levels between the hole and the opaque texel (at least 40); the cut-out checker's shadows on the catcher 55.1 levels
+  apart with a 1.24 px step and on the box 48.9 levels with 1.23 px (at least 40, at most 2); with the catcher off the
+  interior pixels of a closed cube are byte-identical (camera rays only) while over 100 backdrop pixels darken with
+  it; from below, the single-sided
   quad of `coincident-double` shows the backdrop exactly, and alpha-plane's double-sided back plane shows its texel
   mirrored (the model-view probe); the render-order pairs resolve as in the model-view fixture; each alpha-ramp texel's
   9 x 9-pixel mean is within 6 levels of AgX(a · lit white + (1 − a) · backdrop) (largest deviation 1.29); no
@@ -197,19 +249,24 @@ put in the URL, not in the file name).
   scene over the material limit (1.4 M materials) fails with `SCENE_TOO_LARGE` before decoding anything and the
   current scene keeps rendering the same bytes; `dispose()` leaves no WebGL object or ImageBitmap (`track=1`).
 
-**Pair tests** (preview vs render): `rt.html` and `pt.html` of the same view. Framing: the backdrop masks (within 2
-levels of the top-left pixel) must agree on every pixel off the silhouette (a pixel whose 3 x 3 neighbourhood in the
-preview holds both classes); 0 mismatches is the limit. Radiance: pixelmatch `threshold 0.1` with `maxDiffRatio` and
-`maxMeanDelta` = the first measured value x 1.25, never widened; the render differs where it has shadows,
-interreflection and noise. Logged as `[pt pair] <view>: ...`, values in `test-results/pt-pair-<view>.json`. Measured
-on SwiftShader (local Windows dev machine, deterministic):
+**Pair tests** (preview vs render): `rt.html` baked (`bake=64`) and `pt.html` of the same view. Framing, with the
+shadow catcher off on both sides (its edge fades into the backdrop): the backdrop masks (within 2 levels of the
+top-left pixel) must agree on every pixel off the silhouette (a pixel whose 3 x 3 neighbourhood in the preview holds
+both classes); 0 mismatches is the limit. Radiance, catcher on both: pixelmatch `threshold 0.1` with `maxDiffRatio`
+and `maxMeanDelta` = measured x 1.25 and never above the previous limit, never widened; the render differs where it
+has interreflection and noise. Logged as `[pt pair] <view>: ...`, values in `test-results/pt-pair-<view>.json`.
+Measured on SwiftShader (local Windows dev machine, deterministic), MS-16 (MS-17's unbaked values in brackets):
 
-| view             | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta | limit: `maxDiffRatio`, `maxMeanDelta` |
-| ---------------- | ----------------------------------- | ----------------------------------- | ------------------------------------- |
-| `turntable-y030` | 0 (1 606)                           | 715, 0.01091, 0.784                 | 0.0136, 0.98                          |
-| `iso`            | 0 (1 543)                           | 835, 0.01274, 1.049                 | 0.0159, 1.31                          |
-| `alpha-plane`    | 0 (689)                             | 2 158, 0.03293, 1.984               | 0.0412, 2.48                          |
-| `player-hold-34` | 0 (1 322)                           | 1 596, 0.02435, 1.443               | 0.0304, 1.80                          |
+| view             | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta           | limit: `maxDiffRatio`, `maxMeanDelta` |
+| ---------------- | ----------------------------------- | --------------------------------------------- | ------------------------------------- |
+| `turntable-y030` | 0 (1 606)                           | 185, 0.00282, 0.762 (715, 0.01091, 0.784)     | 0.00353, 0.953                        |
+| `iso`            | 0 (1 543)                           | 335, 0.00511, 0.942 (835, 0.01274, 1.049)     | 0.00639, 1.18                         |
+| `alpha-plane`    | 0 (689)                             | 2 083, 0.03178, 2.189 (2 158, 0.03293, 1.984) | 0.0398, 2.48 (2.189 x 1.25 is above)  |
+| `player-hold-34` | 0 (1 322)                           | 1 215, 0.01854, 1.295 (1 596, 0.02435, 1.443) | 0.0232, 1.62                          |
+| `cutout-checker` | 0 (3 310)                           | 275, 0.00420, 0.726                           | 0.00525, 0.908                        |
+
+alpha-plane's large ground is an untextured box, baked per vertex, so its preview shows no ground shadow (world-density
+charts for untextured meshes are not in MS-16); the catcher under it darkens its mean delta a little.
 
 For a manual run on real hardware open `pt.html?scene=bench&size=512&samples=256&timing=1`: one sample per animation
 frame with the elapsed time and the renderer string.
@@ -387,6 +444,67 @@ texel tap), `rt-bench-order-512` 117, 145 and 148 ms with MSAA, 83 and 107 ms si
   `rt-load-first-frame-200k-order` (validate, flatten, BVH build in JavaScript, upload) plus its first sample. Local
   SwiftShader 1554, 919 and 941 ms; max 10 000 ms (10x the middle run, rounded up).
 - `bundleGzipBytes` app 2500, embed 2200: measured plus about 2 kB, so a real dependency shows up while noise does not.
+- `bakeTimeMs.bake-bench-n16` (MS-16): `LightBaker.bake` of the benchmark scene in its worker, 16 samples with the
+  shadow catcher (lightmap 2048 wide, catcher 512 x 512), from the call to the final lighting, median of 3. Local
+  SwiftShader 22 873, 22 113 and 22 141 ms; max 222 000 ms (10x the middle run, rounded up). Each run is asserted
+  against the max as it completes, and the bench test's timeout is 3 x that max + 300 s, so a slow bake fails its
+  budget instead of the timeout.
+- `mainThreadBlockMs.bake-bench` and `mainThreadBlockMs.bake-post-200k` (MS-16): **the most one task of the page's
+  main thread blocked**: its CPU time plus the time it waited synchronously for the GPU process, from a Chrome trace
+  over the bake window (`src/mainThreadTrace.ts`: CDP categories `toplevel,gpu`; top-level tasks `RunTask` with their
+  thread CPU time `tdur`, thread `CrRendererMain`; GPU waits are the command-buffer client's
+  `CommandBufferProxyImpl::WaitForGetOffset` (a readback or state query: `readPixels`, `getError`, `finish`) and
+  `CommandBufferProxyImpl::WaitForToken` (an upload waiting for transfer-buffer space: `texSubImage2D`), found in this
+  Chrome's traces of such calls after heavy draws, each counted as its wall minus its own CPU; the trace throws
+  without a main thread or a task, when no task carries CPU time, or when a task of 1 ms or more lacks it (Chrome
+  leaves it off zero-length tasks)): the three benchmark bakes, and the 1-sample bake of the 200 000-triangle
+  `large-order` document (its `bake()` call, mesh stream and updates). Every task counts, those Playwright's
+  `evaluate` runs (which call `bake()`) included, which the Long Tasks API does not report. Max 50 ms, fixed (RAIL's
+  50 ms response budget). Wall time is printed beside it, not asserted: the page-side wall-time block
+  (`eventLoopLag.ts`: long tasks, timed phases), the heartbeat lag and the trace's longest task as wall / CPU with its
+  largest wall − CPU gap. On a shared, loaded machine wall time also counts the OS not running the thread: full build
+  tests read 72 ms of wall time for a `bake()` call doing about 1 ms of work, and under 30 local CPU spinners the
+  trace showed a 9.4 ms wall / 0.6 ms CPU task (round 6); that is excluded, while a wait for the GPU process (a wait
+  event, wall time without CPU too) is counted, since the page cannot respond meanwhile (round 8). `realtime.spec.ts`
+  proves both halves: at least 80 ms of busy work (a workload calibrated to 100 ms at its fastest measured speed)
+  reads 99-106 ms in a timer task and in an `evaluate` (a wall-clock spin of 80 ms reads only 78 ms of CPU, which is
+  why the probe counts work, not time); a `readPixels` after four frames of the benchmark scene at 512 x 512 waited
+  685.8 ms, the trace counted 685.4 ms of GPU wait beside 3.1 ms of CPU, blocking 688.4 ms.
+  History of the earlier wall-time measure:
+  - `mainThreadBlockMs.bake-bench` (MS-16): the page's longest main-thread block over those three bakes
+    (`fixtures/src/eventLoopLag.ts`): the longest long task the browser reports (Long Tasks API, 50 ms or more), else the
+    longest timed stretch of the bake calls and progress updates (upload and redraw). First measured as the lag of a
+    10 ms heartbeat: 27.4 ms, then 68.3 ms, which found the fixture recomputing its camera and hashing the light on
+    every update (fixed: an update only re-uploads into the existing textures and draws; 4.2 ms). The heartbeat then
+    still read 63.9 and once 192.9 ms with no long task and no handler over 6.3 ms: SwiftShader's GPU process spreads
+    every draw over all cores and the page gets no CPU, which no page change can fix. It is printed beside the block
+    (`heartbeat lag`). Block measured 9.1 and 7.3 ms. `realtime.spec.ts` pins the long-task half: an 80 ms busy timer
+    task outside the timed work reads a block of 80.0 ms (`block()` takes the observer's pending records first). A task
+    Playwright's `evaluate` runs is not reported as a long task, so the bench times the `bake()` call itself. Max 50 ms, fixed (RAIL's 50 ms response budget), not derived from
+    a measurement. Round 4: a full `build test` on a busy machine read 120.2 ms (heartbeat 115.0 ms): a real task. Not
+    reproduced locally (full suite; 22 CPU spinners; a parallel path-tracer browser), where each update was 5-7 ms, most
+    of it one 9.4 MB texSubImage2D, which waits for the GPU process whenever it is busy with the bake's draws. Fixed in
+    the renderer (upload in bands over frames into back textures, realtime-renderer.md). The bench now prints the longest
+    stretch per phase (`bake-call`, `worker-message`, `set-lighting`, `upload`, `render`), every long task and the slow
+    phases: after the fix `set-lighting` 0.3-0.4 ms, `upload` 1.1-1.3 ms, `worker-message` 1.3-2.2 ms, `render` 1.5 ms,
+    `bake-call` 7-8 ms (the posted document's clone), no long task, block 7.0 and 7.8 ms.
+  - `mainThreadBlockMs.bake-post-200k` (MS-16 round 2): `bake()` of the 200 000-triangle `large-order` document (1
+    sample): the longer of the call's own duration (option checks and validation; since round 5 the call posts nothing,
+    the document's meshes stream in later tasks) and the
+    block over the bake. Measured 16.2 and 14.9 ms; max 50 ms, fixed like the row above. Round 5: the full build test
+    put the `bake-call` phase at 44.6 ms under load (a structured clone of every mesh in one task). Meshes now stream as
+    transferred chunks in later tasks and only when the worker lacks them, and the fixture times every worker
+    `postMessage` (`worker-post`): `bake-call` 0.7 ms idle and 1.1 ms under load (12 CPU spinners and a parallel
+    path-tracer browser), `worker-post` at most 0.4 ms, block 1.4 and 1.6 ms, `bake-post-200k` 2.5 and 4.0 ms.
+    Round 6: a full build test read a single `bake-call` of 72 ms (heartbeat 66.4 ms, no long task: the call runs in a
+    Playwright `evaluate`). Locally the call does 0.3-1.8 ms of work (600 calls under 30-40 CPU spinners, each in its own
+    task, beside an allocation-free loop of equal cost), V8's `--trace-gc` shows no pause over 2.6 ms in 300 collections
+    over three bench bakes, and a Chrome trace shows the renderer main thread losing up to 11.5 ms of wall time inside
+    tasks with no CPU behind it (the worker thread up to 82 ms): the OS not running the thread. The bench therefore
+    traces the bake runs (`src/mainThreadTrace.ts`, CDP top-level tasks with thread CPU time) and prints the main
+    thread's longest task as wall / CPU ms and its largest wall − CPU gap, so a slow phase on a loaded machine shows
+    whether it was page work. Limit and measure unchanged in round 6; round 7 made the trace the measure (above). In the same runs
+    `rt-load-first-frame-200k-order` (now with the lightmap layout) measured about 600 ms of its 3500.
 
 First CI run (2026-10-20, ubuntu-latest): frame time 0.9 ms (max 5, 5.5x), time to 64 samples 80.6 ms (max 300), gzip app 437 B, embed 115 B.
 Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact, with the numbers in the commit.

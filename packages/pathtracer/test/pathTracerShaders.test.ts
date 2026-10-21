@@ -9,7 +9,7 @@ import {
 import { pathTracerProgramSource } from '../src/pathTracerShaders';
 
 describe('path tracer shaders', () => {
-  for (const name of ['trace', 'present'] as const) {
+  for (const name of ['trace', 'present', 'bake'] as const) {
     it(`${name} links from static chunks with #version first and no include left`, () => {
       const { vertex, fragment } = pathTracerProgramSource(name);
       for (const source of [vertex, fragment]) {
@@ -46,7 +46,28 @@ describe('path tracer shaders', () => {
   });
 
   it('has no clock or time input', () => {
+    for (const name of ['trace', 'bake'] as const) {
+      expect(pathTracerProgramSource(name).fragment).not.toMatch(/u_time|u_clock|u_frameTime/);
+    }
+  });
+
+  it('traces bake rays with the same chunks and ray functions as the render', () => {
     const trace = pathTracerProgramSource('trace').fragment;
-    expect(trace).not.toMatch(/u_time|u_clock|u_frameTime/);
+    const bake = pathTracerProgramSource('bake').fragment;
+    for (const shared of [
+      'float shadowTransmittance(vec3 origin, vec3 direction, int skip)',
+      'bool closestHit(',
+      'Surface surfaceAt(Hit hit)',
+      'vec3 keyConeDirection(float u1, float u2)',
+      'vec3 cosineDirection(vec3 n, float u1, float u2)',
+      'vec3 leave(vec3 p, vec3 side)',
+      'vec3 environmentRadiance(vec3 d)',
+    ]) {
+      expect(trace, shared).toContain(shared);
+      expect(bake, shared).toContain(shared);
+    }
+    expect(trace).toContain('float catcherShade(vec3 fill, float keyT, vec2 xz, vec4 rect)');
+    expect(bake).toContain('shadowTransmittance(origin, cone, skip)');
+    expect(trace).toContain('shadowTransmittance(leave(s.position, s.side), cone, hit.triangle)');
   });
 });

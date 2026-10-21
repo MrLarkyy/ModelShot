@@ -16,6 +16,9 @@ export interface MeshProgram {
   readonly texelAntialias: WebGLUniformLocation | null;
   readonly alphaMode: WebGLUniformLocation | null;
   readonly alphaCutoffByte: WebGLUniformLocation | null;
+  readonly lightmap: WebGLUniformLocation | null;
+  readonly bakeOn: WebGLUniformLocation | null;
+  readonly lightmapTextureSize: WebGLUniformLocation | null;
 }
 
 export interface FullscreenProgram {
@@ -30,13 +33,16 @@ export interface RendererPrograms {
   /** Mesh passes in both depth-key variants; a frame uses one variant for all of them. */
   readonly meshPasses: Readonly<Record<DepthKeyMode, Readonly<Partial<Record<MeshPassName, MeshProgram>>>>>;
   readonly fullscreen: Readonly<Partial<Record<'oitComposite' | 'present' | 'backdrop', FullscreenProgram>>>;
+  /** The shadow catcher's quad, on both paths. */
+  readonly catcher: FullscreenProgram;
   readonly all: readonly WebGLProgram[];
 }
 
-const FULLSCREEN_UNIFORMS: Readonly<Record<'oitComposite' | 'present' | 'backdrop', readonly string[]>> = {
+const FULLSCREEN_UNIFORMS: Readonly<Record<'oitComposite' | 'present' | 'backdrop' | 'catcher', readonly string[]>> = {
   oitComposite: ['u_accum', 'u_weight'],
   present: ['u_hdr'],
   backdrop: ['u_background'],
+  catcher: ['u_viewProjection', 'u_catcherLight', 'u_catcherRect', 'u_catcherSize', 'u_background', 'u_toneMap'],
 };
 
 const DEPTH_KEY_MODES: readonly DepthKeyMode[] = ['raster', 'exact'];
@@ -67,9 +73,12 @@ export function createRendererPrograms(gl: WebGL2RenderingContext, floatPath: bo
         texelAntialias: at('u_texelAntialias'),
         alphaMode: at('u_alphaMode'),
         alphaCutoffByte: at('u_alphaCutoffByte'),
+        lightmap: at('u_lightmap'),
+        bakeOn: at('u_bakeOn'),
+        lightmapTextureSize: at('u_lightmapTextureSize'),
       };
     };
-    const fullscreenProgram = (name: 'oitComposite' | 'present' | 'backdrop'): FullscreenProgram => {
+    const fullscreenProgram = (name: 'oitComposite' | 'present' | 'backdrop' | 'catcher'): FullscreenProgram => {
       const program = build(name, 'raster');
       const uniforms = Object.fromEntries(
         FULLSCREEN_UNIFORMS[name].map((uniform) => [uniform, gl.getUniformLocation(program, uniform)]),
@@ -86,12 +95,14 @@ export function createRendererPrograms(gl: WebGL2RenderingContext, floatPath: bo
       return {
         meshPasses: passes(['opaque', 'oitAccum']),
         fullscreen: { oitComposite: fullscreenProgram('oitComposite'), present: fullscreenProgram('present') },
+        catcher: fullscreenProgram('catcher'),
         all,
       };
     }
     return {
       meshPasses: passes(['fallback']),
       fullscreen: { backdrop: fullscreenProgram('backdrop') },
+      catcher: fullscreenProgram('catcher'),
       all,
     };
   } catch (error) {

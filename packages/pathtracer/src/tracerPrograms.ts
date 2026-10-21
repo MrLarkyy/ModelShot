@@ -25,7 +25,8 @@ function compile(gl: WebGL2RenderingContext, type: number, source: string, label
   return shader;
 }
 
-function link(gl: WebGL2RenderingContext, name: PathTracerProgramName): TracerProgram {
+/** Compiles and links one program; a failure throws `PathTracerError` with the driver's info log. */
+export function linkTracerProgram(gl: WebGL2RenderingContext, name: PathTracerProgramName): TracerProgram {
   const source = pathTracerProgramSource(name);
   const vertex = compile(gl, gl.VERTEX_SHADER, source.vertex, `${name} vertex`);
   let fragment: WebGLShader;
@@ -56,9 +57,9 @@ function link(gl: WebGL2RenderingContext, name: PathTracerProgramName): TracerPr
 
 /** Compiles and links both programs; a failure throws `PathTracerError` with the driver's info log. */
 export function createTracerPrograms(gl: WebGL2RenderingContext): TracerPrograms {
-  const trace = link(gl, 'trace');
+  const trace = linkTracerProgram(gl, 'trace');
   try {
-    return { trace, present: link(gl, 'present') };
+    return { trace, present: linkTracerProgram(gl, 'present') };
   } catch (error) {
     gl.deleteProgram(trace.program);
     throw error;

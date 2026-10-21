@@ -25,6 +25,12 @@ export interface SetSceneOptions {
    * a negative or non-finite channel counts as 0. The scene format's own emission field maps here (MS-32).
    */
   readonly emission?: readonly (readonly [number, number, number] | undefined)[];
+  /**
+   * Camera rays from above see a shadow catcher under the model (`shadowCatcherPlane` of the realtime renderer): the
+   * backdrop darkened where the model takes key and fill light from the plane. Invisible to every other ray. Default
+   * `true`, as in the baked preview.
+   */
+  readonly shadowCatcher?: boolean;
 }
 
 export interface SetSceneResult {

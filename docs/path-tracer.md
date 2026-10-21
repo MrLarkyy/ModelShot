@@ -3,7 +3,8 @@
 `@modelshot/pathtracer` renders a `SceneDocument` by path tracing in a WebGL2 fragment shader: the final render, with
 global illumination and soft, texel-shaped shadows. It reads the same camera, materials, alpha rule, sides, render
 order, light rig and tone mapping as the realtime preview ([realtime-renderer.md](realtime-renderer.md)), so the two
-images of a view agree apart from shadows, interreflection and noise. The package is private and not yet wired into
+images of a view agree apart from interreflection and noise once the preview has its baked light (`LightBaker`,
+below), and apart from shadows too without it. The package is private and not yet wired into
 the app or the embed.
 
 ```ts
@@ -24,7 +25,7 @@ requestAnimationFrame(frame);
   look's backdrop, as in the preview), `maxBounces` (1..16, default 4), `maxTriangles` (default 200 000, the loaders'
   limit), `maxTextureSide` (default 4096, capped by `MAX_TEXTURE_SIZE`), `maxTexturePixelsTotal` (default 64 Mi),
   `tileSize` (16..4096, default 256), `maxPixels`, `preserveDrawingBuffer`.
-- `setScene(doc, { emission })`: validates, checks the material count, flattens, builds the BVH and packs the data
+- `setScene(doc, { emission, shadowCatcher })`: validates, checks the material count, flattens, builds the BVH and packs the data
   (synchronously, before its first `await`), then decodes the textures, lays them out and swaps the scene in. Resolves
   `{ applied, warnings, triangles }`. A call that fails keeps the current scene and closes whatever it decoded.
   Superseding: a later call that passes the synchronous checks, or `dispose()`, supersedes a pending one, which
@@ -46,6 +47,8 @@ requestAnimationFrame(frame);
 
 Emission is a per-material linear RGB input (`SetSceneOptions.emission`, indexed like `materials`; negative or
 non-finite channels count as 0). The scene format has no emission field yet; MS-32 maps one here.
+`SetSceneOptions.shadowCatcher` (default `true`) puts the shadow catcher under the model (see Lighting); its plane is
+computed in `setScene` with the scene and kept through a context loss.
 
 ## Pipeline
 
@@ -90,6 +93,10 @@ The rules of [scene-format.md](scene-format.md), realised per ray type:
 | bounce | as camera                                                                       | front only                              | key with distance along the ray    |
 | shadow | invisible skipped; opaque blocks; partial multiplies by `1 − a`                 | only a face whose front faces the light | ignored: any blocking hit blocks   |
 
+The light bake (Light baker below) traces its key rays as shadow rays and its fill rays as bounce rays, with the same
+functions (`shadowTransmittance`, `closestHit`, `surfaceAt` in one shared GLSL source), so preview and render share
+one set of ray rules.
+
 - The texel is the nearest one of the hit's UV, clamped to the face's texel rectangle (`faceTexelRange`, the
   preview's chunk), read with `texelFetch`: no filtering, no mipmaps, nothing from a neighbouring atlas region.
   Texel edges come out area-averaged because every sample jitters its camera ray uniformly inside the pixel (a box
@@ -111,15 +118,26 @@ The rules of [scene-format.md](scene-format.md), realised per ray type:
 Materials are Lambert (albedo = the texel's linear colour) plus emission. The light rig is the preview's
 (`lightRig` chunk of `@modelshot/looks`): a directional key and a sky/ground fill.
 
-- Key: a delta light of irradiance π · `KEY_COLOR`, sampled at every path vertex with a shadow ray toward
-  `KEY_DIRECTION`. Lambert albedo / π times that is the preview's `albedo · KEY_COLOR · max(n · k, 0)`, now with hard,
-  texel-shaped shadows.
+- Key: a disc of angular radius `KEY_ANGULAR_RADIUS` (0.04 rad, `LIGHT_RIG_V0.keyAngularRadius`) around
+  `KEY_DIRECTION` with irradiance π · `KEY_COLOR`, sampled at every path vertex with one shadow ray in a direction
+  drawn uniformly in the cone (`keyConeDirection`, `keyLight.glsl`). The cosine stays `n · KEY_DIRECTION`, so Lambert
+  albedo / π times that is the preview's `albedo · KEY_COLOR · max(n · k, 0)` on an unoccluded surface, with soft
+  shadows that keep the texel's shape near their caster (penumbra ≈ 2 · 0.04 · distance to the occluder). The radius
+  is the largest measured that keeps alpha-plane's shadow edge within 2 px with margin: 0.04 gives 0.99 px, 0.045
+  sits at the limit (1.98 px) and 0.05 is over it (2.96 px).
 - Fill: rays that escape the scene after a bounce see `environmentRadiance(d) = mix(GROUND, SKY, ½ + ¾ d.y)`
   (positive for every direction; the lowest channel straight down is 0.0875). The cosine-weighted mean of d.y over the
   hemisphere around n is ⅔ n.y, so an unoccluded Lambert surface receives exactly `mix(GROUND, SKY, ½ + ½ n.y)`: the
   preview's `hemisphereFill(n)`. An unoccluded convex surface therefore converges to the preview's value; only
   shadows and interreflection differ (tested in `looks` numerically and by the pair test).
 - Camera rays that escape show the `background` (the same default and AgX as the preview).
+- Shadow catcher (`shadowCatcherPlane` of the realtime renderer): a camera ray that meets the plane from above,
+  inside its rectangle and nearer than the model, traces one key ray in the cone and one cosine-weighted fill ray
+  (escaped: `environmentRadiance`) and shows `background × catcherShade(fill, keyT, xz, rect)` of the look. The fill
+  ray accepts partial texels with its own random number (vertex 0's roulette dimension, unused there), not the camera
+  ray's, so a catcher point seen through glass still has the glass's fill shadow, as in the bake. The shade
+  is affine in fill and key, so the mean over samples equals the preview's shade of its baked means. The plane is
+  invisible to every other ray, so the model renders exactly as without it.
 - Cosine-weighted bounces up to `maxBounces`, Russian roulette from the third bounce (survival = the largest
   throughput channel, at least 5 %). A sample whose radiance is NaN or infinite counts as 0 instead of poisoning the sum.
 
@@ -147,10 +165,63 @@ with lower caps, the benchmark scene needs at most 128 to 256 visits and the pla
 leaves at least twice the worst measured need; the coincident cubes reach it (one capped camera ray per pixel they
 cover).
 
-Shaders are static `.glsl` files under `src/shaders/` (`trace.frag`, `present.frag`, `fullscreen.vert` and the chunks
-`rng`, `sceneData`, `primaryRay`, `surfaceHit`, `bvhTraverse`) composed by `linkShader` with the shared look chunks
-(`agx`, `texelAlpha`, `faceTexels`, `lightRig`); no shader text is built from user input. The shading normal is
+Shaders are static `.glsl` files under `src/shaders/` (`trace.frag`, `bake.frag`, `present.frag`, `fullscreen.vert`
+and the chunks `rng`, `sceneData`, `primaryRay`, `surfaceHit`, `bvhTraverse`, `pathSampling`, `keyLight`) composed by
+`linkShader` with the shared look chunks (`agx`, `texelAlpha`, `faceTexels`, `lightRig`, `shadowCatcher`); no shader
+text is built from user input. The shading normal is
 computed in one place (`surfaceAt` in `surfaceHit.glsl`), where edge rounding (MS-15) will plug in.
+
+## Light baker
+
+`LightBaker` bakes the realtime preview's lighting (`BakedLighting` of the realtime renderer, see
+[realtime-renderer.md](realtime-renderer.md#baked-lighting)) with this package's GLSL, in a module Worker on an
+OffscreenCanvas WebGL2 context. There is no main-thread fallback.
+
+- `LightBaker.create({ maxTriangles, testHooks })` starts the worker (`new Worker(new URL('./bake/bakeWorker.ts',
+import.meta.url), { type: 'module' })`); without module workers or OffscreenCanvas it throws `PathTracerError`
+  `WORKER_UNAVAILABLE`, as every pending bake rejects when the worker fails, and every later bake with the same error
+  (after `dispose()` a bake resolves `applied: false`).
+- `bake(doc, { samples = 64 (1..1024), seed = 1 (0..2^32 − 1), shadowCatcher = true, tileSize = 64 (16..512),
+onProgress })` resolves `{ applied, warnings, lighting }`. The call only checks the options (`RangeError`) and
+  validates the document (`INVALID_SCENE`, about a millisecond); posting runs in later tasks, one bake at a time, and
+  a bake superseded before its turn is never posted. Only what the worker does not hold is posted: meshes it has not
+  received before (a re-bake of the same meshes, a new pose or new options post none; meshes and the textures array
+  are compared by object, so a mesh changed in place is not posted again: a changed mesh must be a new `SceneMesh`)
+  stream as `meshHeaders` and
+  `meshData` messages, the arrays' bytes copied into 1 MiB buffers that are transferred, not cloned, yielding after
+  every 2 MiB (`meshStream.ts`; the worker keeps the meshes the latest bake named); texture bytes are posted only when
+  `doc.textures` is not the array the previous call posted, else the worker reuses what it decoded. Cloning a model's
+  meshes whole cost 8-9 ms (2048 meshes) to 13-19 ms (200 000 triangles) of one task, about 45 ms under load. The worker keeps posted textures before
+  anything of that bake can fail, so a refused bake does not cost a later one its images; should it still hold
+  another version, or misses a mesh (an abandoned stream), it asks (`resend`) and everything is posted again instead
+  of baking placeholders. The worker validates again, lays out the
+  lightmap (`SCENE_TOO_LARGE` over its limit, before the triangle limit), flattens, builds the BVH, packs the data,
+  decodes the textures (header limits, a `Blob`, never a fetch), and checks its GL capabilities
+  (`WEBGL2_UNAVAILABLE`, `FLOAT_TARGETS_UNAVAILABLE`, `HIGHP_UNAVAILABLE`).
+- Per lightmap texel and sample: a point jittered in the texel (texel charts; the vertex itself, just inside its
+  corner, for vertex charts) found through the chart table (UV of the texel point, barycentrics of the triangle that
+  holds it, `surfaceAt`), one key ray in the cone (`shadowTransmittance`, skipping the texel's triangle, only where its
+  side faces the key) and one cosine-weighted fill ray around the shading normal (escaped: `environmentRadiance`,
+  below the surface 0) divided by `hemisphereFill(n)`. No interreflection. Catcher texels do the same on the plane
+  with the normal up.
+- Determinism: seeded `sampleHash(seed, sample, texel)`, exact float32 ping-pong sums in sample order, per-texel
+  independence, so tiles of 32 or 64, the progress cadence and message order change no byte (tested). The lighting is
+  a pure function of document, seed, sample count and catcher option.
+- Progress: `onProgress({ samplesDone, samples, lighting })` after 4, 16, 64, … samples (each fourfold) below the
+  total; the final lighting comes with the result. Half floats are converted in the worker (round to nearest even).
+- Pacing: tiles of `tileSize`² texels per draw, at most one draw in flight (a fence, polled on later tasks), so the
+  main thread's GL work is never queued behind the bake and a later request is seen after the current tile.
+- Supersede: a later `bake` or `dispose()` stops a pending one after its tile; it resolves `applied: false`. Only the
+  latest bake is ever applied.
+- Context loss in the worker: the bake stops and, once the context is back, the scene is uploaded again from the
+  retained CPU data and the bake restarts at sample 0, reaching the same bytes. A bake asked for while the context is
+  lost is prepared with the limits read when the context was created and starts once it is back. A loss found only by
+  `isContextLost()` (the event comes later; a readback then returns zeros) counts as a loss too: nothing of that
+  readback is posted. A failure after the scene was prepared (an RGBA32F target the driver rejects) rejects that bake.
+  `testHooks: true` enables `loseContext(beforeMark?)` (now, or right before the readback after that many samples) and
+  `BakeOptions.countCappedTraversals` (texels hold the traversals their rays stopped at the per-ray node cap; 0 on the
+  benchmark scene and the cut-out plant field, tested).
+- `dispose()`: the worker releases its GL objects and decoded images, then is terminated (`terminated`).
 
 ## Context loss
 
@@ -166,8 +237,17 @@ sample 0; rendering it again gives the same bytes (tested against the golden).
 take about 234 ms at 512 × 512 and 88 ms at 128 × 128 (`pt.html?scene=bench&size=512&samples=256&timing=1` shows
 the paced manual readout).
 
+The light bake has `bakeTimeMs.bake-bench-n16` (the benchmark scene, 16 samples with the catcher, from `bake()` to
+the final lighting, median of 3, each run also checked as it completes), `mainThreadBlockMs.bake-bench` and `mainThreadBlockMs.bake-post-200k` (the most one main-thread task blocked
+over the bench bakes, and over a bake of a 200 000-triangle document: its CPU time plus its synchronous GPU waits, from a
+Chrome trace; both fixed at 50 ms; not
+measured on real hardware yet.
+
 ## What v0 lacks
 
-Denoising and supersampling (MS-18), look presets (MS-19), emission from the scene format (MS-32), user lights
-(MS-33; one directional key and the environment here), edge rounding (MS-15), a Web Worker or WASM build of the BVH,
-glossy or transmissive materials, textured environments, and WebGPU.
+Denoising and supersampling (MS-18), look presets (MS-19; the key radius and catcher strength are rig data for them),
+emission from the scene format (MS-32), user lights (MS-33; one directional key and the environment here), edge
+rounding (MS-15), a Web Worker or WASM build of the render's BVH (the bake builds its own in its worker), glossy or
+transmissive materials, textured environments, and WebGPU. The bake has no interreflection, no animated GI, and bakes
+untextured meshes per vertex (no world-density charts yet), so a large untextured ground such as alpha-plane's shows no
+baked shadow in the preview while the render has one.

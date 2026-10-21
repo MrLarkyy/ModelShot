@@ -6,7 +6,9 @@ import type { RasterGoldenSpec } from '../src/goldenSpec';
 import { goldenPath } from '../src/goldenStore';
 import { expect, test } from '../src/harnessTest';
 import { decodePng, hueMatch, modelBox, near, pixel, sentinelPixels, type Image } from '../src/imageMetrics';
-import type { ModelViewProbe } from '../fixtures/src/fixtureApi';
+import { traceMainThread } from '../src/mainThreadTrace';
+import { shadowStep } from '../src/shadowStep';
+import type { ModelViewProbe, PtProbe, RtBakeOutcome, RtBakeRequest } from '../fixtures/src/fixtureApi';
 
 const spec = (name: string, variant: string): RasterGoldenSpec => ({
   kind: 'raster',
@@ -38,6 +40,10 @@ const GOLDENS = [
   spec('obj-shapes-y030', 'obj-shapes-y030'),
   ...PLAYER,
 ];
+// Baked light (MS-16): 64 samples, seed 1, shadow catcher on; the cut-out checker's pair is pt-cutout-checker.
+const BAKED = ['bake-cutout-checker', 'bake-cutout-checker-fallback', 'bake-alpha-plane', 'bake-turntable-y030'].map(
+  (variant) => spec(variant, variant),
+);
 
 async function render(page: Page, query: string): Promise<{ png: Buffer; image: Image; info: FixtureInfo }> {
   const info = await openFixture(page, `/rt.html?${query}`);
@@ -75,7 +81,7 @@ function changedShare(a: Image, b: Image): number {
 }
 
 test.describe('realtime goldens', () => {
-  for (const golden of GOLDENS) {
+  for (const golden of [...GOLDENS, ...BAKED]) {
     test(`${golden.name} matches its golden`, async ({ page }, testInfo) => {
       await expectGolden(page, testInfo, golden);
       const path = await page.evaluate(() => window.__msFixture?.rt?.path);
@@ -702,5 +708,400 @@ test.describe('player skins', () => {
     // The arm is 40° forward in hold and 30° in walk: the cube moved with it.
     const [hold, walk] = centres;
     expect(Math.hypot((hold?.x ?? 0) - (walk?.x ?? 0), (hold?.y ?? 0) - (walk?.y ?? 0))).toBeGreaterThan(5);
+  });
+});
+
+const rtBake = (page: Page, request: RtBakeRequest): Promise<RtBakeOutcome> =>
+  page.evaluate((r) => window.__msFixture!.rt!.bake(r), request);
+
+const probeAt = (probes: readonly PtProbe[], name: string): PtProbe => {
+  const probe = probes.find((p) => p.name === name);
+  if (!probe) throw new Error(`probe ${name} missing`);
+  return probe;
+};
+
+test.describe('baked lighting', () => {
+  // A 64-sample bake takes seconds on SwiftShader; several tests bake more than once.
+  test.describe.configure({ timeout: 180_000 });
+
+  test('the cut-out checker casts pixel-shaped shadows on the catcher and the box (float path and fallback)', async ({
+    page,
+  }) => {
+    for (const variant of ['bake-cutout-checker', 'bake-cutout-checker-fallback']) {
+      const { image } = await render(page, `variant=${variant}`);
+      const probes = await page.evaluate(() => window.__msFixture!.rt!.probes);
+      for (const surface of ['catcher', 'cube']) {
+        const lit = probeAt(probes, `${surface}-shadow-of-transparent-texel`);
+        const dark = probeAt(probes, `${surface}-shadow-of-opaque-texel`);
+        const { step, transition, values } = shadowStep(image, lit, dark);
+        console.log(
+          `[rt probe] ${variant} ${surface}: step ${step.toFixed(1)} levels / min 40, edge ${transition.toFixed(2)} px / max 2`,
+        );
+        expect(step, `${variant} ${surface}: ${values.join(', ')}`).toBeGreaterThanOrEqual(40);
+        expect(transition, `${variant} ${surface}: ${values.join(', ')}`).toBeLessThanOrEqual(2);
+      }
+    }
+  });
+
+  test('texel anti-aliasing still halves shimmer against nearest sampling with baked light', async ({ page }) => {
+    for (const framing of ['far', 'closeup']) {
+      const share = async (aa: 0 | 1): Promise<number> => {
+        const a = await render(page, `variant=${framing}&aa=${aa}&yaw=30&bake=4`);
+        const b = await render(page, `variant=${framing}&aa=${aa}&yaw=30.25&bake=4`);
+        return changedShare(a.image, b.image);
+      };
+      const nearest = await share(0);
+      const antialiased = await share(1);
+      console.log(`[rt probe] baked shimmer ${framing}: ${antialiased.toFixed(5)} vs nearest ${nearest.toFixed(5)}`);
+      expect(nearest, `${framing}: nearest sampling must shimmer for the check to mean anything`).toBeGreaterThan(0);
+      expect(antialiased, `${framing}: ${antialiased} vs nearest ${nearest}`).toBeLessThanOrEqual(nearest * 0.5);
+    }
+  });
+
+  test('a bake is deterministic: repeated, in 32 or 64 texel tiles, and its progress equals a shorter bake', async ({
+    page,
+  }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030');
+    const first = await rtBake(page, { samples: 64 });
+    const again = await rtBake(page, { samples: 64 });
+    const tiled = await rtBake(page, { samples: 64, tile: 32 });
+    const short = await rtBake(page, { samples: 16 });
+    expect(first.error).toBe('');
+    expect(first.progress, 'progress after 4 and 16 samples').toEqual([4, 16]);
+    expect(again.hash).toBe(first.hash);
+    expect(tiled.hash).toBe(first.hash);
+    expect(first.progressHashes[1]).toBe(short.hash);
+    const otherSeed = await rtBake(page, { samples: 64, seed: 2 });
+    expect(otherSeed.hash).not.toBe(first.hash);
+  });
+
+  test('a superseded bake resolves not applied; the shown light is the later bake alone', async ({ page }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030');
+    const both = await page.evaluate(() =>
+      window.__msFixture!.rt!.bakeTwice({ samples: 64 }, { samples: 16, seed: 3 }),
+    );
+    expect(both.applied).toEqual([false, true]);
+    const alone = await rtBake(page, { samples: 16, seed: 3 });
+    expect(both.hash).toBe(alone.hash);
+  });
+
+  test('after a pose change the old light stays until the new bake, which equals a fresh bake of the posed document', async ({
+    page,
+  }) => {
+    const held = await render(page, 'variant=player-hold-34&bake=16');
+    const before = await page.evaluate(() => window.__msFixture!.rt!.lightingHash);
+    await page.evaluate(() => window.__msFixture!.rt!.pose('wave'));
+    expect(await page.evaluate(() => window.__msFixture!.rt!.lightingHash), 'kept across the pose').toBe(before);
+    const kept = decodePng(await readPng(page, held.info));
+    const rebaked = await rtBake(page, { samples: 16 });
+    expect(rebaked.progressHashes[0], 'the first update replaces the old light').not.toBe(before);
+    const after = decodePng(await readPng(page, held.info));
+    const fresh = await render(page, 'variant=player-hold-34&pose=wave&bake=16');
+    expect(await page.evaluate(() => window.__msFixture!.rt!.lightingHash)).toBe(rebaked.hash);
+    expect(after.data.equals(fresh.image.data), 'the image of the re-bake equals the fresh bake').toBe(true);
+    expect(rebaked.hash, 'the moved arm changes the light').not.toBe(before);
+    expect(kept.data.equals(after.data), 'the old light differed under the moved arm').toBe(false);
+  });
+
+  test('exact depth key: the catcher never draws over the model', async ({ page }) => {
+    const withCatcher = await render(page, 'variant=render-order&bake=16');
+    expect(await page.evaluate(() => window.__msFixture!.rt!.depthKeyMode())).toBe('exact');
+    const without = await render(page, 'variant=render-order&bake=16&catcher=0');
+    const unbaked = await render(page, 'variant=render-order');
+    const backdrop = pixel(unbaked.image, 0, 0);
+    let model = 0;
+    let changed = 0;
+    for (let i = 0; i < without.image.data.length; i += 4) {
+      const shown = [...without.image.data.subarray(i, i + 3)];
+      const plain = [...unbaked.image.data.subarray(i, i + 3)];
+      if (near(plain, backdrop, 0)) continue;
+      model++;
+      if (!withCatcher.image.data.subarray(i, i + 3).every((v, c) => v === shown[c])) changed++;
+    }
+    expect(model, 'model pixels').toBeGreaterThan(1000);
+    expect(changed, 'model pixels the catcher changed').toBe(0);
+  });
+
+  test('a lost renderer context re-uploads the light; a lost worker context restarts the bake to the same bytes', async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(String(error)));
+    const info = await openFixture(page, '/rt.html?variant=bake-turntable-y030');
+    const before = await readPng(page, info);
+    await page.evaluate(async () => {
+      const rt = window.__msFixture!.rt!;
+      await rt.lose();
+      await rt.restore();
+    });
+    expect((await readPng(page, info)).equals(before), 'renderer restore').toBe(true);
+    const reference = await page.evaluate(() => window.__msFixture!.rt!.lightingHash);
+    const restarted = await page.evaluate(async () => {
+      const rt = window.__msFixture!.rt!;
+      const pending = rt.bake({ samples: 64 });
+      rt.loseBakerContext();
+      return pending;
+    });
+    expect(restarted.error).toBe('');
+    expect(restarted.hash).toBe(reference);
+    expect((await readPng(page, info)).equals(before), 'worker restart').toBe(true);
+    expect(errors).toEqual([]);
+  });
+
+  test('dispose leaves no GL object or image and terminates the worker', async ({ page }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030&bake=4&track=1');
+    const loaded = await page.evaluate(() => window.__msFixture!.rt!.liveGlObjects());
+    expect(loaded).toBeGreaterThan(0);
+    await page.evaluate(() => window.__msFixture!.rt!.dispose());
+    await page.waitForFunction(() => window.__msFixture!.rt!.bakerTerminated);
+    const counts = await page.evaluate(() => ({
+      gl: window.__msFixture!.rt!.liveGlObjects(),
+      bitmaps: window.__msFixture!.rt!.openBitmaps(),
+    }));
+    expect(counts).toEqual({ gl: 0, bitmaps: 0 });
+  });
+
+  test('setLighting refuses light baked for another layout, size or data length', async ({ page }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030&bake=4');
+    const hash = await page.evaluate(() => window.__msFixture!.rt!.lightingHash);
+    const taken = await page.evaluate(() =>
+      (['key', 'size', 'length'] as const).map((change) => window.__msFixture!.rt!.tryLighting(change)),
+    );
+    expect(taken).toEqual([false, false, false]);
+    expect(await page.evaluate(() => window.__msFixture!.rt!.lightingHash)).toBe(hash);
+  });
+
+  test('a failed bake keeps the textures it posted: the next bake of the same textures shadows like a fresh one', async ({
+    page,
+  }) => {
+    await openFixture(page, '/rt.html?variant=bake-cutout-checker');
+    const reference = await page.evaluate(() => window.__msFixture!.rt!.lightingHash);
+    await openFixture(page, '/rt.html?variant=cutout-checker');
+    const [failed, next] = await page.evaluate(() => window.__msFixture!.rt!.bakeAfterFailure({ samples: 64 }));
+    expect(failed?.error).toMatch(/^SCENE_TOO_LARGE/);
+    expect(next?.error).toBe('');
+    expect(next?.warnings, 'no texture became a placeholder').toEqual([]);
+    expect(next?.hash).toBe(reference);
+  });
+
+  test('a bake asked while the worker context is lost waits for the restore and reaches the same bytes', async ({
+    page,
+  }) => {
+    await openFixture(page, '/rt.html?variant=bake-turntable-y030');
+    const reference = await page.evaluate(() => window.__msFixture!.rt!.lightingHash);
+    const result = await page.evaluate(() => {
+      const rt = window.__msFixture!.rt!;
+      rt.loseBakerContext();
+      return rt.bake({ samples: 64 });
+    });
+    expect(result.error).toBe('');
+    expect(result.hash).toBe(reference);
+  });
+
+  test('a loss right before a progress readback restarts the bake instead of posting empty light', async ({ page }) => {
+    await openFixture(page, '/rt.html?variant=bake-turntable-y030');
+    const reference = await page.evaluate(() => window.__msFixture!.rt!.lightingHash);
+    const result = await page.evaluate(() => {
+      const rt = window.__msFixture!.rt!;
+      rt.loseBakerContext({ beforeMark: 16 });
+      return rt.bake({ samples: 64 });
+    });
+    expect(result.error).toBe('');
+    // The update after 4 samples came, the one after 16 was lost; the restarted bake reports 4 and 16 again.
+    expect(result.progress).toEqual([4, 4, 16]);
+    expect(result.hash).toBe(reference);
+  });
+
+  test('a bake whose restored context cannot bake rejects instead of hanging, and so do later bakes', async ({
+    page,
+  }) => {
+    await openFixture(page, '/rt.html?variant=bake-turntable-y030');
+    const results = await page.evaluate(async () => {
+      const rt = window.__msFixture!.rt!;
+      rt.loseBakerContext({ failRestore: true });
+      const pending = await rt.bake({ samples: 4 });
+      return [pending, await rt.bake({ samples: 4 })];
+    });
+    for (const result of results) expect(result.error).toMatch(/^WEBGL2_UNAVAILABLE: test hook/);
+  });
+
+  test('the main-thread block measure sees a long task outside the timed bake work', async ({ page }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030&lag=1');
+    await page.evaluate(() => {
+      window.__msFixture!.rt!.resetLag();
+      return window.__msFixture!.rt!.spinMainThread(80);
+    });
+    // Read in a later task: the long-task entry exists once the busy task ended.
+    const block = await page.evaluate(() => window.__msFixture!.rt!.mainThreadBlock());
+    console.log(`[rt probe] 80 ms busy task: block ${block.toFixed(1)} ms`);
+    expect(block).toBeGreaterThanOrEqual(80);
+  });
+
+  test('the budgeted measure (max CPU per main-thread task, traced) sees >= 80 ms of busy work in a timer task and in an evaluate', async ({
+    page,
+  }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030&lag=1');
+    // CPU work, not wall time (an interrupted wall-clock spin gets less CPU than its wall time): the iterations one
+    // millisecond holds at best, over several samples, times 100, so the task does at least 80 ms of CPU work even if
+    // it runs up to 20 % slower than the fastest sample.
+    const iterations = await page.evaluate(() => {
+      let best = 0;
+      for (let sample = 0; sample < 20; sample++) {
+        let count = 0;
+        let x = 0;
+        const end = performance.now() + 5;
+        while (performance.now() < end) {
+          for (let i = 0; i < 1000; i++) x += Math.sqrt(i + x);
+          count++;
+        }
+        best = Math.max(best, count / 5);
+        if (x < 0) return 0;
+      }
+      return Math.ceil(best * 100);
+    });
+    const timer = await traceMainThread(page, () =>
+      page.evaluate(
+        (count) =>
+          new Promise<number>((resolve) =>
+            setTimeout(() => {
+              let x = 0;
+              for (let n = 0; n < count; n++) for (let i = 0; i < 1000; i++) x += Math.sqrt(i + x);
+              resolve(x);
+            }, 0),
+          ),
+        iterations,
+      ),
+    );
+    // The bench calls bake() from a Playwright evaluate, which the Long Tasks API does not report: the trace must.
+    const evaluate = await traceMainThread(page, () =>
+      page.evaluate((count) => {
+        let x = 0;
+        for (let n = 0; n < count; n++) for (let i = 0; i < 1000; i++) x += Math.sqrt(i + x);
+        return x;
+      }, iterations),
+    );
+    console.log(
+      `[rt probe] 100 ms of busy work at best speed, max CPU per task: timer task ${timer.maxCpu.toFixed(1)} ms, evaluate ` +
+        `${evaluate.maxCpu.toFixed(1)} ms`,
+    );
+    expect(timer.maxCpu).toBeGreaterThanOrEqual(80);
+    expect(evaluate.maxCpu).toBeGreaterThanOrEqual(80);
+    expect(timer.maxBlocking).toBeGreaterThanOrEqual(80);
+    expect(evaluate.maxBlocking).toBeGreaterThanOrEqual(80);
+  });
+
+  test('the budgeted measure also counts a synchronous wait for the GPU process, which CPU time alone misses', async ({
+    page,
+  }) => {
+    await openFixture(page, '/rt.html?scene=bench&size=512');
+    let call = 0;
+    // Heavy draws queued, then a readback: the main thread waits until the GPU process has drawn them.
+    const trace = await traceMainThread(page, async () => {
+      call = await page.evaluate(() => {
+        const rt = window.__msFixture!.rt!;
+        const canvas = document.querySelector('canvas')!;
+        const gl = canvas.getContext('webgl2')!;
+        for (let i = 0; i < 4; i++) rt.render();
+        const start = performance.now();
+        gl.readPixels(
+          0,
+          0,
+          canvas.width,
+          canvas.height,
+          gl.RGBA,
+          gl.UNSIGNED_BYTE,
+          new Uint8Array(canvas.width * canvas.height * 4),
+        );
+        return performance.now() - start;
+      });
+    });
+    console.log(
+      `[rt probe] readPixels after heavy draws: call ${call.toFixed(1)} ms, traced GPU wait ` +
+        `${trace.maxGpuWait.toFixed(1)} ms, CPU ${trace.maxCpu.toFixed(1)} ms, blocking ${trace.maxBlocking.toFixed(1)} ms`,
+    );
+    expect(call, 'the readback really waits').toBeGreaterThan(100);
+    expect(trace.maxGpuWait, 'the trace sees the wait').toBeGreaterThanOrEqual(0.9 * call);
+    expect(trace.maxCpu, 'CPU time alone would not').toBeLessThan(trace.maxGpuWait / 2);
+    expect(trace.maxBlocking).toBeGreaterThanOrEqual(0.9 * call);
+  });
+
+  test('banded light upload: frames keep the complete light until the next is in, whatever happens mid-upload', async ({
+    page,
+  }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030');
+    const s = await page.evaluate(() => window.__msFixture!.rt!.uploadStates());
+    expect(new Set([s.unbaked, s.refA, s.refC]).size, 'three distinct frames').toBe(3);
+    expect(s.midB, 'one budget into B the frame still shows A').toBe(s.refA);
+    expect(s.midBPending).toBe(true);
+    expect(s.afterC, 'C set mid-upload, drained').toBe(s.refC);
+    expect(s.afterNull, 'null mid-upload').toBe(s.unbaked);
+    expect(s.nullPending).toBe(false);
+    expect(s.otherFrame, 'another layout mid-upload draws unbaked').toBe(s.otherUnbaked);
+    expect(s.otherPending).toBe(false);
+    expect(s.restored, 'context restored mid-upload: the retained C, whole').toBe(s.refC);
+    expect(s.restoredPending).toBe(false);
+  });
+
+  test('no bake ray reaches the per-ray node cap: benchmark scene and the cut-out plant field', async ({ page }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030');
+    const counts = await page.evaluate(async () => {
+      const rt = window.__msFixture!.rt!;
+      return {
+        bench: await rt.bakeCapped('bench', 4),
+        grass: await rt.bakeCapped('grass-field', 1),
+        cubes: await rt.bakeCapped('coincident-cubes', 1),
+      };
+    });
+    console.log(`[rt probe] capped bake texels: ${JSON.stringify(counts)}`);
+    expect(counts.bench).toEqual({ texels: 0, error: '' });
+    expect(counts.grass).toEqual({ texels: 0, error: '' });
+    // The hook counts: 10 000 coincident cubes reach the cap.
+    expect(counts.cubes.texels).toBeGreaterThan(0);
+  });
+
+  test.describe('hostile input', () => {
+    test('10 000 coincident cubes bake a sample without losing a context', async ({ page }) => {
+      await openFixture(page, '/rt.html?variant=turntable-y030');
+      const result = await page.evaluate(() => window.__msFixture!.rt!.bakeScene('coincident-cubes', 1));
+      expect(result.error).toBe('');
+      expect(result.applied).toBe(true);
+      expect(await page.evaluate(() => window.__msFixture!.rt!.contextLost)).toBe(false);
+    });
+
+    test('a lightmap over MAX_LIGHTMAP_TEXELS is refused with SCENE_TOO_LARGE by the bake and the renderer', async ({
+      page,
+    }) => {
+      await openFixture(page, '/rt.html?variant=turntable-y030');
+      const result = await page.evaluate(() => window.__msFixture!.rt!.bakeScene('lightmap-overflow', 1));
+      expect(result.error).toMatch(/^SCENE_TOO_LARGE: the lightmap needs more than 2097152 texels/);
+      await expect(openFixture(page, '/rt.html?scene=lightmap-overflow')).rejects.toThrow(/lightmap needs more/);
+    });
+
+    test('a corrupt texture bakes with the placeholder and a warning', async ({ page }) => {
+      await openFixture(page, '/rt.html?variant=turntable-y030');
+      const result = await page.evaluate(() => window.__msFixture!.rt!.bakeScene('hostile-corrupt-data', 1));
+      expect(result.error).toBe('');
+      expect(result.warnings).toEqual([{ code: 'TEXTURE_DECODE_FAILED', texture: 0 }]);
+    });
+
+    test('an empty scene bakes without a catcher (nothing casts on it): the backdrop stays', async ({ page }) => {
+      const plain = await render(page, 'scene=empty');
+      const baked = await render(page, 'scene=empty&bake=64');
+      let worst = 0;
+      for (let i = 0; i < plain.image.data.length; i++) {
+        worst = Math.max(worst, Math.abs((plain.image.data[i] ?? 0) - (baked.image.data[i] ?? 0)));
+      }
+      console.log(`[rt probe] empty scene: largest backdrop change ${worst} levels / max 2`);
+      expect(worst).toBeLessThanOrEqual(2);
+    });
+  });
+
+  test('the bake fetches nothing but the page and its own modules', async ({ page }) => {
+    const requests: string[] = [];
+    page.context().on('request', (request) => requests.push(request.url()));
+    await openFixture(page, '/rt.html?variant=bake-turntable-y030');
+    const origin = new URL(page.url()).origin;
+    expect(requests.length).toBeGreaterThan(0);
+    expect(requests.filter((url) => !url.startsWith(`${origin}/`))).toEqual([]);
   });
 });

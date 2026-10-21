@@ -19,6 +19,7 @@ import {
   silhouetteMismatches,
   type Image,
 } from '../src/imageMetrics';
+import { shadowStep } from '../src/shadowStep';
 
 /**
  * Path-traced images converge: at the default threshold 0.1 another seed or one sample more or less passes (seed 2 at
@@ -48,6 +49,8 @@ const RENDER_ORDER = pt('render-order', 'render-order', 16);
 const EMISSIVE = pt('emissive', 'emissive', 64);
 // The MS-20 player in the hold preset with a cube in its right hand, paired with rt-player-hold-34.
 const PLAYER_HOLD = pt('player-hold-34', 'player-hold-34', 64);
+// MS-16: shadows of cut-out texels on the shadow catcher and a box, paired with rt-bake-cutout-checker.
+const CUTOUT_CHECKER = pt('cutout-checker', 'cutout-checker', 128);
 const GOLDENS: readonly PathTracedGoldenSpec[] = [
   TURNTABLE,
   pt('iso', 'iso', 64),
@@ -57,6 +60,7 @@ const GOLDENS: readonly PathTracedGoldenSpec[] = [
   RENDER_ORDER,
   EMISSIVE,
   PLAYER_HOLD,
+  CUTOUT_CHECKER,
 ];
 
 async function render(page: Page, query: string): Promise<{ png: Buffer; image: Image; info: FixtureInfo }> {
@@ -162,6 +166,48 @@ test.describe('transparency, shadows and sides (scene format rules)', () => {
     expect(transition, `transition over ${length.toFixed(1)} px: ${values.join(', ')}`).toBeLessThanOrEqual(2);
   });
 
+  test('the cut-out checker casts pixel-shaped shadows on the shadow catcher and the box', async ({ page }) => {
+    const { image } = await render(page, 'variant=cutout-checker&seed=1&samples=128');
+    const probes = await probesOf(page);
+    for (const surface of ['catcher', 'cube']) {
+      const lit = at(probes, `${surface}-shadow-of-transparent-texel`);
+      const dark = at(probes, `${surface}-shadow-of-opaque-texel`);
+      const { step, transition, values } = shadowStep(image, lit, dark);
+      console.log(
+        `[pt probe] cutout checker ${surface}: step ${step.toFixed(1)} levels / min 40, edge ${transition.toFixed(2)} px / max 2`,
+      );
+      expect(step, `${surface}: ${values.join(', ')}`).toBeGreaterThanOrEqual(40);
+      expect(transition, `${surface}: ${values.join(', ')}`).toBeLessThanOrEqual(2);
+    }
+  });
+
+  test('the shadow catcher is seen only by camera rays: without it the model renders the same', async ({ page }) => {
+    // A closed opaque cube: off its silhouette every camera ray stops on it (no hole or glass shows the catcher).
+    const on = await render(page, 'scene=closed-cube&look=cube&seed=1&samples=16');
+    const off = await render(page, 'scene=closed-cube&look=cube&seed=1&samples=16&catcher=0');
+    const backdrop = pixel(off.image, 0, 0);
+    const isBackdrop = (x: number, y: number) => pixel(off.image, x, y).every((v, c) => v === backdrop[c]);
+    let interior = 0;
+    let changed = 0;
+    let darkened = 0;
+    for (let y = 1; y < off.image.height - 1; y++) {
+      for (let x = 1; x < off.image.width - 1; x++) {
+        const a = pixel(off.image, x, y);
+        const b = pixel(on.image, x, y);
+        if (isBackdrop(x, y)) {
+          if (luminance(b) < luminance(a) - 10) darkened++;
+          continue;
+        }
+        if ([-1, 0, 1].some((dy) => [-1, 0, 1].some((dx) => isBackdrop(x + dx, y + dy)))) continue;
+        interior++;
+        if (!a.every((v, c) => v === b[c])) changed++;
+      }
+    }
+    expect(interior).toBeGreaterThan(1000);
+    expect(changed, 'interior model pixels the catcher changed').toBe(0);
+    expect(darkened, 'backdrop pixels in the catcher shadow').toBeGreaterThan(100);
+  });
+
   test('a single-sided face casts a shadow only from the side facing the light', async ({ page }) => {
     // alpha-plane's flat cube: two coincident single-sided faces; the south one faces the light and has a hole at
     // (14, 2), the north one faces away. Light through the hole must reach the ground.
@@ -265,24 +311,34 @@ async function modelViewProbes(page: Page, variant: string): Promise<ModelViewPr
 }
 
 /**
- * Preview vs render of the same view: `maxDiffRatio` and `maxMeanDelta` are the first measured values x 1.25
- * (docs/testing.md, path-tracer pair table), never widened later. The render adds shadows, interreflection and noise,
- * so radiance differs where the preview has no shadow; the framing must not differ at all off silhouettes.
+ * Preview vs render of the same view, the preview baked (64 samples, seed 1): `maxDiffRatio` and `maxMeanDelta` are
+ * measured values x 1.25 (docs/testing.md, path-tracer pair table), never widened later. The render adds
+ * interreflection and noise; the bake adds the occlusion and soft shadows the unbaked preview lacked, so the limits
+ * fell when it came (MS-16). Framing is compared without the shadow catcher on both sides (the catcher's edge fades
+ * into the backdrop and would count as model), radiance with it on both.
  */
 const PT_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions>> = {
-  'turntable-y030': { threshold: 0.1, maxDiffRatio: 0.0136, maxMeanDelta: 0.98 },
-  iso: { threshold: 0.1, maxDiffRatio: 0.0159, maxMeanDelta: 1.31 },
-  'alpha-plane': { threshold: 0.1, maxDiffRatio: 0.0412, maxMeanDelta: 2.48 },
-  'player-hold-34': { threshold: 0.1, maxDiffRatio: 0.0304, maxMeanDelta: 1.8 },
+  'turntable-y030': { threshold: 0.1, maxDiffRatio: 0.00353, maxMeanDelta: 0.953 },
+  iso: { threshold: 0.1, maxDiffRatio: 0.00639, maxMeanDelta: 1.18 },
+  // Mean delta: measured 2.189 x 1.25 = 2.74 is above the unbaked limit, which therefore stays.
+  'alpha-plane': { threshold: 0.1, maxDiffRatio: 0.0398, maxMeanDelta: 2.48 },
+  'player-hold-34': { threshold: 0.1, maxDiffRatio: 0.0232, maxMeanDelta: 1.62 },
+  'cutout-checker': { threshold: 0.1, maxDiffRatio: 0.00525, maxMeanDelta: 0.908 },
 };
 
-test.describe('the render frames and lights like the preview', () => {
+const PAIR_SAMPLES: Readonly<Record<string, number>> = { 'alpha-plane': 128, 'cutout-checker': 128 };
+
+test.describe('the render frames and lights like the baked preview', () => {
   for (const [variant, tolerance] of Object.entries(PT_PAIR_TOLERANCE)) {
     test(`${variant}: same silhouettes, radiance within the measured tolerance`, async ({ page }, testInfo) => {
-      const samples = variant === 'alpha-plane' ? 128 : 64;
-      const previewPng = encodeFlipped(await openFixture(page, `/rt.html?variant=${variant}`));
+      test.setTimeout(180_000);
+      const samples = PAIR_SAMPLES[variant] ?? 64;
+      const preview = (catcher: 0 | 1) => openFixture(page, `/rt.html?variant=${variant}&bake=64&catcher=${catcher}`);
+      const previewPng = encodeFlipped(await preview(1));
       const traced = await render(page, `variant=${variant}&seed=1&samples=${samples}`);
-      const framing = silhouetteMismatches(decodePng(previewPng), traced.image);
+      const framingPreview = decodePng(encodeFlipped(await preview(0)));
+      const framingTraced = await render(page, `variant=${variant}&seed=1&samples=${samples}&catcher=0`);
+      const framing = silhouetteMismatches(framingPreview, framingTraced.image);
       const radiance = compareImages(traced.png, previewPng, tolerance);
       const line =
         `${variant}: framing ${framing.mismatches} mismatches off ${framing.silhouette} silhouette px; ` +

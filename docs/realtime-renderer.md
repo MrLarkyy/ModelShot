@@ -23,6 +23,8 @@ mouse, touch and keys (see [camera.md](camera.md)).
 
 Float path (needs `EXT_color_buffer_float`):
 
+0. With baked lighting that carries one, the shadow catcher (below) right after the clear, without depth test or
+   write.
 1. Opaque pass into an RGBA16F + DEPTH24 target with MSAA (min(4, the largest sample count the GPU offers for
    RGBA16F); 0 samples draws single-sampled), resolved by a blit of colour and depth.
 2. Weighted blended order-independent transparency (McGuire and Bavoil 2013, weight of equation 10) for partial
@@ -32,7 +34,8 @@ Float path (needs `EXT_color_buffer_float`):
 3. Composite of the transparency average over the opaque image.
 4. Present: AgX and the display encoding into the canvas.
 
-No-float path (`capabilities.path === 'fallback'`): one pass into the canvas with AgX in the fragment shader, partial
+No-float path (`capabilities.path === 'fallback'`): the backdrop, the shadow catcher (tone-mapped in its shader), then
+one pass into the canvas with AgX in the fragment shader, partial
 texels as hashed (screen-door) alpha from an integer hash of texel and pixel. Both paths are order-independent and
 deterministic (no clock, no random source). The renderer also switches to this path for good when the driver
 rejects the float targets at a new drawing size; `capabilities` then reports `path: 'fallback'` and 0 samples.
@@ -41,6 +44,60 @@ Geometry is batched at upload: the visible triangles of one node with one textur
 order share one vertex and index buffer
 (`batchScene`). Every vertex keeps its own UV rectangle, so batching changes nothing per texel; a model with one mesh
 per element (thousands for a large Blockbench model) draws in a few calls per pass.
+
+## Baked lighting
+
+`setLighting(lighting)` shades the scene with light baked off the main thread by `LightBaker` of
+`@modelshot/pathtracer` ([path-tracer.md](path-tracer.md#light-baker)) and draws its shadow catcher;
+`setLighting(null)` goes back to the unbaked image, byte for byte. Without lighting nothing changes.
+
+```ts
+const baker = LightBaker.create();
+await renderer.setScene(doc);
+const { lighting } = await baker.bake(doc, { onProgress: (p) => renderer.setLighting(p.lighting) });
+if (lighting) renderer.setLighting(lighting);
+```
+
+- **Layout.** `setScene` lays out a lightmap (`lightmapLayout`, pure and pose-independent) before anything else:
+  every face whose UVs map one texture rectangle affinely (every Blockbench element) gets a chart at its own texel
+  grid (`faceTexelRange` of its UV rectangle), so light changes per texel like the albedo, rotated or mirrored UVs
+  included. Faces sharing atlas cells each get their own chart; a double-sided face gets a second chart for its back,
+  right after the front one. A mesh with a vertex shared by triangles of different UV maps (smooth glTF and OBJ
+  meshes), an untextured face, a degenerate UV triangle or a chart of more than `MAX_CHART_TRIANGLES` (32) triangles
+  is baked per vertex instead: one texel per vertex (two when double-sided), interpolated. The atlas is
+  `LIGHTMAP_WIDTH` (2048) wide; when the charts would need more than `MAX_LIGHTMAP_TEXELS` (2²¹) texels, texel charts
+  take 2, 4, … texture texels per lightmap texel, and when even that fails `setScene` rejects with `RendererError`
+  `SCENE_TOO_LARGE` (path `meshes`) before allocating anything.
+- **Values.** RGBA16F (`BakedLighting`): rgb the fill as a multiple of the unoccluded fill `hemisphereFill(n)`, a the
+  key's visibility. Texels of no chart and vertices of no triangle hold 1, so an anti-aliasing tap outside a face, or
+  a degenerate triangle, never darkens. `shadeBaked` (`shading.glsl`) is `albedo × (hemisphereFill(n) × rgb +
+KEY_COLOR × max(n·KEY, 0) × a)`; value 1 gives the unbaked expression exactly.
+- **Sampling.** Texel charts are read with the albedo's own seam taps (`seamTaps` of `texelSample.glsl`): the same
+  2 × 2 texels and weights, clamped to the chart, so light and albedo change at the same pixels and the bake adds no
+  shimmer of its own. Vertex charts are fetched in `mesh.vert.glsl` and interpolated; the back pass reads the back
+  chart. The light is sampled before the first `discard` (derivatives).
+- **Kept across poses.** `setScene` keeps the lighting when the new document has the same `layoutKey` (the same model
+  in another pose), so the old light shows until the re-bake's first update; another layout drops it. A document that
+  differs from the shown one only in its pose (`poseOnlyChange`: the same meshes, materials and textures arrays, nodes
+  with the same parents, pivots, rest rotations, visibility and meshes) keeps the layout without laying it out again;
+  the renderer keeps only what it reads of a layout (`LightmapLayoutSummary`: sizes, downscale, per-vertex data,
+  finest texel, key), not its charts. `setLighting`
+  refuses (returns `false`, changes nothing) lighting whose layout key, size or data length does not match the current
+  layout, or whose catcher is malformed (`checkLighting`).
+- **Upload in bands.** `setLighting` uploads nothing itself: each `render()` (or `advanceLighting()`, which uploads
+  without drawing and returns `true` while more remains) writes the next `UPLOAD_FRAME_BYTES` (1 MiB) in
+  texSubImage2D bands of at most `UPLOAD_BAND_BYTES` (256 KiB) into back textures, and frames draw the previous complete
+  lighting until the new one is in (`lightingPending`), then switch; the old textures are kept for the next update of
+  the same shape. One 9.4 MB texSubImage2D (the benchmark scene) makes the browser wait for its GPU process to take
+  the data chunk by chunk, and that process also runs the bake's draws: a busy machine turned that into a 120 ms
+  main-thread task (MS-16 round 4). A rebuilt context uploads its retained lighting at once.
+
+**Shadow catcher.** A horizontal plane at the visible geometry's lowest point (`shadowCatcherPlane`, shared with the
+path tracer), covering the footprint, the bounds' shadow along the key and half the largest extent around it, one-sided
+from above. It only darkens the backdrop: pixel = background × `catcherShade(fill, keyT, xz, rect)` of the look
+(`shadowCatcher.glsl`), with its own lightmap of 4 texels per finest model texel (at most `MAX_CATCHER_SIDE` 512 per
+side), read bilinearly. Every model point a camera ray meets lies on or above the plane, so drawing the catcher first
+without depth test lets the model cover it in either depth-key variant. A scene without geometry has no catcher.
 
 ## Pixel art
 
@@ -117,7 +174,8 @@ The rules are the scene format's ([scene-format.md](scene-format.md): `SceneMate
 
 ## Lighting and tone mapping
 
-Lighting v0 is a constant sky/ground hemisphere fill plus one directional key: the `lightRig` chunk of
+Lighting v0 is a sky/ground hemisphere fill plus one directional key, unoccluded without baked lighting and occluded
+per texel with it (see Baked lighting): the `lightRig` chunk of
 `@modelshot/looks` (`SKY_FILL`, `GROUND_FILL`, `KEY_DIRECTION`, `KEY_COLOR`, `hemisphereFill`), which the path tracer
 reads too, so an unoccluded surface converges there to the preview's value ([path-tracer.md](path-tracer.md#lighting));
 `shaders/shading.glsl` applies it. The default backdrop is `LIGHT_RIG_V0.background` of the same package. Light rigs
@@ -133,8 +191,10 @@ ships in three.js `AgXToneMapping` (MIT) and Filament.
 ## Shaders
 
 GLSL ES 3.00 in `src/shaders/*.glsl`, composed by `linkShader` from static chunks only: the renderer's own
-(`texelSample`, `shading`, `hashAlpha`, `depthKey` and `depthKeyVertex` in a raster and an exact variant) and the shared look chunks
-(`agx`, `texelAlpha`, `faceTexels`, `lightRig`). An unknown or cyclic
+(`texelSample`, `shading`, `hashAlpha`, `bakedLight`, `depthKey` and `depthKeyVertex` in a raster and an exact variant) and the
+shared look chunks (`agx`, `texelAlpha`, `faceTexels`, `lightRig`, `shadowCatcher`); the catcher has its own program
+(`catcher.vert.glsl`, `catcher.frag.glsl`). `a_lightmap` uses attribute location 8, clear of the exact key's 4-7. An
+unknown or cyclic
 include throws; no shader text is built from user input. A compile or link failure throws `RendererError`
 (`SHADER_COMPILE` / `SHADER_LINK`) with the driver's info log.
 
@@ -156,10 +216,13 @@ include throws; no shader text is built from user input. A compile or link failu
   `TEXTURE_DECODE_FAILED`, `TEXTURE_SIZE_MISMATCH`, with the texture index); the rest of the model draws.
 - A later `setScene` or `dispose()` supersedes a pending one: it resolves with `applied: false` and closes the images
   it decoded.
+- The lightmap layout over `MAX_LIGHTMAP_TEXELS` at the largest downscale rejects `setScene` with `RendererError`
+  `SCENE_TOO_LARGE` before anything is allocated.
 
 ## Context loss
 
 On `webglcontextlost` the renderer prevents the default (so the browser may restore it) and `render()` becomes a
 no-op. On `webglcontextrestored` it queries the limits again, rebuilds programs, targets, buffers and textures from
-the retained scene and decoded images (no re-decode, no reload), redraws and calls the `onContextRestored`
-listeners. `dispose()` deletes every GL object it created, closes every decoded image and removes its listeners.
+the retained scene, decoded images and baked lighting (no re-decode, no re-bake, no reload), redraws and calls the
+`onContextRestored` listeners. `dispose()` deletes every GL object it created (lightmaps and the catcher's quad
+included), closes every decoded image and removes its listeners.
