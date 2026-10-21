@@ -173,6 +173,12 @@ textures generated in code, `look=checker` from behind the plane), `rt-bake-alph
 - Shimmer with baked light (`bake=4`): anti-aliased 0.00000 vs nearest 0.00020 (`far`), 0.00168 vs 0.01076
   (`closeup`): light and albedo share the seam taps.
 - Local-first: every request of a baked page (the worker's modules included) goes to the page's origin.
+- Round 2 (review findings): a bake refused with `SCENE_TOO_LARGE` after it posted the checker's textures, then a bake
+  of the checker with the same textures array, gives no warning and the hash of a fresh bake; a bake asked for right
+  after the worker lost its context, and one whose context is lost right before the readback after 16 samples
+  (progress 4, 4, 16), reach the reference hash; with `countCappedTraversals` no texel of the benchmark scene
+  (4 samples) or the cut-out plant field (1 sample) counts a capped traversal, while 107 795 texels of the coincident
+  cubes do.
 
 For a manual run on real hardware open `rt.html?scene=bench&size=512&fps=1`: it draws continuously and shows the
 median frame work (draw until the GPU finished) and display interval over the last 120 frames, with the renderer
@@ -204,7 +210,10 @@ put in the URL, not in the file name).
 
 All eight earlier `pt-*` goldens were regenerated in MS-16 on purpose (same seeds, samples and size): the key became
 a 0.04 rad cone, the shadow catcher appeared under every model, and the random dimensions per path vertex grew from
-4 to 6. Their probes were measured again (below).
+4 to 6. Their probes were measured again (below). Round 2 gave the catcher's fill ray its own number for partial
+texels (it shared the camera ray's): `pt-turntable-y030`, `pt-iso`, `pt-closeup`, `pt-emissive` and
+`pt-alpha-ramp-blend`, whose catcher is seen through partial texels, were regenerated again; the others did not
+change.
 
 - Tolerance: an override of `threshold 0` only (its reason in the spec); `maxDiffRatio 0.001` and `maxMeanDelta 1`
   stay the defaults. The tracer converges, so at the default threshold 0.1 another seed or one sample more or less
@@ -437,14 +446,22 @@ texel tap), `rt-bench-order-512` 117, 145 and 148 ms with MSAA, 83 and 107 ms si
 - `bundleGzipBytes` app 2500, embed 2200: measured plus about 2 kB, so a real dependency shows up while noise does not.
 - `bakeTimeMs.bake-bench-n16` (MS-16): `LightBaker.bake` of the benchmark scene in its worker, 16 samples with the
   shadow catcher (lightmap 2048 wide, catcher 512 x 512), from the call to the final lighting, median of 3. Local
-  SwiftShader 22 873, 22 113 and 22 141 ms; max 222 000 ms (10x the middle run, rounded up).
-- `mainThreadBlockMs.bake-bench` (MS-16): the longest main-thread event-loop lag (`fixtures/src/eventLoopLag.ts`, a
-  10 ms heartbeat) over those three bakes, posting, progress uploads and redraws included. Local 27.4 ms, then
-  68.3 ms in a slower run, which found the fixture recomputing its camera from the scene bounds and hashing the light on
-  every update; with an update that only re-uploads into the existing textures and draws (the bench skips the
-  hashes), 4.2 ms (bakes 17 865, 17 693, 17 800 ms in that run). Max 50 ms, fixed (RAIL's 50 ms response budget), not
-  derived from a measurement. In the same run `rt-load-first-frame-200k-order` (now with the lightmap layout)
-  measured 592 ms of its 3500.
+  SwiftShader 22 873, 22 113 and 22 141 ms; max 222 000 ms (10x the middle run, rounded up). Each run is asserted
+  against the max as it completes, and the bench test's timeout is 3 x that max + 300 s, so a slow bake fails its
+  budget instead of the timeout.
+- `mainThreadBlockMs.bake-bench` (MS-16): the page's longest main-thread block over those three bakes
+  (`fixtures/src/eventLoopLag.ts`): the longest long task the browser reports (Long Tasks API, 50 ms or more), else the
+  longest timed stretch of the bake calls and progress updates (upload and redraw). First measured as the lag of a
+  10 ms heartbeat: 27.4 ms, then 68.3 ms, which found the fixture recomputing its camera and hashing the light on
+  every update (fixed: an update only re-uploads into the existing textures and draws; 4.2 ms). The heartbeat then
+  still read 63.9 and once 192.9 ms with no long task and no handler over 6.3 ms: SwiftShader's GPU process spreads
+  every draw over all cores and the page gets no CPU, which no page change can fix. It is printed beside the block
+  (`heartbeat lag`). Block measured 9.1 and 7.3 ms. Max 50 ms, fixed (RAIL's 50 ms response budget), not derived from
+  a measurement.
+- `mainThreadBlockMs.bake-post-200k` (MS-16 round 2): `bake()` of the 200 000-triangle `large-order` document (1
+  sample): the longer of the call's own duration (validation and the structured clone of the posted document) and the
+  block over the bake. Measured 16.2 and 14.9 ms; max 50 ms, fixed like the row above. In the same runs
+  `rt-load-first-frame-200k-order` (now with the lightmap layout) measured about 600 ms of its 3500.
 
 First CI run (2026-10-20, ubuntu-latest): frame time 0.9 ms (max 5, 5.5x), time to 64 samples 80.6 ms (max 300), gzip app 437 B, embed 115 B.
 Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact, with the numbers in the commit.

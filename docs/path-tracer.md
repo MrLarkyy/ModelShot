@@ -123,8 +123,8 @@ Materials are Lambert (albedo = the texel's linear colour) plus emission. The li
   drawn uniformly in the cone (`keyConeDirection`, `keyLight.glsl`). The cosine stays `n · KEY_DIRECTION`, so Lambert
   albedo / π times that is the preview's `albedo · KEY_COLOR · max(n · k, 0)` on an unoccluded surface, with soft
   shadows that keep the texel's shape near their caster (penumbra ≈ 2 · 0.04 · distance to the occluder). The radius
-  is the largest that keeps alpha-plane's shadow edge within 2 px (0.05 measured 2.96 px, 0.045 1.98 px, 0.04
-  0.99 px).
+  is the largest measured that keeps alpha-plane's shadow edge within 2 px with margin: 0.04 gives 0.99 px, 0.045
+  sits at the limit (1.98 px) and 0.05 is over it (2.96 px).
 - Fill: rays that escape the scene after a bounce see `environmentRadiance(d) = mix(GROUND, SKY, ½ + ¾ d.y)`
   (positive for every direction; the lowest channel straight down is 0.0875). The cosine-weighted mean of d.y over the
   hemisphere around n is ⅔ n.y, so an unoccluded Lambert surface receives exactly `mix(GROUND, SKY, ½ + ½ n.y)`: the
@@ -133,7 +133,9 @@ Materials are Lambert (albedo = the texel's linear colour) plus emission. The li
 - Camera rays that escape show the `background` (the same default and AgX as the preview).
 - Shadow catcher (`shadowCatcherPlane` of the realtime renderer): a camera ray that meets the plane from above,
   inside its rectangle and nearer than the model, traces one key ray in the cone and one cosine-weighted fill ray
-  (escaped: `environmentRadiance`) and shows `background × catcherShade(fill, keyT, xz, rect)` of the look. The shade
+  (escaped: `environmentRadiance`) and shows `background × catcherShade(fill, keyT, xz, rect)` of the look. The fill
+  ray accepts partial texels with its own random number (vertex 0's roulette dimension, unused there), not the camera
+  ray's, so a catcher point seen through glass still has the glass's fill shadow, as in the bake. The shade
   is affine in fill and key, so the mean over samples equals the preview's shade of its baked means. The plane is
   invisible to every other ray, so the model renders exactly as without it.
 - Cosine-weighted bounces up to `maxBounces`, Russian roulette from the third bounce (survival = the largest
@@ -177,11 +179,14 @@ OffscreenCanvas WebGL2 context. There is no main-thread fallback.
 
 - `LightBaker.create({ maxTriangles, testHooks })` starts the worker (`new Worker(new URL('./bake/bakeWorker.ts',
 import.meta.url), { type: 'module' })`); without module workers or OffscreenCanvas it throws `PathTracerError`
-  `WORKER_UNAVAILABLE`, as every pending bake rejects when the worker fails.
+  `WORKER_UNAVAILABLE`, as every pending bake rejects when the worker fails, and every later bake with the same error
+  (after `dispose()` a bake resolves `applied: false`).
 - `bake(doc, { samples = 64 (1..1024), seed = 1 (0..2^32 − 1), shadowCatcher = true, tileSize = 64 (16..512),
 onProgress })` resolves `{ applied, warnings, lighting }`. The main thread only validates (`INVALID_SCENE`, options
   out of range: `RangeError`) and posts the document; texture bytes are posted only when `doc.textures` is not the
-  array the previous call posted, else the worker reuses what it decoded. The worker validates again, lays out the
+  array the previous call posted, else the worker reuses what it decoded. The worker keeps posted textures before
+  anything of that bake can fail, so a refused bake does not cost a later one its images; should it still hold
+  another version, it asks for the bytes again (`resend`) instead of baking placeholders. The worker validates again, lays out the
   lightmap (`SCENE_TOO_LARGE` over its limit, before the triangle limit), flattens, builds the BVH, packs the data,
   decodes the textures (header limits, a `Blob`, never a fetch), and checks its GL capabilities
   (`WEBGL2_UNAVAILABLE`, `FLOAT_TARGETS_UNAVAILABLE`, `HIGHP_UNAVAILABLE`).
@@ -201,8 +206,13 @@ onProgress })` resolves `{ applied, warnings, lighting }`. The main thread only 
 - Supersede: a later `bake` or `dispose()` stops a pending one after its tile; it resolves `applied: false`. Only the
   latest bake is ever applied.
 - Context loss in the worker: the bake stops and, once the context is back, the scene is uploaded again from the
-  retained CPU data and the bake restarts at sample 0, reaching the same bytes (`testHooks: true` enables
-  `loseContext()` for that test).
+  retained CPU data and the bake restarts at sample 0, reaching the same bytes. A bake asked for while the context is
+  lost is prepared with the limits read when the context was created and starts once it is back. A loss found only by
+  `isContextLost()` (the event comes later; a readback then returns zeros) counts as a loss too: nothing of that
+  readback is posted. A failure after the scene was prepared (an RGBA32F target the driver rejects) rejects that bake.
+  `testHooks: true` enables `loseContext(beforeMark?)` (now, or right before the readback after that many samples) and
+  `BakeOptions.countCappedTraversals` (texels hold the traversals their rays stopped at the per-ray node cap; 0 on the
+  benchmark scene and the cut-out plant field, tested).
 - `dispose()`: the worker releases its GL objects and decoded images, then is terminated (`terminated`).
 
 ## Context loss
@@ -220,8 +230,10 @@ take about 234 ms at 512 × 512 and 88 ms at 128 × 128 (`pt.html?scene=bench&si
 the paced manual readout).
 
 The light bake has `bakeTimeMs.bake-bench-n16` (the benchmark scene, 16 samples with the catcher, from `bake()` to
-the final lighting, median of 3) and `mainThreadBlockMs.bake-bench` (the main thread's longest event-loop lag over
-those bakes, fixed at 50 ms); not measured on real hardware yet.
+the final lighting, median of 3, each run also checked as it completes), `mainThreadBlockMs.bake-bench` (the page's
+longest main-thread block over those bakes) and `mainThreadBlockMs.bake-post-200k` (`bake()` of a 200 000-triangle
+document: validation and the structured clone of the posted document, 15-17 ms locally), both fixed at 50 ms; not
+measured on real hardware yet.
 
 ## What v0 lacks
 

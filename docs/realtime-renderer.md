@@ -77,7 +77,11 @@ KEY_COLOR × max(n·KEY, 0) × a)`; value 1 gives the unbaked expression exactly
   shimmer of its own. Vertex charts are fetched in `mesh.vert.glsl` and interpolated; the back pass reads the back
   chart. The light is sampled before the first `discard` (derivatives).
 - **Kept across poses.** `setScene` keeps the lighting when the new document has the same `layoutKey` (the same model
-  in another pose), so the old light shows until the re-bake's first update; another layout drops it. `setLighting`
+  in another pose), so the old light shows until the re-bake's first update; another layout drops it. A document that
+  differs from the shown one only in its pose (`poseOnlyChange`: the same meshes, materials and textures arrays, nodes
+  with the same parents, pivots, rest rotations, visibility and meshes) keeps the layout without laying it out again;
+  the renderer keeps only what it reads of a layout (`LightmapLayoutSummary`: sizes, downscale, per-vertex data,
+  finest texel, key), not its charts. `setLighting`
   refuses (returns `false`, changes nothing) lighting whose layout key, size or data length does not match the current
   layout, or whose catcher is malformed (`checkLighting`).
 
