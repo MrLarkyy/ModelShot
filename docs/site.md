@@ -41,7 +41,9 @@ browser and opens the app, which takes them:
    `UNSUPPORTED_TYPE`, `TOO_LARGE`), and the page stays.
 2. `putHandoffFiles` empties IndexedDB database `modelshot-handoff`, store `pending`, and writes one record under
    key `current`: `{ v: 1, files: File[], createdAt: <ms since epoch> }`, in one transaction. A write that does not
-   finish within 5 s is aborted and reported in the alert, so no copy is stored after the page gave up.
+   finish within its timeout is aborted and reported in the alert, so no copy is stored after the page gave up. The
+   write timeout grows with the bytes (`putTimeoutMs`: 5 s plus 1 s per 16 MiB, 21 s at the 256 MiB limit); a
+   handoff at the limit measured 45..274 ms to store and 174..433 ms to take (Chromium, Windows and Ubuntu).
 3. The site navigates to `./app/?open=handoff`.
 4. The app (`packages/app/src/showHandoff.ts`) calls `takeHandoffFiles`, which reads and deletes the record in one
    transaction, then validates it as untrusted (`readHandoffRecord`): own data properties only, `v === 1`, a finite
@@ -52,12 +54,13 @@ browser and opens the app, which takes them:
 5. The app lists the file names and sizes as text in its `role="status"` element. Parsing the files is the editor's
    job (MS-23 wires `takeHandoffFiles` into its loader).
 
-Every IndexedDB step gives up after 5 s with an error naming the step (the transaction is aborted), so a stuck
-database never hangs either page. On load the landing page deletes a record the app can no longer take (expired or
-unreadable, `discardStaleHandoff`), so files that were never opened do not stay on disk; a fresh record is kept. The
-picker is emptied after every attempt and when the page is shown again from the back/forward cache, so the same file
-can be chosen again.
-A file dropped anywhere else on the landing page is ignored rather than opened by the browser.
+Every IndexedDB step gives up after its timeout (5 s; a write at the limit 21 s) with an error naming the step (the
+transaction is aborted), so a stuck database never hangs either page. On load the landing page deletes a record the
+app can no longer take (expired or unreadable, `discardStaleHandoff`), so files that were never opened do not stay on
+disk; a fresh record is kept. It looks first with `indexedDB.databases()` and opens the database only if it exists,
+so a visitor who never handed a file over gets none; browsers without `databases()` skip the cleanup. The picker is
+emptied after every attempt and when the page is shown again from the back/forward cache, so the same file can be
+chosen again. A file dropped anywhere else on the landing page is ignored rather than opened by the browser.
 
 ## Motion
 
@@ -81,7 +84,8 @@ With `prefers-reduced-motion: reduce` every animation and transition is off. The
 - Playwright (`e2e/`, own config, not the harness): every request must be a GET on the site origin and no page error
   may occur (`siteTest.ts`).
   - `landing.golden.spec.ts`: full-page goldens at 360, 768 and 1440 px, animations stopped, fonts loaded;
-    `maxDiffPixelRatio` 0.01, `threshold` 0.2.
+    `maxDiffPixelRatio` 0.002 (about 5x the measured Windows vs Ubuntu difference of at most 0.00042),
+    `threshold` 0.2.
   - `landing.layout.spec.ts`: no horizontal scroll at the three widths, section order, Tab reaches every control with
     a 3 px ring in the right colour, the picker buttons.
   - `landing.a11y.spec.ts`: axe (WCAG 2.x A/AA) at 360 and 1440 px, with all answers open, with the sweep held over

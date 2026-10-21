@@ -181,3 +181,40 @@ test('a page restored from the back/forward cache shows an empty picker and no o
   expect(await chosenFiles(page)).toBe(0);
   await expect(page.locator('#drop-error')).toHaveText('');
 });
+
+// The handoff at its limit, against the storage timeouts (packages/app/src/handoff/putTimeoutMs.ts): the files are
+// built in the page, so nothing crosses the test protocol. Measured 2026-10: put 45..274 ms, take 174..433 ms.
+test('32 files of 256 MiB in total are stored and opened well within the timeouts', async ({ page }) => {
+  test.setTimeout(120_000);
+  await openLanding(page, 1440);
+  const started = Date.now();
+  await page.evaluate(() => {
+    const transfer = new DataTransfer();
+    for (let i = 0; i < 32; i++) {
+      const bytes = new Uint8Array(8 * 1024 * 1024);
+      for (let j = 0; j < bytes.length; j += 4096) bytes[j] = (i * 31 + j) & 255;
+      transfer.items.add(new File([bytes], `part-${i}.bin`));
+    }
+    const drop = new DragEvent('drop', { dataTransfer: transfer, bubbles: true, cancelable: true });
+    document.querySelector('#drop-zone')!.dispatchEvent(drop);
+  });
+  const dropped = Date.now();
+  await page.waitForURL(APP_URL, { timeout: 60_000 });
+  const stored = Date.now();
+  await expect(page.getByRole('status').getByRole('listitem')).toHaveCount(32, { timeout: 30_000 });
+  const listed = Date.now();
+  console.log(`[limit] build ${dropped - started} ms, put ${stored - dropped} ms, load + take ${listed - stored} ms`);
+  expect(await pendingRecords(page)).toBe(0);
+  // Half of each timeout (put 21 s at the limit, take 5 s): the margin the timeouts are sized for still holds.
+  expect(stored - dropped).toBeLessThan(21_000 / 2);
+  expect(listed - stored).toBeLessThan(5_000 / 2);
+});
+
+test('a first visit creates no handoff database', async ({ page }) => {
+  await openLanding(page, 1440);
+  await page.waitForLoadState('networkidle');
+  // Give the load-time cleanup its turn on the event loop before looking.
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 200)));
+  const names = await page.evaluate(async () => (await indexedDB.databases()).map((database) => database.name));
+  expect(names).not.toContain('modelshot-handoff');
+});

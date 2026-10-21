@@ -10,4 +10,5 @@ export {
   takeHandoffFiles,
   type HandoffStorageOptions,
 } from './fileHandoff';
+export { PUT_MIN_BYTES_PER_SECOND, putTimeoutMs } from './putTimeoutMs';
 export { HANDOFF_RECORD_VERSION, readHandoffRecord, type HandoffRead } from './readHandoffRecord';

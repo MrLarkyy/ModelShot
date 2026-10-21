@@ -1,5 +1,6 @@
 import { checkHandoffFiles } from './checkHandoffFiles';
 import { HandoffLimits } from './HandoffLimits';
+import { putTimeoutMs } from './putTimeoutMs';
 import { HANDOFF_RECORD_VERSION, readHandoffRecord, type HandoffRead } from './readHandoffRecord';
 
 // The landing page (/) and the app (/app/) share an origin and so this database; nothing leaves the browser.
@@ -87,12 +88,15 @@ async function inTransaction<T>(
 }
 
 // Stores the user's chosen files for the app tab that the landing page opens next; anything left in the store
-// before (an earlier record, a stray key) is removed in the same transaction.
+// before (an earlier record, a stray key) is removed in the same transaction. The timeout grows with the bytes
+// (putTimeoutMs).
 export async function putHandoffFiles(files: readonly File[], options: HandoffStorageOptions = {}): Promise<void> {
   const error = checkHandoffFiles(files);
   if (error) throw error;
   const now = options.now ?? Date.now;
-  await inTransaction(options, 'store', (store) => {
+  const bytes = files.reduce((sum, file) => sum + file.size, 0);
+  const timeoutMs = options.timeoutMs ?? putTimeoutMs(bytes);
+  await inTransaction({ ...options, timeoutMs }, 'store', (store) => {
     store.clear();
     store.put({ v: HANDOFF_RECORD_VERSION, files: [...files], createdAt: now() }, KEY);
     return () => undefined;
