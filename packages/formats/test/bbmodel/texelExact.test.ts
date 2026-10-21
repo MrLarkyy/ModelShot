@@ -95,6 +95,39 @@ describe('texel-exact UVs', () => {
     }
   });
 
+  it('frame-strip: strip faces scaled back by uv height × 4 frames give the authored corners and rect exactly', () => {
+    const text = fixture('frame-strip');
+    const authored = Object.values(
+      (JSON.parse(text) as { elements: { faces: Record<string, { uv: number[]; texture: number }> }[] }).elements[0]!
+        .faces,
+    );
+    const rectKey = (r: readonly number[]) =>
+      [Math.min(r[0]!, r[2]!), Math.min(r[1]!, r[3]!), Math.max(r[0]!, r[2]!), Math.max(r[1]!, r[3]!)].join();
+    const strip = new Set(authored.filter((f) => f.texture === 0).map((f) => rectKey(f.uv)));
+    const still = new Set(authored.filter((f) => f.texture === 1).map((f) => rectKey(f.uv)));
+    const { scene } = loadBbmodel(text);
+    const mesh = scene.meshes[0]!;
+    const seen: string[] = [];
+    for (const group of mesh.groups) {
+      const frames = scene.textures[group.material]?.frames?.count ?? 1;
+      for (let f = group.start / 6; f < (group.start + group.count) / 6; f++) {
+        const stored = [...mesh.uvRects.slice(f * 16, f * 16 + 4)];
+        const rect = stored.map((x, k) => x * 16 * (k % 2 ? frames : 1));
+        expect(rect.every(Number.isInteger)).toBe(true);
+        expect((frames === 4 ? strip : still).has(rect.join())).toBe(true);
+        if (frames === 4) expect(stored[3]).toBeLessThanOrEqual(0.25);
+        for (let c = 0; c < 4; c++) {
+          const u = mesh.uvs[(f * 4 + c) * 2]! * 16;
+          const v = mesh.uvs[(f * 4 + c) * 2 + 1]! * 16 * frames;
+          expect(u === rect[0] || u === rect[2]).toBe(true);
+          expect(v === rect[1] || v === rect[3]).toBe(true);
+        }
+        seen.push(rect.join());
+      }
+    }
+    expect(seen).toHaveLength(6);
+  });
+
   it.each<FixtureName>(['mesh-plane', 'alpha-plane'])(
     '%s: mesh UV corners land exactly on texel edges of the 16×16 UV space',
     (name) => {

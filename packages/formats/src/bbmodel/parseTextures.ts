@@ -8,6 +8,7 @@ import { childPath, field, type JsonObject } from '../json/JsonObject';
 import { readArray, readObject, readOptionalString, readPositiveNumber, readString } from './JsonFields';
 import { quoteValue } from '../text/quoteValue';
 import { RENDER_SIDES, type RenderSides } from './RenderSides';
+import { readTextureFrameSettings, textureFrames, type TextureFrameSettings } from './textureFrames';
 
 /** What the loader knows about a texture before any bytes are decoded. */
 export interface TextureEntry {
@@ -22,6 +23,8 @@ export interface TextureEntry {
   readonly uvWidth: number;
   readonly uvHeight: number;
   readonly renderSides: RenderSides;
+  /** Animation fields; `undefined` in a format without animated textures. */
+  readonly frameSettings: TextureFrameSettings | undefined;
 }
 
 export interface UvSize {
@@ -32,11 +35,13 @@ export interface UvSize {
 /**
  * Reads texture metadata and checks the texture count; decodes nothing. With `perTextureUvSize` (Blockbench's `free`
  * format) a texture's `uv_width`/`uv_height` set its UV space; otherwise every texture uses the project resolution.
+ * `modelFormat` decides whether frame-strip fields are read.
  */
 export function readTextureEntries(
   root: JsonObject,
   resolution: UvSize,
   perTextureUvSize: boolean,
+  modelFormat: string,
   limits: BbmodelLimits,
   warnings: BbmodelWarningList,
 ): TextureEntry[] {
@@ -46,7 +51,7 @@ export function readTextureEntries(
   return list.map((item, index) => {
     const path = childPath('$.textures', index);
     const fixedUvSize = perTextureUvSize ? undefined : resolution;
-    return readTextureEntry(item, path, index, fixedUvSize, resolution, limits, warnings);
+    return readTextureEntry(item, path, index, fixedUvSize, resolution, modelFormat, limits, warnings);
   });
 }
 
@@ -65,6 +70,7 @@ function readTextureEntry(
   index: number,
   fixedUvSize: UvSize | undefined,
   resolution: UvSize,
+  modelFormat: string,
   limits: BbmodelLimits,
   warnings: BbmodelWarningList,
 ): TextureEntry {
@@ -97,6 +103,7 @@ function readTextureEntry(
     uvWidth: uvSize.width,
     uvHeight: uvSize.height,
     renderSides: readRenderSides(texture, path, warnings),
+    frameSettings: readTextureFrameSettings(texture, path, modelFormat, limits.maxStringChars, warnings),
   };
 }
 
@@ -193,7 +200,9 @@ function resolveTexture(
       `${origin}: ${size.width}×${size.height} pixels, the limit is ${limits.maxTexturePixels} pixels`,
     );
   }
-  return { ...texture, bytes, width: size.width, height: size.height, missing: false };
+  const frames = textureFrames(entry.frameSettings, size, { width: entry.uvWidth, height: entry.uvHeight }, warnings);
+  // Absent rather than undefined, so a texture without frames serialises exactly as before frames were read.
+  return { ...texture, bytes, width: size.width, height: size.height, missing: false, ...(frames ? { frames } : {}) };
 }
 
 function decodeEmbedded(source: string, path: string, limits: BbmodelLimits): Uint8Array {

@@ -10,7 +10,7 @@ export const cubeConverter: ElementConverter = {
     return {
       triangleCount: cubeTriangleCount(cube),
       vertexCount: cube.faces.length * 4,
-      build: (node) => cubeToMesh(cube, node),
+      build: (node, textureFrameCounts) => cubeToMesh(cube, node, textureFrameCounts),
     };
   },
 };
@@ -21,7 +21,7 @@ export const meshConverter: ElementConverter = {
     return {
       triangleCount: meshTriangleCount(mesh),
       vertexCount: meshVertexCount(mesh),
-      build: (node) => meshElementToMesh(mesh, node),
+      build: (node, textureFrameCounts) => meshElementToMesh(mesh, node, textureFrameCounts),
     };
   },
 };
