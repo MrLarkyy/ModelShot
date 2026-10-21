@@ -8,6 +8,11 @@ export interface MainThreadTrace {
   readonly longestCpu: number;
   /** The largest wall − CPU of one task: time the OS did not run the thread while it was in a task. */
   readonly largestGap: number;
+  /**
+   * The most CPU time one task used: the page's own longest block, whatever the OS did meanwhile. Tasks Playwright's
+   * `evaluate` runs count too (they are top-level tasks of the thread like any other).
+   */
+  readonly maxCpu: number;
 }
 
 interface TraceEvent {
@@ -45,7 +50,7 @@ export async function traceMainThread(page: Page, body: () => Promise<void>): Pr
       .filter((e) => e.ph === 'M' && e.name === 'thread_name' && e.args?.name === 'CrRendererMain')
       .map((e) => `${e.pid}:${e.tid}`),
   );
-  const result = { tasks: 0, longestWall: 0, longestCpu: 0, largestGap: 0 };
+  const result = { tasks: 0, longestWall: 0, longestCpu: 0, largestGap: 0, maxCpu: 0 };
   for (const e of events) {
     const isTask = e.name === 'ThreadControllerImpl::RunTask' || e.name === 'RunTask';
     if (e.ph !== 'X' || !isTask || e.dur === undefined || !main.has(`${e.pid}:${e.tid}`)) continue;
@@ -57,6 +62,7 @@ export async function traceMainThread(page: Page, body: () => Promise<void>): Pr
       result.longestCpu = cpu;
     }
     result.largestGap = Math.max(result.largestGap, wall - cpu);
+    result.maxCpu = Math.max(result.maxCpu, cpu);
   }
   return result;
 }

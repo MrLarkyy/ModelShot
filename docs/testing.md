@@ -449,40 +449,54 @@ texel tap), `rt-bench-order-512` 117, 145 and 148 ms with MSAA, 83 and 107 ms si
   SwiftShader 22 873, 22 113 and 22 141 ms; max 222 000 ms (10x the middle run, rounded up). Each run is asserted
   against the max as it completes, and the bench test's timeout is 3 x that max + 300 s, so a slow bake fails its
   budget instead of the timeout.
-- `mainThreadBlockMs.bake-bench` (MS-16): the page's longest main-thread block over those three bakes
-  (`fixtures/src/eventLoopLag.ts`): the longest long task the browser reports (Long Tasks API, 50 ms or more), else the
-  longest timed stretch of the bake calls and progress updates (upload and redraw). First measured as the lag of a
-  10 ms heartbeat: 27.4 ms, then 68.3 ms, which found the fixture recomputing its camera and hashing the light on
-  every update (fixed: an update only re-uploads into the existing textures and draws; 4.2 ms). The heartbeat then
-  still read 63.9 and once 192.9 ms with no long task and no handler over 6.3 ms: SwiftShader's GPU process spreads
-  every draw over all cores and the page gets no CPU, which no page change can fix. It is printed beside the block
-  (`heartbeat lag`). Block measured 9.1 and 7.3 ms. `realtime.spec.ts` pins the long-task half: an 80 ms busy timer
-  task outside the timed work reads a block of 80.0 ms (`block()` takes the observer's pending records first). A task
-  Playwright's `evaluate` runs is not reported as a long task, so the bench times the `bake()` call itself. Max 50 ms, fixed (RAIL's 50 ms response budget), not derived from
-  a measurement. Round 4: a full `build test` on a busy machine read 120.2 ms (heartbeat 115.0 ms): a real task. Not
-  reproduced locally (full suite; 22 CPU spinners; a parallel path-tracer browser), where each update was 5-7 ms, most
-  of it one 9.4 MB texSubImage2D, which waits for the GPU process whenever it is busy with the bake's draws. Fixed in
-  the renderer (upload in bands over frames into back textures, realtime-renderer.md). The bench now prints the longest
-  stretch per phase (`bake-call`, `worker-message`, `set-lighting`, `upload`, `render`), every long task and the slow
-  phases: after the fix `set-lighting` 0.3-0.4 ms, `upload` 1.1-1.3 ms, `worker-message` 1.3-2.2 ms, `render` 1.5 ms,
-  `bake-call` 7-8 ms (the posted document's clone), no long task, block 7.0 and 7.8 ms.
-- `mainThreadBlockMs.bake-post-200k` (MS-16 round 2): `bake()` of the 200 000-triangle `large-order` document (1
-  sample): the longer of the call's own duration (option checks and validation; since round 5 the call posts nothing,
-  the document's meshes stream in later tasks) and the
-  block over the bake. Measured 16.2 and 14.9 ms; max 50 ms, fixed like the row above. Round 5: the full build test
-  put the `bake-call` phase at 44.6 ms under load (a structured clone of every mesh in one task). Meshes now stream as
-  transferred chunks in later tasks and only when the worker lacks them, and the fixture times every worker
-  `postMessage` (`worker-post`): `bake-call` 0.7 ms idle and 1.1 ms under load (12 CPU spinners and a parallel
-  path-tracer browser), `worker-post` at most 0.4 ms, block 1.4 and 1.6 ms, `bake-post-200k` 2.5 and 4.0 ms.
-  Round 6: a full build test read a single `bake-call` of 72 ms (heartbeat 66.4 ms, no long task: the call runs in a
-  Playwright `evaluate`). Locally the call does 0.3-1.8 ms of work (600 calls under 30-40 CPU spinners, each in its own
-  task, beside an allocation-free loop of equal cost), V8's `--trace-gc` shows no pause over 2.6 ms in 300 collections
-  over three bench bakes, and a Chrome trace shows the renderer main thread losing up to 11.5 ms of wall time inside
-  tasks with no CPU behind it (the worker thread up to 82 ms): the OS not running the thread. The bench therefore
-  traces the bake runs (`src/mainThreadTrace.ts`, CDP top-level tasks with thread CPU time) and prints the main
-  thread's longest task as wall / CPU ms and its largest wall − CPU gap, so a slow phase on a loaded machine shows
-  whether it was page work. Limit and measure unchanged. In the same runs
-  `rt-load-first-frame-200k-order` (now with the lightmap layout) measured about 600 ms of its 3500.
+- `mainThreadBlockMs.bake-bench` and `mainThreadBlockMs.bake-post-200k` (MS-16): **the most CPU time one task of
+  the page's main thread used**, from a Chrome trace over the bake window (`src/mainThreadTrace.ts`: CDP top-level
+  tasks, `tdur`, thread `CrRendererMain`): the three benchmark bakes, and the 1-sample bake of the 200 000-triangle
+  `large-order` document (its `bake()` call, mesh stream and updates). Every task counts, those Playwright's
+  `evaluate` runs (which call `bake()`) included, which the Long Tasks API does not report. Max 50 ms, fixed (RAIL's
+  50 ms response budget). Wall time is printed beside it, not asserted: the page-side wall-time block
+  (`eventLoopLag.ts`: long tasks, timed phases), the heartbeat lag and the trace's longest task as wall / CPU with its
+  largest wall − CPU gap. On a shared, loaded machine wall time also counts the OS not running the thread: full build
+  tests read 72 ms of wall time for a `bake()` call doing about 1 ms of work, and under 30 local CPU spinners the
+  trace showed a 9.4 ms wall / 0.6 ms CPU task (round 6). `realtime.spec.ts` proves the measure: at least 80 ms of
+  busy work (a workload calibrated to 100 ms at its fastest measured speed) reads 99-103 ms of CPU in a timer task
+  and 99-101 ms in an `evaluate`; a wall-clock spin of 80 ms reads only 78 ms of CPU, which is why the probe counts
+  work, not time.
+  History of the earlier wall-time measure:
+  - `mainThreadBlockMs.bake-bench` (MS-16): the page's longest main-thread block over those three bakes
+    (`fixtures/src/eventLoopLag.ts`): the longest long task the browser reports (Long Tasks API, 50 ms or more), else the
+    longest timed stretch of the bake calls and progress updates (upload and redraw). First measured as the lag of a
+    10 ms heartbeat: 27.4 ms, then 68.3 ms, which found the fixture recomputing its camera and hashing the light on
+    every update (fixed: an update only re-uploads into the existing textures and draws; 4.2 ms). The heartbeat then
+    still read 63.9 and once 192.9 ms with no long task and no handler over 6.3 ms: SwiftShader's GPU process spreads
+    every draw over all cores and the page gets no CPU, which no page change can fix. It is printed beside the block
+    (`heartbeat lag`). Block measured 9.1 and 7.3 ms. `realtime.spec.ts` pins the long-task half: an 80 ms busy timer
+    task outside the timed work reads a block of 80.0 ms (`block()` takes the observer's pending records first). A task
+    Playwright's `evaluate` runs is not reported as a long task, so the bench times the `bake()` call itself. Max 50 ms, fixed (RAIL's 50 ms response budget), not derived from
+    a measurement. Round 4: a full `build test` on a busy machine read 120.2 ms (heartbeat 115.0 ms): a real task. Not
+    reproduced locally (full suite; 22 CPU spinners; a parallel path-tracer browser), where each update was 5-7 ms, most
+    of it one 9.4 MB texSubImage2D, which waits for the GPU process whenever it is busy with the bake's draws. Fixed in
+    the renderer (upload in bands over frames into back textures, realtime-renderer.md). The bench now prints the longest
+    stretch per phase (`bake-call`, `worker-message`, `set-lighting`, `upload`, `render`), every long task and the slow
+    phases: after the fix `set-lighting` 0.3-0.4 ms, `upload` 1.1-1.3 ms, `worker-message` 1.3-2.2 ms, `render` 1.5 ms,
+    `bake-call` 7-8 ms (the posted document's clone), no long task, block 7.0 and 7.8 ms.
+  - `mainThreadBlockMs.bake-post-200k` (MS-16 round 2): `bake()` of the 200 000-triangle `large-order` document (1
+    sample): the longer of the call's own duration (option checks and validation; since round 5 the call posts nothing,
+    the document's meshes stream in later tasks) and the
+    block over the bake. Measured 16.2 and 14.9 ms; max 50 ms, fixed like the row above. Round 5: the full build test
+    put the `bake-call` phase at 44.6 ms under load (a structured clone of every mesh in one task). Meshes now stream as
+    transferred chunks in later tasks and only when the worker lacks them, and the fixture times every worker
+    `postMessage` (`worker-post`): `bake-call` 0.7 ms idle and 1.1 ms under load (12 CPU spinners and a parallel
+    path-tracer browser), `worker-post` at most 0.4 ms, block 1.4 and 1.6 ms, `bake-post-200k` 2.5 and 4.0 ms.
+    Round 6: a full build test read a single `bake-call` of 72 ms (heartbeat 66.4 ms, no long task: the call runs in a
+    Playwright `evaluate`). Locally the call does 0.3-1.8 ms of work (600 calls under 30-40 CPU spinners, each in its own
+    task, beside an allocation-free loop of equal cost), V8's `--trace-gc` shows no pause over 2.6 ms in 300 collections
+    over three bench bakes, and a Chrome trace shows the renderer main thread losing up to 11.5 ms of wall time inside
+    tasks with no CPU behind it (the worker thread up to 82 ms): the OS not running the thread. The bench therefore
+    traces the bake runs (`src/mainThreadTrace.ts`, CDP top-level tasks with thread CPU time) and prints the main
+    thread's longest task as wall / CPU ms and its largest wall − CPU gap, so a slow phase on a loaded machine shows
+    whether it was page work. Limit and measure unchanged. In the same runs
+    `rt-load-first-frame-200k-order` (now with the lightmap layout) measured about 600 ms of its 3500.
 
 First CI run (2026-10-20, ubuntu-latest): frame time 0.9 ms (max 5, 5.5x), time to 64 samples 80.6 ms (max 300), gzip app 437 B, embed 115 B.
 Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact, with the numbers in the commit.

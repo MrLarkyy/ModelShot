@@ -6,6 +6,7 @@ import type { RasterGoldenSpec } from '../src/goldenSpec';
 import { goldenPath } from '../src/goldenStore';
 import { expect, test } from '../src/harnessTest';
 import { decodePng, hueMatch, modelBox, near, pixel, sentinelPixels, type Image } from '../src/imageMetrics';
+import { traceMainThread } from '../src/mainThreadTrace';
 import { shadowStep } from '../src/shadowStep';
 import type { ModelViewProbe, PtProbe, RtBakeOutcome, RtBakeRequest } from '../fixtures/src/fixtureApi';
 
@@ -934,6 +935,60 @@ test.describe('baked lighting', () => {
     const block = await page.evaluate(() => window.__msFixture!.rt!.mainThreadBlock());
     console.log(`[rt probe] 80 ms busy task: block ${block.toFixed(1)} ms`);
     expect(block).toBeGreaterThanOrEqual(80);
+  });
+
+  test('the budgeted measure (max CPU per main-thread task, traced) sees >= 80 ms of busy work in a timer task and in an evaluate', async ({
+    page,
+  }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030&lag=1');
+    // CPU work, not wall time (an interrupted wall-clock spin gets less CPU than its wall time): the iterations one
+    // millisecond holds at best, over several samples, times 100, so the task does at least 80 ms of CPU work even if
+    // it runs up to 20 % slower than the fastest sample.
+    const iterations = await page.evaluate(() => {
+      let best = 0;
+      for (let sample = 0; sample < 20; sample++) {
+        let count = 0;
+        let x = 0;
+        const end = performance.now() + 5;
+        while (performance.now() < end) {
+          for (let i = 0; i < 1000; i++) x += Math.sqrt(i + x);
+          count++;
+        }
+        best = Math.max(best, count / 5);
+        if (x < 0) return 0;
+      }
+      return Math.ceil(best * 100);
+    });
+    const work = (count: number): number => {
+      let x = 0;
+      for (let n = 0; n < count; n++) for (let i = 0; i < 1000; i++) x += Math.sqrt(i + x);
+      return x;
+    };
+    const timer = await traceMainThread(page, () =>
+      page.evaluate(
+        ({ count, body }) =>
+          new Promise<void>((resolve) =>
+            setTimeout(() => {
+              new Function('count', body)(count);
+              resolve();
+            }, 0),
+          ),
+        { count: iterations, body: `return (${work.toString()})(count);` },
+      ),
+    );
+    // The bench calls bake() from a Playwright evaluate, which the Long Tasks API does not report: the trace must.
+    const evaluate = await traceMainThread(page, () =>
+      page.evaluate(({ count, body }) => void new Function('count', body)(count), {
+        count: iterations,
+        body: `return (${work.toString()})(count);`,
+      }),
+    );
+    console.log(
+      `[rt probe] 100 ms of busy work at best speed, max CPU per task: timer task ${timer.maxCpu.toFixed(1)} ms, evaluate ` +
+        `${evaluate.maxCpu.toFixed(1)} ms`,
+    );
+    expect(timer.maxCpu).toBeGreaterThanOrEqual(80);
+    expect(evaluate.maxCpu).toBeGreaterThanOrEqual(80);
   });
 
   test('banded light upload: frames keep the complete light until the next is in, whatever happens mid-upload', async ({
