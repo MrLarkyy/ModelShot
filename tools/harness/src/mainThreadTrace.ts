@@ -51,7 +51,8 @@ const TASK_EVENTS = new Set(['ThreadControllerImpl::RunTask', 'RunTask']);
  * Runs `body` under a Chrome trace (top-level tasks with their thread CPU time, and the GPU client's waits, through
  * CDP) and sums up the page's main thread (`CrRendererMain`). A task's blocking time is the CPU it used plus the time it
  * waited for the GPU process; wall time beyond that is the OS not running the thread on a loaded machine. Throws when
- * the trace holds no main thread, no task or a task without CPU time: a measure that silently reads 0 proves nothing.
+ * the trace holds no main thread, no task, no CPU time or a task of 1 ms or more without it: a measure that silently
+ * reads 0 proves nothing.
  */
 export async function traceMainThread(page: Page, body: () => Promise<unknown>): Promise<MainThreadTrace> {
   const cdp = await page.context().newCDPSession(page);
@@ -78,8 +79,15 @@ export async function traceMainThread(page: Page, body: () => Promise<unknown>):
   const tasks = events.filter((e) => onMain(e) && TASK_EVENTS.has(e.name)).sort((a, b) => a.ts - b.ts);
   const waits = events.filter((e) => onMain(e) && GPU_WAIT_EVENTS.has(e.name)).sort((a, b) => a.ts - b.ts);
   if (tasks.length === 0) throw new Error('the trace has no task on the main thread');
-  const withoutCpu = tasks.filter((e) => e.tdur === undefined).length;
-  if (withoutCpu > 0) throw new Error(`${withoutCpu} of ${tasks.length} main-thread tasks carry no CPU time (tdur)`);
+  // Chrome leaves tdur out of tasks too short to have any; a longer task without it, or no CPU time at all, means the
+  // trace cannot tell CPU from wall time.
+  const withoutCpu = tasks.filter((e) => e.tdur === undefined && (e.dur ?? 0) >= 1000);
+  if (withoutCpu.length > 0 || tasks.every((e) => e.tdur === undefined)) {
+    const sample = withoutCpu.slice(0, 5).map((e) => `${e.cat ?? ''}/${e.name} ${((e.dur ?? 0) / 1000).toFixed(2)} ms`);
+    throw new Error(
+      `${withoutCpu.length} of ${tasks.length} main-thread tasks carry no CPU time (tdur): ${sample.join(', ')}`,
+    );
+  }
   const result = {
     tasks: tasks.length,
     longestWall: 0,
