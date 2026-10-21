@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BakeReply, BakeRequest } from '../src/bake/bakeMessages';
 import { progressSamples } from '../src/bake/bakeMessages';
 import { LightBaker } from '../src/LightBaker';
@@ -36,8 +36,8 @@ class FakeWorker {
   }
 }
 
-/** Lets the posting chain run (its mesh stream yields through timers). */
-const flush = () => new Promise((resolve) => setTimeout(resolve, 20));
+/** Runs the posting chain to its end (its mesh stream yields through timers), whatever the timer latency. */
+const flush = () => vi.runAllTimersAsync();
 const bakes = (worker: FakeWorker) => worker.posted.filter((m) => m.type === 'bake');
 
 const doc = sceneOf([triangleMesh([0, 0, 0, 1, 0, 0, 0, 1, 0])]);
@@ -50,7 +50,12 @@ function baker(): { baker: LightBaker; worker: FakeWorker } {
   return { baker: created, worker: FakeWorker.last! };
 }
 
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
