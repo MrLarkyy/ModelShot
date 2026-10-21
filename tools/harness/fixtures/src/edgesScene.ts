@@ -183,3 +183,148 @@ export function edgesSceneSharpEdges(): [Point, Point][] {
     [c0, c1],
   ];
 }
+
+/** One untextured double-sided mesh of quads, each with its own four vertices: corners and a normal per quad. */
+function quadMesh(
+  name: string,
+  quads: number,
+  corners: (q: number, out: Float32Array) => void,
+  normal: (q: number) => Point,
+) {
+  const positions = new Float32Array(quads * 12);
+  const normals = new Float32Array(quads * 12);
+  const indices = new Uint32Array(quads * 6);
+  const corner = new Float32Array(12);
+  for (let q = 0; q < quads; q++) {
+    corners(q, corner);
+    positions.set(corner, q * 12);
+    const n = normal(q);
+    for (let v = 0; v < 4; v++) normals.set(n, q * 12 + v * 3);
+    const b = q * 4;
+    indices.set([b, b + 1, b + 2, b, b + 2, b + 3], q * 6);
+  }
+  const mesh: SceneMesh = {
+    ...untextured(name, [], [], []),
+    positions,
+    normals,
+    uvs: new Float32Array(quads * 8),
+    uvRects: new Float32Array(quads * 16).fill(1),
+    indices,
+    groups: [{ material: -1, start: 0, count: indices.length, doubleSided: true }],
+  };
+  return mesh;
+}
+
+const CUBE_FACES: readonly (readonly [readonly Point[], Point])[] = [
+  [
+    [
+      [1, 0, 1],
+      [1, 0, 0],
+      [1, 1, 0],
+      [1, 1, 1],
+    ],
+    [1, 0, 0],
+  ],
+  [
+    [
+      [0, 0, 0],
+      [0, 0, 1],
+      [0, 1, 1],
+      [0, 1, 0],
+    ],
+    [-1, 0, 0],
+  ],
+  [
+    [
+      [0, 1, 1],
+      [1, 1, 1],
+      [1, 1, 0],
+      [0, 1, 0],
+    ],
+    [0, 1, 0],
+  ],
+  [
+    [
+      [0, 0, 0],
+      [1, 0, 0],
+      [1, 0, 1],
+      [0, 0, 1],
+    ],
+    [0, -1, 0],
+  ],
+  [
+    [
+      [0, 0, 1],
+      [1, 0, 1],
+      [1, 1, 1],
+      [0, 1, 1],
+    ],
+    [0, 0, 1],
+  ],
+  [
+    [
+      [1, 0, 0],
+      [0, 0, 0],
+      [0, 1, 0],
+      [1, 1, 0],
+    ],
+    [0, 0, -1],
+  ],
+];
+
+/**
+ * Load budget of sharp-edge detection (MS-15): 16 667 separate unit cubes in one mesh, 200 004 triangles at the
+ * loaders' limit and as many sharp edges, as one large Blockbench element mesh or a converted voxel model has.
+ */
+export function edgesLoadScene(base: SceneDocument): SceneDocument {
+  const cubes = 16_667;
+  const mesh = quadMesh(
+    'cubes',
+    cubes * 6,
+    (q, out) => {
+      const cube = Math.floor(q / 6);
+      const x = (cube % 130) * 2 - 130;
+      const z = Math.floor(cube / 130) * 2 - 130;
+      const [corners] = CUBE_FACES[q % 6] ?? [[]];
+      corners.forEach((c, k) => out.set([c[0] + x, c[1], c[2] + z], k * 3));
+    },
+    (q) => (CUBE_FACES[q % 6] ?? [[], [0, 1, 0] as Point])[1],
+  );
+  return { ...base, nodes: [], rootNodes: [], meshes: [mesh] };
+}
+
+/**
+ * Hostile case of sharp-edge detection: one flat patch of 300 x 300 quads walled on all four sides (181 200
+ * triangles), so every plate triangle has the 1 200 sharp edges of its patch to consider. Detection stops at
+ * `MAX_EDGE_CHECKS` instead of making 2 · 10⁸ checks.
+ */
+export function edgesHostileScene(base: SceneDocument): SceneDocument {
+  const side = 300;
+  const half = side / 2;
+  const plate = side * side;
+  const mesh = quadMesh(
+    'plate',
+    plate + 4 * side,
+    (q, out) => {
+      if (q < plate) {
+        const x = (q % side) - half;
+        const z = Math.floor(q / side) - half;
+        out.set([x, 0, z + 1, x + 1, 0, z + 1, x + 1, 0, z, x, 0, z]);
+        return;
+      }
+      const w = q - plate;
+      const along = (w % side) - half;
+      const wall = Math.floor(w / side);
+      // Walls along z = -half, z = half, x = -half, x = half: a bottom edge on the plate's rim, 1 unit high.
+      const at = wall % 2 === 0 ? -half : half;
+      const [ax, az, bx, bz] = wall < 2 ? [along, at, along + 1, at] : [at, along, at, along + 1];
+      out.set([ax, 0, az, bx, 0, bz, bx, 1, bz, ax, 1, az]);
+    },
+    (q) => {
+      if (q < plate) return [0, 1, 0];
+      const wall = Math.floor((q - plate) / side);
+      return wall < 2 ? [0, 0, wall === 0 ? -1 : 1] : [wall === 2 ? -1 : 1, 0, 0];
+    },
+  );
+  return { ...base, nodes: [], rootNodes: [], meshes: [mesh] };
+}

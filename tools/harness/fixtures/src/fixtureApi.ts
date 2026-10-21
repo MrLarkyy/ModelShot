@@ -11,7 +11,8 @@ export interface MsFixture {
   renderFrames?: (count: number) => number[];
   timeToSamples?: (samples: number) => number;
   /** Load-and-first-frame bench (rt.html): milliseconds until the GPU finished. */
-  timeScene?: () => Promise<number>;
+  /** setScene and the first frame of a scene (the realtime fixture: default `large-order`, else that scene), in ms. */
+  timeScene?: (scene?: string) => Promise<number>;
   /** Light-bake bench (rt.html): milliseconds from the call to the final lighting. */
   timeBake?: () => Promise<number>;
   /** Model-view fixture: pixels to check in the rendered image. */

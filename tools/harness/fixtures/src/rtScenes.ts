@@ -12,7 +12,7 @@ import alphaRampUri from '../models/rt-alpha-ramp.png?inline';
 import showcaseSource from '../models/rt-showcase.bbmodel?raw';
 import { benchScene } from './benchScene';
 import { cutoutChecker } from './cutoutChecker';
-import { edgesBbmodel, edgesScene } from './edgesScene';
+import { edgesBbmodel, edgesHostileScene, edgesLoadScene, edgesScene } from './edgesScene';
 import { MODEL_VIEW_LOOK, type Point3 } from './modelViewCamera';
 import { holdingCube, playerScene, posedPlayer } from './playerScenes';
 
@@ -66,6 +66,8 @@ export const RT_SCENE_NAMES = [
   'cutout-checker',
   'lightmap-overflow',
   'edges',
+  'edges-200k',
+  'edges-hostile',
 ] as const;
 export type RtSceneName = (typeof RT_SCENE_NAMES)[number];
 
@@ -327,6 +329,10 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return cutoutChecker(load(showcaseSource));
     case 'lightmap-overflow':
       return lightmapOverflow(load(showcaseSource));
+    case 'edges-200k':
+      return edgesLoadScene(load(showcaseSource));
+    case 'edges-hostile':
+      return edgesHostileScene(load(showcaseSource));
     case 'edges':
       return edgesScene(load(edgesBbmodel((JSON.parse(alphaPlaneSource) as { textures: unknown[] }).textures[0])));
     case 'player-classic':

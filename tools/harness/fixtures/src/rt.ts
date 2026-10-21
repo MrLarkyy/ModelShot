@@ -217,8 +217,9 @@ async function start(): Promise<void> {
   });
 
   installFrameBench(api, gl, () => renderer.render());
-  installSceneBench(api, gl, async () => {
-    doc = sceneOf('large-order');
+  installSceneBench(api, gl, async (scene = 'large-order') => {
+    if (!isRtSceneName(scene)) throw new Error(`unknown scene "${scene}"`);
+    doc = sceneOf(scene);
     warnings = (await renderer.setScene(doc)).warnings;
     frame();
   });

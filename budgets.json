@@ -5,6 +5,8 @@
     "rt-bench-512": { "max": 750 },
     "rt-bench-order-512": { "max": 750 },
     "rt-load-first-frame-200k-order": { "max": 3500 },
+    "rt-load-first-frame-200k-edges": { "max": 3500 },
+    "rt-load-first-frame-edges-hostile": { "max": 3500 },
     "pt-load-200k": { "max": 10000 }
   },
   "timeToSamplesMs": {

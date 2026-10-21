@@ -53,6 +53,19 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
     return fixture.timeScene();
   });
 
+  // Sharp-edge detection (MS-15) in a load and first frame, on fresh meshes: 200 004 triangles of separate cubes, and
+  // the hostile plate whose single patch would ask 2 · 10⁸ slot checks (cut at MAX_EDGE_CHECKS).
+  const timeScene = (scene: string) =>
+    page.evaluate(async (name) => {
+      const fixture = window.__msFixture;
+      if (!fixture?.timeScene) throw new Error('scene bench missing');
+      return fixture.timeScene(name);
+    }, scene);
+  await openFixture(page, '/rt.html?scene=empty&size=512');
+  const edgesLoadMs = await timeScene('edges-200k');
+  await openFixture(page, '/rt.html?scene=empty&size=512');
+  const edgesHostileMs = await timeScene('edges-hostile');
+
   await openFixture(page, '/progressive.html?seed=7&samples=64');
   const runs = await page.evaluate(() => {
     const fixture = window.__msFixture;
@@ -153,6 +166,8 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
       'rt-bench-512': median(rtFrames),
       'rt-bench-order-512': median(rtOrderFrames),
       'rt-load-first-frame-200k-order': loadMs,
+      'rt-load-first-frame-200k-edges': edgesLoadMs,
+      'rt-load-first-frame-edges-hostile': edgesHostileMs,
       'pt-load-200k': ptLoadMs,
     },
     timeToSamplesMs: { 'progressive-256-n64': median(runs), 'pt-bench-128-n256': median(ptRuns) },

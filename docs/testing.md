@@ -1,6 +1,7 @@
 # Testing
 
-`pnpm test` runs two layers, in order; either failing fails the command and the CI job.
+`pnpm test` runs two layers, in order; either failing fails the command. CI runs the same layers in separate jobs
+(CI, below).
 
 1. `pnpm test:unit`: Vitest, every package plus `tools/harness/test` (comparator, golden store, budgets, bundle size,
    model-view helpers).
@@ -8,6 +9,26 @@
 
 Run `pnpm browsers` once per machine (and after a Playwright version bump) to install the browser. Playwright is pinned
 to an exact version in `tools/harness/package.json`, which pins the Chromium revision.
+
+## CI
+
+`.github/workflows/ci.yml` has two jobs, each with `timeout-minutes: 20`:
+
+- `check`: install, typecheck, lint, format check, `pnpm -r build`, `pnpm run test:unit` (Vitest, bundle size
+  included).
+- `e2e`: a matrix of 4 shards (`fail-fast: false`), each on its own VM: install, the pinned Chromium, `pnpm -r build`,
+  then `playwright test --shard=<k>/4`, uploading `tools/harness/test-results/` as `browser-test-results-<k>`.
+
+Why: on one runner the browser suite alone outran the 20-minute limit (run 39545935955 on 4861384 was cancelled in
+`pnpm test`; the e2e part ran over 19 minutes with one worker, the baked-light tests about 37 s each). Shards are
+separate VMs, so each keeps one worker and the budgets measure an otherwise idle machine; neither the timeout nor
+the worker count changed. For the shards to split the suite the `golden` project is `fullyParallel` (its tests share
+no state; with one worker nothing runs at once, it only lets a shard take part of a file), and `bench` no longer
+depends on `golden` (a dependency put every golden test into the bench's shard: shard 1 had all 219 tests, 2-4
+none). Listed locally (`--list`): shard 1 55 tests (environment, golden, goldenFailure, modelView, 18 of
+pathtracer), 2 55 (31 pathtracer, 24 realtime), 3 55 (realtime), 4 54 (53 realtime and `bench.spec.ts`), 219 in all as
+without `--shard`. By the local test times the heaviest shard (the last realtime tests, the bakes, and the bench)
+takes about 6 + 3 minutes.
 
 ## Browser tests
 
@@ -28,8 +49,8 @@ image code uses no clock or random source (lint rule; timing lives in `fixtures/
   check, `maxMeanDelta 1`: the mean absolute channel delta over the whole image, in 0..255 levels. pixelmatch alone
   ignores a uniform shift of up to about 25 levels; the mean catches exposure-like changes. A failure writes
   `<name>-actual.png`, `<name>-expected.png` and `<name>-diff.png` into the per-test subfolder of
-  `tools/harness/test-results/` (the path is in the failure message); CI uploads `test-results/` as the
-  `browser-test-results` artefact.
+  `tools/harness/test-results/` (the path is in the failure message); CI uploads `test-results/` of each shard as the
+  `browser-test-results-<shard>` artefact.
 - What fails for a wrong sample count: the fixture counts the draws it really made and the spec rejects a count that
   differs from the request (`assertSampleCount`); for the same seed, 63 or 65 samples instead of 64 also fail the
   comparison by themselves, with 0 differing pixels but a mean delta of 1.40..1.42 levels against the limit of 1 (seed 8:
@@ -558,11 +579,22 @@ fragment work on the CPU), `rt-bench-order-512` 201.0 and 241.3 ms, `rt-load-fir
 1300.9 ms (its quads have no sharp edge), `pt-load-200k` 954.9 and 1344.3 ms, `pt-bench-128-n256` 3567.9 and
 4862.3 ms, `bake-bench-n16` 18.6 and 24.9 s (the bake binds width 0), `bake-bench` 3.3 and 2.8 ms, `bake-post-200k`
 8.0 and 9.1 ms; bundles 437 and 115 B (no dependency). The spread between the two runs is the machine's; real hardware
-is not measured here. The load budget's 200 000-triangle scene is quads without a sharp edge, so it does not time the
-detection itself: `sharpEdges` of 16 667 separate cubes in one mesh (200 004 triangles, 200 004 sharp edges) takes
-0.19 s in Node on the dev machine (2.2 s before welding and slot search moved to typed arrays and hashing in round 1).
+is not measured here. `sharpEdges` alone of 16 667 separate cubes in one mesh (200 004 triangles, 200 004 sharp
+edges) takes 0.19 s in Node on the dev machine (2.2 s before welding and slot search moved to typed arrays and hashing
+in round 1).
+
+`frameTimeMs.rt-load-first-frame-200k-edges` and `frameTimeMs.rt-load-first-frame-edges-hostile` (MS-15) time
+`setScene` plus the first frame like `rt-load-first-frame-200k-order`, on generated scenes whose detection runs on
+fresh meshes (`fixtures/src/edgesScene.ts`): `edges-200k`, those 16 667 cubes (200 004 triangles at the loaders'
+limit, every edge sharp), and `edges-hostile`, one flat patch of 300 x 300 quads walled on all four sides (181 200
+triangles; every plate triangle has the patch's 1 204 sharp edges to consider, 2 · 10⁸ checks, cut at
+`MAX_EDGE_CHECKS`, unit-tested in `sharpEdges.test.ts`). Local SwiftShader 997 and 1215 ms, 891 and 938 ms (the
+large-order load beside them 1254 and 1149 ms). Max 3500 ms each, the limit of the load budget they extend: about
+3x the measurement, so a return of the first detection (2 s more on `edges-200k`) or an uncapped hostile patch fails
+it, while the CI runner keeps its margin as for the sibling.
 
 First CI run (2026-10-20, ubuntu-latest): frame time 0.9 ms (max 5, 5.5x), time to 64 samples 80.6 ms (max 300), gzip app 437 B, embed 115 B.
-Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact, with the numbers in the commit.
+Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact (in the e2e shard that ran
+`bench.spec.ts`), with the numbers in the commit.
 Changing a `max` is a reviewed change: explain it in the commit with the measured numbers, never raise it to hide a
 regression.

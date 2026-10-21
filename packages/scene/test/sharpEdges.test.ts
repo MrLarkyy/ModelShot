@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   EDGE_SLOTS,
+  MAX_EDGE_CHECKS,
   NO_EDGE,
   cachedSharpEdges,
   sharpEdges,
@@ -291,6 +292,55 @@ describe('sharpEdges', () => {
     expect(cachedSharpEdges(mesh, { ...OPTIONS })).toBe(cached);
     expect(cachedSharpEdges(mesh, { ...OPTIONS, sharpAngleDeg: 40 })).not.toBe(cached);
     expect(cachedSharpEdges({ ...mesh }, OPTIONS)).not.toBe(cached);
+  });
+
+  it('bounds a hostile patch: past MAX_EDGE_CHECKS the remaining triangles round nothing', () => {
+    // One patch of 200 x 200 quads walled on all four sides: 80 000 triangles x 800 sharp edges is 6.4 x 10^7 checks.
+    const side = 200;
+    const faces: Vec3[][] = [];
+    for (let z = 0; z < side; z++) {
+      for (let x = 0; x < side; x++)
+        faces.push([
+          [x, 0, z + 1],
+          [x + 1, 0, z + 1],
+          [x + 1, 0, z],
+          [x, 0, z],
+        ]);
+    }
+    for (let i = 0; i < side; i++) {
+      faces.push([
+        [i + 1, 0, 0],
+        [i, 0, 0],
+        [i, 1, 0],
+        [i + 1, 1, 0],
+      ]);
+      faces.push([
+        [i, 0, side],
+        [i + 1, 0, side],
+        [i + 1, 1, side],
+        [i, 1, side],
+      ]);
+      faces.push([
+        [0, 0, i],
+        [0, 0, i + 1],
+        [0, 1, i + 1],
+        [0, 1, i],
+      ]);
+      faces.push([
+        [side, 0, i + 1],
+        [side, 0, i],
+        [side, 1, i],
+        [side, 1, i + 1],
+      ]);
+    }
+    expect(2 * side * side * 4 * side).toBeGreaterThan(MAX_EDGE_CHECKS);
+    const result = sharpEdges(quads(faces), OPTIONS);
+    // The rim under every wall quad, and the four corners where two walls meet.
+    expect(result.edgeCount).toBe(4 * side + 4);
+    // The first plate quad (beside two walls) rounds; the last one, beside two walls too, is past the cap.
+    expect(slotsOf(result, result.indices[0] ?? 0).some((d) => d < NO_EDGE)).toBe(true);
+    const last = side * side - 1;
+    expect(slotsOf(result, result.indices[last * 6] ?? 0).every((d) => d === NO_EDGE)).toBe(true);
   });
 });
 
