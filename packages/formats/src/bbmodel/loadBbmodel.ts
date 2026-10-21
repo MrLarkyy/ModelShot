@@ -7,6 +7,7 @@ import { BbmodelWarningList } from './BbmodelWarning';
 import { buildHierarchy, type ElementPlacement } from './buildHierarchy';
 import type { ConverterContext, PreparedElement } from './ElementConverter';
 import { ELEMENT_CONVERTERS } from './elementConverters';
+import { formatVersionBefore } from './formatVersionBefore';
 import { childPath, field, isJsonObject, type JsonObject } from '../json/JsonObject';
 import {
   readArray,
@@ -16,6 +17,7 @@ import {
   readPositiveNumber,
   readString,
 } from './JsonFields';
+import { parseAnimations } from './parseAnimations';
 import { readTextureEntries, resolveTextures, textureIdIndex, type UvSize } from './parseTextures';
 import { quoteValue } from '../text/quoteValue';
 import { readJson } from './readJson';
@@ -30,7 +32,7 @@ interface PlacedElement {
 }
 
 /**
- * Loads a Blockbench `.bbmodel` (format 3.x–5.x): cubes, meshes, groups and PNG textures. Synchronous and bounded: every
+ * Loads a Blockbench `.bbmodel` (format 3.x–5.x): cubes, meshes, groups, PNG textures and bone animations. Synchronous and bounded: every
  * count, size and depth is checked against `limits` before anything proportional to it is allocated or decoded, and
  * the result does not depend on the clock or randomness. A bad file throws only `BbmodelError`; recoverable problems
  * are warnings. Invalid `options.limits` throw a `RangeError`.
@@ -60,7 +62,12 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
   const textureEntries = readTextureEntries(root, resolution, modelFormat === 'free', limits, warnings);
   const formatDefaultSides = formatDoubleSided(modelFormat);
   const elementObjects = elements.map((item, index) => readObject(item, childPath('$.elements', index)));
-  const hierarchy = buildHierarchy(root, elementIds(elementObjects, limits), elements.length, limits, warnings);
+  // Before 3.2 Blockbench stored group z rotations with the opposite sign and negates them on import.
+  const invertGroupZ = formatVersionBefore(formatVersion, '3.2');
+  const hierarchy = buildHierarchy(root, elementIds(elementObjects, limits), elements.length, limits, warnings, {
+    invertGroupZ,
+  });
+  const boxUv = readOptionalBoolean(meta, 'box_uv', '$.meta', false);
 
   const context: ConverterContext = {
     textureUvSizes: textureEntries.map((entry) => ({ width: entry.uvWidth, height: entry.uvHeight })),
@@ -68,7 +75,10 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
     textureIds: textureIdIndex(textureEntries),
     textureDoubleSided: textureEntries.map((entry) => isDoubleSided(entry.renderSides, formatDefaultSides)),
     untexturedDoubleSided: formatDefaultSides,
-    boxUv: readOptionalBoolean(meta, 'box_uv', '$.meta', false),
+    boxUv,
+    // Before 4.5 a box-UV project kept "mirror UV" in the cube's `shade` flag; Blockbench reads `shade: false` as
+    // mirrored on import.
+    shadeMirrorsUv: boxUv && formatVersionBefore(formatVersion, '4.5'),
     boxUvFloatSize: modelFormat === 'modded_entity',
     maxStringChars: limits.maxStringChars,
     maxVertices: limits.maxVertices,
@@ -76,6 +86,7 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
     warnings,
   };
   const placed = prepareElements(elementObjects, hierarchy.placements, context, limits, warnings);
+  const animations = parseAnimations(root, hierarchy.nodes, { formatVersion, modelFormat }, limits, warnings);
 
   // Every limit has passed; only now are texture bytes decoded and geometry buffers allocated.
   const textures = resolveTextures(textureEntries, options.textureFiles, limits, warnings);
@@ -104,6 +115,8 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
       })),
       textures,
       rootNodes: hierarchy.rootNodes,
+      // Absent rather than empty, so a file without animations loads exactly as before animations were read.
+      ...(animations ? { animations } : {}),
     },
     warnings: warnings.items,
   };

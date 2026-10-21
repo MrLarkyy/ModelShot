@@ -11,11 +11,13 @@ export {
   mat4Identity,
   mat4Multiply,
   mat4NodeLocal,
+  mat4NormalMatrix,
   mat4Rotation,
   mat4TransformDirection,
   mat4TransformPoint,
   type Mat4,
 } from './Mat4';
+export { normalMatrixTransform } from './normalMatrixTransform';
 export { BACK_SIDE_RENDER_ORDER, MAX_ABS_RENDER_ORDER, RENDER_ORDER_TIE_DISTANCE } from './renderOrder';
 export { SCENE_FORMAT_VERSION, type SceneDocument, type SceneSource, type SceneSourceFormat } from './SceneDocument';
 export type { SceneAlphaMode, SceneMaterial } from './SceneMaterial';
@@ -65,3 +67,21 @@ export { MAX_POSE_BONES, MAX_POSE_ROTATION_DEG, MAX_POSE_TRANSLATION, poseScene,
 export { PLAYER_POSE_PRESETS, playerPosePreset, type PlayerPosePresetName } from './playerPosePresets';
 export type { SceneAttachment } from './SceneAttachment';
 export { MAX_ATTACH_SCALE, attachModel, type AttachOptions } from './attachModel';
+export type {
+  SceneAnimation,
+  SceneAnimationChannel,
+  SceneAnimationLoop,
+  SceneAnimationProperty,
+  SceneInterpolation,
+  SceneKeyframe,
+  ScenePlayback,
+} from './SceneAnimation';
+export type { AnimationPlaybackOptions } from './AnimationPlaybackOptions';
+export { MAX_ANIMATION_FRAMES, MAX_PLAYBACK_FPS, animationFrameTimes, animationTime } from './animationTime';
+export {
+  MAX_ANIMATION_SCALE,
+  MAX_ANIMATION_VALUE,
+  MIN_ANIMATION_SCALE,
+  animateScene,
+  type AnimateResult,
+} from './animateScene';

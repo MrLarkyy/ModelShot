@@ -1,4 +1,5 @@
 import {
+  mat4NormalMatrix,
   meshVisible,
   nodeVisibility,
   worldMatrices,
@@ -13,6 +14,8 @@ import { hasPartialCoverage, type AlphaLevels } from './textureUpload';
 export interface DrawItem {
   readonly vao: WebGLVertexArrayObject;
   readonly model: Float32Array;
+  /** `mat4NormalMatrix` of `model`, column-major 3×3, for `u_normalMatrix`. */
+  readonly normal: Float32Array;
   /** Byte offset into the Uint32 index buffer. */
   readonly offset: number;
   readonly count: number;
@@ -63,6 +66,7 @@ const ATTRIBUTES = [
 ] as const satisfies readonly { location: number; size: number; key: keyof SceneBatch }[];
 
 const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+const IDENTITY_3 = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
 
 /**
  * Uploads the visible geometry of a validated document, merged by `batchScene`, one vertex array per batch.
@@ -107,6 +111,7 @@ export function uploadScene(
     const item: DrawItem = {
       vao,
       model,
+      normal: nodeMatrix ? new Float32Array(mat4NormalMatrix(nodeMatrix)) : IDENTITY_3,
       offset: 0,
       count: batch.indices.length,
       texture: batch.texture,
@@ -138,6 +143,22 @@ export function uploadScene(
   };
   if (hasRenderOrder) scene.exact = uploadExactGeometry(gl, scene);
   return scene;
+}
+
+/**
+ * Moves an uploaded scene to another pose of its document (`poseOnlyChange`): rewrites each draw's world and normal
+ * matrix and the bounds of its closed batch in place. Batches, buffers and the exact geometry are in node space and
+ * stay; draws at the model root (node −1) never move.
+ */
+export function poseGpuScene(scene: GpuScene, doc: SceneDocument): void {
+  const world = worldMatrices(doc.nodes);
+  for (const item of scene.opaque) {
+    const matrix = item.batch.node >= 0 ? world[item.batch.node] : undefined;
+    if (!matrix) continue;
+    item.model.set(matrix);
+    item.normal.set(mat4NormalMatrix(matrix));
+    item.closedBounds?.set(worldBounds(item.batch.positions, item.model));
+  }
 }
 
 /** Corner and shared-edge attribute locations of the exact depth key (`depthKeyVertexExact.glsl`). */

@@ -12,6 +12,8 @@ layout(location = 9) in vec4 a_edgeDistances;
 layout(location = 10) in vec4 a_edgeAngles;
 
 uniform mat4 u_model;
+// Inverse transpose of u_model's upper 3x3 up to a positive factor (mat4NormalMatrix); node scale makes it differ.
+uniform mat3 u_normalMatrix;
 uniform mat4 u_view;
 uniform mat4 u_viewProjection;
 // Render order: (order × RENDER_ORDER_TIE_DISTANCE) × the projection's third column, i.e. the vertex moved that far
@@ -35,8 +37,7 @@ flat out vec4 v_edgeAngles;
 #include "depthKeyVertex"
 
 void main() {
-  // Node world matrices are rigid (rotation and translation only), so their upper 3x3 also maps normals.
-  v_normal = mat3(u_model) * a_normal;
+  v_normal = u_normalMatrix * a_normal;
   v_uv = a_uv;
   v_uvRect = a_uvRect;
   v_lightmap = a_lightmap;

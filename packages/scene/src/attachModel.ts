@@ -30,8 +30,9 @@ const ZERO: Vec3 = [0, 0, 0];
  * translations become `scale · x + offset + bone pivot`. The attached item's world position is therefore
  * `world(bone) · T(pivot) · R(rotation) · (scale · x + offset)`. The host's `pose` record, if any, is kept; the item's
  * `pose` record is dropped while its nodes keep their posed rotations and `restRotation`, so the next `poseScene` of
- * the merged document returns them to rest. Bad options throw a `RangeError` naming the path; inputs are never
- * mutated.
+ * the merged document returns them to rest. The host's `animations` and `playback` are kept (host nodes keep their
+ * indices), the item's are not merged; item nodes keep their `scale`. Bad options throw a `RangeError` naming the
+ * path; inputs are never mutated.
  */
 export function attachModel(host: SceneDocument, item: SceneDocument, options: AttachOptions): SceneDocument {
   const bone = resolveBone(host, options.bone);

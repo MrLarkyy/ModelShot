@@ -5,6 +5,7 @@ import { shaderProgramSource, type ShaderProgramName } from './shaderSources';
 export interface MeshProgram {
   readonly program: WebGLProgram;
   readonly model: WebGLUniformLocation | null;
+  readonly normalMatrix: WebGLUniformLocation | null;
   readonly view: WebGLUniformLocation | null;
   readonly viewProjection: WebGLUniformLocation | null;
   readonly depthPull: WebGLUniformLocation | null;
@@ -63,6 +64,7 @@ export function createRendererPrograms(gl: WebGL2RenderingContext, floatPath: bo
       return {
         program,
         model: at('u_model'),
+        normalMatrix: at('u_normalMatrix'),
         view: at('u_view'),
         viewProjection: at('u_viewProjection'),
         depthPull: at('u_depthPull'),

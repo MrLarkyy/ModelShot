@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { poseScene, type SceneDocument, type ScenePose } from '../src/index';
+import { animateScene, poseScene, type SceneDocument, type ScenePose } from '../src/index';
 import { playerRig, testDoc, testNode } from './sceneDocs';
 
 const A: ScenePose = {
@@ -45,6 +45,30 @@ describe('poseScene', () => {
       name: 'p',
       bones: [{ bone: 'arm', rotation: [5, 20, -30], translation: [1, 2, 3] }],
     });
+  });
+
+  it('posing an animated document clears its scale and playback', () => {
+    const rest: SceneDocument = {
+      ...testDoc([testNode(-1, { name: 'arm', rotation: [10, 0, 0] })], []),
+      animations: [
+        {
+          name: 'grow',
+          loop: 'hold',
+          length: 1,
+          channels: [
+            { node: 0, property: 'scale', keyframes: [{ time: 0, value: [2, 3, 4], interpolation: 'linear' }] },
+          ],
+        },
+      ],
+    };
+    const animated = animateScene(rest, { animation: 0, time: 0.5 }).document;
+    expect(animated.nodes[0]?.scale).toEqual([2, 3, 4]);
+    const { document } = poseScene(animated, { name: 'p', bones: [{ bone: 'arm', rotation: [5, 0, 0] }] });
+    expect(document.nodes[0]?.scale).toBeUndefined();
+    expect('scale' in (document.nodes[0] ?? {})).toBe(false);
+    expect(document.playback).toBeUndefined();
+    expect(document.nodes[0]?.rotation).toEqual([15, 0, 0]);
+    expect(document.animations).toBe(rest.animations);
   });
 
   it('applying B after A equals B applied to rest, bit for bit', () => {

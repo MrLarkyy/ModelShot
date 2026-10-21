@@ -71,9 +71,7 @@ export function readCube(element: JsonObject, path: string, context: ConverterCo
   const boxUv = readOptionalBoolean(element, 'box_uv', path, context.boxUv);
   const side = (axis: 0 | 1 | 2): number => boxSide(from[axis], to[axis], context.boxUvFloatSize);
   const boxSize: Vec3 = [side(0), side(1), side(2)];
-  const layout = boxUv
-    ? boxUvLayout(boxSize, uvOffset(element, path), readOptionalBoolean(element, 'mirror_uv', path, false))
-    : undefined;
+  const layout = boxUv ? boxUvLayout(boxSize, uvOffset(element, path), mirrorUv(element, path, context)) : undefined;
   const facesPath = childPath(path, 'faces');
   const faces = readObject(field(element, 'faces'), facesPath);
   const specs: CubeFaceSpec[] = [];
@@ -97,6 +95,12 @@ export function readCube(element: JsonObject, path: string, context: ConverterCo
     renderOrder: readRenderOrder(element, path, context.warnings),
     faces: drawn,
   };
+}
+
+/** `mirror_uv`, or in an old box-UV file (`ConverterContext.shadeMirrorsUv`) a `shade` of `false`. */
+function mirrorUv(element: JsonObject, path: string, context: ConverterContext): boolean {
+  if (readOptionalBoolean(element, 'mirror_uv', path, false)) return true;
+  return context.shadeMirrorsUv === true && field(element, 'shade') === false;
 }
 
 export function cubeTriangleCount(cube: CubeSpec): number {

@@ -39,9 +39,17 @@ export function mat4Rotation(rotationDegrees: Vec3): Mat4 {
   return m;
 }
 
-/** Node local matrix `T(translation) · T(pivot) · Rz · Ry · Rx · T(−pivot)`. */
-export function mat4NodeLocal(translation: Vec3, pivot: Vec3, rotationDegrees: Vec3): Mat4 {
+/**
+ * Node local matrix `T(translation) · T(pivot) · Rz · Ry · Rx · S(scale) · T(−pivot)`: scaled and rotated about the
+ * pivot, then moved (three.js order T · R · S, as Blockbench bones). `scale` absent: 1 on every axis.
+ */
+export function mat4NodeLocal(translation: Vec3, pivot: Vec3, rotationDegrees: Vec3, scale?: Vec3): Mat4 {
   const m = mat4Rotation(rotationDegrees);
+  if (scale) {
+    for (let col = 0; col < 3; col++) {
+      for (let row = 0; row < 3; row++) m[col * 4 + row] = (m[col * 4 + row] ?? 0) * (scale[col] ?? 1);
+    }
+  }
   const rotatedPivot = mat4TransformDirection(m, pivot);
   m[12] = translation[0] + pivot[0] - rotatedPivot[0];
   m[13] = translation[1] + pivot[1] - rotatedPivot[1];
@@ -54,13 +62,30 @@ export function mat4TransformPoint(m: Mat4, p: Vec3): [number, number, number] {
   return [x + at(m, 3, 0), y + at(m, 3, 1), z + at(m, 3, 2)];
 }
 
-/** Applies the upper 3×3 only (no translation); for rigid transforms this also maps normals. */
+/** Applies the upper 3×3 only (no translation): maps directions; normals need `mat4NormalMatrix` once scale is involved. */
 export function mat4TransformDirection(m: Mat4, d: Vec3): [number, number, number] {
   return [
     at(m, 0, 0) * d[0] + at(m, 1, 0) * d[1] + at(m, 2, 0) * d[2],
     at(m, 0, 1) * d[0] + at(m, 1, 1) * d[1] + at(m, 2, 1) * d[2],
     at(m, 0, 2) * d[0] + at(m, 1, 2) * d[1] + at(m, 2, 2) * d[2],
   ];
+}
+
+/**
+ * The normal matrix of `m` as a column-major 3×3 (9 numbers, `n[column * 3 + row]`): the cofactor matrix of the upper
+ * 3×3, i.e. its inverse transpose times its determinant. Callers normalise the mapped normal, so the determinant
+ * (positive for every node matrix, as node scale is positive) only changes the length; skipping the division keeps a
+ * nearly singular matrix finite. For a rotation it equals the rotation itself.
+ */
+export function mat4NormalMatrix(m: Mat4): Float64Array {
+  const a: Vec3 = [at(m, 0, 0), at(m, 0, 1), at(m, 0, 2)];
+  const b: Vec3 = [at(m, 1, 0), at(m, 1, 1), at(m, 1, 2)];
+  const c: Vec3 = [at(m, 2, 0), at(m, 2, 1), at(m, 2, 2)];
+  return new Float64Array([...cross(b, c), ...cross(c, a), ...cross(a, b)]);
+}
+
+function cross(u: Vec3, v: Vec3): [number, number, number] {
+  return [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
 }
 
 function at(m: Mat4, col: number, row: number): number {

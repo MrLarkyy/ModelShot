@@ -1,3 +1,4 @@
+import type { SceneAnimation, ScenePlayback } from './SceneAnimation';
 import type { SceneAttachment } from './SceneAttachment';
 import type { SceneMaterial } from './SceneMaterial';
 import type { SceneMesh } from './SceneMesh';
@@ -52,4 +53,8 @@ export interface SceneDocument {
   readonly pose?: ScenePose;
   /** Models merged in by `attachModel` (the nodes and meshes already carry them); absent: none. */
   readonly attachments?: readonly SceneAttachment[];
+  /** Keyframed clips, played by `animateScene`; absent: the source has none. Added within version 1 (MS-21). */
+  readonly animations?: readonly SceneAnimation[];
+  /** The animation and time `animateScene` last applied (the nodes already carry it); absent: none applied. */
+  readonly playback?: ScenePlayback;
 }

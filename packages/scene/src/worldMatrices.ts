@@ -5,7 +5,7 @@ import type { SceneNode } from './SceneNode';
 export function worldMatrices(nodes: readonly SceneNode[]): Mat4[] {
   const world: Mat4[] = [];
   nodes.forEach((node, index) => {
-    const local = mat4NodeLocal(node.translation, node.pivot, node.rotation);
+    const local = mat4NodeLocal(node.translation, node.pivot, node.rotation, node.scale);
     if (node.parent < 0) {
       world.push(local);
       return;

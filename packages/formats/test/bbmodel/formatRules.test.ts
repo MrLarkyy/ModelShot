@@ -258,3 +258,48 @@ describe('mesh shading (Blockbench Mesh.shading)', () => {
     expect(warnings.map((w) => [w.code, w.path])).toEqual([['UNSUPPORTED_VALUE', '$.elements[0].shading']]);
   });
 });
+
+describe('format version gates of Blockbench project import (js/formats/bbmodel.js)', () => {
+  const grouped = (version: string) =>
+    json(
+      model({
+        meta: { format_version: version, model_format: 'free' },
+        outliner: [{ name: 'g', uuid: 'g', origin: [0, 0, 0], rotation: [10, 20, 30], children: ['c0'] }],
+      }),
+    );
+
+  it.each([
+    ['3.1', [10, 20, -30]],
+    ['3.0', [10, 20, -30]],
+    ['3.2', [10, 20, 30]],
+    ['4.5', [10, 20, 30]],
+  ])('format %s: group rotation %j (z negated before 3.2)', (version, rotation) => {
+    expect(loadBbmodel(grouped(version)).scene.nodes[0]?.rotation).toEqual(rotation);
+  });
+
+  const boxCube = (version: string, extra: Record<string, unknown>, boxUv = true) =>
+    json(
+      model({
+        meta: meta('modded_entity', { format_version: version, box_uv: boxUv }),
+        resolution: { width: 64, height: 64 },
+        elements: [cube({ from: [0, 0, 0], to: [3, 2, 1], faces: { north: {} }, ...extra })],
+      }),
+    );
+
+  const uvs = (text: string): number[] => [...(loadBbmodel(text).scene.meshes[0]?.uvs ?? [])];
+
+  it('reads `shade: false` of a box-UV cube before 4.5 as mirrored UV', () => {
+    const mirrored = uvs(boxCube('4.5', { mirror_uv: true }));
+    const plain = uvs(boxCube('4.5', {}));
+    expect(mirrored).not.toEqual(plain);
+    expect(uvs(boxCube('4.4', { shade: false }))).toEqual(mirrored);
+    expect(uvs(boxCube('3.6', { shade: false }))).toEqual(mirrored);
+    expect(uvs(boxCube('4.4', { shade: true }))).toEqual(plain);
+    expect(uvs(boxCube('4.5', { shade: false }))).toEqual(plain);
+  });
+
+  it('leaves `shade: false` alone in a project without box UV (a cube may still opt into box UV)', () => {
+    const own = { box_uv: true, shade: false };
+    expect(uvs(boxCube('4.4', own, false))).toEqual(uvs(boxCube('4.5', { box_uv: true })));
+  });
+});

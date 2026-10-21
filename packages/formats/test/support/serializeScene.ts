@@ -1,7 +1,8 @@
 import {
   mat4Identity,
-  mat4TransformDirection,
+  mat4NormalMatrix,
   mat4TransformPoint,
+  normalMatrixTransform,
   worldMatrices,
   type SceneDocument,
 } from '@modelshot/scene';
@@ -18,11 +19,15 @@ export function round(value: number, step: number): number {
   return Number(rounded.toFixed(Math.max(0, Math.ceil(-Math.log10(step))))) || 0;
 }
 
-/** World-space vertices of mesh `index`: position, normal, uv × uv size, face rect × uv size. */
+/**
+ * World-space vertices of mesh `index`: position, unit normal (through the normal matrix, so a scaled node keeps it
+ * perpendicular), uv × uv size, face rect × uv size.
+ */
 export function worldVertices(scene: SceneDocument, index: number): number[][] {
   const mesh = scene.meshes[index];
   if (!mesh) throw new Error(`no mesh ${index}`);
   const world = worldMatrices(scene.nodes)[mesh.node] ?? mat4Identity();
+  const normalMatrix = mat4NormalMatrix(world);
   const uvSize = meshUvSize(scene, index);
   const vertices: number[][] = [];
   for (let v = 0; v < mesh.positions.length / 3; v++) {
@@ -32,11 +37,13 @@ export function worldVertices(scene: SceneDocument, index: number): number[][] {
       at(mesh.positions, 3, 1),
       at(mesh.positions, 3, 2),
     ]);
-    const normal = mat4TransformDirection(world, [
+    const mapped = normalMatrixTransform(normalMatrix, [
       at(mesh.normals, 3, 0),
       at(mesh.normals, 3, 1),
       at(mesh.normals, 3, 2),
     ]);
+    const length = Math.hypot(...mapped) || 1;
+    const normal = mapped.map((x) => x / length);
     vertices.push([
       ...position.map((x) => round(x, 1e-5)),
       ...normal.map((x) => round(x, 1e-5)),
@@ -58,7 +65,8 @@ function meshUvSize(scene: SceneDocument, index: number): { width: number; heigh
 
 /**
  * Golden form of a load result: node transforms (world matrix rounded to 1e-6), meshes in world space (1e-5) with
- * render order and group sidedness, materials with their alpha rule, textures without their bytes, warnings. Number arrays print on one line.
+ * render order and group sidedness, materials with their alpha rule, textures without their bytes, animations when
+ * the file has any, warnings. Number arrays print on one line.
  */
 export function serializeResult(result: LoadResult): string {
   const { scene } = result;
@@ -75,6 +83,7 @@ export function serializeResult(result: LoadResult): string {
       pivot: node.pivot,
       rotation: node.rotation,
       translation: node.translation,
+      ...(node.scale ? { scale: node.scale } : {}),
       visible: node.visible,
       meshes: node.meshes,
       world: [...(world[i] ?? [])].map((x) => round(x, 1e-6)),
@@ -101,7 +110,13 @@ export function serializeResult(result: LoadResult): string {
       missing: texture.missing,
       byteLength: texture.bytes?.byteLength ?? null,
     })),
+    ...(scene.animations ? { animations: scene.animations } : {}),
     warnings: result.warnings,
   };
+  return printJson(data);
+}
+
+/** Number arrays print on one line. */
+export function printJson(data: unknown): string {
   return `${JSON.stringify(data, null, 2).replace(/\[\s+([^[\]{}]*?)\s+\]/g, (_, items: string) => `[${items.replace(/\s*\n\s*/g, ' ')}]`)}\n`;
 }

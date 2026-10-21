@@ -19,8 +19,8 @@ const ZERO: Vec3 = [0, 0, 0];
 /**
  * A copy of `doc` in `pose`, always computed from the rest pose: every node gets `rotation = rest + pose rotation`
  * (rest: `restRotation`, else `rotation`), `translation = pose translation` (0 when the node is not posed) and
- * `restRotation = rest`. So posing again replaces the previous pose instead of adding to it, and `null` restores
- * rest. A bone is matched to the first node with its name. The input is never mutated; a malformed pose throws a
+ * `restRotation = rest`; node `scale` and the document's `playback` are dropped (a pose applies to rest, not to an
+ * animation frame). So posing again replaces the previous pose instead of adding to it, and `null` restores rest. A bone is matched to the first node with its name. The input is never mutated; a malformed pose throws a
  * `RangeError` naming the path of the bad value (`pose.bones[2].rotation[1]`).
  */
 export function poseScene(doc: SceneDocument, pose: ScenePose | null): PoseResult {
@@ -42,9 +42,17 @@ export function poseScene(doc: SceneDocument, pose: ScenePose | null): PoseResul
     const rotation: Vec3 = bone
       ? [rest[0] + bone.rotation[0], rest[1] + bone.rotation[1], rest[2] + bone.rotation[2]]
       : [rest[0], rest[1], rest[2]];
-    return { ...node, rotation, translation: bone?.translation ?? ZERO, restRotation: rest };
+    const result: { -readonly [K in keyof SceneNode]: SceneNode[K] } = {
+      ...node,
+      rotation,
+      translation: bone?.translation ?? ZERO,
+      restRotation: rest,
+    };
+    delete result.scale;
+    return result;
   });
   const document: { -readonly [K in keyof SceneDocument]: SceneDocument[K] } = { ...doc, nodes };
+  delete document.playback;
   if (checked) document.pose = checked;
   else delete document.pose;
   return { document, unmatchedBones };

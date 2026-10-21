@@ -253,6 +253,18 @@ describe('attachModel', () => {
     expect((caught as Error).message.startsWith(`${path}`)).toBe(true);
   });
 
+  it('keeps the node scale of an attached item, scaled about its placed pivot', () => {
+    const scaled = item();
+    const nodes = scaled.nodes.map((node, i) => (i === 1 ? { ...node, scale: [2, 0.5, 1] as Vec3 } : node));
+    const itemDoc = { ...scaled, nodes };
+    const attached = attachModel(host(), itemDoc, { bone: 'right_hand', ...OPTIONS });
+    expect(attached.nodes[attached.nodes.length - 1]?.scale).toEqual([2, 0.5, 1]);
+    for (let v = 0; v < 3; v++) {
+      const wanted = expected(attached, 'right_hand', [6, 12, 0], OPTIONS, worldPoint(itemDoc, 2, v));
+      expectClose(worldPoint(attached, 2, v), wanted, `scaled gem vertex ${v}`);
+    }
+  });
+
   it('accepts scale 16', () => {
     expect(attachModel(host(), item(), { bone: 0, scale: 16 }).attachments?.[0]?.scale).toBe(16);
   });

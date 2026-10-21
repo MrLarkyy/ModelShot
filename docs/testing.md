@@ -86,6 +86,14 @@ image code uses no clock or random source (lint rule; timing lives in `fixtures/
   committing.
 - Data goldens (JSON file snapshots of loader output, `__goldens__/*.json` next to the Vitest tests) are written only by
   `pnpm golden:update:data [test file pattern]` (`vitest run --update`); review the JSON diff before committing.
+- Animation frames (MS-21) are data goldens, not images: `packages/formats/test/bbmodel/__goldens__/animated.frames.json`
+  holds every animation of the `animated` fixture through `animateScene` at t = 0, 0.125, 0.5, length − 0.05,
+  length, length + 0.3 and 2 · length + 0.1 (start, inside the first keyframe gap, at a keyframe, either side of the
+  end, past the end where `once`, `hold` and `loop` differ, a later repetition), with node rotation, translation,
+  scale and world matrix rounded to 10⁻⁶, plus `animationFrameTimes` at 24 fps. `animated.json` and
+  `animated-unsupported.json` (every unsupported animation part, with its warnings) are loader goldens like the
+  others. Hand-computed values for each pair rule sit beside them in `loadBbmodel.golden.test.ts`. Rendered clip
+  frames belong to the export goldens (MS-22).
 - A per-golden tolerance override (`threshold`, `maxDiffRatio`, `maxMeanDelta`, each range-checked) needs a non-empty `reason` in the spec, and GPU-variance evidence (the CI diff
   artefact) in the commit.
 

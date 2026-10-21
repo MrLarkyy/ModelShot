@@ -206,6 +206,8 @@ option `edges` (a `Partial<EdgeLook>`, out of range a `RangeError` naming `edges
 - Only the normal changes: texels, UVs, alpha and the depth key are untouched. The baked light is computed for the
   unrounded surface (bake width 0) and multiplies the rounded shading as before.
 - A width change is a uniform; a sharp-angle change detects again and uploads the geometry again.
+- Edge distances and the width are in mesh units, so an animated node scale widens or narrows the band with the node,
+  in the path tracer alike.
 
 Credits: AgX by Troy Sobotka. The Rec.709 inset/outset matrices, the log2 range and the contrast polynomial fit in
 `looks/src/glsl/agx.glsl` and `looks/src/agxToneMap.ts` follow Benjamin Wrensch, "Minimal AgX Implementation"
@@ -223,6 +225,23 @@ guaranteed 16 and 15 (`shaderSources.test.ts` counts them). An
 unknown or cyclic
 include throws; no shader text is built from user input. A compile or link failure throws `RendererError`
 (`SHADER_COMPILE` / `SHADER_LINK`) with the driver's info log.
+
+Node matrices may scale (an animated `SceneNode.scale`, MS-21), so `mesh.vert.glsl` maps normals with
+`u_normalMatrix`, the `mat4NormalMatrix` of the draw's node matrix (the inverse transpose up to a positive factor,
+normalised by `shadingNormal`), never with the upper 3×3 of `u_model`; the path tracer's `flattenScene` uses the same
+helper, so both shade a scaled node alike. One `mat3` uniform more, far below `MAX_VERTEX_UNIFORM_VECTORS`.
+`validateScene` rejects a scale that is not finite and positive (`nodes[i].scale[k]`); `animateScene` clamps to
+[10⁻⁴, 10⁴]. An animation frame changes only nodes, so it is a pose-only change, which `setScene` applies at once
+(no await needed for it to show): the decoded textures, their alpha tables (no readback), the lightmap layout, sharp
+edges and the uploaded geometry are kept, `validateScene` checks only the nodes, and each draw's model and normal
+matrix (and the bounds of a closed batch) are rewritten from the new world matrices (`poseGpuScene`). Batches live in
+node space, so no buffer is touched; a frame costs O(nodes + draws). The call still supersedes a pending `setScene`,
+resolves with the warnings of the shown textures, and a lost context restores the newest pose.
+
+The fast path trusts that the `meshes`, `materials` and `textures` arrays are the shown ones (same array objects):
+content edited inside them is neither re-validated nor re-uploaded, so pass new arrays for a changed mesh, material
+or texture. The first `setScene` of a model must be awaited before playback frames are sent: until it has loaded,
+every frame is a full layout and decode that supersedes the previous one, and the model may never appear.
 
 ## Limits and warnings
 

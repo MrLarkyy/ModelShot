@@ -2,7 +2,7 @@ import type { Vec3 } from './Vec3';
 
 /**
  * A group or bone. Rest-space convention (Blockbench): `pivot` is absolute in model space, and the local matrix is
- * `T(translation) · T(pivot) · Rz · Ry · Rx · T(−pivot)`; the world matrix is `parent world · local`.
+ * `T(translation) · T(pivot) · Rz · Ry · Rx · S(scale) · T(−pivot)`; the world matrix is `parent world · local`.
  */
 export interface SceneNode {
   readonly name: string;
@@ -18,6 +18,11 @@ export interface SceneNode {
   readonly restRotation?: Vec3;
   /** Pose offset; 0 at rest. */
   readonly translation: Vec3;
+  /**
+   * Scale per axis about `pivot`, set by `animateScene` (always positive); absent: 1 on every axis, which rest always
+   * is. Added within scene format version 1 (MS-21).
+   */
+  readonly scale?: Vec3;
   /** `false` hides this node and its whole subtree. */
   readonly visible: boolean;
   /** Indices into `SceneDocument.meshes`. */

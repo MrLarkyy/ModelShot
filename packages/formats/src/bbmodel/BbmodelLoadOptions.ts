@@ -19,6 +19,10 @@ export interface BbmodelLimits {
   readonly maxDataUriChars: number;
   /** Length of a name, uuid, path or other short string. */
   readonly maxStringChars: number;
+  /** Entries of `animations`. */
+  readonly maxAnimations: number;
+  /** Keyframes of all animations together, counted before any is read. */
+  readonly maxKeyframes: number;
 }
 
 export const DEFAULT_BBMODEL_LIMITS: BbmodelLimits = Object.freeze({
@@ -34,6 +38,8 @@ export const DEFAULT_BBMODEL_LIMITS: BbmodelLimits = Object.freeze({
   maxTexturePixels: 16_777_216,
   maxDataUriChars: 24 * 1024 * 1024,
   maxStringChars: 1024,
+  maxAnimations: 1024,
+  maxKeyframes: 200_000,
 });
 
 export interface BbmodelLoadOptions {
