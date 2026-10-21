@@ -1,14 +1,20 @@
 import type { BakedLighting } from '@modelshot/renderer-rt';
 import type { SceneDocument } from '@modelshot/scene';
 import type { PathTracerWarning } from '../PathTracerWarning';
+import type { MeshMessage } from './meshStream';
 
 /** Main thread to bake worker. */
 export type BakeRequest =
   | {
       readonly type: 'bake';
       readonly id: number;
-      /** Texture bytes are `null` when `texturesVersion` was sent before: the worker reuses what it decoded. */
+      /**
+       * The document without its meshes (`meshes` empty); texture bytes are `null` when `texturesVersion` was sent
+       * before: the worker reuses what it decoded.
+       */
       readonly doc: SceneDocument;
+      /** The document's meshes, by the ids they were streamed under (`streamMeshes`) in this or an earlier bake. */
+      readonly meshIds: readonly number[];
       readonly texturesVersion: number;
       readonly texturesIncluded: boolean;
       readonly seed: number;
@@ -19,6 +25,7 @@ export type BakeRequest =
       /** Test hook: each texel sums the traversals its rays stopped at the node cap instead of light. */
       readonly countCapped: boolean;
     }
+  | MeshMessage
   | { readonly type: 'dispose' }
   /**
    * Test hook: lose the context now, or (`beforeMark`) right before the readback after that many samples;
@@ -37,7 +44,7 @@ export type BakeReply =
     }
   /** The bake stopped for a later request or dispose; nothing of it is kept. */
   | { readonly type: 'stopped'; readonly id: number }
-  /** The worker holds no images for this texture version (a bake that posted them failed first): post the bytes again. */
+  /** The worker lacks this bake's images or meshes (an abandoned or failed stream): post everything again. */
   | { readonly type: 'resend'; readonly id: number }
   /** The worker's context was lost and is back: the bake started again at sample 0. */
   | { readonly type: 'restarted'; readonly id: number }

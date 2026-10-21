@@ -182,11 +182,17 @@ import.meta.url), { type: 'module' })`); without module workers or OffscreenCanv
   `WORKER_UNAVAILABLE`, as every pending bake rejects when the worker fails, and every later bake with the same error
   (after `dispose()` a bake resolves `applied: false`).
 - `bake(doc, { samples = 64 (1..1024), seed = 1 (0..2^32 − 1), shadowCatcher = true, tileSize = 64 (16..512),
-onProgress })` resolves `{ applied, warnings, lighting }`. The main thread only validates (`INVALID_SCENE`, options
-  out of range: `RangeError`) and posts the document; texture bytes are posted only when `doc.textures` is not the
-  array the previous call posted, else the worker reuses what it decoded. The worker keeps posted textures before
+onProgress })` resolves `{ applied, warnings, lighting }`. The call only checks the options (`RangeError`) and
+  validates the document (`INVALID_SCENE`, about a millisecond); posting runs in later tasks, one bake at a time, and
+  a bake superseded before its turn is never posted. Only what the worker does not hold is posted: meshes it has not
+  received before (a re-bake of the same meshes, a new pose or new options post none) stream as `meshHeaders` and
+  `meshData` messages, the arrays' bytes copied into 1 MiB buffers that are transferred, not cloned, yielding after
+  every 2 MiB (`meshStream.ts`; the worker keeps the meshes the latest bake named); texture bytes are posted only when
+  `doc.textures` is not the array the previous call posted, else the worker reuses what it decoded. Cloning a model's
+  meshes whole cost 8-9 ms (2048 meshes) to 13-19 ms (200 000 triangles) of one task, about 45 ms under load. The worker keeps posted textures before
   anything of that bake can fail, so a refused bake does not cost a later one its images; should it still hold
-  another version, it asks for the bytes again (`resend`) instead of baking placeholders. The worker validates again, lays out the
+  another version, or misses a mesh (an abandoned stream), it asks (`resend`) and everything is posted again instead
+  of baking placeholders. The worker validates again, lays out the
   lightmap (`SCENE_TOO_LARGE` over its limit, before the triangle limit), flattens, builds the BVH, packs the data,
   decodes the textures (header limits, a `Blob`, never a fetch), and checks its GL capabilities
   (`WEBGL2_UNAVAILABLE`, `FLOAT_TARGETS_UNAVAILABLE`, `HIGHP_UNAVAILABLE`).
@@ -232,7 +238,7 @@ the paced manual readout).
 The light bake has `bakeTimeMs.bake-bench-n16` (the benchmark scene, 16 samples with the catcher, from `bake()` to
 the final lighting, median of 3, each run also checked as it completes), `mainThreadBlockMs.bake-bench` (the page's
 longest main-thread block over those bakes) and `mainThreadBlockMs.bake-post-200k` (`bake()` of a 200 000-triangle
-document: validation and the structured clone of the posted document, 15-17 ms locally), both fixed at 50 ms; not
+document: the call itself, 2.5-4 ms, and the block over the bake, its mesh stream included), both fixed at 50 ms; not
 measured on real hardware yet.
 
 ## What v0 lacks

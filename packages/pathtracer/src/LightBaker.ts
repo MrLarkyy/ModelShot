@@ -1,6 +1,7 @@
 import { RendererError, validateScene, type BakedLighting } from '@modelshot/renderer-rt';
-import type { SceneDocument } from '@modelshot/scene';
+import type { SceneDocument, SceneMesh } from '@modelshot/scene';
 import type { BakeReply, BakeRequest } from './bake/bakeMessages';
+import { streamMeshes } from './bake/meshStream';
 import { DEFAULT_MAX_TRIANGLES } from './flattenScene';
 import { MAX_SEED } from './PathTracer';
 import { PathTracerError, type PathTracerErrorCode } from './PathTracerError';
@@ -49,10 +50,16 @@ export interface BakeResult {
   readonly lighting: BakedLighting | null;
 }
 
+/** A bake request before its document is posted: what `post` turns into messages. */
+type BakeParameters = Omit<
+  Extract<BakeRequest, { type: 'bake' }>,
+  'doc' | 'meshIds' | 'texturesVersion' | 'texturesIncluded'
+>;
+
 interface Pending {
-  /** What was posted, kept to post again with the texture bytes when the worker asks (`resend`). */
+  /** Kept to post (again, when the worker asks: `resend`). */
   readonly doc: SceneDocument;
-  readonly request: Extract<BakeRequest, { type: 'bake' }>;
+  readonly parameters: BakeParameters;
   readonly samples: number;
   readonly onProgress: ((progress: BakeProgress) => void) | undefined;
   readonly resolve: (result: BakeResult) => void;
@@ -60,6 +67,8 @@ interface Pending {
 }
 
 const NOT_APPLIED: BakeResult = Object.freeze({ applied: false, warnings: [], lighting: null });
+
+const nextTask = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 function checkInteger(label: string, value: unknown, min: number, max: number): number {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) {
@@ -81,6 +90,11 @@ export class LightBaker {
   private latest = 0;
   private texturesVersion = 0;
   private sentTextures: SceneDocument['textures'] | null = null;
+  /** Meshes the worker holds, by the ids they were streamed under; a later bake of the same meshes posts none. */
+  private sentMeshes = new Map<SceneMesh, number>();
+  private meshIds = 0;
+  /** Posting is serialised: a bake's meshes stream over several tasks, and the next bake waits for that. */
+  private posting: Promise<void> = Promise.resolve();
   private disposing = false;
   private isTerminated = false;
   /** The worker failed for good: every later bake rejects with this. */
@@ -120,33 +134,94 @@ export class LightBaker {
    * Bakes `doc`. Validates it here first (`PathTracerError` `INVALID_SCENE`) and the options (`RangeError`); the worker
    * rejects with `SCENE_TOO_LARGE` over a limit and with `WEBGL2_UNAVAILABLE`, `FLOAT_TARGETS_UNAVAILABLE` or
    * `HIGHP_UNAVAILABLE` where its context cannot bake. A later `bake` or `dispose` supersedes a pending one, which then
-   * resolves with `applied: false` after the tile in progress. Texture bytes are posted only when `doc.textures` is not
-   * the array the previous call posted (and again when the worker no longer holds them). After the worker failed
+   * resolves with `applied: false` after the tile in progress. Only what the worker does not hold is posted: texture
+   * bytes when `doc.textures` is not the array the previous call posted, meshes it has not streamed before (a new pose
+   * or option posts none). New meshes stream as transferred byte chunks over several tasks, so the main thread never
+   * clones a whole model at once; when the worker lost track of them it asks, and everything is posted again. The
+   * call itself only checks the options and validates the document (`validateScene`). After the worker failed
    * (`WORKER_UNAVAILABLE`) every bake rejects with that error; after `dispose()` it resolves `applied: false`.
    */
   bake(doc: SceneDocument, options: BakeOptions = {}): Promise<BakeResult> {
     if (this.failure) return Promise.reject(this.failure);
     if (this.disposing) return Promise.resolve(NOT_APPLIED);
-    let request: Extract<BakeRequest, { type: 'bake' }>;
+    let parameters: BakeParameters;
     try {
-      request = this.request(doc, options);
+      parameters = this.parameters(doc, options);
     } catch (error) {
       return Promise.reject(error instanceof Error ? error : new Error(String(error)));
     }
     return new Promise<BakeResult>((resolve, reject) => {
-      this.pending.set(request.id, {
+      this.pending.set(parameters.id, {
         doc,
-        request,
-        samples: request.samples,
+        parameters,
+        samples: parameters.samples,
         onProgress: options.onProgress,
         resolve,
         reject,
       });
-      this.worker.postMessage(request);
+      this.enqueue(parameters.id);
     });
   }
 
-  private request(doc: SceneDocument, options: BakeOptions): Extract<BakeRequest, { type: 'bake' }> {
+  private enqueue(id: number): void {
+    this.posting = this.posting
+      .then(() => this.post(id))
+      .catch((error: unknown) => {
+        const pending = this.pending.get(id);
+        this.pending.delete(id);
+        pending?.reject(error);
+      });
+  }
+
+  /** Posts a bake: the meshes the worker lacks, then the request naming every mesh; abandons a superseded one. */
+  private async post(id: number): Promise<void> {
+    // Nothing of the posting runs in the caller's task.
+    await nextTask();
+    const pending = this.pending.get(id);
+    if (!pending) return;
+    const current = () => id === this.latest && !this.disposing;
+    const abandon = () => {
+      this.pending.delete(id);
+      pending.resolve(NOT_APPLIED);
+    };
+    if (!current()) return abandon();
+    const { doc } = pending;
+    const ids: number[] = [];
+    const named = new Map<SceneMesh, number>();
+    const fresh: [number, SceneMesh][] = [];
+    for (const mesh of doc.meshes) {
+      let meshId = named.get(mesh) ?? this.sentMeshes.get(mesh);
+      if (meshId === undefined) {
+        meshId = ++this.meshIds;
+        fresh.push([meshId, mesh]);
+      }
+      named.set(mesh, meshId);
+      ids.push(meshId);
+    }
+    if (fresh.length > 0) {
+      const post = (message: BakeRequest, transfer: Transferable[] = []) => this.worker.postMessage(message, transfer);
+      if (!(await streamMeshes(post, fresh, current, nextTask))) return abandon();
+    }
+    if (!current()) return abandon();
+    // The worker keeps the meshes this bake names, whatever becomes of the bake.
+    this.sentMeshes = named;
+    const texturesIncluded = doc.textures !== this.sentTextures;
+    if (texturesIncluded) {
+      this.sentTextures = doc.textures;
+      this.texturesVersion++;
+    }
+    const textures = texturesIncluded ? doc.textures : doc.textures.map((texture) => ({ ...texture, bytes: null }));
+    const request: BakeRequest = {
+      ...pending.parameters,
+      doc: { ...doc, meshes: [], textures },
+      meshIds: ids,
+      texturesVersion: this.texturesVersion,
+      texturesIncluded,
+    };
+    this.worker.postMessage(request);
+  }
+
+  private parameters(doc: SceneDocument, options: BakeOptions): BakeParameters {
     if (options.countCappedTraversals && !this.options.testHooks) {
       throw new Error('countCappedTraversals is a test hook: create the baker with testHooks: true');
     }
@@ -161,20 +236,9 @@ export class LightBaker {
       }
       throw error;
     }
-    const texturesIncluded = doc.textures !== this.sentTextures;
-    if (texturesIncluded) {
-      this.sentTextures = doc.textures;
-      this.texturesVersion++;
-    }
-    const posted: SceneDocument = texturesIncluded
-      ? doc
-      : { ...doc, textures: doc.textures.map((texture) => ({ ...texture, bytes: null })) };
     return {
       type: 'bake',
       id: ++this.latest,
-      doc: posted,
-      texturesVersion: this.texturesVersion,
-      texturesIncluded,
       seed,
       samples,
       shadowCatcher: options.shadowCatcher ?? true,
@@ -232,16 +296,10 @@ export class LightBaker {
           pending.resolve(NOT_APPLIED);
           return;
         }
-        this.sentTextures = pending.doc.textures;
-        this.texturesVersion++;
-        const request = {
-          ...pending.request,
-          doc: pending.doc,
-          texturesVersion: this.texturesVersion,
-          texturesIncluded: true,
-        };
-        this.pending.set(reply.id, { ...pending, request });
-        this.worker.postMessage(request);
+        // The worker lost track of what it was sent (an abandoned stream, a failed bake): post everything again.
+        this.sentTextures = null;
+        this.sentMeshes = new Map();
+        this.enqueue(reply.id);
         return;
       }
       case 'done':

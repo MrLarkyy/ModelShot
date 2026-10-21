@@ -48,7 +48,7 @@ export function spinMainThread(ms: number): Promise<void> {
  * time the page did not get the CPU at all; on SwiftShader, whose GPU process spreads every draw over all cores, a
  * bake delays it by up to 200 ms while no task of the page runs (MS-16). `block()` measures the page's own work: the
  * Long Tasks API for any task over 50 ms, and the timed phases of `work` below that. Worker message handlers are timed
- * as phase `worker-message` (installed before any worker is created).
+ * as phase `worker-message` and posts to a worker as `worker-post` (installed before any worker is created).
  */
 export function startEventLoopLag(): EventLoopLag {
   const origin = performance.now();
@@ -102,6 +102,11 @@ export function startEventLoopLag(): EventLoopLag {
         : listener;
     addListener.call(this, type, timed, options);
   };
+  // Posting to a worker (the bake's document and mesh stream) is main-thread work of its own.
+  const postMessage = Reflect.get(Worker.prototype, 'postMessage') as (this: Worker, ...args: unknown[]) => void;
+  Worker.prototype.postMessage = function (this: Worker, ...args: unknown[]): void {
+    work('worker-post', () => postMessage.apply(this, args));
+  } as Worker['postMessage'];
   // Entries of tasks that ended before this one are queued, but their observer callback may not have run yet.
   const flush = (): void => record(observer.takeRecords());
   return {
@@ -127,6 +132,7 @@ export function startEventLoopLag(): EventLoopLag {
       window.clearTimeout(timer);
       observer.disconnect();
       Worker.prototype.addEventListener = addListener;
+      Worker.prototype.postMessage = postMessage as Worker['postMessage'];
     },
   };
 }

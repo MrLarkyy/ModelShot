@@ -21,6 +21,7 @@ import { progressSamples, type BakeReply, type BakeRequest } from './bakeMessage
 import { BakeSession, type BakeLimits, type BakePass, type BakeScene } from './BakeSession';
 import { buildChartTable } from './chartTable';
 import { toHalf } from './halfFloat';
+import { MeshAssembler } from './meshStream';
 
 interface WorkerScope {
   postMessage(message: BakeReply, transfer?: Transferable[]): void;
@@ -60,6 +61,7 @@ let lost = false;
 let disposed = false;
 let job: Job | null = null;
 let textures: { version: number; decoded: Promise<DecodedTextures | null> } | null = null;
+const meshes = new MeshAssembler();
 /** Test hook: lose the context right before the readback after this many samples. */
 let loseBeforeMark: number | null = null;
 /** Test hook: the next restore fails to create a session, as a driver that cannot compile the bake program would. */
@@ -321,12 +323,18 @@ async function launch(current: Job): Promise<void> {
   }
 }
 
-async function start(request: Extract<BakeRequest, { type: 'bake' }>): Promise<void> {
+async function start(streamed: Extract<BakeRequest, { type: 'bake' }>): Promise<void> {
   if (job) {
     job.stopped = true;
     post({ type: 'stopped', id: job.id });
     job = null;
   }
+  const docMeshes = meshes.take(streamed.meshIds);
+  if (!docMeshes) {
+    post({ type: 'resend', id: streamed.id });
+    return;
+  }
+  const request = { ...streamed, doc: { ...streamed.doc, meshes: docMeshes } };
   if (request.texturesIncluded) {
     keepTextures(request);
   } else if (textures?.version !== request.texturesVersion) {
@@ -383,7 +391,9 @@ if (gl) {
 scope.addEventListener('message', (event: MessageEvent<BakeRequest>) => {
   const request = event.data;
   if (disposed) return;
-  if (request.type === 'bake') {
+  if (request.type === 'meshBegin' || request.type === 'meshHeaders' || request.type === 'meshData') {
+    meshes.receive(request);
+  } else if (request.type === 'bake') {
     start(request).catch((error: unknown) => post(errorReply(request.id, error)));
   } else if (request.type === 'loseContext') {
     if (request.failRestore) failNextRestore = true;

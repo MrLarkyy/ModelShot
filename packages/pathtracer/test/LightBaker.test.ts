@@ -36,6 +36,10 @@ class FakeWorker {
   }
 }
 
+/** Lets the posting chain run (its mesh stream yields through timers). */
+const flush = () => new Promise((resolve) => setTimeout(resolve, 20));
+const bakes = (worker: FakeWorker) => worker.posted.filter((m) => m.type === 'bake');
+
 const doc = sceneOf([triangleMesh([0, 0, 0, 1, 0, 0, 0, 1, 0])]);
 const lighting = { layoutKey: 'k', width: 1, height: 1, data: new Uint16Array(4), samples: 1, catcher: null };
 
@@ -73,32 +77,56 @@ describe('LightBaker', () => {
     expect(worker.posted).toEqual([]);
   });
 
-  it('posts texture bytes only when the textures array changed', () => {
+  it('posts texture bytes and meshes only when the worker does not hold them', async () => {
     const { baker: b, worker } = baker();
     void b.bake(doc);
+    await flush();
     void b.bake({ ...doc, nodes: [] });
+    await flush();
     void b.bake({ ...doc, textures: [] });
-    const bakes = worker.posted.filter((m) => m.type === 'bake');
-    expect(bakes.map((m) => m.texturesIncluded)).toEqual([true, false, true]);
-    expect(bakes.map((m) => m.texturesVersion)).toEqual([1, 1, 2]);
-    expect(bakes.map((m) => [m.samples, m.seed, m.tileSize, m.shadowCatcher])).toEqual([
+    await flush();
+    expect(bakes(worker).map((m) => m.texturesIncluded)).toEqual([true, false, true]);
+    expect(bakes(worker).map((m) => m.texturesVersion)).toEqual([1, 1, 2]);
+    expect(bakes(worker).map((m) => [m.samples, m.seed, m.tileSize, m.shadowCatcher])).toEqual([
       [64, 1, 64, true],
       [64, 1, 64, true],
       [64, 1, 64, true],
     ]);
+    // The meshes went once, as a stream; every bake names them by id, its document carries none.
+    expect(worker.posted.filter((m) => m.type === 'meshBegin')).toHaveLength(1);
+    expect(bakes(worker).map((m) => m.meshIds)).toEqual([[1], [1], [1]]);
+    expect(bakes(worker).every((m) => m.doc.meshes.length === 0)).toBe(true);
+    const data = worker.posted.filter((m) => m.type === 'meshData');
+    expect(data.reduce((sum, m) => sum + (m.type === 'meshData' ? m.bytes.length : 0), 0)).toBe(
+      (9 + 9 + 6 + 12) * 4 + 3 * 4,
+    );
   });
 
-  it('posts the texture bytes again when the worker no longer holds them', () => {
+  it('never posts a bake superseded before its turn', async () => {
+    const { baker: b, worker } = baker();
+    const first = b.bake(doc);
+    void b.bake({ ...doc, nodes: [] });
+    await flush();
+    expect(await first).toEqual({ applied: false, warnings: [], lighting: null });
+    expect(bakes(worker).map((m) => m.id)).toEqual([2]);
+  });
+
+  it('posts everything again when the worker no longer holds it', async () => {
     const { baker: b, worker } = baker();
     void b.bake(doc);
+    await flush();
     void b.bake({ ...doc, nodes: [] });
+    await flush();
     worker.reply({ type: 'resend', id: 2 });
+    await flush();
     const reposted = worker.posted.at(-1);
-    expect(reposted).toMatchObject({ type: 'bake', id: 2, texturesIncluded: true, texturesVersion: 2 });
+    expect(reposted).toMatchObject({ type: 'bake', id: 2, texturesIncluded: true, texturesVersion: 2, meshIds: [2] });
     expect(reposted?.type === 'bake' && reposted.doc.textures).toBe(doc.textures);
+    expect(worker.posted.filter((m) => m.type === 'meshBegin')).toHaveLength(2);
     // A resend for a superseded bake settles it instead.
     worker.reply({ type: 'resend', id: 1 });
-    expect(worker.posted.filter((m) => m.type === 'bake')).toHaveLength(3);
+    await flush();
+    expect(bakes(worker)).toHaveLength(3);
   });
 
   it('rejects a bake that fails after its progress began (an upload or run failure in the worker)', async () => {
@@ -127,11 +155,10 @@ describe('LightBaker', () => {
     expect(() => plain.loseContext()).toThrow(/test hook/);
     const { baker: b, worker } = baker();
     void b.bake(doc, { countCappedTraversals: true });
+    await flush();
     b.loseContext({ beforeMark: 16 });
-    expect(worker.posted.map((m) => (m.type === 'bake' ? m.countCapped : m))).toEqual([
-      true,
-      { type: 'loseContext', beforeMark: 16 },
-    ]);
+    expect(bakes(worker).map((m) => m.countCapped)).toEqual([true]);
+    expect(worker.posted.at(-1)).toEqual({ type: 'loseContext', beforeMark: 16 });
   });
 
   it('applies only the latest bake and reports its progress', async () => {
