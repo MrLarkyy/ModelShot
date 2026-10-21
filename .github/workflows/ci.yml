@@ -25,16 +25,36 @@ jobs:
       - run: npm i -g corepack@latest
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @modelshot/harness exec playwright install --with-deps --only-shell chromium
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm format:check
       - run: pnpm -r build
-      - run: pnpm test
+      - run: pnpm run test:unit
+
+  # The browser suite in 4 shards, each on its own VM with one Playwright worker (docs/testing.md, CI): one runner ran
+  # past the 20-minute limit with the whole suite.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - run: npm i -g corepack@latest
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @modelshot/harness exec playwright install --with-deps --only-shell chromium
+      - run: pnpm -r build
+      - run: pnpm --filter @modelshot/harness exec playwright test --shard=${{ matrix.shard }}/4
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
-          name: browser-test-results
+          name: browser-test-results-${{ matrix.shard }}
           path: tools/harness/test-results/
           retention-days: 14
           if-no-files-found: ignore
