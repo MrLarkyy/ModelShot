@@ -1,0 +1,98 @@
+/* Colours, type and focus come from @modelshot/brand tokens only (test/noRawColours.test.ts). */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--ms-color-cloud);
+}
+
+body {
+  --ring: var(--ms-focus-ring);
+  margin: 0;
+  background: var(--ms-color-cloud);
+  color: var(--ms-color-ink);
+  font: var(--ms-weight-regular) var(--ms-size-body) / 1.55 var(--ms-font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Grounds of ink or blue switch the focus ring to the light colour (contrastPairs: ring on ink and shot blue). */
+.on-dark {
+  --ring: var(--ms-focus-on-dark);
+}
+
+:focus-visible {
+  outline: var(--ms-focus-width) solid var(--ring);
+  outline-offset: var(--ms-focus-offset);
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-family: var(--ms-font-display);
+  font-weight: var(--ms-weight-heavy);
+}
+
+h2 {
+  font-size: clamp(30px, 4vw, var(--ms-size-h1));
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--ms-color-ink);
+}
+
+a:hover {
+  color: var(--ms-color-blue-hover);
+}
+
+.label {
+  font: var(--ms-weight-medium) var(--ms-size-label) / 1.4 var(--ms-font-mono);
+}
+
+.label-slate {
+  color: var(--ms-color-slate);
+}
+
+.label-blue {
+  color: var(--ms-color-shot-blue);
+}
+
+.label-sun {
+  color: var(--ms-color-sun);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skip-link {
+  position: absolute;
+  top: var(--ms-space-2);
+  left: var(--ms-space-2);
+  z-index: 10;
+  padding: var(--ms-space-2) var(--ms-space-4);
+  border-radius: var(--ms-radius-control);
+  background: var(--ms-color-paper);
+  color: var(--ms-color-ink);
+  font-weight: var(--ms-weight-bold);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.skip-link:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}

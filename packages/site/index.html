@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ModelShot: studio renders of Blockbench and low-poly models, in your browser</title>
+    <meta
+      name="description"
+      content="Drop in a Blockbench or low-poly model, strike a pose, pick a look. ModelShot renders it like a studio shot, right in your browser."
+    />
+    <meta name="theme-color" content="#EEF0F4" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="ModelShot: make your model the hero" />
+    <meta
+      property="og:description"
+      content="Studio renders of Blockbench and low-poly models, right in your browser."
+    />
+    <meta property="og:image" content="/social-preview.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link
+      rel="preload"
+      href="../brand/fonts/unbounded/unbounded-latin-800-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="../brand/fonts/unbounded/unbounded-latin-600-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="../brand/fonts/manrope/manrope-latin-400-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="../brand/fonts/manrope/manrope-latin-500-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="../brand/fonts/manrope/manrope-latin-700-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="../brand/fonts/ibm-plex-mono/ibm-plex-mono-latin-500-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header container">
+      <a class="brand" href="#top">
+        <span class="brand-mark" aria-hidden="true"><!-- brand:mark --></span>
+        <span class="wordmark">modelshot</span>
+      </a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="#how">How it works</a>
+        <a href="#looks">Looks</a>
+        <a href="https://github.com/MrLarkyy/ModelShot">GitHub</a>
+        <button type="button" class="button button-ink button-small" data-open-picker>Open a model</button>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section id="top" class="hero container" aria-labelledby="hero-title">
+        <h1 id="hero-title">Make your model<br /><span class="accent">the hero.</span></h1>
+        <div class="hero-row">
+          <p class="lede">
+            Drop in a Blockbench or low-poly model, strike a pose, pick a look. ModelShot renders it like a studio shot,
+            right in your browser.
+          </p>
+          <div class="actions">
+            <button type="button" class="button button-primary" data-open-picker>Open a model</button>
+            <a class="button button-secondary" href="https://github.com/MrLarkyy/ModelShot">Source on GitHub</a>
+          </div>
+        </div>
+        <label class="drop-zone" id="drop-zone">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 15V4" />
+            <path d="M7 9l5-5 5 5" />
+            <path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" />
+          </svg>
+          <span class="drop-title">Drop a model here, or browse</span>
+          <span class="drop-formats">.bbmodel · .gltf · .glb · .obj · skin .png — stays on this device</span>
+          <input id="model-input" class="visually-hidden" type="file" multiple />
+        </label>
+        <p class="drop-error" id="drop-error" role="alert"></p>
+      </section>
+
+      <section id="highlights" class="highlights container" aria-label="Highlights">
+        <div class="tile tile-blue tile-hero on-dark">
+          <span class="sweep-clip" aria-hidden="true"><span class="sweep"></span></span>
+          <div class="tile-content">
+            <span class="label">PATH-TRACED · IN THE TAB</span>
+            <figure class="hero-art">
+              <!-- brand:hero-island -->
+              <figcaption class="label">ILLUSTRATION · NOT A RENDER</figcaption>
+            </figure>
+            <p class="tile-title tile-title-large">Preview close to final. Render for the real thing.</p>
+          </div>
+        </div>
+        <div class="tile-stack">
+          <div class="tile tile-flash">
+            <span class="label">POSE</span>
+            <p class="tile-title">Skins, bones and animations.</p>
+          </div>
+          <div class="tile tile-sun">
+            <span class="label">EXPORT</span>
+            <p class="tile-title">Stills, turntables, animations.</p>
+          </div>
+        </div>
+        <div class="tile tile-ink on-dark">
+          <span class="label label-sun">LIGHTS &amp; GLOW</span>
+          <p class="tile-title">Add point, spot and area lights. Make any element, or just one colour, glow.</p>
+          <span class="swatches" aria-hidden="true">
+            <span class="swatch swatch-glow"></span>
+            <span class="swatch swatch-ember"></span>
+            <span class="swatch swatch-glow swatch-glow-late"></span>
+            <span class="swatch swatch-ember"></span>
+          </span>
+        </div>
+        <div class="tile tile-paper">
+          <span class="label label-slate">PIXEL-PERFECT</span>
+          <p class="tile-title">Crisp texels. See-through bits cast see-through shadows.</p>
+        </div>
+        <div class="tile tile-paper">
+          <span class="label label-slate">LOCAL-FIRST</span>
+          <p class="tile-title">Your model never leaves your browser.</p>
+          <p class="tile-note">Unless you share it. No account, no tracking.</p>
+        </div>
+        <div class="tile tile-paper">
+          <span class="label label-slate">EMBED</span>
+          <p class="tile-title">A live viewer for your site or wiki.</p>
+          <p class="label label-blue">Snippet arrives with the embed API</p>
+        </div>
+      </section>
+
+      <section id="looks" class="section container" aria-labelledby="looks-title">
+        <h2 id="looks-title">One click, a whole new look.</h2>
+        <p class="label label-slate">ILLUSTRATIONS · NOT RENDERS</p>
+        <ul class="looks">
+          <li class="look-item">
+            <div class="look look-marketplace" role="img" aria-label="Illustration of the Marketplace look">
+              <svg viewBox="0 0 120 134" aria-hidden="true">
+                <polygon class="t" points="60,10 110,38 60,66 10,38" />
+                <polygon class="l" points="10,38 60,66 60,124 10,96" />
+                <polygon class="r" points="60,66 110,38 110,96 60,124" />
+                <polyline class="rim" points="110,38 110,96 60,124" />
+              </svg>
+            </div>
+            <span class="look-name">Marketplace</span>
+            <span class="look-note">Navy, soft GI, warm rim.</span>
+          </li>
+          <li class="look-item">
+            <div class="look look-daylight" role="img" aria-label="Illustration of the Daylight look">
+              <svg viewBox="0 0 120 134" aria-hidden="true">
+                <polygon class="t" points="60,10 110,38 60,66 10,38" />
+                <polygon class="l" points="10,38 60,66 60,124 10,96" />
+                <polygon class="r" points="60,66 110,38 110,96 60,124" />
+              </svg>
+            </div>
+            <span class="look-name">Daylight</span>
+            <span class="look-note">Sky fill, crisp sun shadow.</span>
+          </li>
+          <li class="look-item">
+            <div class="look look-sunset" role="img" aria-label="Illustration of the Sunset look">
+              <svg viewBox="0 0 120 134" aria-hidden="true">
+                <polygon class="t" points="60,10 110,38 60,66 10,38" />
+                <polygon class="l" points="10,38 60,66 60,124 10,96" />
+                <polygon class="r" points="60,66 110,38 110,96 60,124" />
+              </svg>
+            </div>
+            <span class="look-name">Sunset</span>
+            <span class="look-note">Low warm key, long shadows.</span>
+          </li>
+          <li class="look-item">
+            <div class="look look-noir" role="img" aria-label="Illustration of the Noir look">
+              <svg viewBox="0 0 120 134" aria-hidden="true">
+                <polygon class="t" points="60,10 110,38 60,66 10,38" />
+                <polygon class="l" points="10,38 60,66 60,124 10,96" />
+                <polygon class="r" points="60,66 110,38 110,96 60,124" />
+                <polyline class="rim rim-thin" points="10,38 60,10 110,38 110,96" />
+              </svg>
+            </div>
+            <span class="look-name">Noir</span>
+            <span class="look-note">Black stage, hard white rim.</span>
+          </li>
+        </ul>
+      </section>
+
+      <section id="how" class="section container" aria-labelledby="how-title">
+        <h2 id="how-title">How it works</h2>
+        <ol class="steps">
+          <li class="step">
+            <span class="step-number" aria-hidden="true">1</span>
+            <span class="step-name">Open</span>
+            <span class="step-note">Blockbench, glTF/GLB or OBJ.</span>
+          </li>
+          <li class="step">
+            <span class="step-number" aria-hidden="true">2</span>
+            <span class="step-name">Pose</span>
+            <span class="step-note">Move bones or play an animation.</span>
+          </li>
+          <li class="step">
+            <span class="step-number" aria-hidden="true">3</span>
+            <span class="step-name">Pick a look</span>
+            <span class="step-note">Backdrop, light and grading in one go.</span>
+          </li>
+          <li class="step">
+            <span class="step-number" aria-hidden="true">4</span>
+            <span class="step-name">Render</span>
+            <span class="step-note">Export the shot and show it off.</span>
+          </li>
+        </ol>
+      </section>
+
+      <section id="faq" class="section faq container" aria-labelledby="faq-title">
+        <h2 id="faq-title">Questions</h2>
+        <div class="faq-list">
+          <details id="faq-upload" open>
+            <summary>Does my model get uploaded?</summary>
+            <p>
+              No. ModelShot opens and renders everything inside your browser. A file only leaves your device if you
+              choose to share it.
+            </p>
+          </details>
+          <details>
+            <summary>Which files can I open?</summary>
+            <p>
+              Blockbench models, glTF and GLB, OBJ, and player skins. Cubes, meshes and partly transparent planes all
+              work.
+            </p>
+          </details>
+          <details>
+            <summary>What do I need to run it?</summary>
+            <p>A current desktop browser with WebGL2. No install, no account.</p>
+          </details>
+          <details>
+            <summary>Why does Render take longer than the preview?</summary>
+            <p>
+              The preview is realtime. Render path-traces real bounce light and soft shadows, then hands you the
+              finished image.
+            </p>
+          </details>
+        </div>
+      </section>
+
+      <section id="open" class="section section-last container" aria-labelledby="open-title">
+        <div class="cta-panel on-dark">
+          <h2 id="open-title">Got a model? Give it a shot.</h2>
+          <button type="button" class="button button-sun" data-open-picker>Open a model</button>
+        </div>
+      </section>
+    </main>
+
+    <footer id="footer" class="site-footer container">
+      <span>modelshot · for Blockbench and low-poly creators</span>
+      <span class="footer-links">
+        <a href="https://github.com/MrLarkyy/ModelShot">GitHub</a>
+        <a href="https://github.com/MrLarkyy/ModelShot/tree/main/docs">Docs</a>
+        <a href="#faq-upload">Privacy</a>
+      </span>
+    </footer>
+  </body>
+</html>

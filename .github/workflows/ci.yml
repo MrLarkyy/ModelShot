@@ -35,6 +35,8 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           name: browser-test-results
-          path: tools/harness/test-results/
+          path: |
+            tools/harness/test-results/
+            packages/site/test-results/
           retention-days: 14
           if-no-files-found: ignore

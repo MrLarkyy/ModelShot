@@ -1,0 +1,143 @@
+/* min-width: 0 on every flex child keeps the 280 to 560 px flex bases from forcing a scrollbar at 360 px. */
+.container {
+  /* 1240 px of content, as in the canvas, plus the side padding. */
+  max-width: calc(1240px + 2 * var(--ms-space-5));
+  margin-inline: auto;
+  padding-inline: var(--ms-space-5);
+}
+
+.site-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ms-space-4);
+  padding-block: 20px;
+}
+
+.site-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ms-space-2) var(--ms-space-5);
+  font-size: var(--ms-size-ui);
+  font-weight: var(--ms-weight-medium);
+}
+
+.site-nav a {
+  text-decoration: none;
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ms-space-5);
+  padding-top: var(--ms-space-7);
+}
+
+.hero h1 {
+  font-size: clamp(44px, 8vw, 120px);
+  line-height: 0.95;
+  letter-spacing: -0.05em;
+}
+
+.hero-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--ms-space-5) 48px;
+}
+
+.hero-row > * {
+  min-width: 0;
+}
+
+.lede {
+  max-width: 560px;
+  color: var(--ms-color-slate);
+  font-size: clamp(var(--ms-size-body), 1.6vw, 20px);
+  line-height: 1.55;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ms-space-3);
+}
+
+.highlights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ms-space-4);
+  padding-top: var(--ms-space-7);
+}
+
+.highlights > * {
+  min-width: 0;
+}
+
+.tile-hero {
+  flex: 2 1 560px;
+  min-height: 480px;
+}
+
+.tile-stack {
+  display: flex;
+  flex: 1 1 280px;
+  flex-direction: column;
+  gap: var(--ms-space-4);
+}
+
+.tile-stack > .tile {
+  flex: 1 1 0;
+}
+
+/* The canvas sizes these tiles content-box: 280 px of content plus 2 x 28 px padding. */
+.highlights > .tile:not(.tile-hero) {
+  flex: 1 1 336px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding-top: var(--ms-space-8);
+}
+
+.section-last {
+  padding-bottom: var(--ms-space-8);
+}
+
+.faq {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 28px 48px;
+}
+
+.faq h2 {
+  flex: 1 1 280px;
+}
+
+.faq-list {
+  display: flex;
+  flex: 2 1 560px;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--ms-space-4);
+  padding-bottom: 40px;
+  color: var(--ms-color-slate);
+  font-size: 14px;
+}
+
+.footer-links {
+  display: flex;
+  gap: var(--ms-space-5);
+}
