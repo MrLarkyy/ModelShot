@@ -46,4 +46,16 @@ describe('image metrics', () => {
     const holed = image(16, 16, (x, y) => (x === 7 && y === 7 ? null : square(4, 4, 6, [120, 90, 60])(x, y)));
     expect(silhouetteMismatches(reference, holed).mismatches).toBe(1);
   });
+
+  it('takes a gradient backdrop row by row', () => {
+    // 40 levels from top to bottom: the top-left pixel would call most of the backdrop model.
+    const row = (y: number, height: number) => [20 + Math.round((40 * y) / (height - 1)), 22, 26];
+    const gradient = (y: number) => row(y, 16);
+    const img = image(16, 16, (x, y) => square(4, 5, 3, [200, 40, 210])(x, y) ?? gradient(y));
+    expect(backdropMask(img).reduce((s, v) => s + v, 0)).toBeLessThan(100);
+    expect(backdropMask(img, row).reduce((s, v) => s + v, 0)).toBe(256 - 9);
+    const moved = image(16, 16, (x, y) => square(9, 9, 3, [200, 40, 210])(x, y) ?? gradient(y));
+    expect(silhouetteMismatches(img, img, row).mismatches).toBe(0);
+    expect(silhouetteMismatches(img, moved, row).mismatches).toBeGreaterThan(0);
+  });
 });

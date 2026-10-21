@@ -59,11 +59,18 @@ export function hueMatch(a: readonly number[], b: readonly number[]): number {
   return dot / (Math.hypot(a[0] ?? 0, a[1] ?? 0, a[2] ?? 0) * Math.hypot(b[0] ?? 0, b[1] ?? 0, b[2] ?? 0));
 }
 
-/** Whether each pixel shows the backdrop (within 2 levels of the top-left pixel), row-major. */
-export function backdropMask(image: Image): Uint8Array {
-  const backdrop = pixel(image, 0, 0);
+/** The backdrop's display colour (0..255) of image row `y` (top 0), for a gradient backdrop. */
+export type BackdropRow = (y: number, height: number) => readonly number[];
+
+/**
+ * Whether each pixel shows the backdrop, row-major: within 2 levels of `backdropRow` of its row (a look's gradient,
+ * `agxToneMap(backdropColor(look, …))`), by default of the top-left pixel (a flat backdrop).
+ */
+export function backdropMask(image: Image, backdropRow?: BackdropRow): Uint8Array {
+  const flat = pixel(image, 0, 0);
   const mask = new Uint8Array(image.width * image.height);
   for (let y = 0; y < image.height; y++) {
+    const backdrop = backdropRow ? backdropRow(y, image.height) : flat;
     for (let x = 0; x < image.width; x++) mask[y * image.width + x] = near(pixel(image, x, y), backdrop, 2) ? 1 : 0;
   }
   return mask;
@@ -72,12 +79,16 @@ export function backdropMask(image: Image): Uint8Array {
 /**
  * Framing check of a preview and a render of the same view: pixels where one shows the backdrop and the other does
  * not, leaving out silhouette pixels (whose 3 x 3 neighbourhood in `reference` holds both classes), where box-filtered
- * and multisampled coverage may round either way.
+ * and multisampled coverage may round either way. `backdropRow`: the backdrop of a gradient (`backdropMask`).
  */
-export function silhouetteMismatches(reference: Image, other: Image): { mismatches: number; silhouette: number } {
+export function silhouetteMismatches(
+  reference: Image,
+  other: Image,
+  backdropRow?: BackdropRow,
+): { mismatches: number; silhouette: number } {
   if (reference.width !== other.width || reference.height !== other.height) throw new Error('image sizes differ');
-  const a = backdropMask(reference);
-  const b = backdropMask(other);
+  const a = backdropMask(reference, backdropRow);
+  const b = backdropMask(other, backdropRow);
   const { width, height } = reference;
   let mismatches = 0;
   let silhouette = 0;

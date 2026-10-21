@@ -23,16 +23,18 @@ import {
   parseRtView,
   reverseMeshOrder,
   rtCamera,
+  rtLook,
   rtScene,
   type RtSceneName,
 } from './rtScenes';
+import { lookByName } from './lookByName';
 
 // URL parameters: variant (a preset of rtScenes.ts) or scene, yaw, pitch, proj=persp|ortho, fov, zoom, iso=0|1,
 // aa=0|1, fallback=1, reverse=1, look=model-view|above|below with depth=framed|inside, hide=<mesh name>; size (CSS pixels, default 256), maxTextureSide, track=1 (count GL objects),
 // fps=1 (continuous drawing with a frame-time readout, for a manual run on real hardware); bake=<samples> (bake the
 // light before the first frame; 0 none), catcher=0|1, bakeSeed (default 1), bakeTile (default 64), pose=<player
 // preset> (the scene re-posed, framed as loaded), lag=1 (main-thread event-loop lag probe), edges=<width> (rounded
-// edges, 0 none; default the renderer's look).
+// edges, 0 none; default the look's), preset=<look preset id> (default studio), rim=0 (the preset's rim light black).
 const params = new URLSearchParams(location.search);
 
 function intParam(name: string, fallback: number, min: number, max: number): number {
@@ -94,7 +96,9 @@ async function start(): Promise<void> {
   canvas.style.width = `${size}px`;
   canvas.style.height = `${size}px`;
 
+  const look = rtLook(view);
   const renderer = RealtimeRenderer.create(canvas, {
+    look,
     forceFallback: view.fallback,
     texelAntialias: view.texelAntialias,
     preserveDrawingBuffer: !continuous,
@@ -184,6 +188,7 @@ async function start(): Promise<void> {
           seed: request.seed ?? bakeSeed,
           tileSize: request.tile ?? bakeTile,
           shadowCatcher: request.catcher ?? view.catcher,
+          look: renderer.look,
           countCappedTraversals: request.countCapped ?? false,
           onProgress: ({ samplesDone, samples, lighting }) => {
             progress.push(samplesDone);
@@ -255,6 +260,28 @@ async function start(): Promise<void> {
       } catch (error) {
         return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
       }
+    },
+    setLook: (id) => {
+      try {
+        renderer.setLook(lookByName(id));
+        frame();
+        return 'ok';
+      } catch (error) {
+        return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      }
+    },
+    bakeUnderLook: async (id) => {
+      baker ??= LightBaker.create({ testHooks: true });
+      const under = lookByName(id);
+      const { lighting } = await baker.bake(doc, { samples: 64, look: under });
+      if (!lighting) throw new Error('bake not applied');
+      const current = renderer.setLighting(lighting);
+      renderer.setLook(under);
+      const same = renderer.setLighting(lighting);
+      if (same) shown = lighting;
+      while (renderer.advanceLighting());
+      frame();
+      return { current, same };
     },
     drawCallsPerFrame: () => {
       let calls = 0;

@@ -1,9 +1,13 @@
 import { readFileSync } from 'node:fs';
 import type { Page } from '@playwright/test';
+// The package index pulls in GLSL through Vite's ?raw, which Playwright cannot load: the plain modules directly.
+import { agxToneMap } from '../../../packages/looks/src/agxToneMap';
+import { backdropColor } from '../../../packages/looks/src/backdropColor';
 import { compareImages } from '../src/compareImages';
 import { encodeFlipped, expectGolden, openFixture, renderFixture, type FixtureInfo } from '../src/expectGolden';
 import type { RasterGoldenSpec } from '../src/goldenSpec';
 import { goldenPath } from '../src/goldenStore';
+import { lookPresetFile } from '../src/lookPresetFile';
 import { expect, test } from '../src/harnessTest';
 import { differenceMask, pixelsFarFrom } from '../src/edgeProbes';
 import { decodePng, hueMatch, luminance, modelBox, near, pixel, sentinelPixels, type Image } from '../src/imageMetrics';
@@ -44,10 +48,17 @@ const GOLDENS = [
   // MS-15: rounded edges on a cube and a wedge, none on a plane, a card and a sphere; paired with pt-edges.
   spec('edges', 'edges'),
 ];
-// Baked light (MS-16): 64 samples, seed 1, shadow catcher on; the cut-out checker's pair is pt-cutout-checker.
-const BAKED = ['bake-cutout-checker', 'bake-cutout-checker-fallback', 'bake-alpha-plane', 'bake-turntable-y030'].map(
-  (variant) => spec(variant, variant),
-);
+// Baked light (MS-16): 64 samples, seed 1, shadow catcher on; the cut-out checker's pair is pt-cutout-checker. The
+// look presets (MS-19) bake under their own look; pairs pt-preset-marketplace and pt-preset-rim.
+const BAKED = [
+  'bake-cutout-checker',
+  'bake-cutout-checker-fallback',
+  'bake-alpha-plane',
+  'bake-turntable-y030',
+  'preset-marketplace',
+  'preset-rim',
+  'preset-marketplace-fallback',
+].map((variant) => spec(variant, variant));
 
 async function render(page: Page, query: string): Promise<{ png: Buffer; image: Image; info: FixtureInfo }> {
   const info = await openFixture(page, `/rt.html?${query}`);
@@ -271,6 +282,47 @@ test.describe('hostile textures', () => {
   test('an empty scene draws only the backdrop', async ({ page }) => {
     const { image } = await render(page, 'scene=empty');
     expect(modelBox(image).x0).toBe(Infinity);
+  });
+});
+
+test.describe('look presets', () => {
+  for (const extra of ['', '&fallback=1']) {
+    test(`the backdrop gradient matches its TS mirror${extra ? ' (fallback)' : ''}`, async ({ page }) => {
+      const look = lookPresetFile('marketplace');
+      const { image } = await render(page, `scene=empty&preset=marketplace${extra}`);
+      let worst = 0;
+      for (let y = 0; y < image.height; y++) {
+        const expected = agxToneMap(backdropColor(look, (image.height - y - 0.5) / image.height), look.toneMapping);
+        for (const x of [0, 100, image.width - 1]) {
+          const seen = pixel(image, x, y);
+          worst = Math.max(worst, ...seen.map((v, c) => Math.abs(v - (expected[c] ?? 0) * 255)));
+        }
+      }
+      console.log(`[rt probe] marketplace backdrop${extra}: worst ${worst.toFixed(2)} levels from the mirror`);
+      expect(worst).toBeLessThanOrEqual(2);
+      expect(luminance(pixel(image, 0, image.height - 1)) - luminance(pixel(image, 0, 0))).toBeGreaterThan(5);
+    });
+  }
+
+  test('setLook draws the look; an invalid look names its field and changes nothing', async ({ page }) => {
+    const { info, png: studio } = await render(page, 'variant=turntable-y030');
+    const fresh = (await render(page, 'variant=turntable-y030&preset=marketplace')).png;
+    const opened = await render(page, 'variant=turntable-y030');
+    const set = (id: string) => page.evaluate((name) => window.__msFixture!.rt!.setLook(name), id);
+    expect(await set('marketplace')).toBe('ok');
+    const marketplace = await readPng(page, opened.info);
+    expect(marketplace.equals(fresh), 'the bytes of a renderer created with Marketplace').toBe(true);
+    expect(await set('bad')).toMatch(/^LookPresetError: catcher\.strength/);
+    expect((await readPng(page, info)).equals(marketplace), 'a rejected look changes nothing').toBe(true);
+    expect(await set('studio')).toBe('ok');
+    expect((await readPng(page, info)).equals(studio), 'back to Studio: the first bytes').toBe(true);
+  });
+
+  test('a lost context comes back with the look', async ({ page }) => {
+    const { info, png } = await render(page, 'variant=turntable-y030&preset=rim');
+    await page.evaluate(() => window.__msFixture!.rt!.lose());
+    await page.evaluate(() => window.__msFixture!.rt!.restore());
+    expect((await readPng(page, info)).equals(png)).toBe(true);
   });
 });
 
@@ -878,6 +930,15 @@ test.describe('baked lighting', () => {
     );
     expect(taken).toEqual([false, false, false]);
     expect(await page.evaluate(() => window.__msFixture!.rt!.lightingHash)).toBe(hash);
+  });
+
+  test('light baked under one look is refused under a look of another lighting key, taken under its own', async ({
+    page,
+  }) => {
+    await openFixture(page, '/rt.html?variant=player-hold-34');
+    const taken = await page.evaluate(() => window.__msFixture!.rt!.bakeUnderLook('marketplace'));
+    expect(taken).toEqual({ current: false, same: true });
+    expect(await page.evaluate(() => window.__msFixture!.rt!.lightingHash)).not.toBe('');
   });
 
   test('a failed bake keeps the textures it posted: the next bake of the same textures shadows like a fresh one', async ({
