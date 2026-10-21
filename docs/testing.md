@@ -5,7 +5,7 @@
 
 1. `pnpm test:unit`: Vitest, every package plus `tools/harness/test` (comparator, golden store, budgets, bundle size,
    model-view helpers).
-2. `pnpm test:browser`: Playwright in a pinned headless Chromium on software WebGL (SwiftShader), `tools/harness`.
+2. `pnpm test:browser`: Playwright in a pinned headless Chromium on software WebGL (SwiftShader), `tools/harness`, and the landing page's suite in `packages/site` (its own Playwright config, docs/site.md).
 
 Run `pnpm browsers` once per machine (and after a Playwright version bump) to install the browser. Playwright is pinned
 to an exact version in `tools/harness/package.json`, which pins the Chromium revision.
@@ -17,7 +17,7 @@ to an exact version in `tools/harness/package.json`, which pins the Chromium rev
 - `check`: install, typecheck, lint, format check, `pnpm -r build`, `pnpm run test:unit` (Vitest, bundle size
   included).
 - `e2e`: a matrix of 4 shards (`fail-fast: false`), each on its own VM: install, the pinned Chromium, `pnpm -r build`,
-  then `playwright test --shard=<k>/4`, uploading `tools/harness/test-results/` as `browser-test-results-<k>`.
+  then `playwright test --shard=<k>/4`, then on shard 1 only `pnpm --filter @modelshot/site run test:browser` (it runs even when the harness tests failed), uploading `tools/harness/test-results/` and `packages/site/test-results/` as `browser-test-results-<k>`.
 
 Why: on one runner the browser suite alone outran the 20-minute limit (run 39545935955 on 4861384 was cancelled in
 `pnpm test`; the e2e part ran over 19 minutes with one worker, the baked-light tests about 37 s each). Shards are
@@ -466,11 +466,13 @@ attached vertex formula in four poses, re-posing, nesting, index remapping, ever
 ## Budgets
 
 `budgets.json` (root, `"version": 1`) holds `max` values for frame time, load time, time to N samples and gzip bundle
-size of `app` and `embed`. `pnpm test` measures them (`bench.spec.ts`; the bundle is built fresh into a temporary directory, so
+size of `app`, `embed`, `site` and `site-assets`. `site` is a plain `vite build` of `packages/site` without the `/app/` copy that `build:with-app` adds; `site-assets` is the same build's woff2 and svg files. `pnpm test` measures them (`bench.spec.ts`; the bundle is built fresh into a temporary directory, so
 it does not depend on `pnpm -r build`) and fails when a value exceeds its `max`, when a budget has no measurement, or
 a measurement has no budget. The measured values are in `tools/harness/test-results/budgets-measured.json`, and
 every run prints each one against its max (`[budget] <group>.<key>: measured … / max …`, from `bench.spec.ts` and
-`test/bundleSize.test.ts`; Vitest runs with `silent: false` so passing tests print too).
+`test/bundleSize.test.ts`; Vitest runs with `silent: false` so passing tests print too). Both measure every target in `BUNDLE_TARGETS`
+(`tools/harness/src/bundleSize.ts`), and `test/bundleSize.test.ts` fails when that list and the `bundleGzipBytes` rows
+differ, so a new row cannot go unmeasured.
 
 Measured on the local Windows dev machine (SwiftShader, 3 runs) when the budgets were set: frame time median 0.3, 0.3,
 0.4 ms; time to 64 samples median 23.8, 23, 25.8 ms; gzip app 437 B, embed 115 B.
@@ -508,6 +510,9 @@ texel tap), `rt-bench-order-512` 117, 145 and 148 ms with MSAA, 83 and 107 ms si
   `rt-load-first-frame-200k-order` (validate, flatten, BVH build in JavaScript, upload) plus its first sample. Local
   SwiftShader 1554, 919 and 941 ms; max 10 000 ms (10x the middle run, rounded up).
 - `bundleGzipBytes` app 2500, embed 2200: measured plus about 2 kB, so a real dependency shows up while noise does not.
+  `site` 11 600 (MS-31: the landing page's js, css and html, gzip level 9; measured 9595, 9595, 9595 bytes, plus about
+  2 kB) and `site-assets` 110 400 (its woff2 fonts and svg, each gzipped; measured 100 311 three times, times 1.1
+  rounded up). The landing page's browser tests are described in docs/site.md.
 - `bakeTimeMs.bake-bench-n16` (MS-16): `LightBaker.bake` of the benchmark scene in its worker, 16 samples with the
   shadow catcher (lightmap 2048 wide, catcher 512 x 512), from the call to the final lighting, median of 3. Local
   SwiftShader 22 873, 22 113 and 22 141 ms; max 222 000 ms (10x the middle run, rounded up). Each run is asserted

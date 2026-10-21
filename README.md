@@ -1,3 +1,5 @@
+<img src="packages/brand/assets/logo/mark.svg" width="64" height="64" alt="ModelShot logo">
+
 # ModelShot
 
 **Studio-quality renders of Blockbench and low-poly models, right in your browser.**
@@ -25,10 +27,13 @@ pnpm test
 
 Also: `pnpm typecheck`, `pnpm lint`, `pnpm format:check` (`pnpm format` fixes formatting).
 
-Packages (`packages/*`): `formats`, `scene`, `renderer-rt`, `pathtracer`, `looks`, `export`, `app`, `embed`. Test tooling lives in `tools/harness`.
+Packages (`packages/*`): `formats`, `scene`, `renderer-rt`, `pathtracer`, `looks`, `export`, `app`, `embed`, `brand`
+(design tokens, fonts, logo) and `site` (the landing page). Test tooling lives in `tools/harness`.
 
 Docs: [scene format](docs/scene-format.md) (what every loader produces), [Blockbench loader](docs/bbmodel.md),
 [glTF / GLB loader](docs/gltf.md) and [OBJ loader](docs/obj.md) (supported features, limits, error codes),
 [realtime renderer](docs/realtime-renderer.md) (passes, pixel-art sampling, transparency, context loss),
 [path tracer](docs/path-tracer.md) (API, determinism, alpha, sides and order on every ray, lighting),
-[camera](docs/camera.md) (the shared camera, frame-to-fit, controls).
+[camera](docs/camera.md) (the shared camera, frame-to-fit, controls),
+[brand](docs/brand.md) (tokens, contrast rules, fonts, logo and icons, licences),
+[landing page](docs/site.md) (layout, hosting at `/` and `/app/`, the local file handoff, motion, tests).

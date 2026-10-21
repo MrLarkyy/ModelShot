@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitest/config';
 
-const packages = ['formats', 'scene', 'renderer-rt', 'pathtracer', 'looks', 'export', 'app', 'embed'];
+const packages = ['formats', 'scene', 'renderer-rt', 'pathtracer', 'looks', 'export', 'app', 'embed', 'brand', 'site'];
 
 export default defineConfig({
   test: {

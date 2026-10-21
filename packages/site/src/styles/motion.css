@@ -1,0 +1,129 @@
+/* Ambient and hover motion of the canvas, in CSS only. Only transform and opacity move, so nothing reflows and the
+   compositor does the work; shadows are static layers whose opacity changes. */
+@keyframes ms-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes ms-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes ms-sweep {
+  0% {
+    transform: translateX(-120%);
+  }
+  60%,
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+@keyframes ms-spot {
+  0%,
+  20%,
+  100% {
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+}
+
+.hero-art .isl {
+  animation: ms-float var(--ms-motion-float) var(--ms-motion-ease-in-out) infinite;
+}
+
+.isl-glow,
+.swatch-glow {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ms-pulse var(--ms-motion-glow) var(--ms-motion-ease-in-out) infinite;
+}
+
+.swatch-glow-late {
+  animation-delay: 800ms;
+}
+
+/* Below .tile-content (z-index 1): the sweep brightens the ground, never the text. */
+.sweep {
+  animation: ms-sweep var(--ms-motion-sweep) var(--ms-motion-ease-in-out) infinite;
+}
+
+.tile {
+  transition: transform var(--ms-motion-ui) var(--ms-motion-ease);
+}
+
+.tile::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: var(--ms-shadow-lift);
+  content: '';
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--ms-motion-ui) var(--ms-motion-ease);
+}
+
+.tile:hover {
+  transform: translateY(-4px);
+}
+
+.tile:hover::after {
+  opacity: 1;
+}
+
+.look {
+  transition: transform var(--ms-motion-ui) var(--ms-motion-ease);
+}
+
+.look:hover {
+  transform: scale(1.03);
+}
+
+.look::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    0 0 0 4px var(--ms-color-cloud),
+    0 0 0 7px var(--ms-color-shot-blue);
+  content: '';
+  opacity: 0;
+  pointer-events: none;
+  animation: ms-spot var(--ms-motion-cycle) var(--ms-motion-ease-in-out) infinite;
+}
+
+.look-item:nth-child(2) .look::after {
+  animation-delay: 2s;
+}
+
+.look-item:nth-child(3) .look::after {
+  animation-delay: 4s;
+}
+
+.look-item:nth-child(4) .look::after {
+  animation-delay: 6s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
