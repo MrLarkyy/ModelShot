@@ -456,7 +456,8 @@ texel tap), `rt-bench-order-512` 117, 145 and 148 ms with MSAA, 83 and 107 ms si
   `CommandBufferProxyImpl::WaitForGetOffset` (a readback or state query: `readPixels`, `getError`, `finish`) and
   `CommandBufferProxyImpl::WaitForToken` (an upload waiting for transfer-buffer space: `texSubImage2D`), found in this
   Chrome's traces of such calls after heavy draws, each counted as its wall minus its own CPU; the trace throws
-  without a main thread, a task, or CPU time on every task): the three benchmark bakes, and the 1-sample bake of the 200 000-triangle
+  without a main thread or a task, when no task carries CPU time, or when a task of 1 ms or more lacks it (Chrome
+  leaves it off zero-length tasks)): the three benchmark bakes, and the 1-sample bake of the 200 000-triangle
   `large-order` document (its `bake()` call, mesh stream and updates). Every task counts, those Playwright's
   `evaluate` runs (which call `bake()`) included, which the Long Tasks API does not report. Max 50 ms, fixed (RAIL's
   50 ms response budget). Wall time is printed beside it, not asserted: the page-side wall-time block
