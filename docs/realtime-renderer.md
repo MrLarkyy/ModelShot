@@ -84,6 +84,13 @@ KEY_COLOR × max(n·KEY, 0) × a)`; value 1 gives the unbaked expression exactly
   finest texel, key), not its charts. `setLighting`
   refuses (returns `false`, changes nothing) lighting whose layout key, size or data length does not match the current
   layout, or whose catcher is malformed (`checkLighting`).
+- **Upload in bands.** `setLighting` uploads nothing itself: each `render()` (or `advanceLighting()`, which uploads
+  without drawing and returns `true` while more remains) writes the next `UPLOAD_FRAME_BYTES` (1 MiB) in
+  texSubImage2D bands of at most `UPLOAD_BAND_BYTES` (256 KiB) into back textures, and frames draw the previous complete
+  lighting until the new one is in (`lightingPending`), then switch; the old textures are kept for the next update of
+  the same shape. One 9.4 MB texSubImage2D (the benchmark scene) makes the browser wait for its GPU process to take
+  the data chunk by chunk, and that process also runs the bake's draws: a busy machine turned that into a 120 ms
+  main-thread task (MS-16 round 4). A rebuilt context uploads its retained lighting at once.
 
 **Shadow catcher.** A horizontal plane at the visible geometry's lowest point (`shadowCatcherPlane`, shared with the
 path tracer), covering the footprint, the bounds' shadow along the key and half the largest extent around it, one-sided

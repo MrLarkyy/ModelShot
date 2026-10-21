@@ -459,7 +459,13 @@ texel tap), `rt-bench-order-512` 117, 145 and 148 ms with MSAA, 83 and 107 ms si
   (`heartbeat lag`). Block measured 9.1 and 7.3 ms. `realtime.spec.ts` pins the long-task half: an 80 ms busy timer
   task outside the timed work reads a block of 80.0 ms (`block()` takes the observer's pending records first). A task
   Playwright's `evaluate` runs is not reported as a long task, so the bench times the `bake()` call itself. Max 50 ms, fixed (RAIL's 50 ms response budget), not derived from
-  a measurement.
+  a measurement. Round 4: a full `build test` on a busy machine read 120.2 ms (heartbeat 115.0 ms): a real task. Not
+  reproduced locally (full suite; 22 CPU spinners; a parallel path-tracer browser), where each update was 5-7 ms, most
+  of it one 9.4 MB texSubImage2D, which waits for the GPU process whenever it is busy with the bake's draws. Fixed in
+  the renderer (upload in bands over frames into back textures, realtime-renderer.md). The bench now prints the longest
+  stretch per phase (`bake-call`, `worker-message`, `set-lighting`, `upload`, `render`), every long task and the slow
+  phases: after the fix `set-lighting` 0.3-0.4 ms, `upload` 1.1-1.3 ms, `worker-message` 1.3-2.2 ms, `render` 1.5 ms,
+  `bake-call` 7-8 ms (the posted document's clone), no long task, block 7.0 and 7.8 ms.
 - `mainThreadBlockMs.bake-post-200k` (MS-16 round 2): `bake()` of the 200 000-triangle `large-order` document (1
   sample): the longer of the call's own duration (validation and the structured clone of the posted document) and the
   block over the bake. Measured 16.2 and 14.9 ms; max 50 ms, fixed like the row above. In the same runs
