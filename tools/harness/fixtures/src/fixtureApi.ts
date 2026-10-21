@@ -1,3 +1,5 @@
+import type { BlockReport } from './eventLoopLag';
+
 export interface MsFixture {
   ready: Promise<void>;
   renderer: string;
@@ -106,6 +108,8 @@ export interface RtControls {
   maxLag: () => number;
   /** Longest main-thread block from page work since load or `resetLag` (lag=1: long tasks, bake calls and updates). */
   mainThreadBlock: () => number;
+  /** Per-phase maxima, long tasks and slow phases since load or `resetLag` (lag=1). */
+  blockReport: () => BlockReport;
   /** Busy main thread for `ms` outside any timed bake work (checks that `mainThreadBlock` sees long tasks). */
   spinMainThread: (ms: number) => Promise<void>;
   resetLag: () => void;

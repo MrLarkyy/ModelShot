@@ -133,14 +133,14 @@ async function start(): Promise<void> {
   let baker: LightBaker | null = null;
   let shown: BakedLighting | null = null;
   // The camera is already set: an update re-uploads the light and draws, nothing more on the main thread.
-  const show = (lighting: BakedLighting): void => {
-    const update = (): void => {
-      if (!renderer.setLighting(lighting)) return;
-      shown = lighting;
-      renderer.render();
-    };
-    if (lag) lag.work(update);
-    else update();
+  const timed = <T>(phase: string, fn: () => T): T => (lag ? lag.work(phase, fn) : fn());
+  const nextTask = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+  // An update hands the light over, lets the renderer upload it a frame's budget per task, then draws it complete.
+  const show = async (lighting: BakedLighting): Promise<void> => {
+    if (!timed('set-lighting', () => renderer.setLighting(lighting))) return;
+    shown = lighting;
+    while (timed('upload', () => renderer.advanceLighting())) await nextTask();
+    timed('render', () => renderer.render());
   };
   const outcome = (
     result: BakeResult,
@@ -187,11 +187,11 @@ async function start(): Promise<void> {
             progress.push(samplesDone);
             if (hashes) progressHashes.push(lightingHash(lighting));
             console.log(`[bake] ${samplesDone} / ${samples} samples`);
-            if (display) show(lighting);
+            if (display) void show(lighting);
           },
         });
-      const result = await (lag ? lag.work(call) : call());
-      if (display && result.lighting) show(result.lighting);
+      const result = await timed('bake-call', call);
+      if (display && result.lighting) await show(result.lighting);
       return outcome(result, progress, progressHashes, hashes);
     } catch (error) {
       return failed(error, progress);
@@ -381,6 +381,7 @@ async function start(): Promise<void> {
     },
     maxLag: () => lag?.max() ?? -1,
     mainThreadBlock: () => lag?.block() ?? -1,
+    blockReport: () => lag?.report() ?? { phases: {}, longTasks: [], slowPhases: [] },
     spinMainThread,
     resetLag: () => lag?.reset(),
   };

@@ -18,6 +18,7 @@ import { depthKeyMode, depthPull, exactDepthRange, type DepthKeyMode } from './d
 import { invertMat4 } from './invertMat4';
 import { lightmapLayout, type LightmapLayoutSummary } from './lightmapLayout';
 import { poseOnlyChange } from './poseOnlyChange';
+import { uploadBands } from './uploadBands';
 import { createRendererPrograms, type MeshPassName, type RendererPrograms } from './rendererPrograms';
 import { RendererError } from './RendererError';
 import type { RendererWarning } from './RendererWarning';
@@ -84,12 +85,22 @@ interface LoadedScene {
 
 /** The baked light on the GPU: RGBA16F lightmaps and the shadow catcher's quad. */
 interface GpuLighting {
+  /** The lighting the textures hold. */
+  source: BakedLighting;
   readonly lightmap: WebGLTexture;
   readonly catcher: {
     readonly texture: WebGLTexture;
     readonly vao: WebGLVertexArrayObject;
     readonly buffer: WebGLBuffer;
   } | null;
+}
+
+/** Lighting being written band by band into textures that are not drawn yet. */
+interface LightingUpload {
+  readonly target: GpuLighting;
+  readonly lighting: BakedLighting;
+  lightmapRow: number;
+  catcherRow: number;
 }
 
 /** What one frame draws with: matrices, the far plane and the depth-key variant (`depthKeyMode`). */
@@ -118,7 +129,12 @@ interface GpuResources {
   scene: GpuScene | null;
   /** 1 × 1 light of value 1, bound while there is no baked light. */
   readonly unbakedLight: WebGLTexture;
+  /** The baked light frames draw with. */
   lighting: GpuLighting | null;
+  /** The next lighting, still uploading; frames keep the complete one until it is done. */
+  upload: LightingUpload | null;
+  /** The previous textures, kept for the next upload of the same shape. */
+  spare: GpuLighting | null;
 }
 
 /**
@@ -184,9 +200,14 @@ export class RealtimeRenderer {
     return this.frameDepthKey;
   }
 
-  /** Something changed since the last `render()`. */
+  /** Something changed since the last `render()`, or baked light is still uploading. */
   get needsRender(): boolean {
-    return this.dirty && !this.lost && !this.disposed;
+    return (this.dirty || this.gpu?.upload != null) && !this.lost && !this.disposed;
+  }
+
+  /** Baked light set by `setLighting` is still being uploaded; frames show the previous lighting until it is done. */
+  get lightingPending(): boolean {
+    return this.gpu?.upload != null && !this.lost && !this.disposed;
   }
 
   get width(): number {
@@ -229,7 +250,9 @@ export class RealtimeRenderer {
   /**
    * Shades the scene with baked light (`LightBaker` of `@modelshot/pathtracer`) and draws its shadow catcher, or
    * without (`null`): exactly the unbaked image. Returns `false` and changes nothing when the lighting was not baked
-   * for the current scene's layout (`checkLighting`) or there is no scene. One RGBA16F upload per lightmap.
+   * for the current scene's layout (`checkLighting`) or there is no scene. The upload is spread over the next
+   * `render()` / `advanceLighting()` calls (`UPLOAD_FRAME_BYTES` each, in bands of `UPLOAD_BAND_BYTES`) into textures
+   * frames do not draw yet; frames show the previous lighting until it is complete (`lightingPending`), then switch.
    */
   setLighting(lighting: BakedLighting | null): boolean {
     if (this.disposed) return false;
@@ -240,15 +263,49 @@ export class RealtimeRenderer {
     }
     const layout = this.loaded?.layout;
     if (!layout || !checkLighting(layout, lighting)) return false;
-    const previous = this.lighting;
     this.lighting = lighting;
-    if (this.gpu && !this.lost) {
-      // A bake's progress updates keep their shape: write into the textures instead of reallocating them.
-      if (previous && this.gpu.lighting && sameShape(previous, lighting)) this.refreshLighting(this.gpu, lighting);
-      else this.uploadLighting(this.gpu);
-    }
+    if (this.gpu && !this.lost) this.beginUpload(this.gpu, lighting);
     this.dirty = true;
     return true;
+  }
+
+  /**
+   * Uploads the next part of pending baked light (at most `UPLOAD_FRAME_BYTES`), without drawing; `render()` calls it
+   * too. Returns `true` while more remains. The main thread never hands the browser more than a band at once, so it
+   * never waits for the GPU process, which may be busy with the bake's draws.
+   */
+  advanceLighting(): boolean {
+    const gpu = this.gpu;
+    const upload = gpu?.upload;
+    if (!gpu || !upload || this.lost || this.disposed || this.gl.isContextLost()) return false;
+    const gl = this.gl;
+    const { lighting, target } = upload;
+    const write = (texture: WebGLTexture, width: number, data: Uint16Array, row: number, rows: number): number => {
+      const bands = uploadBands(rows, width * 8, row);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+      for (const [start, count] of bands) {
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, start, width, count, gl.RGBA, gl.HALF_FLOAT, data, start * width * 4);
+      }
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      const last = bands.at(-1);
+      return last ? last[0] + last[1] : row;
+    };
+    if (upload.lightmapRow < lighting.height) {
+      upload.lightmapRow = write(target.lightmap, lighting.width, lighting.data, upload.lightmapRow, lighting.height);
+    } else if (lighting.catcher && target.catcher && upload.catcherRow < lighting.catcher.height) {
+      const { width, height, data } = lighting.catcher;
+      upload.catcherRow = write(target.catcher.texture, width, data, upload.catcherRow, height);
+    }
+    const done =
+      upload.lightmapRow >= lighting.height && (!lighting.catcher || upload.catcherRow >= lighting.catcher.height);
+    if (!done) return true;
+    target.source = lighting;
+    gpu.spare = gpu.lighting;
+    gpu.lighting = target;
+    gpu.upload = null;
+    this.dirty = true;
+    return false;
   }
 
   setCamera(camera: SceneCamera): void {
@@ -282,6 +339,7 @@ export class RealtimeRenderer {
   render(): void {
     const gpu = this.gpu;
     if (!gpu || this.lost || this.disposed || this.gl.isContextLost()) return;
+    this.advanceLighting();
     this.dirty = false;
     const width = this.canvas.width;
     const height = this.canvas.height;
@@ -380,44 +438,27 @@ export class RealtimeRenderer {
       scene: null,
       unbakedLight,
       lighting: null,
+      upload: null,
+      spare: null,
     };
   }
 
-  private refreshLighting(gpu: GpuResources, lighting: BakedLighting): void {
+  /** Textures (and the catcher's quad) of the shape of `lighting`, not yet written. */
+  private createGpuLighting(lighting: BakedLighting): GpuLighting {
     const gl = this.gl;
-    const write = (texture: WebGLTexture, width: number, height: number, data: Uint16Array): void => {
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, width, height, gl.RGBA, gl.HALF_FLOAT, data);
-    };
-    if (gpu.lighting) write(gpu.lighting.lightmap, lighting.width, lighting.height, lighting.data);
-    const catcher = lighting.catcher;
-    if (gpu.lighting?.catcher && catcher)
-      write(gpu.lighting.catcher.texture, catcher.width, catcher.height, catcher.data);
-    gl.bindTexture(gl.TEXTURE_2D, null);
-  }
-
-  /** Uploads the retained lighting in place of what the GPU had. */
-  private uploadLighting(gpu: GpuResources): void {
-    const lighting = this.lighting;
-    this.releaseGpuLighting(gpu);
-    if (!lighting) return;
-    const gl = this.gl;
-    const upload = (width: number, height: number, data: Uint16Array): WebGLTexture => {
+    const allocate = (width: number, height: number): WebGLTexture => {
       const texture = gl.createTexture();
       gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
       gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA16F, width, height);
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, width, height, gl.RGBA, gl.HALF_FLOAT, data);
       setNearest(gl);
       gl.bindTexture(gl.TEXTURE_2D, null);
       return texture;
     };
-    const lightmap = upload(lighting.width, lighting.height, lighting.data);
+    const lightmap = allocate(lighting.width, lighting.height);
     let catcher: GpuLighting['catcher'] = null;
     if (lighting.catcher) {
-      const { y, rect, width, height, data } = lighting.catcher;
-      const texture = upload(width, height, data);
+      const { y, rect, width, height } = lighting.catcher;
+      const texture = allocate(width, height);
       const vao = gl.createVertexArray();
       const buffer = gl.createBuffer();
       gl.bindVertexArray(vao);
@@ -432,13 +473,37 @@ export class RealtimeRenderer {
       gl.bindBuffer(gl.ARRAY_BUFFER, null);
       catcher = { texture, vao, buffer };
     }
-    gpu.lighting = { lightmap, catcher };
+    return { source: lighting, lightmap, catcher };
   }
 
-  private releaseGpuLighting(gpu: GpuResources): void {
-    const lighting = gpu.lighting;
-    gpu.lighting = null;
-    if (!lighting || this.lost) return;
+  /** Starts uploading `lighting` into textures of its shape: the pending upload's, the spare ones, or new ones. */
+  private beginUpload(gpu: GpuResources, lighting: BakedLighting): void {
+    const candidates = [gpu.upload?.target ?? null, gpu.spare];
+    gpu.upload = null;
+    gpu.spare = null;
+    let target: GpuLighting | null = null;
+    for (const candidate of candidates) {
+      if (candidate && !target && sameShape(candidate.source, lighting)) target = candidate;
+      else if (candidate) this.deleteGpuLighting(candidate);
+    }
+    gpu.upload = {
+      target: target ?? this.createGpuLighting(lighting),
+      lighting,
+      lightmapRow: 0,
+      catcherRow: 0,
+    };
+  }
+
+  /** Uploads the retained lighting at once (a rebuilt context), in place of what the GPU had. */
+  private uploadLighting(gpu: GpuResources): void {
+    this.releaseGpuLighting(gpu);
+    if (!this.lighting) return;
+    this.beginUpload(gpu, this.lighting);
+    while (this.advanceLighting());
+  }
+
+  private deleteGpuLighting(lighting: GpuLighting): void {
+    if (this.lost) return;
     const gl = this.gl;
     gl.deleteTexture(lighting.lightmap);
     if (lighting.catcher) {
@@ -446,6 +511,15 @@ export class RealtimeRenderer {
       gl.deleteVertexArray(lighting.catcher.vao);
       gl.deleteBuffer(lighting.catcher.buffer);
     }
+  }
+
+  private releaseGpuLighting(gpu: GpuResources): void {
+    for (const lighting of [gpu.lighting, gpu.spare, gpu.upload?.target ?? null]) {
+      if (lighting) this.deleteGpuLighting(lighting);
+    }
+    gpu.lighting = null;
+    gpu.spare = null;
+    gpu.upload = null;
   }
 
   private dropLighting(): void {
@@ -625,7 +699,7 @@ export class RealtimeRenderer {
    */
   private drawCatcher(gpu: GpuResources, frame: FrameView, toneMap: boolean): void {
     const catcher = gpu.lighting?.catcher;
-    const baked = this.lighting?.catcher;
+    const baked = gpu.lighting?.source.catcher;
     if (!catcher || !baked) return;
     const gl = this.gl;
     const { program, uniforms } = gpu.programs.catcher;

@@ -44,4 +44,5 @@ export { RendererError, type RendererErrorCode } from './RendererError';
 export { MAX_CATCHER_SIDE, shadowCatcherPlane, type ShadowCatcherPlane } from './shadowCatcherPlane';
 export type { RendererWarning, RendererWarningCode } from './RendererWarning';
 export { PLACEHOLDER_IMAGE, UNTEXTURED_IMAGE, type RawImage } from './textureUpload';
+export { UPLOAD_BAND_BYTES, UPLOAD_FRAME_BYTES } from './uploadBands';
 export { validateScene } from './validateScene';

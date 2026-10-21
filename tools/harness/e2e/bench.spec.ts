@@ -98,11 +98,17 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
   const bakeBlock = await page.evaluate(() => ({
     block: window.__msFixture?.rt?.mainThreadBlock() ?? -1,
     lag: window.__msFixture?.rt?.maxLag() ?? -1,
+    report: window.__msFixture?.rt?.blockReport(),
   }));
   console.log(
     `[bench] bake runs ${bakeRuns.map((ms) => ms.toFixed(0)).join(', ')} ms, main-thread block ` +
       `${bakeBlock.block.toFixed(1)} ms (heartbeat lag ${bakeBlock.lag.toFixed(1)} ms)`,
   );
+  // Which work the block came from: the longest stretch per phase, every long task and the slow phases around them.
+  const phases = Object.entries(bakeBlock.report?.phases ?? {}).map(([phase, ms]) => `${phase} ${ms.toFixed(1)}`);
+  console.log(`[bench] bake phases (max ms): ${phases.join(', ')}`);
+  console.log(`[bench] bake long tasks: ${JSON.stringify(bakeBlock.report?.longTasks ?? [])}`);
+  console.log(`[bench] bake slow phases: ${JSON.stringify(bakeBlock.report?.slowPhases.slice(-40) ?? [])}`);
 
   // What bake() itself costs the main thread for a document at the loaders' limits (200 000 triangles): validation
   // and the structured clone of the posted document, as the longer of the call's own duration and the page's main-thread
