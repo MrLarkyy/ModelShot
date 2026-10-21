@@ -75,6 +75,8 @@ interface LoadedScene {
   /** `FlatScene.sources` and the BVH order: what rewriting the edge texels for another sharp angle needs. */
   readonly sources: Uint32Array;
   readonly order: Uint32Array;
+  /** The sharp angle the edge texels were packed with; `setEdges` during a pending `setScene` makes it stale. */
+  edgeAngle: number;
   readonly geometry: PackedGeometry;
   readonly materials: ReturnType<typeof packMaterials>;
   readonly plan: TextureLayerPlan;
@@ -217,6 +219,7 @@ export class PathTracer {
     }
     const capabilities = this.capabilities ?? this.queryCapabilities();
     checkMaterialCount(doc.materials.length);
+    const packedAngle = this.edges.sharpAngleDeg;
     const flat = flattenScene(doc, this.options.maxTriangles ?? DEFAULT_MAX_TRIANGLES, this.sharpEdgeOptions());
     const bvh = buildBvh(flat.positions, flat.count);
     const geometry = packGeometry(flat, bvh, capabilities.maxTextureSize);
@@ -237,6 +240,7 @@ export class PathTracer {
       loaded = {
         doc,
         sources: flat.sources,
+        edgeAngle: packedAngle,
         order: bvh.order,
         geometry,
         materials: packMaterials(doc, layout.textures, options.emission),
@@ -251,6 +255,7 @@ export class PathTracer {
     }
     this.releaseScene();
     this.loaded = loaded;
+    this.repackEdges(loaded);
     if (this.gpu && !this.lost) this.uploadLoaded(this.gpu);
     this.restart();
     const warnings: PathTracerWarning[] = [];
@@ -282,8 +287,7 @@ export class PathTracer {
     this.edges = next;
     const loaded = this.loaded;
     if (angleChanged && loaded) {
-      const flat = flatEdges(loaded.doc, loaded.sources, this.sharpEdgeOptions());
-      packTriangleEdges(loaded.geometry.triAttributes, flat, loaded.order, loaded.geometry.triangleCount);
+      this.repackEdges(loaded);
       const gpu = this.gpu;
       if (gpu?.scene && !this.lost) {
         disposeGpuScene(this.gl, gpu.scene);
@@ -404,6 +408,14 @@ export class PathTracer {
     if (this.gpu && !this.lost) this.releaseGpu(this.gpu);
     this.gpu = null;
     this.restoredListeners.clear();
+  }
+
+  /** Packs the edge texels again when the sharp angle changed since they were packed; before any upload of them. */
+  private repackEdges(loaded: LoadedScene): void {
+    if (loaded.edgeAngle === this.edges.sharpAngleDeg) return;
+    const flat = flatEdges(loaded.doc, loaded.sources, this.sharpEdgeOptions());
+    packTriangleEdges(loaded.geometry.triAttributes, flat, loaded.order, loaded.geometry.triangleCount);
+    loaded.edgeAngle = this.edges.sharpAngleDeg;
   }
 
   private sharpEdgeOptions(): { sharpAngleDeg: number; reach: number } {

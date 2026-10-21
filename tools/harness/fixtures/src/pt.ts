@@ -252,6 +252,15 @@ async function start(): Promise<void> {
         return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
       }
     },
+    setSceneDuringEdges: async (edges) => {
+      const next = sceneOf(view.scene);
+      const pending = tracer.setScene(next, sceneOptions);
+      tracer.setEdges(edges);
+      const result = await pending;
+      if (result.applied) doc = next;
+      render();
+      return result.applied;
+    },
     setEdges: (edges) => {
       try {
         tracer.setEdges(edges);

@@ -161,6 +161,8 @@ export interface PtControls {
   tryStart: (seed: number, samples: number) => string;
   /** The error `setCamera` throws for the page's camera with this vertical field of view, or `ok`. */
   tryFov: (fovYDeg: number) => string;
+  /** setScene of the page's scene anew, `setEdges` while it decodes, then the request drawn: whether it applied. */
+  setSceneDuringEdges: (edges: { width?: number; sharpAngleDeg?: number }) => Promise<boolean>;
   /** `setEdges` then the page's request drawn to the end: `ok`, or the error it threw (`name: message`). */
   setEdges: (edges: { width?: number; sharpAngleDeg?: number }) => string;
   /** Image position (pixels, top-left origin) of a world point under the current camera. */

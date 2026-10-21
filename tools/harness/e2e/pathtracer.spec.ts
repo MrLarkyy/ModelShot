@@ -426,6 +426,18 @@ test.describe('rounded edges', () => {
     expect(await set({ sharpAngleDeg: 0 })).toMatch(/^RangeError: edges\.sharpAngleDeg/);
     expect((await readPng(page, info)).equals(initial), 'a rejected value changes nothing').toBe(true);
   });
+
+  test('an angle set while setScene decodes applies to the new scene', async ({ page }) => {
+    const { info, png: initial } = await render(page, 'variant=edges&seed=1&samples=4');
+    expect(await page.evaluate(() => window.__msFixture!.pt!.setSceneDuringEdges({ sharpAngleDeg: 100 }))).toBe(true);
+    const during = await readPng(page, info);
+    // The reference packs the new scene at 100 degrees by a change of angle after it loaded.
+    await page.evaluate(() => window.__msFixture!.pt!.setEdges({ sharpAngleDeg: 30 }));
+    await page.evaluate(() => window.__msFixture!.pt!.setEdges({ sharpAngleDeg: 100 }));
+    const after = await readPng(page, info);
+    expect(during.equals(initial), 'the new scene is not drawn with the old angle').toBe(false);
+    expect(during.equals(after), 'the same bytes as packed at 100 degrees after loading').toBe(true);
+  });
 });
 
 test.describe('limits and hostile input', () => {
