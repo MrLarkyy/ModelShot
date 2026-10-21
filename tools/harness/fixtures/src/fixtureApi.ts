@@ -94,6 +94,11 @@ export interface RtControls {
    * were posted), then the shown document with the same textures array: both outcomes.
    */
   bakeAfterFailure: (request: RtBakeRequest) => Promise<RtBakeOutcome[]>;
+  /**
+   * Drives the renderer's banded light upload through its states with three bakes (seeds 1, 2, 3) of the shown
+   * document: frame hashes and `lightingPending` at each step.
+   */
+  uploadStates: () => Promise<Record<string, string | boolean>>;
   /** Shows the document in a player pose preset (setScene of the posed document; baked light of the same layout stays). */
   pose: (preset: string) => Promise<void>;
   /** Hash of the lighting the renderer shows, '' for none. */

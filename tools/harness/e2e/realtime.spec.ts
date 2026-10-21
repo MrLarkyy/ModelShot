@@ -936,6 +936,23 @@ test.describe('baked lighting', () => {
     expect(block).toBeGreaterThanOrEqual(80);
   });
 
+  test('banded light upload: frames keep the complete light until the next is in, whatever happens mid-upload', async ({
+    page,
+  }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030');
+    const s = await page.evaluate(() => window.__msFixture!.rt!.uploadStates());
+    expect(new Set([s.unbaked, s.refA, s.refC]).size, 'three distinct frames').toBe(3);
+    expect(s.midB, 'one budget into B the frame still shows A').toBe(s.refA);
+    expect(s.midBPending).toBe(true);
+    expect(s.afterC, 'C set mid-upload, drained').toBe(s.refC);
+    expect(s.afterNull, 'null mid-upload').toBe(s.unbaked);
+    expect(s.nullPending).toBe(false);
+    expect(s.otherFrame, 'another layout mid-upload draws unbaked').toBe(s.otherUnbaked);
+    expect(s.otherPending).toBe(false);
+    expect(s.restored, 'context restored mid-upload: the retained C, whole').toBe(s.refC);
+    expect(s.restoredPending).toBe(false);
+  });
+
   test('no bake ray reaches the per-ray node cap: benchmark scene and the cut-out plant field', async ({ page }) => {
     await openFixture(page, '/rt.html?variant=turntable-y030');
     const counts = await page.evaluate(async () => {

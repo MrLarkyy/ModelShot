@@ -341,6 +341,84 @@ async function start(): Promise<void> {
         return { texels: -1, error: errorText(error) };
       }
     },
+    uploadStates: async () => {
+      baker ??= LightBaker.create({ testHooks: true });
+      const bakeWith = async (seed: number): Promise<BakedLighting> => {
+        const { lighting } = await (baker ?? LightBaker.create()).bake(doc, { samples: 4, seed });
+        if (!lighting) throw new Error('bake not applied');
+        return lighting;
+      };
+      const [a, b, c] = [await bakeWith(1), await bakeWith(2), await bakeWith(3)];
+      const frame = (): string => {
+        renderer.render();
+        let h = 0x811c9dc5;
+        const rgba = readDrawingBufferBase64(gl, canvas.width, canvas.height);
+        for (let i = 0; i < rgba.length; i++) h = Math.imul(h ^ rgba.charCodeAt(i), 16777619) >>> 0;
+        return h.toString(16);
+      };
+      const drain = (): void => {
+        while (renderer.advanceLighting());
+      };
+      const showAll = (lighting: BakedLighting | null): string => {
+        renderer.setLighting(lighting);
+        drain();
+        return frame();
+      };
+      const unbaked = showAll(null);
+      const refC = showAll(c);
+      const refA = showAll(a);
+      // B is written into back textures: one frame's budget later the frame still shows A.
+      renderer.setLighting(b);
+      renderer.advanceLighting();
+      const midB = frame();
+      const midBPending = renderer.lightingPending;
+      // C replaces B mid-upload; drained, it shows exactly C.
+      renderer.setLighting(c);
+      renderer.advanceLighting();
+      drain();
+      const afterC = frame();
+      // null mid-upload: unbaked, nothing pending.
+      renderer.setLighting(b);
+      renderer.advanceLighting();
+      renderer.setLighting(null);
+      const nullPending = renderer.lightingPending;
+      const afterNull = frame();
+      // Another layout mid-upload: the scene's own unbaked frame, nothing pending.
+      showAll(a);
+      renderer.setLighting(b);
+      renderer.advanceLighting();
+      const other = rtScene('flat');
+      await renderer.setScene(other);
+      const otherPending = renderer.lightingPending;
+      const otherFrame = frame();
+      renderer.setLighting(null);
+      const otherUnbaked = frame();
+      await renderer.setScene(doc);
+      // A context loss mid-upload: the restore uploads the retained lighting, C, whole.
+      showAll(a);
+      renderer.setLighting(c);
+      renderer.advanceLighting();
+      await controls.lose();
+      await controls.restore();
+      const restoredPending = renderer.lightingPending;
+      const restored = frame();
+      shown = c;
+      return {
+        unbaked,
+        refA,
+        refC,
+        midB,
+        midBPending,
+        afterC,
+        afterNull,
+        nullPending,
+        otherFrame,
+        otherUnbaked,
+        otherPending,
+        restored,
+        restoredPending,
+      };
+    },
     bakeAfterFailure: async (request) => {
       const overflow = rtScene('lightmap-overflow');
       const failing: SceneDocument = { ...overflow, materials: doc.materials, textures: doc.textures };
