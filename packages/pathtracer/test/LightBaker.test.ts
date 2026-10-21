@@ -88,6 +88,52 @@ describe('LightBaker', () => {
     ]);
   });
 
+  it('posts the texture bytes again when the worker no longer holds them', () => {
+    const { baker: b, worker } = baker();
+    void b.bake(doc);
+    void b.bake({ ...doc, nodes: [] });
+    worker.reply({ type: 'resend', id: 2 });
+    const reposted = worker.posted.at(-1);
+    expect(reposted).toMatchObject({ type: 'bake', id: 2, texturesIncluded: true, texturesVersion: 2 });
+    expect(reposted?.type === 'bake' && reposted.doc.textures).toBe(doc.textures);
+    // A resend for a superseded bake settles it instead.
+    worker.reply({ type: 'resend', id: 1 });
+    expect(worker.posted.filter((m) => m.type === 'bake')).toHaveLength(3);
+  });
+
+  it('rejects a bake that fails after its progress began (an upload or run failure in the worker)', async () => {
+    const { baker: b, worker } = baker();
+    const pending = b.bake(doc);
+    worker.reply({ type: 'progress', id: 1, lighting: { ...lighting, samples: 4 } });
+    worker.reply({
+      type: 'error',
+      id: 1,
+      name: 'PathTracerError',
+      code: 'FLOAT_TARGETS_UNAVAILABLE',
+      message: 'RGBA32F accumulation targets are not renderable here',
+      path: '',
+    });
+    await expect(pending).rejects.toMatchObject({ code: 'FLOAT_TARGETS_UNAVAILABLE' });
+    const next = b.bake(doc);
+    worker.reply({ type: 'done', id: 2, lighting, warnings: [] });
+    expect(await next).toMatchObject({ applied: true });
+  });
+
+  it('keeps the test hooks behind testHooks', async () => {
+    vi.stubGlobal('Worker', FakeWorker);
+    vi.stubGlobal('OffscreenCanvas', class {});
+    const plain = LightBaker.create();
+    await expect(plain.bake(doc, { countCappedTraversals: true })).rejects.toThrow(/test hook/);
+    expect(() => plain.loseContext()).toThrow(/test hook/);
+    const { baker: b, worker } = baker();
+    void b.bake(doc, { countCappedTraversals: true });
+    b.loseContext(16);
+    expect(worker.posted.map((m) => (m.type === 'bake' ? m.countCapped : m))).toEqual([
+      true,
+      { type: 'loseContext', beforeMark: 16 },
+    ]);
+  });
+
   it('applies only the latest bake and reports its progress', async () => {
     const { baker: b, worker } = baker();
     const progress: number[] = [];
@@ -118,6 +164,8 @@ describe('LightBaker', () => {
     worker.fail();
     await expect(failing).rejects.toMatchObject({ code: 'WORKER_UNAVAILABLE' });
     expect(worker.terminated).toBe(true);
+    // The failure is for good: later bakes reject with it, as the TSDoc says, instead of resolving not applied.
+    await expect(b.bake(doc)).rejects.toMatchObject({ code: 'WORKER_UNAVAILABLE' });
   });
 
   it('dispose supersedes a pending bake and terminates the worker once it released everything', async () => {

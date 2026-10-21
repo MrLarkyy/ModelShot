@@ -26,6 +26,8 @@ uniform uint u_seed;
 uniform uint u_sample;
 // The shadow catcher pass: texel (x, z) of a u_catcherSize grid over u_catcherRect at height u_catcherY.
 uniform bool u_catcherPass;
+// Test hook: write the traversals stopped at the node cap (bvhTraverse) instead of the light, to show none are.
+uniform bool u_countCapped;
 uniform float u_catcherY;
 uniform vec4 u_catcherRect;
 uniform vec2 u_catcherSize;
@@ -139,5 +141,5 @@ void main() {
   uint key = sampleHash(u_seed, u_sample, stream);
   vec4 value = u_catcherPass ? bakeCatcher(texel, key) : bakeChart(texel, key);
   if (any(isnan(value)) || any(isinf(value))) value = vec4(1.0);
-  outSum = sum + value;
+  outSum = sum + (u_countCapped ? vec4(float(cappedTraversals)) : value);
 }

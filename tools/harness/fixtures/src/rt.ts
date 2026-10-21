@@ -175,6 +175,7 @@ async function start(): Promise<void> {
         seed: request.seed ?? bakeSeed,
         tileSize: request.tile ?? bakeTile,
         shadowCatcher: request.catcher ?? view.catcher,
+        countCappedTraversals: request.countCapped ?? false,
         onProgress: ({ samplesDone, samples, lighting }) => {
           progress.push(samplesDone);
           if (hashes) progressHashes.push(lightingHash(lighting));
@@ -318,6 +319,26 @@ async function start(): Promise<void> {
       const results = await Promise.all([runBake(doc, first, true), runBake(doc, second, true)]);
       return { applied: results.map((result) => result.applied), hash: lightingHash(shown) };
     },
+    bakeCapped: async (name, samples) => {
+      if (!isRtSceneName(name)) throw new Error(`unknown scene "${name}"`);
+      baker ??= LightBaker.create({ testHooks: true });
+      try {
+        const { lighting } = await baker.bake(rtScene(name), { samples, countCappedTraversals: true });
+        let texels = 0;
+        for (const data of [lighting?.data, lighting?.catcher?.data]) {
+          for (let i = 0; i < (data?.length ?? 0); i += 4) if ((data?.[i] ?? 0) !== 0) texels++;
+        }
+        return { texels, error: '' };
+      } catch (error) {
+        return { texels: -1, error: errorText(error) };
+      }
+    },
+    bakeAfterFailure: async (request) => {
+      const overflow = rtScene('lightmap-overflow');
+      const failing: SceneDocument = { ...overflow, materials: doc.materials, textures: doc.textures };
+      const first = await runBake(failing, request, false);
+      return [first, await runBake(doc, request, true)];
+    },
     bakeScene: (name, samples) => {
       if (!isRtSceneName(name)) throw new Error(`unknown scene "${name}"`);
       return runBake(rtScene(name), { samples }, false);
@@ -335,7 +356,7 @@ async function start(): Promise<void> {
     get lightingHash() {
       return lightingHash(shown);
     },
-    loseBakerContext: () => baker?.loseContext(),
+    loseBakerContext: (beforeMark) => baker?.loseContext(beforeMark),
     disposeBaker: () => baker?.dispose(),
     get bakerTerminated() {
       return baker?.terminated ?? false;

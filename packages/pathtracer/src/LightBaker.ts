@@ -13,7 +13,7 @@ const DEFAULT_BAKE_TILE = 64;
 export interface LightBakerOptions {
   /** Triangles of visible meshes accepted. Default 200 000 (the loaders' limit). */
   readonly maxTriangles?: number;
-  /** Enables `loseContext()`, for tests of the worker's context loss. Default `false`. */
+  /** Enables `loseContext()` and `BakeOptions.countCappedTraversals`, for tests. Default `false`. */
   readonly testHooks?: boolean;
 }
 
@@ -35,6 +35,11 @@ export interface BakeOptions {
   readonly tileSize?: number;
   /** Called with the lighting after samples 4, 16, 64, … (every fourfold) below `samples`. */
   readonly onProgress?: (progress: BakeProgress) => void;
+  /**
+   * Test hook (`testHooks: true`): every texel holds the mean count of its rays' traversals stopped at the per-ray
+   * node cap instead of light, so a test can show that real scenes never reach the cap.
+   */
+  readonly countCappedTraversals?: boolean;
 }
 
 export interface BakeResult {
@@ -45,6 +50,9 @@ export interface BakeResult {
 }
 
 interface Pending {
+  /** What was posted, kept to post again with the texture bytes when the worker asks (`resend`). */
+  readonly doc: SceneDocument;
+  readonly request: Extract<BakeRequest, { type: 'bake' }>;
   readonly samples: number;
   readonly onProgress: ((progress: BakeProgress) => void) | undefined;
   readonly resolve: (result: BakeResult) => void;
@@ -75,6 +83,8 @@ export class LightBaker {
   private sentTextures: SceneDocument['textures'] | null = null;
   private disposing = false;
   private isTerminated = false;
+  /** The worker failed for good: every later bake rejects with this. */
+  private failure: PathTracerError | null = null;
 
   private constructor(
     private readonly worker: Worker,
@@ -111,24 +121,35 @@ export class LightBaker {
    * rejects with `SCENE_TOO_LARGE` over a limit and with `WEBGL2_UNAVAILABLE`, `FLOAT_TARGETS_UNAVAILABLE` or
    * `HIGHP_UNAVAILABLE` where its context cannot bake. A later `bake` or `dispose` supersedes a pending one, which then
    * resolves with `applied: false` after the tile in progress. Texture bytes are posted only when `doc.textures` is not
-   * the array the previous call posted.
+   * the array the previous call posted (and again when the worker no longer holds them). After the worker failed
+   * (`WORKER_UNAVAILABLE`) every bake rejects with that error; after `dispose()` it resolves `applied: false`.
    */
   bake(doc: SceneDocument, options: BakeOptions = {}): Promise<BakeResult> {
+    if (this.failure) return Promise.reject(this.failure);
     if (this.disposing) return Promise.resolve(NOT_APPLIED);
-    let request: BakeRequest;
+    let request: Extract<BakeRequest, { type: 'bake' }>;
     try {
       request = this.request(doc, options);
     } catch (error) {
       return Promise.reject(error instanceof Error ? error : new Error(String(error)));
     }
     return new Promise<BakeResult>((resolve, reject) => {
-      const samples = request.type === 'bake' ? request.samples : 0;
-      this.pending.set(this.latest, { samples, onProgress: options.onProgress, resolve, reject });
+      this.pending.set(request.id, {
+        doc,
+        request,
+        samples: request.samples,
+        onProgress: options.onProgress,
+        resolve,
+        reject,
+      });
       this.worker.postMessage(request);
     });
   }
 
-  private request(doc: SceneDocument, options: BakeOptions): BakeRequest {
+  private request(doc: SceneDocument, options: BakeOptions): Extract<BakeRequest, { type: 'bake' }> {
+    if (options.countCappedTraversals && !this.options.testHooks) {
+      throw new Error('countCappedTraversals is a test hook: create the baker with testHooks: true');
+    }
     const samples = checkInteger('samples', options.samples ?? DEFAULT_BAKE_SAMPLES, 1, MAX_BAKE_SAMPLES);
     const seed = checkInteger('seed', options.seed ?? 1, 0, MAX_SEED);
     const tileSize = checkInteger('tileSize', options.tileSize ?? DEFAULT_BAKE_TILE, 16, 512);
@@ -159,13 +180,19 @@ export class LightBaker {
       shadowCatcher: options.shadowCatcher ?? true,
       tileSize,
       maxTriangles: this.options.maxTriangles ?? DEFAULT_MAX_TRIANGLES,
+      countCapped: options.countCappedTraversals === true,
     };
   }
 
-  /** Test hook (`testHooks: true`): the worker loses its context and gets it back; a running bake restarts. */
-  loseContext(): void {
+  /**
+   * Test hook (`testHooks: true`): the worker loses its context and gets it back; a running bake restarts. With
+   * `beforeMark` the loss comes right before the readback after that many samples of a running bake.
+   */
+  loseContext(beforeMark?: number): void {
     if (!this.options.testHooks) throw new Error('loseContext is a test hook: create the baker with testHooks: true');
-    if (!this.disposing) this.worker.postMessage({ type: 'loseContext' } satisfies BakeRequest);
+    const request: BakeRequest =
+      beforeMark === undefined ? { type: 'loseContext' } : { type: 'loseContext', beforeMark };
+    if (!this.disposing) this.worker.postMessage(request);
   }
 
   /** Supersedes a pending bake; the worker releases its GL objects and images and is terminated. */
@@ -195,6 +222,24 @@ export class LightBaker {
         return;
       case 'restarted':
         return;
+      case 'resend': {
+        if (!current) {
+          this.pending.delete(reply.id);
+          pending.resolve(NOT_APPLIED);
+          return;
+        }
+        this.sentTextures = pending.doc.textures;
+        this.texturesVersion++;
+        const request = {
+          ...pending.request,
+          doc: pending.doc,
+          texturesVersion: this.texturesVersion,
+          texturesIncluded: true,
+        };
+        this.pending.set(reply.id, { ...pending, request });
+        this.worker.postMessage(request);
+        return;
+      }
       case 'done':
         this.pending.delete(reply.id);
         pending.resolve(current ? { applied: true, warnings: reply.warnings, lighting: reply.lighting } : NOT_APPLIED);
@@ -221,7 +266,8 @@ export class LightBaker {
   }
 
   private fail(code: PathTracerErrorCode, message: string): void {
-    for (const pending of this.pending.values()) pending.reject(new PathTracerError(code, message));
+    this.failure = new PathTracerError(code, message);
+    for (const pending of this.pending.values()) pending.reject(this.failure);
     this.pending.clear();
     this.terminate();
   }

@@ -27,6 +27,12 @@ export interface BakeTile {
 
 export type BakePass = 'model' | 'catcher';
 
+/** Limits of the context, read when the session was created (a lost context answers nothing). */
+export interface BakeLimits {
+  readonly maxTextureSize: number;
+  readonly maxArrayTextureLayers: number;
+}
+
 interface SceneTextures {
   readonly gpu: GpuScene;
   readonly charts: WebGLTexture;
@@ -46,9 +52,16 @@ export class BakeSession {
   private readonly program: TracerProgram;
   private readonly vao: WebGLVertexArrayObject;
   private scene: SceneTextures | null = null;
+  readonly limits: BakeLimits;
 
   constructor(private readonly gl: WebGL2RenderingContext) {
     requireExactAccumulation(gl);
+    const positive = (value: unknown, fallback: number) =>
+      typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+    this.limits = {
+      maxTextureSize: positive(gl.getParameter(gl.MAX_TEXTURE_SIZE), 2048),
+      maxArrayTextureLayers: positive(gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS), 256),
+    };
     this.program = linkTracerProgram(gl, 'bake');
     this.vao = gl.createVertexArray();
   }
@@ -94,9 +107,9 @@ export class BakeSession {
 
   /**
    * Draws sample `sample` of `seed` for the texels of `tile` into the pass's next sum; `finishSample` makes it the
-   * current one once every tile of the sample is drawn.
+   * current one once every tile of the sample is drawn. `countCapped` (test hook) sums capped traversals instead.
    */
-  drawTile(pass: BakePass, scene: BakeScene, seed: number, sample: number, tile: BakeTile): void {
+  drawTile(pass: BakePass, scene: BakeScene, seed: number, sample: number, tile: BakeTile, countCapped = false): void {
     const textures = this.scene;
     const targets = pass === 'model' ? textures?.model : textures?.catcher;
     if (!textures || !targets) return;
@@ -139,6 +152,7 @@ export class BakeSession {
     gl.uniform1f(uniform('u_catcherY'), catcher?.y ?? 0);
     gl.uniform4fv(uniform('u_catcherRect'), catcher?.rect ?? [0, 0, 1, 1]);
     gl.uniform2f(uniform('u_catcherSize'), catcher?.width ?? 1, catcher?.height ?? 1);
+    gl.uniform1i(uniform('u_countCapped'), countCapped ? 1 : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.disable(gl.SCISSOR_TEST);
     gl.bindVertexArray(null);

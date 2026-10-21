@@ -28,8 +28,13 @@ out vec4 outSum;
 
 const int MAX_BOUNCES = 16;
 const int ROULETTE_FROM = 3;
-// Random dimensions: 0-1 the pixel jitter; then per path vertex the bounce direction (2), Russian roulette, the
-// acceptance of partial texels and the key light's cone direction (2).
+// Random dimensions: 0-1 the pixel jitter; then per path vertex (offsets from its first dimension):
+//   +0, +1  bounce direction         +2  Russian roulette        +3  acceptance of partial texels
+//   +4, +5  key light cone direction
+// A camera ray that meets the shadow catcher ends its path at vertex 0, so the catcher reuses vertex 0's offsets:
+// +0, +1 its fill direction, +4, +5 its key ray, and +2 (roulette, unused there) the acceptance of partial texels by
+// its fill ray. That one must not be +3: the camera ray drew +3 for the same triangles, so a fill ray through a partial
+// texel the camera looked through would always pass it.
 const uint FIRST_VERTEX_DIMENSION = 2u;
 const uint DIMENSIONS_PER_VERTEX = 6u;
 
@@ -54,7 +59,7 @@ vec3 shadeCatcher(uint key, uint dimension, vec3 point) {
   float keyT = shadowTransmittance(origin, cone, -1);
   vec3 d = cosineDirection(up, unitRandom(key, dimension, 0u), unitRandom(key, dimension + 1u, 0u));
   Hit blocker;
-  vec3 fill = closestHit(origin, d, 0.0, 3.0e38, 1.0, -1, key, dimension + 3u, blocker) ? vec3(0.0)
+  vec3 fill = closestHit(origin, d, 0.0, 3.0e38, 1.0, -1, key, dimension + 2u, blocker) ? vec3(0.0)
                                                                                         : environmentRadiance(d);
   return u_background * catcherShade(fill, keyT, point.xz, u_catcherRect);
 }

@@ -16,9 +16,12 @@ export type BakeRequest =
       readonly shadowCatcher: boolean;
       readonly tileSize: number;
       readonly maxTriangles: number;
+      /** Test hook: each texel sums the traversals its rays stopped at the node cap instead of light. */
+      readonly countCapped: boolean;
     }
   | { readonly type: 'dispose' }
-  | { readonly type: 'loseContext' };
+  /** Test hook: lose the context now, or (`beforeMark`) right before the readback after that many samples. */
+  | { readonly type: 'loseContext'; readonly beforeMark?: number };
 
 /** Bake worker to main thread. */
 export type BakeReply =
@@ -31,6 +34,8 @@ export type BakeReply =
     }
   /** The bake stopped for a later request or dispose; nothing of it is kept. */
   | { readonly type: 'stopped'; readonly id: number }
+  /** The worker holds no images for this texture version (a bake that posted them failed first): post the bytes again. */
+  | { readonly type: 'resend'; readonly id: number }
   /** The worker's context was lost and is back: the bake started again at sample 0. */
   | { readonly type: 'restarted'; readonly id: number }
   | {

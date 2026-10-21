@@ -32,6 +32,8 @@ export interface RtBakeRequest {
   seed?: number;
   tile?: number;
   catcher?: boolean;
+  /** Test hook: texels count capped traversals instead of light. */
+  countCapped?: boolean;
 }
 
 /** How a bake ended: the samples of each progress update, the final lighting's hash, or the error (`code: message`). */
@@ -83,12 +85,19 @@ export interface RtControls {
   bakeTwice: (first: RtBakeRequest, second: RtBakeRequest) => Promise<{ applied: boolean[]; hash: string }>;
   /** Bakes a named scene without showing it. */
   bakeScene: (name: string, samples: number) => Promise<RtBakeOutcome>;
+  /** Bakes a named scene counting the traversals its rays stop at the node cap: texels with any, or the error. */
+  bakeCapped: (name: string, samples: number) => Promise<{ texels: number; error: string }>;
+  /**
+   * Bakes the shown document's textures with lightmap-overflow's meshes (refused with SCENE_TOO_LARGE after the bytes
+   * were posted), then the shown document with the same textures array: both outcomes.
+   */
+  bakeAfterFailure: (request: RtBakeRequest) => Promise<RtBakeOutcome[]>;
   /** Shows the document in a player pose preset (setScene of the posed document; baked light of the same layout stays). */
   pose: (preset: string) => Promise<void>;
   /** Hash of the lighting the renderer shows, '' for none. */
   readonly lightingHash: string;
-  /** The worker loses its WebGL context and gets it back (LightBaker test hook). */
-  loseBakerContext: () => void;
+  /** The worker loses its WebGL context and gets it back (LightBaker test hook), now or before a progress mark. */
+  loseBakerContext: (beforeMark?: number) => void;
   disposeBaker: () => void;
   readonly bakerTerminated: boolean;
   /** setLighting with the shown lighting changed in one way: whether the renderer took it. */

@@ -870,6 +870,64 @@ test.describe('baked lighting', () => {
     expect(await page.evaluate(() => window.__msFixture!.rt!.lightingHash)).toBe(hash);
   });
 
+  test('a failed bake keeps the textures it posted: the next bake of the same textures shadows like a fresh one', async ({
+    page,
+  }) => {
+    await openFixture(page, '/rt.html?variant=bake-cutout-checker');
+    const reference = await page.evaluate(() => window.__msFixture!.rt!.lightingHash);
+    await openFixture(page, '/rt.html?variant=cutout-checker');
+    const [failed, next] = await page.evaluate(() => window.__msFixture!.rt!.bakeAfterFailure({ samples: 64 }));
+    expect(failed?.error).toMatch(/^SCENE_TOO_LARGE/);
+    expect(next?.error).toBe('');
+    expect(next?.warnings, 'no texture became a placeholder').toEqual([]);
+    expect(next?.hash).toBe(reference);
+  });
+
+  test('a bake asked while the worker context is lost waits for the restore and reaches the same bytes', async ({
+    page,
+  }) => {
+    await openFixture(page, '/rt.html?variant=bake-turntable-y030');
+    const reference = await page.evaluate(() => window.__msFixture!.rt!.lightingHash);
+    const result = await page.evaluate(() => {
+      const rt = window.__msFixture!.rt!;
+      rt.loseBakerContext();
+      return rt.bake({ samples: 64 });
+    });
+    expect(result.error).toBe('');
+    expect(result.hash).toBe(reference);
+  });
+
+  test('a loss right before a progress readback restarts the bake instead of posting empty light', async ({ page }) => {
+    await openFixture(page, '/rt.html?variant=bake-turntable-y030');
+    const reference = await page.evaluate(() => window.__msFixture!.rt!.lightingHash);
+    const result = await page.evaluate(() => {
+      const rt = window.__msFixture!.rt!;
+      rt.loseBakerContext(16);
+      return rt.bake({ samples: 64 });
+    });
+    expect(result.error).toBe('');
+    // The update after 4 samples came, the one after 16 was lost; the restarted bake reports 4 and 16 again.
+    expect(result.progress).toEqual([4, 4, 16]);
+    expect(result.hash).toBe(reference);
+  });
+
+  test('no bake ray reaches the per-ray node cap: benchmark scene and the cut-out plant field', async ({ page }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030');
+    const counts = await page.evaluate(async () => {
+      const rt = window.__msFixture!.rt!;
+      return {
+        bench: await rt.bakeCapped('bench', 4),
+        grass: await rt.bakeCapped('grass-field', 1),
+        cubes: await rt.bakeCapped('coincident-cubes', 1),
+      };
+    });
+    console.log(`[rt probe] capped bake texels: ${JSON.stringify(counts)}`);
+    expect(counts.bench).toEqual({ texels: 0, error: '' });
+    expect(counts.grass).toEqual({ texels: 0, error: '' });
+    // The hook counts: 10 000 coincident cubes reach the cap.
+    expect(counts.cubes.texels).toBeGreaterThan(0);
+  });
+
   test.describe('hostile input', () => {
     test('10 000 coincident cubes bake a sample without losing a context', async ({ page }) => {
       await openFixture(page, '/rt.html?variant=turntable-y030');

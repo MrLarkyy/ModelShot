@@ -18,7 +18,7 @@ import { PathTracerError } from '../PathTracerError';
 import type { PathTracerWarning } from '../PathTracerWarning';
 import { sampleTiles } from '../sampleSchedule';
 import { progressSamples, type BakeReply, type BakeRequest } from './bakeMessages';
-import { BakeSession, type BakePass, type BakeScene } from './BakeSession';
+import { BakeSession, type BakeLimits, type BakePass, type BakeScene } from './BakeSession';
 import { buildChartTable } from './chartTable';
 import { toHalf } from './halfFloat';
 
@@ -37,6 +37,7 @@ interface Job {
   readonly seed: number;
   readonly samples: number;
   readonly tileSize: number;
+  readonly countCapped: boolean;
   stopped: boolean;
   scene: BakeScene | null;
   layoutKey: string;
@@ -53,10 +54,14 @@ const gl = canvas.getContext('webgl2', {
 });
 let session: BakeSession | null = null;
 let sessionError: unknown = null;
+/** The limits of the last session: a bake prepared while the context is lost sizes its data by them. */
+let limits: BakeLimits | null = null;
 let lost = false;
 let disposed = false;
 let job: Job | null = null;
 let textures: { version: number; decoded: Promise<DecodedTextures | null> } | null = null;
+/** Test hook: lose the context right before the readback after this many samples. */
+let loseBeforeMark: number | null = null;
 
 function createSession(): void {
   session = null;
@@ -67,10 +72,14 @@ function createSession(): void {
   }
   try {
     session = new BakeSession(gl);
+    limits = session.limits;
   } catch (error) {
     sessionError = error;
   }
 }
+
+/** The event-driven flag lags behind: a readback on a context lost a moment ago returns zeros without an error. */
+const contextGone = (): boolean => lost || !gl || gl.isContextLost();
 
 createSession();
 
@@ -88,9 +97,10 @@ const nextTask = (): Promise<void> =>
 async function gpuIdle(context: WebGL2RenderingContext): Promise<void> {
   const fence = context.fenceSync(context.SYNC_GPU_COMMANDS_COMPLETE, 0);
   context.flush();
+  if (!fence) return;
   for (let poll = 0; poll < MAX_FENCE_POLLS; poll++) {
     await nextTask();
-    if (lost || !fence) return;
+    if (contextGone()) return;
     if (context.getSyncParameter(fence, context.SYNC_STATUS) === context.SIGNALED) {
       context.deleteSync(fence);
       return;
@@ -98,6 +108,14 @@ async function gpuIdle(context: WebGL2RenderingContext): Promise<void> {
   }
   context.readPixels(0, 0, 1, 1, context.RGBA, context.UNSIGNED_BYTE, new Uint8Array(4));
   context.deleteSync(fence);
+}
+
+/** Test hook: the context is lost now (`isContextLost` at once, the event later) and restored on a later task. */
+function loseNow(): void {
+  const extension = gl?.getExtension('WEBGL_lose_context');
+  if (!extension) return;
+  canvas.addEventListener('webglcontextlost', () => setTimeout(() => extension.restoreContext(), 0), { once: true });
+  extension.loseContext();
 }
 
 function post(message: BakeReply, transfer: Transferable[] = []): void {
@@ -128,8 +146,8 @@ function halves(sums: Float32Array, samples: number): Uint16Array {
 
 function lightingOf(current: Job, scene: BakeScene, active: BakeSession, samples: number): BakedLighting | null {
   const model = active.read('model');
-  if (!model) return null;
   const catcherSums = scene.catcher ? active.read('catcher') : null;
+  if (!model || contextGone()) return null;
   return {
     layoutKey: current.layoutKey,
     width: scene.charts.width,
@@ -149,7 +167,10 @@ function lightingOf(current: Job, scene: BakeScene, active: BakeSession, samples
   };
 }
 
-/** Draws the job's samples tile by tile, reporting at the progress marks; returns when done, stopped or lost. */
+/**
+ * Draws the job's samples tile by tile, reporting at the progress marks; returns when done, stopped or lost. A lost
+ * context leaves the job in place: the restore handler starts it again.
+ */
 async function run(current: Job): Promise<void> {
   const scene = current.scene;
   const active = session;
@@ -164,17 +185,21 @@ async function run(current: Job): Promise<void> {
   for (let sample = 0; sample < current.samples; sample++) {
     for (const pass of passes) {
       for (const tile of tiles[pass]) {
-        if (current.stopped || lost || session !== active) return;
-        active.drawTile(pass, scene, current.seed, sample, tile);
+        if (current.stopped || contextGone() || session !== active) return;
+        active.drawTile(pass, scene, current.seed, sample, tile, current.countCapped);
         await gpuIdle(gl);
       }
-      if (current.stopped || lost || session !== active) return;
+      if (current.stopped || contextGone() || session !== active) return;
       active.finishSample(pass);
     }
     const done = sample + 1;
     if (!marks.has(done)) continue;
+    if (loseBeforeMark === done) {
+      loseBeforeMark = null;
+      loseNow();
+    }
     const lighting = lightingOf(current, scene, active, done);
-    if (!lighting || lost) return;
+    if (!lighting) return;
     const transfer: Transferable[] = [lighting.data.buffer];
     if (lighting.catcher) transfer.push(lighting.catcher.data.buffer);
     if (done < current.samples) {
@@ -186,33 +211,40 @@ async function run(current: Job): Promise<void> {
   }
 }
 
-function texturesFor(request: Extract<BakeRequest, { type: 'bake' }>, maxTextureSize: number) {
-  if (request.texturesIncluded || textures?.version !== request.texturesVersion) {
-    const previous = textures;
-    const decoded = decodeTextures(
-      request.doc.textures,
-      {
-        maxTextureSide: Math.min(MAX_TEXTURE_SIDE, maxTextureSize),
-        maxTexturePixelsTotal: DEFAULT_MAX_TEXTURE_PIXELS_TOTAL,
-      },
-      () => !disposed,
-    );
-    textures = { version: request.texturesVersion, decoded };
-    // The previous images are only needed by a job this request stops.
-    void previous?.decoded.then((old) => {
-      for (const bitmap of old?.bitmaps ?? []) bitmap?.close();
-    });
-  }
-  return textures.decoded;
+/**
+ * Starts decoding the request's textures and keeps them under its version, before anything of the bake can fail:
+ * the main thread counts them as sent once posted, and a later bake of the same textures posts no bytes.
+ */
+function keepTextures(request: Extract<BakeRequest, { type: 'bake' }>): void {
+  const previous = textures;
+  const decoded = decodeTextures(
+    request.doc.textures,
+    {
+      maxTextureSide: Math.min(MAX_TEXTURE_SIDE, limits?.maxTextureSize ?? MAX_TEXTURE_SIDE),
+      maxTexturePixelsTotal: DEFAULT_MAX_TEXTURE_PIXELS_TOTAL,
+    },
+    () => !disposed,
+  );
+  textures = { version: request.texturesVersion, decoded };
+  // The previous images are only needed by a job this request stops.
+  void previous?.decoded.then((old) => {
+    for (const bitmap of old?.bitmaps ?? []) bitmap?.close();
+  });
 }
 
 /** Everything that can fail runs here, before the job's scene replaces anything on the GPU. */
-async function prepare(current: Job, request: Extract<BakeRequest, { type: 'bake' }>): Promise<void> {
-  if (!session) {
+async function prepare(
+  current: Job,
+  request: Extract<BakeRequest, { type: 'bake' }>,
+  decodedTextures: Promise<DecodedTextures | null>,
+): Promise<void> {
+  // While the context is lost the bake is prepared all the same and starts once it is back.
+  if (!session && !lost) {
     throw sessionError instanceof Error
       ? sessionError
-      : new PathTracerError('WEBGL2_UNAVAILABLE', 'the bake context is lost');
+      : new PathTracerError('WEBGL2_UNAVAILABLE', 'the bake has no WebGL2 context');
   }
+  if (!limits) throw new PathTracerError('WEBGL2_UNAVAILABLE', 'the bake context was lost before it could start');
   const doc: SceneDocument = request.doc;
   try {
     validateScene(doc);
@@ -222,9 +254,8 @@ async function prepare(current: Job, request: Extract<BakeRequest, { type: 'bake
     }
     throw error;
   }
-  const maxTextureSize = gl?.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+  const { maxTextureSize, maxArrayTextureLayers: maxLayers } = limits;
   const layerSide = Math.min(maxTextureSize, MAX_TEXTURE_SIDE);
-  const maxLayers = gl?.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS) as number;
   checkMaterialCount(doc.materials.length);
   const layout = lightmapLayout(doc);
   const flat = flattenScene(doc, request.maxTriangles);
@@ -234,7 +265,7 @@ async function prepare(current: Job, request: Extract<BakeRequest, { type: 'bake
   const catcher = request.shadowCatcher
     ? shadowCatcherPlane(sceneBounds(doc), LIGHT_RIG_V0.keyDirection, layout.finestTexel)
     : null;
-  const decoded = await texturesFor(request, maxTextureSize);
+  const decoded = await decodedTextures;
   if (!decoded) throw new PathTracerError('WEBGL2_UNAVAILABLE', 'the bake worker was disposed');
   const placed = layoutTextures(decoded.bitmaps, layerSide, maxLayers);
   current.scene = {
@@ -258,16 +289,40 @@ async function prepare(current: Job, request: Extract<BakeRequest, { type: 'bake
   current.warnings = warnings;
 }
 
+/** Uploads the job's scene and runs it; a failure (an RGBA32F target the driver rejects) is the job's error. */
+async function launch(current: Job): Promise<void> {
+  const scene = current.scene;
+  if (!scene || !session) return;
+  try {
+    session.upload(scene);
+    await run(current);
+  } catch (error) {
+    // On a lost context GL calls fail quietly; the restore handler starts the job again.
+    if (contextGone() || current.stopped) return;
+    if (job === current) job = null;
+    post(errorReply(current.id, error));
+  }
+}
+
 async function start(request: Extract<BakeRequest, { type: 'bake' }>): Promise<void> {
   if (job) {
     job.stopped = true;
     post({ type: 'stopped', id: job.id });
+    job = null;
   }
+  if (request.texturesIncluded) {
+    keepTextures(request);
+  } else if (textures?.version !== request.texturesVersion) {
+    post({ type: 'resend', id: request.id });
+    return;
+  }
+  const decodedTextures = textures?.decoded ?? Promise.resolve(null);
   const current: Job = {
     id: request.id,
     seed: request.seed,
     samples: request.samples,
     tileSize: request.tileSize,
+    countCapped: request.countCapped,
     stopped: false,
     scene: null,
     layoutKey: '',
@@ -275,16 +330,14 @@ async function start(request: Extract<BakeRequest, { type: 'bake' }>): Promise<v
   };
   job = current;
   try {
-    await prepare(current, request);
+    await prepare(current, request, decodedTextures);
   } catch (error) {
     if (job === current) job = null;
     if (!current.stopped) post(errorReply(current.id, error));
     return;
   }
-  if (current.stopped || !current.scene) return;
-  if (lost) return;
-  session?.upload(current.scene);
-  await run(current);
+  if (current.stopped || !current.scene || contextGone()) return;
+  await launch(current);
 }
 
 if (gl) {
@@ -305,9 +358,8 @@ if (gl) {
       post(errorReply(current.id, sessionError));
       return;
     }
-    session.upload(current.scene);
     post({ type: 'restarted', id: current.id });
-    void run(current);
+    void launch(current);
   });
 }
 
@@ -315,12 +367,10 @@ scope.addEventListener('message', (event: MessageEvent<BakeRequest>) => {
   const request = event.data;
   if (disposed) return;
   if (request.type === 'bake') {
-    void start(request);
+    start(request).catch((error: unknown) => post(errorReply(request.id, error)));
   } else if (request.type === 'loseContext') {
-    const extension = gl?.getExtension('WEBGL_lose_context');
-    if (!extension) return;
-    canvas.addEventListener('webglcontextlost', () => setTimeout(() => extension.restoreContext(), 0), { once: true });
-    extension.loseContext();
+    if (request.beforeMark !== undefined) loseBeforeMark = request.beforeMark;
+    else loseNow();
   } else {
     disposed = true;
     if (job) {
