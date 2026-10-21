@@ -145,6 +145,22 @@ export function uploadScene(
   return scene;
 }
 
+/**
+ * Moves an uploaded scene to another pose of its document (`poseOnlyChange`): rewrites each draw's world and normal
+ * matrix and the bounds of its closed batch in place. Batches, buffers and the exact geometry are in node space and
+ * stay; draws at the model root (node −1) never move.
+ */
+export function poseGpuScene(scene: GpuScene, doc: SceneDocument): void {
+  const world = worldMatrices(doc.nodes);
+  for (const item of scene.opaque) {
+    const matrix = item.batch.node >= 0 ? world[item.batch.node] : undefined;
+    if (!matrix) continue;
+    item.model.set(matrix);
+    item.normal.set(mat4NormalMatrix(matrix));
+    item.closedBounds?.set(worldBounds(item.batch.positions, item.model));
+  }
+}
+
 /** Corner and shared-edge attribute locations of the exact depth key (`depthKeyVertexExact.glsl`). */
 const CORNER_LOCATIONS = [4, 5, 6] as const;
 const SHARED_EDGES_LOCATION = 7;

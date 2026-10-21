@@ -32,7 +32,14 @@ import {
   uploadTexture,
   type AlphaLevels,
 } from './textureUpload';
-import { disposeGpuScene, uploadExactGeometry, uploadScene, type DrawItem, type GpuScene } from './uploadScene';
+import {
+  disposeGpuScene,
+  poseGpuScene,
+  uploadExactGeometry,
+  uploadScene,
+  type DrawItem,
+  type GpuScene,
+} from './uploadScene';
 import { validateScene } from './validateScene';
 
 export interface RendererOptions {
@@ -78,9 +85,12 @@ const DEFAULT_MSAA_SAMPLES = 4;
 const FLOAT_PATH_DEPTH_BITS = 24;
 
 interface LoadedScene {
-  readonly doc: SceneDocument;
+  /** The shown document; another pose of it replaces it in place (`poseOnlyChange`). */
+  doc: SceneDocument;
   /** Decoded images, kept so a lost context can be rebuilt without decoding again. */
   readonly bitmaps: readonly (ImageBitmap | null)[];
+  /** What decoding them reported; another pose of the document reports the same. */
+  readonly warnings: readonly RendererWarning[];
   /** Per texture: the alpha bytes it holds, read back once and kept CPU-side. */
   alphaLevels: (AlphaLevels | null)[] | null;
   /** Per mesh: closed and opaque on every face (`closedOpaqueMeshes`), from the same readback. */
@@ -234,19 +244,36 @@ export class RealtimeRenderer {
    * (`SCENE_TOO_LARGE` over its limit), decodes its textures off the drawing path and swaps it in. Baked light stays
    * when the new document has the same `layoutKey` (another pose of the same model) and is dropped otherwise. A later
    * call or `dispose()` supersedes a pending one: it resolves with `applied: false` and releases what it decoded.
+   *
+   * Another pose of the shown document (`poseOnlyChange`: an animation frame, a `poseScene` result) applies at once:
+   * the decoded textures, their alpha tables, the layout and the uploaded geometry stay, and only each draw's matrices
+   * change, so playback costs no decode, readback or upload per frame.
    */
   async setScene(doc: SceneDocument): Promise<SetSceneResult> {
     if (this.disposed) return { applied: false, warnings: [] };
-    validateScene(doc);
-    // Another pose of the shown document keeps its layout: the layout never depends on the pose, and laying out a
-    // large model again costs the main thread a hundred milliseconds or more.
-    const layout =
-      this.loaded && poseOnlyChange(this.loaded.doc, doc) ? this.loaded.layout : summarize(lightmapLayout(doc));
+    const loaded = this.loaded;
+    validateScene(doc, loaded?.doc ?? null);
+    if (loaded && poseOnlyChange(loaded.doc, doc)) {
+      this.generation++;
+      loaded.doc = doc;
+      // With the context lost, the restore uploads `loaded.doc` in its new pose.
+      if (this.gpu?.scene && !this.lost) poseGpuScene(this.gpu.scene, doc);
+      this.dirty = true;
+      return { applied: true, warnings: loaded.warnings };
+    }
+    const layout = summarize(lightmapLayout(doc));
     const generation = ++this.generation;
     const decoded = await decodeTextures(doc.textures, this.textureLimits(), () => this.isCurrent(generation));
     if (!decoded) return { applied: false, warnings: [] };
     this.releaseScene();
-    this.loaded = { doc, bitmaps: decoded.bitmaps, alphaLevels: null, closedOpaque: null, layout };
+    this.loaded = {
+      doc,
+      bitmaps: decoded.bitmaps,
+      warnings: decoded.warnings,
+      alphaLevels: null,
+      closedOpaque: null,
+      layout,
+    };
     if (this.lighting && this.lighting.layoutKey !== layout.layoutKey) this.dropLighting();
     if (this.gpu && !this.lost) this.uploadLoadedScene(this.gpu);
     this.dirty = true;

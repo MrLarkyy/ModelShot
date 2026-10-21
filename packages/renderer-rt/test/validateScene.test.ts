@@ -166,4 +166,14 @@ describe('validateScene', () => {
     expect(() => validateScene(posed)).not.toThrow();
     expect(posed.meshes).toHaveLength(4);
   });
+
+  it('checks only the nodes of another pose of a validated document, and everything otherwise', () => {
+    const doc = quadScene();
+    const badIndex = withMesh(() => ({ indices: new Uint32Array([0, 1, 9]) }));
+    const node = doc.nodes[0]!;
+    const badPose = { ...doc, nodes: [{ ...node, scale: [1, Number.NaN, 1] as [number, number, number] }] };
+    expect(() => validateScene(badPose, doc)).toThrow(/nodes\[0\]\.scale\[1\]/);
+    // Its own meshes array: checked in full despite the validated document.
+    expect(() => validateScene(badIndex, doc)).toThrow(/meshes\[0\]\.indices\[2\]/);
+  });
 });

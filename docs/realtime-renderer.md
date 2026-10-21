@@ -231,8 +231,12 @@ Node matrices may scale (an animated `SceneNode.scale`, MS-21), so `mesh.vert.gl
 normalised by `shadingNormal`), never with the upper 3×3 of `u_model`; the path tracer's `flattenScene` uses the same
 helper, so both shade a scaled node alike. One `mat3` uniform more, far below `MAX_VERTEX_UNIFORM_VECTORS`.
 `validateScene` rejects a scale that is not finite and positive (`nodes[i].scale[k]`); `animateScene` clamps to
-[10⁻⁴, 10⁴]. An animation frame changes only nodes, so it is a pose-only change: the lightmap layout and sharp edges
-are kept.
+[10⁻⁴, 10⁴]. An animation frame changes only nodes, so it is a pose-only change, which `setScene` applies at once
+(no await needed for it to show): the decoded textures, their alpha tables (no readback), the lightmap layout, sharp
+edges and the uploaded geometry are kept, `validateScene` checks only the nodes, and each draw's model and normal
+matrix (and the bounds of a closed batch) are rewritten from the new world matrices (`poseGpuScene`). Batches live in
+node space, so no buffer is touched; a frame costs O(nodes + draws). The call still supersedes a pending `setScene`,
+resolves with the warnings of the shown textures, and a lost context restores the newest pose.
 
 ## Limits and warnings
 

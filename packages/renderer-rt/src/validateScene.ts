@@ -83,8 +83,12 @@ function validateMesh(mesh: SceneMesh, path: string, doc: SceneDocument): void {
  * `RendererError` `INVALID_SCENE` naming the path instead of reading out of bounds on the GPU; also `renderOrder`
  * (an integer in ±1024, the range the exact depth key maps into depth, `exactDepthRange`) and `doubleSided` (a boolean). Material
  * `alphaMode` / `alphaCutoff` are not checked: `resolveMaterialAlpha` turns any value into a valid rule.
+ *
+ * `validated`, a document this function accepted before: when `doc` shares its meshes, materials and textures arrays
+ * and node count (another pose of it, `poseOnlyChange`), only the nodes are checked again, so a frame of animation
+ * does not walk every index buffer.
  */
-export function validateScene(doc: SceneDocument): void {
+export function validateScene(doc: SceneDocument, validated: SceneDocument | null = null): void {
   doc.nodes.forEach((node, n) => {
     const path = `nodes[${n}]`;
     if (node.parent !== -1) checkIndex(node.parent, n, `${path}.parent`, false);
@@ -95,6 +99,14 @@ export function validateScene(doc: SceneDocument): void {
     node.children.forEach((child, i) => checkIndex(child, doc.nodes.length, `${path}.children[${i}]`, false));
   });
   doc.rootNodes.forEach((root, i) => checkIndex(root, doc.nodes.length, `rootNodes[${i}]`, false));
+  // Everything below reads only these arrays and the node count.
+  const known =
+    validated !== null &&
+    validated.meshes === doc.meshes &&
+    validated.materials === doc.materials &&
+    validated.textures === doc.textures &&
+    validated.nodes.length === doc.nodes.length;
+  if (known) return;
   doc.meshes.forEach((mesh, m) => validateMesh(mesh, `meshes[${m}]`, doc));
   doc.materials.forEach((material, m) =>
     checkIndex(material.texture, doc.textures.length, `materials[${m}].texture`, true),
