@@ -31,7 +31,8 @@ import {
 // aa=0|1, fallback=1, reverse=1, look=model-view|above|below with depth=framed|inside, hide=<mesh name>; size (CSS pixels, default 256), maxTextureSide, track=1 (count GL objects),
 // fps=1 (continuous drawing with a frame-time readout, for a manual run on real hardware); bake=<samples> (bake the
 // light before the first frame; 0 none), catcher=0|1, bakeSeed (default 1), bakeTile (default 64), pose=<player
-// preset> (the scene re-posed, framed as loaded), lag=1 (main-thread event-loop lag probe).
+// preset> (the scene re-posed, framed as loaded), lag=1 (main-thread event-loop lag probe), edges=<width> (rounded
+// edges, 0 none; default the renderer's look).
 const params = new URLSearchParams(location.search);
 
 function intParam(name: string, fallback: number, min: number, max: number): number {

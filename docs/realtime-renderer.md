@@ -183,6 +183,30 @@ become look presets later (MS-19). The HDR result goes through AgX (`#include "a
 `agxToneMap` for tests), whose output is already display-encoded and is written as is. The backdrop colour (option
 `background`, scene-linear) goes through the same transform on both paths.
 
+## Edge rounding
+
+Sharp edges of cubes and meshes catch light as if rounded, without extra geometry (MS-15). The look is `EdgeLook` of
+`@modelshot/looks` (`width` 0..`MAX_EDGE_WIDTH` model units, `sharpAngleDeg` 1..179; `EDGE_LOOK_V0` 0.5 and 30°),
+option `edges` (a `Partial<EdgeLook>`, out of range a `RangeError` naming `edges.width` or `edges.sharpAngleDeg`) and
+`setEdges(edges)` / `edgeLook`; the path tracer takes the same ([path-tracer.md](path-tracer.md#lighting)).
+
+- The edges come from `cachedSharpEdges` of each visible mesh ([scene-format.md](scene-format.md#sharp-edges)), at
+  upload; a new pose of the same meshes detects nothing again. `batchScene` copies a mesh's vertices through
+  `vertexOf` (positions, normals, UVs, UV rectangles and lightmap data alike) and takes its split `indices`; the
+  distances and angles go to attribute locations 9 (`a_edgeDistances`) and 10 (`a_edgeAngles`, flat), in the exact
+  key's de-indexed copy too. A context restore uploads them again from the retained scene.
+- `shading.glsl`: `prepareEdges()` runs first in `main`, before any discard (derivatives need uniform control flow,
+  as `prepareDepthKey`): each slot's direction toward its edge is minus the in-surface gradient of its distance,
+  from `dFdx`/`dFdy` of distance and world position (`v_worldPosition`), and its footprint is the distance one pixel
+  spans. `shadingNormal()` replaces the plain normal in the opaque, OIT and fallback passes: the shared
+  `roundedNormal` (`edgeRounding` chunk) turns the normal toward each edge as on a circular fillet, sin φ = ramp ·
+  sin(θ / 2), so both faces reach the bisector at the edge; the linear ramp is box-filtered over the pixel's
+  footprint, so the band does not shimmer when it is narrower than a pixel. Where no slot bends the normal the
+  function returns it unchanged, so planes, cards and smooth areas are byte-identical with rounding on and off.
+- Only the normal changes: texels, UVs, alpha and the depth key are untouched. The baked light is computed for the
+  unrounded surface (bake width 0) and multiplies the rounded shading as before.
+- A width change is a uniform; a sharp-angle change detects again and uploads the geometry again.
+
 Credits: AgX by Troy Sobotka. The Rec.709 inset/outset matrices, the log2 range and the contrast polynomial fit in
 `looks/src/glsl/agx.glsl` and `looks/src/agxToneMap.ts` follow Benjamin Wrensch, "Minimal AgX Implementation"
 (iolite engine blog, 2024, https://iolite-engine.com/blog_posts/minimal_agx_implementation); the same polynomial
@@ -192,8 +216,10 @@ ships in three.js `AgXToneMapping` (MIT) and Filament.
 
 GLSL ES 3.00 in `src/shaders/*.glsl`, composed by `linkShader` from static chunks only: the renderer's own
 (`texelSample`, `shading`, `hashAlpha`, `bakedLight`, `depthKey` and `depthKeyVertex` in a raster and an exact variant) and the
-shared look chunks (`agx`, `texelAlpha`, `faceTexels`, `lightRig`, `shadowCatcher`); the catcher has its own program
-(`catcher.vert.glsl`, `catcher.frag.glsl`). `a_lightmap` uses attribute location 8, clear of the exact key's 4-7. An
+shared look chunks (`agx`, `texelAlpha`, `faceTexels`, `lightRig`, `shadowCatcher`, `edgeRounding`); the catcher has its own program
+(`catcher.vert.glsl`, `catcher.frag.glsl`). `a_lightmap` uses attribute location 8, clear of the exact key's 4-7, and
+the edge attributes 9 and 10: 11 attributes and at most 14 varying vectors (exact variant; raster 9), within WebGL2's
+guaranteed 16 and 15 (`shaderSources.test.ts` counts them). An
 unknown or cyclic
 include throws; no shader text is built from user input. A compile or link failure throws `RendererError`
 (`SHADER_COMPILE` / `SHADER_LINK`) with the driver's info log.
@@ -223,6 +249,7 @@ include throws; no shader text is built from user input. A compile or link failu
 
 On `webglcontextlost` the renderer prevents the default (so the browser may restore it) and `render()` becomes a
 no-op. On `webglcontextrestored` it queries the limits again, rebuilds programs, targets, buffers and textures from
-the retained scene, decoded images and baked lighting (no re-decode, no re-bake, no reload), redraws and calls the
+the retained scene, decoded images and baked lighting (no re-decode, no re-bake, no reload; the sharp-edge attributes
+come from the per-mesh cache), redraws and calls the
 `onContextRestored` listeners. `dispose()` deletes every GL object it created (lightmaps and the catcher's quad
 included), closes every decoded image and removes its listeners.

@@ -187,6 +187,30 @@ item's dropped while its nodes keep their posed rotation and `restRotation`; the
 document returns them to rest. The renderers read only the merged nodes and
 meshes, so the realtime preview and the path tracer cannot disagree on where an attachment is.
 
+## Sharp edges
+
+Rounded edges are derived from the meshes, never stored: `sharpEdges(mesh, { sharpAngleDeg, reach })` (and
+`cachedSharpEdges`, once per mesh object and options, so another pose of a document detects nothing again) returns
+per-vertex data both renderers shade with (`EdgeLook` of `@modelshot/looks`, see
+[realtime-renderer.md](realtime-renderer.md#edge-rounding)).
+
+- Corners match by position (within `EDGE_WELD_DISTANCE`, 10⁻⁴ units), so a Blockbench cube's faces, each with its
+  own four vertices, still share their edges. Detection is per `SceneMesh`: edges are never welded across meshes, as
+  Blockbench draws each element on its own.
+- An edge is sharp where exactly two triangles with area and finite corners meet, the angle between their normals is
+  at least `sharpAngleDeg` (`EDGE_LOOK_V0`: 30°) and below `MAX_SHARP_ANGLE_DEG` (170°), and the vertex normals differ
+  there. So a plane's boundary, an edge of three or more triangles, the folded rim of a zero-thickness card (front
+  and back faces, 180°) and a smooth-shaded edge (equal normals) are never sharp.
+- Triangles joined across the other edges form patches (a cube face, a smooth area). Each triangle takes up to
+  `EDGE_SLOTS` (4) sharp edges of its patch: those within `reach` (`MAX_EDGE_WIDTH`, 4 units) with all its corners on
+  their interior side, the nearest first, kept in a fixed order. A vertex shared by triangles with different slots is
+  split (`vertexOf`, with `indices` replacing the mesh's in the same triangle order); a cube face never is.
+- Per vertex and slot: the distance to the edge's line in the triangle's plane toward the interior (never negative;
+  affine over the triangle, so interpolation is exact), `NO_EDGE` (10⁶) in an empty slot; and the angle between the
+  face normals in radians, negative for a crease, 0 when empty.
+- Pure and deterministic (insertion-ordered maps, no hashing of floats beyond the quantised position). A hostile mesh
+  is bounded: past `MAX_EDGE_CHECKS` (2 · 10⁷) candidate checks the remaining triangles round nothing.
+
 ## Versioning
 
 `formatVersion` is 1. A change that only adds **optional** fields with a defined default keeps version 1 (consumers
@@ -208,6 +232,9 @@ Added within version 1 (MS-20), each optional: `SceneNode.restRotation` (absent:
 `SceneDocument.pose` (absent: no `poseScene` pose recorded) and `SceneDocument.attachments` (absent: none); `SceneSource.format` gains
 `'player'`. Poses and attachments are already applied to the nodes and meshes, so a consumer that ignores the new
 fields draws a posed or attached scene correctly; no migration.
+Added within version 1 (MS-15): no field. Sharp edges are derived from the meshes (`sharpEdges`, `cachedSharpEdges`,
+`SharpEdgeAttributes`, `NO_EDGE` and the constants above, see Sharp edges), and how they are rounded is look data
+(`EdgeLook`), so documents do not change and nothing migrates.
 
 ## Loaders
 
