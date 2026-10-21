@@ -64,7 +64,7 @@ function barycentric(p: readonly number[], a: readonly number[], b: readonly num
 /** World point of a texel request, from the document itself (not from any renderer). */
 export function locateProbe(doc: SceneDocument, request: PtProbeRequest): Point {
   const world = worldMatrices(doc.nodes);
-  const key = LIGHT_RIG_V0.keyDirection;
+  const key = LIGHT_RIG_V0.lights.key.direction;
   for (const mesh of doc.meshes) {
     if (mesh.name !== request.mesh) continue;
     const matrix = mesh.node >= 0 ? world[mesh.node] : undefined;

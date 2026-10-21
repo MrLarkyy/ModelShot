@@ -16,10 +16,19 @@ import {
   RENDER_ORDER_TIE_DISTANCE,
   SCENE_FORMAT_VERSION,
   sceneBounds,
+  type SceneBounds,
   type SceneCamera,
   type SceneDocument,
 } from '@modelshot/scene';
-import { LIGHT_RIG_V0, MAX_EDGE_WIDTH, checkEdgeLook, type EdgeLook } from '@modelshot/looks';
+import {
+  DEFAULT_LOOK,
+  MAX_EDGE_WIDTH,
+  checkEdgeLook,
+  checkLookPreset,
+  uploadLookUniforms,
+  type EdgeLook,
+  type LookPreset,
+} from '@modelshot/looks';
 import { AccumulationTargets } from './accumulationTargets';
 import { buildBvh } from './buildBvh';
 import { cameraUniforms, type CameraUniforms } from './cameraUniforms';
@@ -82,8 +91,12 @@ interface LoadedScene {
   readonly plan: TextureLayerPlan;
   readonly images: readonly (ImageBitmap | RawImage)[];
   readonly bitmaps: readonly (ImageBitmap | null)[];
-  /** The shadow catcher camera rays see, `null` when `SetSceneOptions.shadowCatcher` is false. */
-  readonly catcher: ShadowCatcherPlane | null;
+  /** Bounds of the visible geometry (`sceneBounds`), where the catcher goes; `null` when it has none. */
+  readonly bounds: SceneBounds | null;
+  /** `SetSceneOptions.shadowCatcher`. */
+  readonly catcherOn: boolean;
+  /** The shadow catcher camera rays see, under the current look's key; `null` when off or without bounds. */
+  catcher: ShadowCatcherPlane | null;
 }
 
 interface Gpu {
@@ -123,7 +136,8 @@ export class PathTracer {
   private lost = false;
   private disposed = false;
   private readonly restoredListeners = new Set<() => void>();
-  private readonly background: readonly [number, number, number];
+  /** The look drawn with, but for its edges, which are `edges` (`setEdges` changes them alone). */
+  private lookPreset: LookPreset;
   private readonly maxBounces: number;
   private readonly tileSize: number;
   private edges: EdgeLook;
@@ -133,10 +147,12 @@ export class PathTracer {
     private readonly gl: WebGL2RenderingContext,
     private readonly options: PathTracerOptions,
   ) {
-    this.background = options.background ?? LIGHT_RIG_V0.background;
+    const look = checkLookPreset(options.look ?? DEFAULT_LOOK);
+    const background = options.background;
+    this.lookPreset = background ? { ...look, backdrop: { top: background, bottom: background } } : look;
     this.maxBounces = checkInteger('maxBounces', options.maxBounces ?? DEFAULT_MAX_BOUNCES, 1, MAX_BOUNCES);
     this.tileSize = checkInteger('tileSize', options.tileSize ?? DEFAULT_TILE_SIZE, 16, 4096);
-    this.edges = checkEdgeLook(options.edges);
+    this.edges = checkEdgeLook(options.edges, look.edges);
     canvas.addEventListener('webglcontextlost', this.handleContextLost);
     canvas.addEventListener('webglcontextrestored', this.handleContextRestored);
     try {
@@ -149,8 +165,8 @@ export class PathTracer {
 
   /**
    * Creates the WebGL2 context on `canvas`. Throws `PathTracerError` `WEBGL2_UNAVAILABLE`, `FLOAT_TARGETS_UNAVAILABLE`
-   * or `HIGHP_UNAVAILABLE` (no exact accumulation here; the preview still works) or a shader error, and a
-   * `RangeError` for an option out of range.
+   * or `HIGHP_UNAVAILABLE` (no exact accumulation here; the preview still works) or a shader error, a
+   * `LookPresetError` for an invalid `look`, and a `RangeError` for an option out of range.
    */
   static create(canvas: HTMLCanvasElement, options: PathTracerOptions = {}): PathTracer {
     const gl = canvas.getContext('webgl2', {
@@ -223,9 +239,8 @@ export class PathTracer {
     const flat = flattenScene(doc, this.options.maxTriangles ?? DEFAULT_MAX_TRIANGLES, this.sharpEdgeOptions());
     const bvh = buildBvh(flat.positions, flat.count);
     const geometry = packGeometry(flat, bvh, capabilities.maxTextureSize);
-    // The catcher's height and rectangle do not depend on its texel size, which only the light bake needs.
-    const catcher =
-      options.shadowCatcher === false ? null : shadowCatcherPlane(sceneBounds(doc), LIGHT_RIG_V0.keyDirection, 1);
+    const bounds = sceneBounds(doc);
+    const catcherOn = options.shadowCatcher !== false;
     // Only a scene that passed every limit supersedes a pending one.
     const generation = ++this.generation;
     const decoded = await decodeTextures(doc.textures, this.textureLimits(capabilities), () =>
@@ -247,7 +262,10 @@ export class PathTracer {
         plan: layout.plan,
         images: layout.images,
         bitmaps: decoded.bitmaps,
-        catcher,
+        bounds,
+        catcherOn,
+        // Placed under the look current at the swap: a setLook while the textures decoded applies to this scene too.
+        catcher: catcherOn ? this.catcherPlane(bounds) : null,
       };
     } catch (error) {
       for (const bitmap of decoded.bitmaps) bitmap?.close();
@@ -268,6 +286,32 @@ export class PathTracer {
     }
     for (const warning of decoded.warnings) warnings.push({ ...warning });
     return { applied: true, warnings, triangles: flat.count };
+  }
+
+  /** The look drawn with: the last `setLook` (or the options' look and overrides) with the current edges. */
+  get look(): LookPreset {
+    const look = this.lookPreset;
+    const same = look.edges.width === this.edges.width && look.edges.sharpAngleDeg === this.edges.sharpAngleDeg;
+    return same ? look : Object.freeze({ ...look, edges: Object.freeze({ ...this.edges }) });
+  }
+
+  /**
+   * Renders with `look` (`RealtimeRenderer.setLook` of the preview takes the same): its lights, environment, backdrop,
+   * catcher strength, tone mapping and edges; the shadow catcher moves under the new key. Restarts the accumulation.
+   * An invalid look throws `LookPresetError` naming the field and changes nothing. A scene still decoding gets it too.
+   */
+  setLook(look: LookPreset): void {
+    const next = checkLookPreset(look);
+    this.lookPreset = next;
+    const loaded = this.loaded;
+    if (loaded) loaded.catcher = loaded.catcherOn ? this.catcherPlane(loaded.bounds) : null;
+    this.setEdges(next.edges);
+    this.restart();
+  }
+
+  /** The catcher's height and rectangle under the look's key; they do not depend on its texel size (the bake's). */
+  private catcherPlane(bounds: SceneBounds | null): ShadowCatcherPlane | null {
+    return shadowCatcherPlane(bounds, this.lookPreset.lights.key.direction, 1);
   }
 
   /** The rounded edges drawn with (`RendererOptions.edges` of the preview takes the same). */
@@ -515,7 +559,7 @@ export class PathTracer {
     gl.uniform2f(uniform('u_viewportSize'), this.canvas.width, this.canvas.height);
     gl.uniform1ui(uniform('u_seed'), seed);
     gl.uniform1i(uniform('u_maxBounces'), this.maxBounces);
-    gl.uniform3fv(uniform('u_background'), this.background);
+    uploadLookUniforms(gl, uniform, this.lookPreset, this.canvas.height);
     gl.uniform1f(uniform('u_edgeWidth'), this.edges.width);
     const catcher = this.loaded?.catcher ?? null;
     gl.uniform1i(uniform('u_catcherOn'), catcher ? 1 : 0);
@@ -523,7 +567,7 @@ export class PathTracer {
     gl.uniform4fv(uniform('u_catcherRect'), catcher?.rect ?? [0, 0, 0, 0]);
   }
 
-  /** Data for a tracer without a scene: no nodes, so every camera ray shows the background. */
+  /** Data for a tracer without a scene: no nodes, so every camera ray shows the backdrop. */
   private emptyScene(gpu: Gpu): GpuScene {
     const flat = flattenScene(EMPTY_SCENE, 0);
     const layout = layoutTextures([], gpu.capabilities.layerSide, gpu.capabilities.maxArrayTextureLayers);
@@ -547,7 +591,7 @@ export class PathTracer {
     gl.bindTexture(gl.TEXTURE_2D, gpu.targets?.sum.texture ?? null);
     gl.uniform1i(uniform('u_sum'), 0);
     gl.uniform1f(uniform('u_samples'), gpu.targets ? this.done : 0);
-    gl.uniform3fv(uniform('u_background'), this.background);
+    uploadLookUniforms(gl, uniform, this.lookPreset, this.canvas.height);
     gl.bindVertexArray(gpu.vao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);

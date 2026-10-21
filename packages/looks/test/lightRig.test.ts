@@ -1,18 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import lightRigSource from '../src/glsl/lightRig.glsl?raw';
-import { LIGHT_RIG_V0, unoccludedRadiance } from '../src/lightRig';
-
-function glslVec3(name: string): number[] {
-  const match = new RegExp(`const vec3 ${name} = vec3\\(([^)]*)\\);`).exec(lightRigSource);
-  if (!match?.[1]) throw new Error(`${name} not found in lightRig.glsl`);
-  return match[1].split(',').map(Number);
-}
-
-function glslFloat(name: string): number {
-  const match = new RegExp(`const float ${name} = ([0-9.eE+-]+);`).exec(lightRigSource);
-  if (!match?.[1]) throw new Error(`${name} not found in lightRig.glsl`);
-  return Number(match[1]);
-}
+import { LIGHT_RIG_V0, unoccludedRadiance, type LightRig } from '../src/lightRig';
+import { LOOK_PRESETS } from '../src/lookPresets';
+import { LOOK_UNIFORM_NAMES } from '../src/lookUniforms';
 
 type V3 = readonly [number, number, number];
 
@@ -40,15 +30,40 @@ function cosineMean(n: V3, radiance: (dy: number) => number): number {
   return (sum * (2 * Math.PI)) / (steps * steps) / Math.PI;
 }
 
-describe('light rig v0', () => {
-  it('mirrors the constants of lightRig.glsl', () => {
-    expect(glslVec3('SKY_FILL')).toEqual([...LIGHT_RIG_V0.skyFill]);
-    expect(glslVec3('GROUND_FILL')).toEqual([...LIGHT_RIG_V0.groundFill]);
-    expect(glslVec3('KEY_DIRECTION')).toEqual([...LIGHT_RIG_V0.keyDirection]);
-    expect(glslVec3('KEY_COLOR')).toEqual([...LIGHT_RIG_V0.keyColor]);
-    expect(Math.hypot(...LIGHT_RIG_V0.keyDirection)).toBeCloseTo(1, 4);
-    expect(glslFloat('KEY_ANGULAR_RADIUS')).toBe(LIGHT_RIG_V0.keyAngularRadius);
-    expect(glslFloat('CATCHER_STRENGTH')).toBe(LIGHT_RIG_V0.catcherStrength);
+/** The rig with only its dome: key and accents black. */
+function domeOnly(rig: LightRig): LightRig {
+  const dark = [0, 0, 0] as const;
+  const { key, fill, rim } = rig.lights;
+  return {
+    ...rig,
+    lights: { key: { ...key, color: dark }, fill: { ...fill, color: dark }, rim: { ...rim, color: dark } },
+  };
+}
+
+describe('light rig', () => {
+  it('the chunk reads every rig value from a look uniform, no constant', () => {
+    for (const name of [
+      'u_lookSky',
+      'u_lookGround',
+      'u_lookKeyDirection',
+      'u_lookKeyColor',
+      'u_lookKeyCosRadius',
+      'u_lookFillDirection',
+      'u_lookFillColor',
+      'u_lookRimDirection',
+      'u_lookRimColor',
+      'u_lookCatcherStrength',
+    ] as const) {
+      expect(LOOK_UNIFORM_NAMES).toContain(name);
+      expect(lightRigSource).toMatch(new RegExp(`^uniform (vec3|float) ${name};$`, 'm'));
+    }
+    expect(lightRigSource).not.toMatch(/^const /m);
+  });
+
+  it('v0 is a unit key above the horizon with black accents', () => {
+    expect(Math.hypot(...LIGHT_RIG_V0.lights.key.direction)).toBeCloseTo(1, 4);
+    expect(LIGHT_RIG_V0.lights.fill.color).toEqual([0, 0, 0]);
+    expect(LIGHT_RIG_V0.lights.rim.color).toEqual([0, 0, 0]);
   });
 
   it('shades like the preview: fill by the normal plus the key', () => {
@@ -59,26 +74,45 @@ describe('light rig v0', () => {
     expect(down[2]).toBeCloseTo(0.09, 9);
   });
 
-  // The identity that makes the path tracer converge to the preview on an unoccluded surface (lightRig.glsl).
-  it('the environment radiance integrates to the hemisphere fill for any normal', () => {
-    const { skyFill, groundFill } = LIGHT_RIG_V0;
-    for (const n of [
-      [0, 1, 0],
-      [0, -1, 0],
-      [1, 0, 0],
-      [0.6, 0.8, 0],
-      [0, -0.6, 0.8],
-    ] as const) {
-      for (const c of [0, 1, 2] as const) {
-        const environment = (dy: number): number => groundFill[c] + (skyFill[c] - groundFill[c]) * (0.75 * dy + 0.5);
-        const fill = unoccludedRadiance({ ...LIGHT_RIG_V0, keyColor: [0, 0, 0] }, [1, 1, 1], n)[c];
-        expect(cosineMean(n, environment), `n = ${n.join(', ')}, channel ${c}`).toBeCloseTo(fill, 5);
-      }
-    }
+  it('adds the fill and rim accents by the cosine of their directions, without shadow', () => {
+    const rig = LOOK_PRESETS['marketplace'];
+    if (!rig) throw new Error('no marketplace preset');
+    const n = unit(rig.lights.rim.direction);
+    const withRim = unoccludedRadiance(rig, [1, 1, 1], n);
+    const without = unoccludedRadiance(
+      { ...rig, lights: { ...rig.lights, rim: { ...rig.lights.rim, color: [0, 0, 0] } } },
+      [1, 1, 1],
+      n,
+    );
+    for (const c of [0, 1, 2] as const)
+      expect(withRim[c] - without[c]).toBeCloseTo(rig.lights.rim.color[c] * Math.hypot(...rig.lights.rim.direction), 9);
   });
 
-  it('the environment radiance stays positive straight down', () => {
-    const { skyFill, groundFill } = LIGHT_RIG_V0;
-    for (const c of [0, 1, 2] as const) expect(groundFill[c] - 0.25 * (skyFill[c] - groundFill[c])).toBeGreaterThan(0);
-  });
+  // The identity that makes the path tracer converge to the preview on an unoccluded surface (lightRig.glsl).
+  for (const [name, rig] of [['v0', LIGHT_RIG_V0] as const, ...Object.entries(LOOK_PRESETS)]) {
+    it(`${name}: the environment radiance integrates to the hemisphere fill for any normal`, () => {
+      const { sky, ground } = rig.environment;
+      for (const n of [
+        [0, 1, 0],
+        [0, -1, 0],
+        [1, 0, 0],
+        [0.6, 0.8, 0],
+        [0, -0.6, 0.8],
+      ] as const) {
+        for (const c of [0, 1, 2] as const) {
+          const environment = (dy: number): number => ground[c] + (sky[c] - ground[c]) * (0.75 * dy + 0.5);
+          const fill = unoccludedRadiance(domeOnly(rig), [1, 1, 1], n)[c];
+          expect(cosineMean(n, environment), `n = ${n.join(', ')}, channel ${c}`).toBeCloseTo(fill, 5);
+        }
+      }
+    });
+
+    it(`${name}: the environment radiance is never negative`, () => {
+      const { sky, ground } = rig.environment;
+      for (const c of [0, 1, 2] as const) {
+        expect(ground[c] - 0.25 * (sky[c] - ground[c])).toBeGreaterThanOrEqual(0);
+        expect(sky[c] + 0.25 * (sky[c] - ground[c])).toBeGreaterThanOrEqual(0);
+      }
+    });
+  }
 });

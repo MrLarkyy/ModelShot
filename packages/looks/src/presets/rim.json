@@ -1,0 +1,20 @@
+{
+  "format": "modelshot-look",
+  "version": 1,
+  "id": "rim",
+  "name": "Rim",
+  "lights": {
+    "key": { "direction": [0.3, 0.6, -0.74], "color": [0.5, 0.5, 0.5], "angularRadius": 0.04 },
+    "fill": { "direction": [0.2, 0.1, -0.97], "color": [0.05, 0.05, 0.06] },
+    "rim": { "direction": [-0.55, 0.35, 0.76], "color": [3, 3, 3] }
+  },
+  "environment": { "kind": "dome", "sky": [0.08, 0.08, 0.09], "ground": [0.03, 0.03, 0.035] },
+  "backdrop": { "top": [0.03, 0.03, 0.035], "bottom": [0.015, 0.015, 0.018] },
+  "catcher": { "strength": 0.9 },
+  "edges": { "width": 0.5, "sharpAngleDeg": 30 },
+  "toneMapping": {
+    "kind": "agx",
+    "exposure": 0,
+    "grade": { "slope": [1, 1, 1], "offset": [0, 0, 0], "power": [1.25, 1.25, 1.25], "saturation": 1 }
+  }
+}

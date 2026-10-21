@@ -1,41 +1,46 @@
 import type { Rgb } from './agxToneMap';
+import type { Direction, LookPreset } from './LookPreset';
 
-/** The v0 look: the light rig of `glsl/lightRig.glsl` (the shaders' one source) and the backdrop both renderers read. */
-export interface LightRig {
-  readonly skyFill: Rgb;
-  readonly groundFill: Rgb;
-  /** Unit vector towards the directional key. */
-  readonly keyDirection: readonly [number, number, number];
-  readonly keyColor: Rgb;
-  /** Scene-linear backdrop behind the model: the preview's clear colour and the path tracer's escaped camera rays. */
-  readonly background: Rgb;
-  /**
-   * Angular radius in radians of the key light's disc: its shadows soften with the distance to the occluder. The path
-   * tracer and the light bake sample visibility in this cone; the key's cosine stays that of `keyDirection`.
-   */
-  readonly keyAngularRadius: number;
-  /** How much of the light a fully shadowed shadow-catcher point loses (0 none, 1 all): `catcherShade`. */
-  readonly catcherStrength: number;
-}
+/** The lighting part of a look: what `glsl/lightRig.glsl` reads from the look's uniforms. */
+export type LightRig = Pick<LookPreset, 'lights' | 'environment' | 'catcher'>;
 
+/**
+ * The v0 rig, the compile-time constants of `glsl/lightRig.glsl` before looks were data: the Studio preset must equal
+ * it, which is what keeps every golden of the v0 look unchanged.
+ */
 export const LIGHT_RIG_V0: LightRig = Object.freeze({
-  skyFill: [0.5, 0.52, 0.55],
-  groundFill: [0.2, 0.19, 0.18],
-  keyDirection: [0.39904, 0.79808, 0.4514],
-  keyColor: [1.25, 1.22, 1.18],
-  background: [0.14, 0.15, 0.17],
-  keyAngularRadius: 0.04,
-  catcherStrength: 1,
-} as const);
+  lights: Object.freeze({
+    key: Object.freeze({
+      direction: Object.freeze([0.39904, 0.79808, 0.4514] as const),
+      color: Object.freeze([1.25, 1.22, 1.18] as const),
+      angularRadius: 0.04,
+    }),
+    fill: Object.freeze({ direction: Object.freeze([0, 1, 0] as const), color: Object.freeze([0, 0, 0] as const) }),
+    rim: Object.freeze({ direction: Object.freeze([0, 1, 0] as const), color: Object.freeze([0, 0, 0] as const) }),
+  }),
+  environment: Object.freeze({
+    kind: 'dome',
+    sky: Object.freeze([0.5, 0.52, 0.55] as const),
+    ground: Object.freeze([0.2, 0.19, 0.18] as const),
+  }),
+  catcher: Object.freeze({ strength: 1 }),
+});
+
+const lambert = (n: Direction, l: Direction): number => Math.max(0, n[0] * l[0] + n[1] * l[1] + n[2] * l[2]);
 
 /**
  * Linear radiance a diffuse surface of linear `albedo` with unit normal `n` reflects under `rig` when nothing occludes
- * it: the preview's shading, and the value the path tracer converges to (`hemisphereFill` plus the key).
+ * it: the preview's shading, and the value the path tracer converges to (the dome's `hemisphereFill`, the key, and the
+ * unshadowed fill and rim accents).
  */
-export function unoccludedRadiance(rig: LightRig, albedo: Rgb, n: readonly [number, number, number]): Rgb {
+export function unoccludedRadiance(rig: LightRig, albedo: Rgb, n: Direction): Rgb {
+  const { key, fill, rim } = rig.lights;
+  const { sky, ground } = rig.environment;
   const t = n[1] * 0.5 + 0.5;
-  const key = Math.max(0, n[0] * rig.keyDirection[0] + n[1] * rig.keyDirection[1] + n[2] * rig.keyDirection[2]);
+  const k = lambert(n, key.direction);
+  const f = lambert(n, fill.direction);
+  const r = lambert(n, rim.direction);
   const channel = (c: 0 | 1 | 2): number =>
-    albedo[c] * (rig.groundFill[c] + (rig.skyFill[c] - rig.groundFill[c]) * t + rig.keyColor[c] * key);
+    albedo[c] * (ground[c] + (sky[c] - ground[c]) * t + key.color[c] * k + fill.color[c] * f + rim.color[c] * r);
   return [channel(0), channel(1), channel(2)];
 }

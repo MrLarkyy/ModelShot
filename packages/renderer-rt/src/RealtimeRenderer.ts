@@ -9,7 +9,16 @@ import {
   type SceneCamera,
   type SceneDocument,
 } from '@modelshot/scene';
-import { LIGHT_RIG_V0, MAX_EDGE_WIDTH, checkEdgeLook, type EdgeLook } from '@modelshot/looks';
+import {
+  DEFAULT_LOOK,
+  MAX_EDGE_WIDTH,
+  checkEdgeLook,
+  checkLookPreset,
+  lightingKey,
+  uploadLookUniforms,
+  type EdgeLook,
+  type LookPreset,
+} from '@modelshot/looks';
 import type { BakedLighting } from './BakedLighting';
 import { checkLighting } from './checkLighting';
 import { canvasSize, type CanvasCssSize, type CanvasSize } from './canvasSize';
@@ -20,7 +29,12 @@ import { invertMat4 } from './invertMat4';
 import { lightmapLayout, type LightmapLayoutSummary } from './lightmapLayout';
 import { poseOnlyChange } from './poseOnlyChange';
 import { uploadBands } from './uploadBands';
-import { createRendererPrograms, type MeshPassName, type RendererPrograms } from './rendererPrograms';
+import {
+  createRendererPrograms,
+  type LookLocations,
+  type MeshPassName,
+  type RendererPrograms,
+} from './rendererPrograms';
 import { RendererError } from './RendererError';
 import type { RendererWarning } from './RendererWarning';
 import { RenderTargets } from './RenderTargets';
@@ -47,7 +61,12 @@ export interface RendererOptions {
   readonly forceFallback?: boolean;
   /** Texel anti-aliasing; `false` samples plain nearest texels. Default `true`. */
   readonly texelAntialias?: boolean;
-  /** Scene-linear backdrop colour behind the model. */
+  /**
+   * The look (lights, environment, backdrop, catcher strength, edges, tone mapping), the path tracer's
+   * (`PathTracerOptions.look`). Default `DEFAULT_LOOK` (Studio). Checked like `setLook`.
+   */
+  readonly look?: LookPreset;
+  /** Scene-linear backdrop colour behind the model: overrides the initial look's backdrop with this flat colour. */
   readonly background?: readonly [number, number, number];
   /** Largest texture side accepted (further capped by MAX_TEXTURE_SIZE). Default 4096. */
   readonly maxTextureSide?: number;
@@ -60,8 +79,8 @@ export interface RendererOptions {
   /** Keep the drawn image readable after the frame (screenshots, tests). Default `false`. */
   readonly preserveDrawingBuffer?: boolean;
   /**
-   * Rounded sharp edges, the path tracer's (`PathTracerOptions.edges`): fields left out take `EDGE_LOOK_V0`. A value
-   * out of range throws a `RangeError` naming `edges.width` or `edges.sharpAngleDeg`.
+   * Rounded sharp edges, the path tracer's (`PathTracerOptions.edges`): overrides the initial look's edges, fields left
+   * out keeping the look's. A value out of range throws a `RangeError` naming `edges.width` or `edges.sharpAngleDeg`.
    */
   readonly edges?: Partial<EdgeLook>;
 }
@@ -170,7 +189,8 @@ export class RealtimeRenderer {
   /** Kept on the CPU so a lost context gets it back. */
   private lighting: BakedLighting | null = null;
   private readonly restoredListeners = new Set<() => void>();
-  private readonly background: readonly [number, number, number];
+  /** The look drawn with, but for its edges, which are `edges` (`setEdges` changes them alone). */
+  private lookPreset: LookPreset;
   private edges: EdgeLook;
 
   private constructor(
@@ -178,8 +198,10 @@ export class RealtimeRenderer {
     private readonly gl: WebGL2RenderingContext,
     private readonly options: RendererOptions,
   ) {
-    this.background = options.background ?? LIGHT_RIG_V0.background;
-    this.edges = checkEdgeLook(options.edges);
+    const look = checkLookPreset(options.look ?? DEFAULT_LOOK);
+    const background = options.background;
+    this.lookPreset = background ? { ...look, backdrop: { top: background, bottom: background } } : look;
+    this.edges = checkEdgeLook(options.edges, look.edges);
     canvas.addEventListener('webglcontextlost', this.handleContextLost);
     canvas.addEventListener('webglcontextrestored', this.handleContextRestored);
     try {
@@ -191,8 +213,8 @@ export class RealtimeRenderer {
   }
 
   /**
-   * Creates the WebGL2 context on `canvas`; throws `RendererError` `WEBGL2_UNAVAILABLE` or a shader error, and a
-   * `RangeError` for `edges` out of range.
+   * Creates the WebGL2 context on `canvas`; throws `RendererError` `WEBGL2_UNAVAILABLE` or a shader error, a
+   * `LookPresetError` for an invalid `look` and a `RangeError` for `edges` out of range.
    */
   static create(canvas: HTMLCanvasElement, options: RendererOptions = {}): RealtimeRenderer {
     const gl = canvas.getContext('webgl2', {
@@ -291,7 +313,8 @@ export class RealtimeRenderer {
   /**
    * Shades the scene with baked light (`LightBaker` of `@modelshot/pathtracer`) and draws its shadow catcher, or
    * without (`null`): exactly the unbaked image. Returns `false` and changes nothing when the lighting was not baked
-   * for the current scene's layout (`checkLighting`) or there is no scene. The upload is spread over the next
+   * for the current scene's layout, or under a look of another `lightingKey` than the current one (`checkLighting`),
+   * or there is no scene. The upload is spread over the next
    * `render()` / `advanceLighting()` calls (`UPLOAD_FRAME_BYTES` each, in bands of `UPLOAD_BAND_BYTES`) into textures
    * frames do not draw yet; frames show the previous lighting until it is complete (`lightingPending`), then switch.
    */
@@ -303,7 +326,7 @@ export class RealtimeRenderer {
       return true;
     }
     const layout = this.loaded?.layout;
-    if (!layout || !checkLighting(layout, lighting)) return false;
+    if (!layout || !checkLighting(layout, lighting, lightingKey(this.lookPreset))) return false;
     this.lighting = lighting;
     if (this.gpu && !this.lost) this.beginUpload(this.gpu, lighting);
     this.dirty = true;
@@ -351,6 +374,27 @@ export class RealtimeRenderer {
 
   setCamera(camera: SceneCamera): void {
     this.camera = camera;
+    this.dirty = true;
+  }
+
+  /** The look drawn with: the last `setLook` (or the options' look and overrides) with the current edges. */
+  get look(): LookPreset {
+    const look = this.lookPreset;
+    const same = look.edges.width === this.edges.width && look.edges.sharpAngleDeg === this.edges.sharpAngleDeg;
+    return same ? look : Object.freeze({ ...look, edges: Object.freeze({ ...this.edges }) });
+  }
+
+  /**
+   * Draws with `look` from the next frame: its lights, environment, backdrop, catcher strength, tone mapping and edges
+   * (a new sharp angle detects edges again, as `setEdges`). An invalid look throws `LookPresetError` naming the field and
+   * changes nothing. Baked light stays when the look has the same `lightingKey` (key light and dome) and is dropped
+   * otherwise: the frame shows the unbaked look until light baked under it is set.
+   */
+  setLook(look: LookPreset): void {
+    const next = checkLookPreset(look);
+    if (this.lighting && this.lighting.lightingKey !== lightingKey(next)) this.dropLighting();
+    this.lookPreset = next;
+    this.setEdges(next.edges);
     this.dirty = true;
   }
 
@@ -706,6 +750,7 @@ export class RealtimeRenderer {
     if (!pass) return;
     const gl = this.gl;
     gl.useProgram(pass.program);
+    this.uploadLook(pass.look, frame.viewport[1]);
     gl.uniformMatrix4fv(pass.view, false, frame.view);
     gl.uniformMatrix4fv(pass.viewProjection, false, frame.viewProjection);
     gl.uniformMatrix4fv(pass.inverseProjection, false, frame.inverseProjection);
@@ -783,8 +828,9 @@ export class RealtimeRenderer {
     const baked = gpu.lighting?.source.catcher;
     if (!catcher || !baked) return;
     const gl = this.gl;
-    const { program, uniforms } = gpu.programs.catcher;
+    const { program, uniforms, look } = gpu.programs.catcher;
     gl.useProgram(program);
+    this.uploadLook(look, frame.viewport[1]);
     gl.disable(gl.DEPTH_TEST);
     gl.depthMask(false);
     gl.enable(gl.CULL_FACE);
@@ -795,7 +841,6 @@ export class RealtimeRenderer {
     gl.uniform1i(uniforms['u_catcherLight'] ?? null, 0);
     gl.uniform4fv(uniforms['u_catcherRect'] ?? null, baked.rect);
     gl.uniform2f(uniforms['u_catcherSize'] ?? null, baked.width, baked.height);
-    gl.uniform3fv(uniforms['u_background'] ?? null, this.background);
     gl.uniform1i(uniforms['u_toneMap'] ?? null, toneMap ? 1 : 0);
     gl.bindVertexArray(catcher.vao);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -803,6 +848,25 @@ export class RealtimeRenderer {
     gl.bindTexture(gl.TEXTURE_2D, null);
     gl.disable(gl.CULL_FACE);
     gl.depthMask(true);
+  }
+
+  /** The look's uniforms of the program in use; the backdrop spans `frameHeight` pixels. */
+  private uploadLook(locations: LookLocations, frameHeight: number): void {
+    uploadLookUniforms(this.gl, (name) => locations[name], this.lookPreset, frameHeight);
+  }
+
+  /** The look's backdrop over the whole viewport, scene-linear (float path) or tone-mapped (no-float path). */
+  private drawBackdrop(gpu: GpuResources, height: number, toneMap: boolean): void {
+    const backdrop = gpu.programs.fullscreen.backdrop;
+    if (!backdrop) return;
+    const gl = this.gl;
+    gl.disable(gl.DEPTH_TEST);
+    gl.useProgram(backdrop.program);
+    this.uploadLook(backdrop.look, height);
+    gl.uniform1i(backdrop.uniforms['u_toneMap'] ?? null, toneMap ? 1 : 0);
+    gl.bindVertexArray(gpu.fullscreenVao);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindVertexArray(null);
   }
 
   private drawFloatPath(gpu: GpuResources, targets: RenderTargets, frame: FrameView | null): void {
@@ -823,8 +887,9 @@ export class RealtimeRenderer {
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LESS);
     gl.depthMask(true);
-    gl.clearBufferfv(gl.COLOR, 0, [...this.background, 1]);
     gl.clearBufferfv(gl.DEPTH, 0, [1]);
+    // A pass, not a clear: the backdrop is a gradient. It writes every sample, so nothing of an earlier frame shows.
+    this.drawBackdrop(gpu, height, false);
     if (frame) this.drawCatcher(gpu, frame, false);
     gl.enable(gl.DEPTH_TEST);
     if (scene && frame) this.drawItems(gpu, 'opaque', scene.opaque, frame);
@@ -878,6 +943,7 @@ export class RealtimeRenderer {
     gl.disable(gl.DEPTH_TEST);
     gl.depthMask(true);
     gl.useProgram(present.program);
+    this.uploadLook(present.look, height);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, targets.hdr);
     gl.uniform1i(present.uniforms['u_hdr'] ?? null, 0);
@@ -888,8 +954,6 @@ export class RealtimeRenderer {
 
   private drawFallbackPath(gpu: GpuResources, frame: FrameView | null): void {
     const gl = this.gl;
-    const { backdrop } = gpu.programs.fullscreen;
-    if (!backdrop) return;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.disable(gl.BLEND);
@@ -897,10 +961,7 @@ export class RealtimeRenderer {
     gl.disable(gl.DEPTH_TEST);
     gl.depthMask(true);
     gl.clear(gl.DEPTH_BUFFER_BIT);
-    gl.useProgram(backdrop.program);
-    gl.uniform3f(backdrop.uniforms['u_background'] ?? null, ...this.background);
-    gl.bindVertexArray(gpu.fullscreenVao);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    this.drawBackdrop(gpu, this.canvas.height, true);
     if (frame) this.drawCatcher(gpu, frame, true);
     if (gpu.scene && frame) {
       gl.enable(gl.DEPTH_TEST);

@@ -7,6 +7,7 @@ import { LIGHT_RIG_V0, unoccludedRadiance } from '../../../packages/looks/src/li
 import type { ModelViewProbe, PtProbe } from '../fixtures/src/fixtureApi';
 import { compareImages, type CompareOptions } from '../src/compareImages';
 import { encodeFlipped, expectGolden, openFixture, renderFixture, type FixtureInfo } from '../src/expectGolden';
+import { lookPresetFile } from '../src/lookPresetFile';
 import type { GoldenSpec, PathTracedGoldenSpec } from '../src/goldenSpec';
 import { expect, test } from '../src/harnessTest';
 import {
@@ -271,7 +272,7 @@ test.describe('transparency, shadows and sides (scene format rules)', () => {
   }) => {
     const { image } = await render(page, 'variant=alpha-ramp-blend&seed=1&samples=128');
     const lit = unoccludedRadiance(LIGHT_RIG_V0, [1, 1, 1], [0, 0, 1]);
-    const background = LIGHT_RIG_V0.background;
+    const background = lookPresetFile('studio').backdrop.top;
     let worst = 0;
     for (let k = 0; k < 256; k++) {
       const [col, row] = [k % 16, Math.floor(k / 16)];

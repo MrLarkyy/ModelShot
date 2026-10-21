@@ -9,7 +9,7 @@ import {
   type DecodedTextures,
 } from '@modelshot/renderer-rt';
 import { sceneBounds, type SceneDocument } from '@modelshot/scene';
-import { LIGHT_RIG_V0 } from '@modelshot/looks';
+import { lightingKey } from '@modelshot/looks';
 import { buildBvh } from '../buildBvh';
 import { flattenScene } from '../flattenScene';
 import { layoutTextures } from '../layoutTextures';
@@ -42,6 +42,7 @@ interface Job {
   stopped: boolean;
   scene: BakeScene | null;
   layoutKey: string;
+  lightingKey: string;
   warnings: readonly PathTracerWarning[];
 }
 
@@ -166,6 +167,7 @@ function lightingOf(current: Job, scene: BakeScene, active: BakeSession, samples
   if (!model || contextGone()) return null;
   return {
     layoutKey: current.layoutKey,
+    lightingKey: current.lightingKey,
     width: scene.charts.width,
     height: scene.charts.height,
     data: halves(model, samples),
@@ -275,7 +277,7 @@ async function prepare(
   const geometry = packGeometry(flat, bvh, maxTextureSize);
   const charts = buildChartTable(layout, flat, bvh.order, maxTextureSize);
   const catcher = request.shadowCatcher
-    ? shadowCatcherPlane(sceneBounds(doc), LIGHT_RIG_V0.keyDirection, layout.finestTexel)
+    ? shadowCatcherPlane(sceneBounds(doc), request.look.lights.key.direction, layout.finestTexel)
     : null;
   const decoded = await decodedTextures;
   if (!decoded) throw new PathTracerError('WEBGL2_UNAVAILABLE', 'the bake worker was disposed');
@@ -287,8 +289,10 @@ async function prepare(
     images: placed.images,
     charts,
     catcher,
+    look: request.look,
   };
   current.layoutKey = layout.layoutKey;
+  current.lightingKey = lightingKey(request.look);
   const warnings: PathTracerWarning[] = [];
   if (flat.skipped > 0) {
     warnings.push({
@@ -351,6 +355,7 @@ async function start(streamed: Extract<BakeRequest, { type: 'bake' }>): Promise<
     stopped: false,
     scene: null,
     layoutKey: '',
+    lightingKey: '',
     warnings: [],
   };
   job = current;

@@ -4,6 +4,7 @@
  * https://iolite-engine.com/blog_posts/minimal_agx_implementation); the same polynomial ships in three.js
  * AgXToneMapping (MIT) and Filament.
  */
+import type { LookGrade, LookToneMapping } from './LookPreset';
 
 // Column-major like a GLSL mat3: column c holds entries 3c..3c + 2.
 const INSET = [
@@ -37,12 +38,45 @@ function curve(value: number): number {
 
 const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
 
+/** Slope 1, offset 0, power 1 and saturation 1 change nothing: the shaders skip the grade (`u_lookGraded`). */
+export function isNeutralGrade(grade: LookGrade): boolean {
+  return (
+    grade.slope.every((v) => v === 1) &&
+    grade.offset.every((v) => v === 0) &&
+    grade.power.every((v) => v === 1) &&
+    grade.saturation === 1
+  );
+}
+
+/** ASC CDL then saturation about Rec.709 luma, on AgX's curve output (Wrensch's "look" step). */
+function grade(v: Rgb, g: LookGrade): Rgb {
+  const sop = (c: 0 | 1 | 2) => Math.pow(Math.max(0, v[c] * g.slope[c] + g.offset[c]), g.power[c]);
+  const s: Rgb = [sop(0), sop(1), sop(2)];
+  const luma = 0.2126 * s[0] + 0.7152 * s[1] + 0.0722 * s[2];
+  return [
+    luma + g.saturation * (s[0] - luma),
+    luma + g.saturation * (s[1] - luma),
+    luma + g.saturation * (s[2] - luma),
+  ];
+}
+
 /**
  * The AgX view transform of `glsl/agx.glsl` in double precision: scene-linear Rec.709 in, display-encoded sRGB in 0..1
- * out. For tests and CPU-side colours; the GPU result may differ in the last bit.
+ * out, with a look's exposure and grade when `toneMapping` is given (none: exposure 0, neutral grade). For tests and
+ * CPU-side colours; the GPU result may differ in the last bit.
  */
-export function agxToneMap(linear: Rgb): [number, number, number] {
-  const inset = multiply(INSET, [Math.max(0, linear[0]), Math.max(0, linear[1]), Math.max(0, linear[2])]);
-  const out = multiply(OUTSET, [curve(inset[0]), curve(inset[1]), curve(inset[2])]);
+export function agxToneMap(
+  linear: Rgb,
+  toneMapping?: Pick<LookToneMapping, 'exposure' | 'grade'>,
+): [number, number, number] {
+  const scale = toneMapping ? 2 ** toneMapping.exposure : 1;
+  const inset = multiply(INSET, [
+    Math.max(0, linear[0] * scale),
+    Math.max(0, linear[1] * scale),
+    Math.max(0, linear[2] * scale),
+  ]);
+  let curved: Rgb = [curve(inset[0]), curve(inset[1]), curve(inset[2])];
+  if (toneMapping && !isNeutralGrade(toneMapping.grade)) curved = grade(curved, toneMapping.grade);
+  const out = multiply(OUTSET, curved);
   return [clamp01(out[0]), clamp01(out[1]), clamp01(out[2])];
 }

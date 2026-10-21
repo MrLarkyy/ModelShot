@@ -1,8 +1,13 @@
-import type { EdgeLook } from '@modelshot/looks';
+import type { EdgeLook, LookPreset } from '@modelshot/looks';
 import type { PathTracerWarning } from './PathTracerWarning';
 
 export interface PathTracerOptions {
-  /** Scene-linear colour of camera rays that leave the scene; default the look's backdrop, as in the preview. */
+  /**
+   * The look, the preview's (`RendererOptions.look`): lights, environment, backdrop, catcher strength, edges, tone
+   * mapping. Default `DEFAULT_LOOK` (Studio). Checked like `setLook`.
+   */
+  readonly look?: LookPreset;
+  /** Scene-linear colour of camera rays that leave the scene: overrides the initial look's backdrop, flat. */
   readonly background?: readonly [number, number, number];
   /** Indirect bounces after the camera hit, 1..16. Default 4; Russian roulette from bounce 3. */
   readonly maxBounces?: number;
@@ -19,8 +24,8 @@ export interface PathTracerOptions {
   /** Keep the drawn image readable after the frame (screenshots, tests). Default `false`. */
   readonly preserveDrawingBuffer?: boolean;
   /**
-   * Rounded sharp edges, the preview's (`RendererOptions.edges`): fields left out take `EDGE_LOOK_V0`. A value out of
-   * range throws a `RangeError` naming `edges.width` or `edges.sharpAngleDeg`.
+   * Rounded sharp edges, the preview's (`RendererOptions.edges`): overrides the initial look's edges, fields left out
+   * keeping the look's. A value out of range throws a `RangeError` naming `edges.width` or `edges.sharpAngleDeg`.
    */
   readonly edges?: Partial<EdgeLook>;
 }
