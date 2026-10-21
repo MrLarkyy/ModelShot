@@ -57,51 +57,80 @@ export interface SharpEdgeAttributes {
   readonly edgeCount: number;
 }
 
-function tableSize(entries: number): number {
-  let size = 2;
-  while (size < entries * 2) size *= 2;
-  return size;
+/**
+ * Dense ids of non-negative integer keys below 2^53: equal keys get equal ids. By sorting (native numeric sort, then a
+ * binary search per key), so O(n log n) whatever the keys: no hash table a model could crowd into one probe chain.
+ */
+function denseIds(keys: Float64Array): { ids: Int32Array; count: number } {
+  const sorted = keys.slice().sort();
+  let count = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    if (i === 0 || sorted[i] !== sorted[count - 1]) sorted[count++] = sorted[i] ?? 0;
+  }
+  const ids = new Int32Array(keys.length);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i] ?? 0;
+    let low = 0;
+    let high = count - 1;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if ((sorted[middle] ?? 0) < key) low = middle + 1;
+      else high = middle;
+    }
+    ids[i] = low;
+  }
+  return { ids, count };
+}
+
+/** Dense ids of the pairs (a[i], b[i]) of dense ids, `bCount` the number of distinct b. */
+function densePairs(a: Int32Array, b: Int32Array, bCount: number): { ids: Int32Array; count: number } {
+  const keys = new Float64Array(a.length);
+  for (let i = 0; i < a.length; i++) keys[i] = (a[i] ?? 0) * bCount + (b[i] ?? 0);
+  return denseIds(keys);
 }
 
 /**
- * One id per distinct position (quantised to `EDGE_WELD_DISTANCE`), in vertex order, so faces with their own vertices
- * (every Blockbench cube face) still meet; −1 for a vertex with a non-finite coordinate. Open addressing: the large
- * meshes the loaders allow weld in milliseconds.
+ * One id per distinct position (quantised to `EDGE_WELD_DISTANCE`), so faces with their own vertices (every Blockbench
+ * cube face) still meet; −1 for a vertex with a non-finite coordinate. Each coordinate is ranked by sorting, then the
+ * rank pairs, so no position pattern can make it slower than O(n log n).
  */
-function weldPositions(positions: Float32Array, vertexCount: number): { ids: Int32Array; count: number } {
+function weldPositions(positions: Float32Array, vertexCount: number): Int32Array {
   const ids = new Int32Array(vertexCount).fill(-1);
-  const quantised = new Float64Array(vertexCount * 3);
-  const size = tableSize(vertexCount);
-  const table = new Int32Array(size).fill(-1);
-  let count = 0;
+  const finite: number[] = [];
   for (let v = 0; v < vertexCount; v++) {
     const x = positions[v * 3] ?? NaN;
     const y = positions[v * 3 + 1] ?? NaN;
     const z = positions[v * 3 + 2] ?? NaN;
-    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
-    // + 0 turns −0 into 0, so a position on either side of zero welds.
-    const qx = Math.round(x / EDGE_WELD_DISTANCE) + 0;
-    const qy = Math.round(y / EDGE_WELD_DISTANCE) + 0;
-    const qz = Math.round(z / EDGE_WELD_DISTANCE) + 0;
-    quantised[v * 3] = qx;
-    quantised[v * 3 + 1] = qy;
-    quantised[v * 3 + 2] = qz;
-    let slot = (Math.imul(qx | 0, 73856093) ^ Math.imul(qy | 0, 19349663) ^ Math.imul(qz | 0, 83492791)) & (size - 1);
-    for (;;) {
-      const other = table[slot] ?? -1;
-      if (other < 0) {
-        table[slot] = v;
-        ids[v] = count++;
-        break;
-      }
-      if (quantised[other * 3] === qx && quantised[other * 3 + 1] === qy && quantised[other * 3 + 2] === qz) {
-        ids[v] = ids[other] ?? -1;
-        break;
-      }
-      slot = (slot + 1) & (size - 1);
-    }
+    if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) finite.push(v);
   }
-  return { ids, count };
+  // Ranks are non-negative, so the coordinate keys are shifted by their minimum; + 0 turns −0 into 0.
+  const rank = (k: number) => {
+    const q = new Float64Array(finite.length);
+    let min = Infinity;
+    finite.forEach((v, i) => {
+      q[i] = Math.round((positions[v * 3 + k] ?? 0) / EDGE_WELD_DISTANCE) + 0;
+      min = Math.min(min, q[i] ?? 0);
+    });
+    for (let i = 0; i < q.length; i++) q[i] = (q[i] ?? 0) - min;
+    return denseIds(q);
+  };
+  const x = rank(0);
+  const y = rank(1);
+  const z = rank(2);
+  let xyz: { ids: Int32Array; count: number };
+  if (x.count * y.count * z.count < 2 ** 53) {
+    // The three ranks fit one exact key.
+    const keys = new Float64Array(finite.length);
+    for (let i = 0; i < keys.length; i++) {
+      keys[i] = ((x.ids[i] ?? 0) * y.count + (y.ids[i] ?? 0)) * z.count + (z.ids[i] ?? 0);
+    }
+    xyz = denseIds(keys);
+  } else {
+    const xy = densePairs(x.ids, y.ids, y.count);
+    xyz = densePairs(xy.ids, z.ids, z.count);
+  }
+  finite.forEach((v, i) => (ids[v] = xyz.ids[i] ?? -1));
+  return ids;
 }
 
 /** Squared distance from point p to the segment a-b. */
@@ -166,7 +195,7 @@ export function sharpEdges(
   const px = (v: number): number => positions[v * 3] ?? 0;
   const py = (v: number): number => positions[v * 3 + 1] ?? 0;
   const pz = (v: number): number => positions[v * 3 + 2] ?? 0;
-  const { ids } = weldPositions(positions, vertexCount);
+  const ids = weldPositions(positions, vertexCount);
 
   const faceNormals = new Float64Array(triangles * 3);
   const valid = new Uint8Array(triangles);
@@ -195,45 +224,39 @@ export function sharpEdges(
     faceNormals[t * 3 + 2] = nz / length;
   }
 
-  // Edges in order of first appearance: their two id ends, first and second triangle side (t * 3 + i, edge i from
-  // corner i to i + 1) and how many sides meet there (3 or more: not manifold).
-  const maxEdges = triangles * 3;
-  const edgeLow = new Int32Array(maxEdges);
-  const edgeHigh = new Int32Array(maxEdges);
-  const edgeFirst = new Int32Array(maxEdges);
-  const edgeSecond = new Int32Array(maxEdges);
-  const edgeSides = new Uint8Array(maxEdges);
-  const edgeSize = tableSize(maxEdges);
-  const edgeTable = new Int32Array(edgeSize).fill(-1);
-  let edges = 0;
+  // Edges in order of first appearance: first and second triangle side (t * 3 + i, edge i from corner i to i + 1) and
+  // how many sides meet there (3 or more: not manifold). Matched by sorting the sides' id pairs.
+  const sideCount = triangles * 3;
+  const sideLow = new Int32Array(sideCount).fill(-1);
+  const sideHigh = new Int32Array(sideCount).fill(-1);
+  let maxId = 0;
   for (let t = 0; t < triangles; t++) {
     if (!valid[t]) continue;
     for (let i = 0; i < 3; i++) {
       const a = ids[corner(t, i)] ?? 0;
       const b = ids[corner(t, (i + 1) % 3)] ?? 0;
-      const low = Math.min(a, b);
-      const high = Math.max(a, b);
-      let slot = (Math.imul(low, 0x9e3779b1) ^ Math.imul(high, 0x85ebca77)) & (edgeSize - 1);
-      for (;;) {
-        const e = edgeTable[slot] ?? -1;
-        if (e < 0) {
-          edgeTable[slot] = edges;
-          edgeLow[edges] = low;
-          edgeHigh[edges] = high;
-          edgeFirst[edges] = t * 3 + i;
-          edgeSides[edges] = 1;
-          edges++;
-          break;
-        }
-        if (edgeLow[e] === low && edgeHigh[e] === high) {
-          if (edgeSides[e] === 1) edgeSecond[e] = t * 3 + i;
-          edgeSides[e] = Math.min(3, (edgeSides[e] ?? 0) + 1);
-          break;
-        }
-        slot = (slot + 1) & (edgeSize - 1);
-      }
+      sideLow[t * 3 + i] = Math.min(a, b);
+      sideHigh[t * 3 + i] = Math.max(a, b);
+      maxId = Math.max(maxId, a, b);
     }
   }
+  const validSides: number[] = [];
+  for (let side = 0; side < sideCount; side++) if ((sideLow[side] ?? -1) >= 0) validSides.push(side);
+  const sideKeys = new Float64Array(validSides.length);
+  validSides.forEach((side, i) => (sideKeys[i] = (sideLow[side] ?? 0) * (maxId + 1) + (sideHigh[side] ?? 0)));
+  const sideEdge = denseIds(sideKeys);
+  const edgeFirst = new Int32Array(sideEdge.count).fill(-1);
+  const edgeSecond = new Int32Array(sideEdge.count);
+  const edgeSides = new Uint8Array(sideEdge.count);
+  const edgeOrder: number[] = [];
+  validSides.forEach((side, i) => {
+    const e = sideEdge.ids[i] ?? 0;
+    if ((edgeFirst[e] ?? -1) < 0) {
+      edgeFirst[e] = side;
+      edgeOrder.push(e);
+    } else if (edgeSides[e] === 1) edgeSecond[e] = side;
+    edgeSides[e] = Math.min(3, (edgeSides[e] ?? 0) + 1);
+  });
 
   const parent = new Int32Array(triangles).map((_, i) => i);
   const sharpCos = Math.cos((options.sharpAngleDeg * Math.PI) / 180);
@@ -250,7 +273,7 @@ export function sharpEdges(
     (faceNormals[s * 3 + 2] ?? 0) * (faceNormals[t * 3 + 2] ?? 0);
   // Per sharp edge: its two sides and its signed angle.
   const pairs: number[] = [];
-  for (let e = 0; e < edges; e++) {
+  for (const e of edgeOrder) {
     if (edgeSides[e] !== 2) continue;
     const sideA = edgeFirst[e] ?? 0;
     const sideB = edgeSecond[e] ?? 0;
@@ -479,62 +502,65 @@ export function sharpEdges(
     slots.set(kept, t * EDGE_SLOTS);
   }
 
-  // A set id per triangle (0: no slot), equal slots equal ids; neighbours on one face usually share their set.
+  // A set id per triangle (0: no slot), equal slots equal ids: the slot tuples ranked by sorting, pair by pair.
   const setOf = new Int32Array(triangles);
-  const setSize = tableSize(triangles);
-  const setTable = new Int32Array(setSize).fill(-1);
-  let setCount = 1;
   const sameSlots = (t: number, u: number): boolean => {
     for (let k = 0; k < EDGE_SLOTS; k++) if (slots[t * EDGE_SLOTS + k] !== slots[u * EDGE_SLOTS + k]) return false;
     return true;
   };
+  // Neighbours on one face usually share their slots: only the first of a run is ranked.
+  const withSlots: number[] = [];
   for (let t = 0; t < triangles; t++) {
-    if ((slots[t * EDGE_SLOTS] ?? -1) < 0) continue;
-    if (t > 0 && sameSlots(t, t - 1)) {
-      setOf[t] = setOf[t - 1] ?? 0;
-      continue;
-    }
-    let hash = 0;
-    for (let k = 0; k < EDGE_SLOTS; k++) hash = Math.imul(hash ^ (slots[t * EDGE_SLOTS + k] ?? 0), 0x9e3779b1);
-    let slot = (hash ^ (hash >>> 15)) & (setSize - 1);
-    for (;;) {
-      const owner = setTable[slot] ?? -1;
-      if (owner < 0) {
-        setTable[slot] = t;
-        setOf[t] = setCount++;
-        break;
-      }
-      if (sameSlots(t, owner)) {
-        setOf[t] = setOf[owner] ?? 0;
-        break;
-      }
-      slot = (slot + 1) & (setSize - 1);
+    if ((slots[t * EDGE_SLOTS] ?? -1) >= 0 && !(t > 0 && sameSlots(t, t - 1))) withSlots.push(t);
+  }
+  const slotColumn = (k: number) => Int32Array.from(withSlots, (t) => (slots[t * EDGE_SLOTS + k] ?? -1) + 1);
+  let tuple: { ids: Int32Array; count: number } = { ids: slotColumn(0), count: sides + 1 };
+  for (let k = 1; k < EDGE_SLOTS; k++) tuple = densePairs(tuple.ids, slotColumn(k), sides + 1);
+  withSlots.forEach((t, i) => (setOf[t] = (tuple.ids[i] ?? 0) + 1));
+  for (let t = 1; t < triangles; t++) {
+    if ((slots[t * EDGE_SLOTS] ?? -1) >= 0 && sameSlots(t, t - 1)) setOf[t] = setOf[t - 1] ?? 0;
+  }
+  const setCount = tuple.count + 1;
+
+  // Split vertices by the slot set of the triangles using them: one output vertex per distinct (vertex, set), numbered
+  // in order of first use, matched by sorting.
+  // Without a vertex used under two sets (every cube face) the vertex itself is the group: no sort needed.
+  const firstSet = new Int32Array(vertexCount).fill(-1);
+  let split = false;
+  for (let t = 0; t < triangles && !split; t++) {
+    for (let c = 0; c < 3; c++) {
+      const v = corner(t, c);
+      if ((firstSet[v] ?? -1) < 0) firstSet[v] = setOf[t] ?? 0;
+      else if (firstSet[v] !== setOf[t]) split = true;
     }
   }
-
-  // Split vertices by the slot set of the triangles using them.
+  let cornerGroup: { ids: Int32Array; count: number };
+  if (split) {
+    const cornerKeys = new Float64Array(triangles * 3);
+    for (let t = 0; t < triangles; t++) {
+      for (let c = 0; c < 3; c++) cornerKeys[t * 3 + c] = corner(t, c) * setCount + (setOf[t] ?? 0);
+    }
+    cornerGroup = denseIds(cornerKeys);
+  } else {
+    cornerGroup = { ids: Int32Array.from(indices.subarray(0, triangles * 3)), count: vertexCount };
+  }
+  const groupOut = new Int32Array(cornerGroup.count).fill(-1);
   const maxOut = triangles * 3 + vertexCount;
   const vertexOf = new Uint32Array(maxOut);
   const distances = new Float32Array(maxOut * EDGE_SLOTS);
   const angles = new Float32Array(maxOut * EDGE_SLOTS);
   const outIndices = new Uint32Array(triangles * 3);
-  const firstSet = new Int32Array(vertexCount).fill(-1);
-  const firstOut = new Int32Array(vertexCount);
-  const moreOut = new Map<number, number>();
+  const used = new Uint8Array(vertexCount);
   let out = 0;
   for (let t = 0; t < triangles; t++) {
-    const set = setOf[t] ?? 0;
     for (let c = 0; c < 3; c++) {
-      const v = corner(t, c);
-      let o = -1;
-      if (firstSet[v] === set) o = firstOut[v] ?? 0;
-      else if ((firstSet[v] ?? -1) >= 0) o = moreOut.get(v * setCount + set) ?? -1;
+      const group = cornerGroup.ids[t * 3 + c] ?? 0;
+      let o = groupOut[group] ?? -1;
       if (o < 0) {
         o = out++;
-        if ((firstSet[v] ?? -1) < 0) {
-          firstSet[v] = set;
-          firstOut[v] = o;
-        } else moreOut.set(v * setCount + set, o);
+        groupOut[group] = o;
+        const v = corner(t, c);
+        used[v] = 1;
         vertexOf[o] = v;
         const qx = px(v);
         const qy = py(v);
@@ -561,7 +587,7 @@ export function sharpEdges(
   for (let i = 0; i < out && identity; i++) identity = vertexOf[i] === i;
   if (!identity) {
     for (let v = 0; v < vertexCount; v++) {
-      if ((firstSet[v] ?? -1) >= 0) continue;
+      if (used[v]) continue;
       vertexOf[out] = v;
       distances.fill(NO_EDGE, out * EDGE_SLOTS, out * EDGE_SLOTS + EDGE_SLOTS);
       out++;

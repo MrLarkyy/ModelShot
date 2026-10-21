@@ -320,6 +320,41 @@ describe('sharpEdges', () => {
     expect(shared.used).toBeLessThan(MAX_EDGE_WORK + 404 * 16);
   });
 
+  it('matches positions and edges by sorting: a coarse grid that crowds any hash stays fast', () => {
+    // Every quantised coordinate a multiple of 2^20 (65 536 units): a multiplicative hash with linear probing put all
+    // of them into one probe chain (120 000 vertices took 10 s). Quads with their own vertices share every edge.
+    const side = 317;
+    const step = 65536;
+    const faces: Vec3[][] = [];
+    for (let z = 0; z < side; z++) {
+      for (let x = 0; x < side; x++) {
+        faces.push([
+          [x * step, 0, (z + 1) * step],
+          [(x + 1) * step, 0, (z + 1) * step],
+          [(x + 1) * step, 0, z * step],
+          [x * step, 0, z * step],
+        ]);
+      }
+    }
+    // A low wall along the first row makes sharp edges, so the slot search and the vertex split run too.
+    for (let x = 0; x < side; x++) {
+      faces.push([
+        [(x + 1) * step, 0, 0],
+        [x * step, 0, 0],
+        [x * step, step, 0],
+        [(x + 1) * step, step, 0],
+      ]);
+    }
+    const mesh = quads(faces);
+    expect(mesh.positions.length / 3).toBeGreaterThan(400_000);
+    const start = performance.now();
+    const result = sharpEdges(mesh, OPTIONS);
+    const elapsed = performance.now() - start;
+    expect(result.edgeCount).toBe(side);
+    // About 0.3 s here; the bound only catches a quadratic return, never a slow machine.
+    expect(elapsed).toBeLessThan(5000);
+  });
+
   it('takes one of nearly parallel rim edges: a smooth cylinder wall rounds its own top and bottom edge only', () => {
     const cylinder = smoothCylinder(16);
     const result = sharpEdges(cylinder, OPTIONS);
