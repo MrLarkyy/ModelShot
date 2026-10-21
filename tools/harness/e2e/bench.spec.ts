@@ -4,6 +4,7 @@ import { expect, test } from '../src/harnessTest';
 import { budgetReport, checkBudgets, loadBudgets, type Measured } from '../src/budgets';
 import { measureBundle } from '../src/bundleSize';
 import { openFixture } from '../src/expectGolden';
+import { traceMainThread } from '../src/mainThreadTrace';
 import { median } from '../src/measure';
 
 test('frame time, time to samples and bundle size stay inside budgets.json', async ({ page }, testInfo) => {
@@ -84,15 +85,22 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
   await openFixture(page, '/rt.html?scene=bench&lag=1');
   await page.evaluate(() => window.__msFixture?.rt?.resetLag());
   const bakeRuns: number[] = [];
-  for (let run = 0; run < 3; run++) {
-    const ms = await page.evaluate(async () => {
-      const fixture = window.__msFixture;
-      if (!fixture?.timeBake) throw new Error('bake bench missing');
-      return fixture.timeBake();
-    });
-    expect(ms, `bake run ${run + 1}: ${ms.toFixed(0)} ms / max ${bakeMax}`).toBeLessThanOrEqual(bakeMax);
-    bakeRuns.push(ms);
-  }
+  // Traced, so a slow phase can be told apart: page work (CPU time) or the OS not running the thread (wall only).
+  const trace = await traceMainThread(page, async () => {
+    for (let run = 0; run < 3; run++) {
+      const ms = await page.evaluate(async () => {
+        const fixture = window.__msFixture;
+        if (!fixture?.timeBake) throw new Error('bake bench missing');
+        return fixture.timeBake();
+      });
+      expect(ms, `bake run ${run + 1}: ${ms.toFixed(0)} ms / max ${bakeMax}`).toBeLessThanOrEqual(bakeMax);
+      bakeRuns.push(ms);
+    }
+  });
+  console.log(
+    `[bench] bake main thread (trace): ${trace.tasks} tasks, longest ${trace.longestWall.toFixed(1)} ms wall / ` +
+      `${trace.longestCpu.toFixed(1)} ms CPU, largest wall-CPU gap ${trace.largestGap.toFixed(1)} ms`,
+  );
   // The block is the page's own work (long tasks, the bake calls and updates); the heartbeat lag is printed beside it
   // but also counts the time SwiftShader's GPU process takes every core from the page (eventLoopLag.ts).
   const bakeBlock = await page.evaluate(() => ({

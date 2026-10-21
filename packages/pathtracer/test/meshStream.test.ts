@@ -47,6 +47,31 @@ describe('mesh stream', () => {
     expect(assembler.take([7])).toBeNull();
   });
 
+  it('an abandoned stream costs a bake of held meshes nothing', async () => {
+    const assembler = new MeshAssembler();
+    const held = triangleMesh([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+    const messages: MeshMessage[] = [];
+    await streamMeshes(
+      (m) => messages.push(m),
+      [[1, held]],
+      () => true,
+      () => Promise.resolve(),
+    );
+    for (const m of messages) assembler.receive(m);
+    expect(assembler.take([1])?.[0]).toEqual(held);
+    // Model N starts streaming and is abandoned half way; the next bake is model M again.
+    const partial: MeshMessage[] = [];
+    await streamMeshes(
+      (m) => partial.push(m),
+      [[2, bigMesh(100_000)]],
+      () => false,
+      () => Promise.resolve(),
+    );
+    for (const m of partial) assembler.receive(m);
+    expect(assembler.take([1])?.[0]).toEqual(held);
+    expect(assembler.take([1, 2])).toBeNull();
+  });
+
   it('stops when superseded, and an incomplete stream is not taken', async () => {
     const messages: MeshMessage[] = [];
     const done = await streamMeshes(

@@ -145,18 +145,21 @@ export class MeshAssembler {
 
   /**
    * The meshes of `ids`, from this stream or held from earlier bakes; they become the held ones. `null` when one is
-   * unknown or not complete (an abandoned or failed stream): the main thread has to post the meshes again.
+   * unknown, or comes from a stream that is not complete (abandoned for a later bake): the main thread has to post
+   * the meshes again. An unfinished stream the bake does not need costs it nothing.
    */
   take(ids: readonly number[]): SceneMesh[] | null {
-    if (this.index < this.pending.length) return null;
+    const complete = this.index >= this.pending.length;
     const meshes: SceneMesh[] = [];
     for (const id of ids) {
-      const mesh = this.incoming.get(id) ?? this.held.get(id);
+      const streamed = this.incoming.get(id);
+      if (streamed && !complete) return null;
+      const mesh = streamed ?? this.held.get(id);
       if (!mesh) return null;
       meshes.push(mesh);
     }
     this.held = new Map(ids.map((id, i) => [id, meshes[i] as SceneMesh]));
-    this.incoming.clear();
+    if (complete) this.incoming.clear();
     return meshes;
   }
 }

@@ -136,7 +136,8 @@ export class LightBaker {
    * `HIGHP_UNAVAILABLE` where its context cannot bake. A later `bake` or `dispose` supersedes a pending one, which then
    * resolves with `applied: false` after the tile in progress. Only what the worker does not hold is posted: texture
    * bytes when `doc.textures` is not the array the previous call posted, meshes it has not streamed before (a new pose
-   * or option posts none). New meshes stream as transferred byte chunks over several tasks, so the main thread never
+   * or option posts none). Both are compared by object, not by content: a mesh or textures array changed in place is
+   * not posted again, so a changed mesh must be a new `SceneMesh` object (as `poseScene` and the loaders make them). New meshes stream as transferred byte chunks over several tasks, so the main thread never
    * clones a whole model at once; when the worker lost track of them it asks, and everything is posted again. The
    * call itself only checks the options and validates the document (`validateScene`). After the worker failed
    * (`WORKER_UNAVAILABLE`) every bake rejects with that error; after `dispose()` it resolves `applied: false`.

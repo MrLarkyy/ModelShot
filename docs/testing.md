@@ -467,12 +467,21 @@ texel tap), `rt-bench-order-512` 117, 145 and 148 ms with MSAA, 83 and 107 ms si
   phases: after the fix `set-lighting` 0.3-0.4 ms, `upload` 1.1-1.3 ms, `worker-message` 1.3-2.2 ms, `render` 1.5 ms,
   `bake-call` 7-8 ms (the posted document's clone), no long task, block 7.0 and 7.8 ms.
 - `mainThreadBlockMs.bake-post-200k` (MS-16 round 2): `bake()` of the 200 000-triangle `large-order` document (1
-  sample): the longer of the call's own duration (validation and the structured clone of the posted document) and the
+  sample): the longer of the call's own duration (option checks and validation; since round 5 the call posts nothing,
+  the document's meshes stream in later tasks) and the
   block over the bake. Measured 16.2 and 14.9 ms; max 50 ms, fixed like the row above. Round 5: the full build test
   put the `bake-call` phase at 44.6 ms under load (a structured clone of every mesh in one task). Meshes now stream as
   transferred chunks in later tasks and only when the worker lacks them, and the fixture times every worker
   `postMessage` (`worker-post`): `bake-call` 0.7 ms idle and 1.1 ms under load (12 CPU spinners and a parallel
-  path-tracer browser), `worker-post` at most 0.4 ms, block 1.4 and 1.6 ms, `bake-post-200k` 2.5 and 4.0 ms. In the same runs
+  path-tracer browser), `worker-post` at most 0.4 ms, block 1.4 and 1.6 ms, `bake-post-200k` 2.5 and 4.0 ms.
+  Round 6: a full build test read a single `bake-call` of 72 ms (heartbeat 66.4 ms, no long task: the call runs in a
+  Playwright `evaluate`). Locally the call does 0.3-1.8 ms of work (600 calls under 30-40 CPU spinners, each in its own
+  task, beside an allocation-free loop of equal cost), V8's `--trace-gc` shows no pause over 2.6 ms in 300 collections
+  over three bench bakes, and a Chrome trace shows the renderer main thread losing up to 11.5 ms of wall time inside
+  tasks with no CPU behind it (the worker thread up to 82 ms): the OS not running the thread. The bench therefore
+  traces the bake runs (`src/mainThreadTrace.ts`, CDP top-level tasks with thread CPU time) and prints the main
+  thread's longest task as wall / CPU ms and its largest wall − CPU gap, so a slow phase on a loaded machine shows
+  whether it was page work. Limit and measure unchanged. In the same runs
   `rt-load-first-frame-200k-order` (now with the lightmap layout) measured about 600 ms of its 3500.
 
 First CI run (2026-10-20, ubuntu-latest): frame time 0.9 ms (max 5, 5.5x), time to 64 samples 80.6 ms (max 300), gzip app 437 B, embed 115 B.

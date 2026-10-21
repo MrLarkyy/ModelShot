@@ -185,7 +185,9 @@ import.meta.url), { type: 'module' })`); without module workers or OffscreenCanv
 onProgress })` resolves `{ applied, warnings, lighting }`. The call only checks the options (`RangeError`) and
   validates the document (`INVALID_SCENE`, about a millisecond); posting runs in later tasks, one bake at a time, and
   a bake superseded before its turn is never posted. Only what the worker does not hold is posted: meshes it has not
-  received before (a re-bake of the same meshes, a new pose or new options post none) stream as `meshHeaders` and
+  received before (a re-bake of the same meshes, a new pose or new options post none; meshes and the textures array
+  are compared by object, so a mesh changed in place is not posted again: a changed mesh must be a new `SceneMesh`)
+  stream as `meshHeaders` and
   `meshData` messages, the arrays' bytes copied into 1 MiB buffers that are transferred, not cloned, yielding after
   every 2 MiB (`meshStream.ts`; the worker keeps the meshes the latest bake named); texture bytes are posted only when
   `doc.textures` is not the array the previous call posted, else the worker reuses what it decoded. Cloning a model's
