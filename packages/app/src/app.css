@@ -1,0 +1,18 @@
+body {
+  margin: 0;
+  padding: var(--ms-space-6) var(--ms-space-5);
+  background: var(--ms-color-cloud);
+  color: var(--ms-color-ink);
+  font: var(--ms-weight-regular) var(--ms-size-body) / 1.55 var(--ms-font-body);
+}
+
+h1 {
+  margin: 0 0 var(--ms-space-4);
+  font: var(--ms-weight-heavy) var(--ms-size-h2) var(--ms-font-display);
+  letter-spacing: -0.04em;
+}
+
+#handoff ul {
+  padding-left: var(--ms-space-5);
+  font: var(--ms-weight-medium) var(--ms-size-label) var(--ms-font-mono);
+}
