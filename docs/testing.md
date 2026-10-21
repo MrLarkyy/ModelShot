@@ -30,6 +30,21 @@ pathtracer), 2 55 (31 pathtracer, 24 realtime), 3 55 (realtime), 4 54 (53 realti
 without `--shard`. By the local test times the heaviest shard (the last realtime tests, the bakes, and the bench)
 takes about 6 + 3 minutes.
 
+Timeouts: the Playwright default is 30 s and stays. On the runners (SwiftShader, 3-5x slower than local) some tests
+came near or over it; the worst of runs 39594658979 and 39612706830 per test: the baked goldens
+`rt-bake-cutout-checker` and its fallback over 30 s, `rt-bake-turntable-y030` over 30 s, `rt-bake-alpha-plane` 24.5 s;
+the path-tracer determinism batches test 35.0 s (over 30 s), its same-seed test 15.2 s, `pt-alpha-plane` 22.4 s, the
+transparency tests up to 22.5 s, the lifetime tests 14.9-18.6 s, the 10 000 coincident cubes test 10.0 s. A suite or
+test whose CI time reaches a third of the default carries a timeout: 180 s for the baked goldens (as the baked lighting
+describe), 120 s for the path-tracer goldens, determinism, transparency and lifetime describes and the coincident cubes
+test (at least 3x the worst measured time). A hang now fails after that time, not after 30 s; several hangs in one
+shard can reach the 20-minute job limit, and the job is then cancelled instead of reporting the failures.
+
+FFmpeg: `playwright install` fetches FFmpeg with every browser (playwright-core has no flag to skip it). The first
+mirror (`playwright.download.prss.microsoft.com`) does not resolve on the runner; the downloader falls back to
+`cdn.playwright.dev` and the step passes in both runs, so the install is not a failure cause and the workflow is
+unchanged.
+
 ## Browser tests
 
 Fixtures in `tools/harness/fixtures` are self-contained WebGL2 pages served by a local Vite server on

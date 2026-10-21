@@ -97,6 +97,8 @@ const at = <T extends { name: string }>(probes: readonly T[], name: string): T =
 };
 
 test.describe('path-tracer goldens', () => {
+  // 10.5-22.4 s on a SwiftShader runner (default timeout 30 s).
+  test.describe.configure({ timeout: 120_000 });
   for (const golden of GOLDENS) {
     test(`${golden.name} matches its golden`, async ({ page }, testInfo) => {
       await expectGolden(page, testInfo, golden);
@@ -107,6 +109,8 @@ test.describe('path-tracer goldens', () => {
 });
 
 test.describe('determinism', () => {
+  // 11.5-35.0 s on a SwiftShader runner (default timeout 30 s).
+  test.describe.configure({ timeout: 120_000 });
   test('the same seed and sample count render byte-identical images', async ({ page }) => {
     const first = await renderFixture(page, TURNTABLE);
     const second = await renderFixture(page, TURNTABLE);
@@ -138,6 +142,8 @@ test.describe('determinism', () => {
 });
 
 test.describe('transparency, shadows and sides (scene format rules)', () => {
+  // 11.2-22.5 s on a SwiftShader runner (default timeout 30 s).
+  test.describe.configure({ timeout: 120_000 });
   test('light passes cut-out texels and opaque texels cast pixel-shaped shadows', async ({ page }) => {
     const { image } = await render(page, 'variant=alpha-plane&seed=1&samples=128');
     const probes = await probesOf(page);
@@ -468,6 +474,8 @@ test.describe('limits and hostile input', () => {
   });
 
   test('10 000 coincident cubes finish a sample: the per-ray node cap bounds the work', async ({ page }) => {
+    // 10.0 s on a SwiftShader runner (default timeout 30 s).
+    test.setTimeout(120_000);
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(String(error)));
     const started = Date.now();
@@ -527,6 +535,8 @@ test.describe('limits and hostile input', () => {
 });
 
 test.describe('lifetime', () => {
+  // 14.9-18.6 s on a SwiftShader runner (default timeout 30 s).
+  test.describe.configure({ timeout: 120_000 });
   test('a lost context draws nothing; after the restore the same request renders byte-identically', async ({
     page,
   }) => {
