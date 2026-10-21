@@ -3,6 +3,7 @@ export { findHandoffViolation, type HandoffFileLike, type HandoffViolation } fro
 export { HandoffError, type HandoffErrorCode } from './HandoffError';
 export { HandoffLimits } from './HandoffLimits';
 export {
+  discardStaleHandoff,
   HANDOFF_DB,
   HANDOFF_STORE,
   putHandoffFiles,

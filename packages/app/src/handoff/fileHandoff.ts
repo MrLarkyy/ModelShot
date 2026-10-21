@@ -23,12 +23,13 @@ function settle<T>(
   timeoutMs: number,
   step: string,
   start: (done: (value: T) => void, fail: (why: string) => void) => void,
+  onTimeout?: () => void,
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(storageError(`IndexedDB did not answer within ${timeoutMs} ms (${step})`)),
-      timeoutMs,
-    );
+    const timer = setTimeout(() => {
+      reject(storageError(`IndexedDB did not answer within ${timeoutMs} ms (${step})`));
+      onTimeout?.();
+    }, timeoutMs);
     start(
       (value) => {
         clearTimeout(timer);
@@ -55,7 +56,7 @@ async function inTransaction<T>(
     const request = factory.open(HANDOFF_DB, 1);
     request.onupgradeneeded = () => request.result.createObjectStore(HANDOFF_STORE);
     request.onsuccess = () => (timedOut ? request.result.close() : done(request.result));
-    request.onerror = () => fail(request.error?.message ?? 'open failed');
+    request.onerror = () => fail(String(request.error));
   }).catch((error: unknown) => {
     timedOut = true;
     throw error;
@@ -63,22 +64,36 @@ async function inTransaction<T>(
   try {
     const transaction = db.transaction(HANDOFF_STORE, 'readwrite');
     const result = run(transaction.objectStore(HANDOFF_STORE));
-    await settle<void>(timeoutMs, step, (done, fail) => {
-      transaction.oncomplete = () => done();
-      transaction.onerror = transaction.onabort = () => fail(transaction.error?.message ?? 'transaction failed');
-    });
+    // A transaction that times out is aborted, so a late write cannot leave the files behind after the page gave up.
+    await settle<void>(
+      timeoutMs,
+      step,
+      (done, fail) => {
+        transaction.oncomplete = () => done();
+        transaction.onerror = transaction.onabort = () => fail(String(transaction.error));
+      },
+      () => {
+        try {
+          transaction.abort();
+        } catch {
+          // already finished
+        }
+      },
+    );
     return result();
   } finally {
     db.close();
   }
 }
 
-// Stores the user's chosen files for the app tab that the landing page opens next; replaces any earlier record.
+// Stores the user's chosen files for the app tab that the landing page opens next; anything left in the store
+// before (an earlier record, a stray key) is removed in the same transaction.
 export async function putHandoffFiles(files: readonly File[], options: HandoffStorageOptions = {}): Promise<void> {
   const error = checkHandoffFiles(files);
   if (error) throw error;
   const now = options.now ?? Date.now;
   await inTransaction(options, 'store', (store) => {
+    store.clear();
     store.put({ v: HANDOFF_RECORD_VERSION, files: [...files], createdAt: now() }, KEY);
     return () => undefined;
   });
@@ -93,4 +108,18 @@ export async function takeHandoffFiles(options: HandoffStorageOptions = {}): Pro
     return (): unknown => request.result;
   });
   return readHandoffRecord(value, now());
+}
+
+// The landing page calls this on load: a record the app can no longer take (expired or unreadable) is deleted, so
+// files the app never opened do not stay on disk. A fresh record, perhaps on its way to an app tab, is kept.
+export async function discardStaleHandoff(options: HandoffStorageOptions = {}): Promise<void> {
+  const now = options.now ?? Date.now;
+  await inTransaction(options, 'discard', (store) => {
+    const request = store.get(KEY);
+    request.onsuccess = () => {
+      const kind = readHandoffRecord(request.result, now()).kind;
+      if (kind === 'expired' || kind === 'invalid') store.delete(KEY);
+    };
+    return () => undefined;
+  });
 }
