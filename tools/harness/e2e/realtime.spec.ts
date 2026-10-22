@@ -1,12 +1,27 @@
 import { readFileSync } from 'node:fs';
 import type { Page } from '@playwright/test';
+// The package index pulls in GLSL through Vite's ?raw, which Playwright cannot load: the plain modules directly.
+import { agxToneMap } from '../../../packages/looks/src/agxToneMap';
+import { backdropColor } from '../../../packages/looks/src/backdropColor';
 import { compareImages } from '../src/compareImages';
 import { encodeFlipped, expectGolden, openFixture, renderFixture, type FixtureInfo } from '../src/expectGolden';
 import type { RasterGoldenSpec } from '../src/goldenSpec';
 import { goldenPath } from '../src/goldenStore';
+import { lookPresetFile } from '../src/lookPresetFile';
 import { expect, test } from '../src/harnessTest';
 import { differenceMask, pixelsFarFrom } from '../src/edgeProbes';
-import { decodePng, hueMatch, luminance, modelBox, near, pixel, sentinelPixels, type Image } from '../src/imageMetrics';
+import {
+  decodePng,
+  hueMatch,
+  luminance,
+  modelBox,
+  near,
+  pixel,
+  sentinelPixels,
+  silhouettePixels,
+  whiteCount,
+  type Image,
+} from '../src/imageMetrics';
 import { traceMainThread } from '../src/mainThreadTrace';
 import { shadowStep } from '../src/shadowStep';
 import { edgesSceneSharpEdges } from '../fixtures/src/edgesScene';
@@ -44,10 +59,17 @@ const GOLDENS = [
   // MS-15: rounded edges on a cube and a wedge, none on a plane, a card and a sphere; paired with pt-edges.
   spec('edges', 'edges'),
 ];
-// Baked light (MS-16): 64 samples, seed 1, shadow catcher on; the cut-out checker's pair is pt-cutout-checker.
-const BAKED = ['bake-cutout-checker', 'bake-cutout-checker-fallback', 'bake-alpha-plane', 'bake-turntable-y030'].map(
-  (variant) => spec(variant, variant),
-);
+// Baked light (MS-16): 64 samples, seed 1, shadow catcher on; the cut-out checker's pair is pt-cutout-checker. The
+// look presets (MS-19) bake under their own look; pairs pt-preset-marketplace and pt-preset-rim.
+const BAKED = [
+  'bake-cutout-checker',
+  'bake-cutout-checker-fallback',
+  'bake-alpha-plane',
+  'bake-turntable-y030',
+  'preset-marketplace',
+  'preset-rim',
+  'preset-marketplace-fallback',
+].map((variant) => spec(variant, variant));
 
 async function render(page: Page, query: string): Promise<{ png: Buffer; image: Image; info: FixtureInfo }> {
   const info = await openFixture(page, `/rt.html?${query}`);
@@ -271,6 +293,125 @@ test.describe('hostile textures', () => {
   test('an empty scene draws only the backdrop', async ({ page }) => {
     const { image } = await render(page, 'scene=empty');
     expect(modelBox(image).x0).toBe(Infinity);
+  });
+});
+
+test.describe('look presets', () => {
+  for (const extra of ['', '&fallback=1']) {
+    test(`the backdrop gradient matches its TS mirror${extra ? ' (fallback)' : ''}`, async ({ page }) => {
+      const look = lookPresetFile('marketplace');
+      const { image } = await render(page, `scene=empty&preset=marketplace${extra}`);
+      let worst = 0;
+      for (let y = 0; y < image.height; y++) {
+        const expected = agxToneMap(backdropColor(look, (image.height - y - 0.5) / image.height), look.toneMapping);
+        for (const x of [0, 100, image.width - 1]) {
+          const seen = pixel(image, x, y);
+          worst = Math.max(worst, ...seen.map((v, c) => Math.abs(v - (expected[c] ?? 0) * 255)));
+        }
+      }
+      console.log(`[rt probe] marketplace backdrop${extra}: worst ${worst.toFixed(2)} levels from the mirror`);
+      expect(worst).toBeLessThanOrEqual(2);
+      expect(luminance(pixel(image, 0, image.height - 1)) - luminance(pixel(image, 0, 0))).toBeGreaterThan(5);
+    });
+  }
+
+  test('setLook draws the look; an invalid look names its field and changes nothing', async ({ page }) => {
+    const { info, png: studio } = await render(page, 'variant=turntable-y030');
+    const fresh = (await render(page, 'variant=turntable-y030&preset=marketplace')).png;
+    const opened = await render(page, 'variant=turntable-y030');
+    const set = (id: string) => page.evaluate((name) => window.__msFixture!.rt!.setLook(name), id);
+    expect(await set('marketplace')).toBe('ok');
+    const marketplace = await readPng(page, opened.info);
+    expect(marketplace.equals(fresh), 'the bytes of a renderer created with Marketplace').toBe(true);
+    expect(await set('bad')).toMatch(/^LookPresetError: catcher\.strength/);
+    expect((await readPng(page, info)).equals(marketplace), 'a rejected look changes nothing').toBe(true);
+    expect(await set('studio')).toBe('ok');
+    expect((await readPng(page, info)).equals(studio), 'back to Studio: the first bytes').toBe(true);
+  });
+
+  /**
+   * The view-relative rim never blows out a face: the held-cube player under Marketplace, unbaked (the bake only
+   * darkens), 512 px, pitch 20, a turntable of 12 yaws. Blown out: an interior pixel (off the 2 px outline band) with
+   * every channel at 250 or more; the limit is the measured worst share x 1.25 and never 2 %. Each view keeps a
+   * near-white outline, at least the fewest measured / 1.25.
+   */
+  test('Marketplace: no blown-out face from any orbit yaw, a white silhouette line from every one', async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    // Measured: the worst interior share 0.00164 (yaw 60: the inner side of a thick band at a 45-degree silhouette),
+    // the fewest outline white pixels 89 (yaw 0, the player's back).
+    const worstShare = 0.00205;
+    const minWhite = 71;
+    const lines: string[] = [];
+    for (let yaw = 0; yaw < 360; yaw += 30) {
+      const { image } = await render(page, `variant=preset-marketplace&yaw=${yaw}&bake=0&size=512`);
+      const { silhouette, interior } = silhouettePixels(image, { backdropTolerance: 4, reach: 2 });
+      const share = whiteCount(interior, 249) / interior.length;
+      const white = whiteCount(silhouette, 200);
+      lines.push(`yaw ${yaw}: blown ${share.toFixed(5)}, white ${white}`);
+      expect(share, `yaw ${yaw}`).toBeLessThanOrEqual(worstShare);
+      expect(share, `yaw ${yaw}`).toBeLessThan(0.02);
+      expect(white, `yaw ${yaw}`).toBeGreaterThanOrEqual(minWhite);
+    }
+    console.log(`[rt probe] marketplace turntable: ${lines.join('; ')}`);
+  });
+
+  /**
+   * Faces the rim does not outline keep their texel colour: the centre (3 x 3 pixels around the projection) of the
+   * held-cube player's head top, (0, 32, 0), and of its screen-right side, the face x = -4 from yaw 210 and x = 4
+   * from yaw 30, unbaked, 512 px, pitch 20, with the preset's rim against the rim black, at most `FACE_LEVELS` apart
+   * per channel. The round-4 Marketplace rim turned the head top from (255, 95, 95) to (232, 208, 214). Measured 0
+   * levels everywhere but Rim's right side, which its rim greys: (32, 8, 9) to (95, 83, 83) at yaw 210, (97, 13, 14)
+   * to (117, 69, 69) at yaw 30, worst 75 levels; a known loss (docs/look-presets.md, presets), held at measured
+   * x 1.25 so it cannot grow.
+   */
+  const FACE_LEVELS: Readonly<Record<string, readonly [number, number]>> = { marketplace: [3, 3], rim: [3, 94] };
+  const FACES = [
+    { face: 'head top', at: (): [number, number, number] => [0, 32, 0] },
+    { face: 'head right side', at: (yaw: number): [number, number, number] => [yaw === 210 ? -4 : 4, 28, 0] },
+  ];
+  for (const preset of ['marketplace', 'rim']) {
+    test(`${preset}: the rim leaves the head top and right side their texel colour at yaw 210 and 30`, async ({
+      page,
+    }) => {
+      const lines: string[] = [];
+      for (const yaw of [210, 30]) {
+        const query = `variant=preset-${preset}&yaw=${yaw}&bake=0&size=512`;
+        const means = async (rim: 0 | 1): Promise<number[][]> => {
+          const { image } = await render(page, `${query}&rim=${rim}`);
+          const out: number[][] = [];
+          for (const { at } of FACES) {
+            const [x, y] = await page.evaluate((p) => window.__msFixture!.rt!.project(p[0], p[1], p[2]), at(yaw));
+            const sum = [0, 0, 0];
+            for (let dy = -1; dy <= 1; dy++) {
+              for (let dx = -1; dx <= 1; dx++)
+                pixel(image, x + dx, y + dy).forEach((v, c) => (sum[c] = (sum[c] ?? 0) + v / 9));
+            }
+            out.push(sum);
+          }
+          return out;
+        };
+        const on = await means(1);
+        const off = await means(0);
+        FACES.forEach(({ face }, i) => {
+          const limit = FACE_LEVELS[preset]?.[i] ?? 0;
+          const a = on[i] ?? [];
+          const b = off[i] ?? [];
+          const worst = Math.max(...a.map((v, c) => Math.abs(v - (b[c] ?? 0))));
+          lines.push(`yaw ${yaw} ${face}: ${a.map(Math.round).join(',')} vs rim black ${b.map(Math.round).join(',')}`);
+          expect(worst, lines.join('; ')).toBeLessThanOrEqual(limit);
+        });
+      }
+      console.log(`[rt probe] ${preset} faces: ${lines.join('; ')}`);
+    });
+  }
+
+  test('a lost context comes back with the look', async ({ page }) => {
+    const { info, png } = await render(page, 'variant=turntable-y030&preset=rim');
+    await page.evaluate(() => window.__msFixture!.rt!.lose());
+    await page.evaluate(() => window.__msFixture!.rt!.restore());
+    expect((await readPng(page, info)).equals(png)).toBe(true);
   });
 });
 
@@ -878,6 +1019,15 @@ test.describe('baked lighting', () => {
     );
     expect(taken).toEqual([false, false, false]);
     expect(await page.evaluate(() => window.__msFixture!.rt!.lightingHash)).toBe(hash);
+  });
+
+  test('light baked under one look is refused under a look of another lighting key, taken under its own', async ({
+    page,
+  }) => {
+    await openFixture(page, '/rt.html?variant=player-hold-34');
+    const taken = await page.evaluate(() => window.__msFixture!.rt!.bakeUnderLook('marketplace'));
+    expect(taken).toEqual({ current: false, same: true });
+    expect(await page.evaluate(() => window.__msFixture!.rt!.lightingHash)).not.toBe('');
   });
 
   test('a failed bake keeps the textures it posted: the next bake of the same textures shadows like a fresh one', async ({

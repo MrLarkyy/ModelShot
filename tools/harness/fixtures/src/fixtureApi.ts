@@ -76,6 +76,13 @@ export interface RtControls {
   depthKeyMode: () => string;
   /** `setEdges` then a frame: `ok`, or the error it threw (`name: message`). */
   setEdges: (edges: { width?: number; sharpAngleDeg?: number }) => string;
+  /** `setLook` of a preset by id (or a broken copy: `bad`) then a frame: `ok`, or the error (`name: message`). */
+  setLook: (id: string) => string;
+  /**
+   * Bakes the shown document under the preset `id` (64 samples), offers the light to the renderer under its current look
+   * and then under that preset: whether each `setLighting` took it.
+   */
+  bakeUnderLook: (id: string) => Promise<{ current: boolean; same: boolean }>;
   /** Image position (pixels, top-left origin) of a world point under the current camera. */
   project: (x: number, y: number, z: number) => [number, number];
   /** World position of a model-space point under the first node named `name` (its world matrix in the shown pose). */
@@ -165,6 +172,10 @@ export interface PtControls {
   setSceneDuringEdges: (edges: { width?: number; sharpAngleDeg?: number }) => Promise<boolean>;
   /** `setEdges` then the page's request drawn to the end: `ok`, or the error it threw (`name: message`). */
   setEdges: (edges: { width?: number; sharpAngleDeg?: number }) => string;
+  /** setScene of the page's scene anew, `setLook` of a preset while it decodes, then the request drawn: applied. */
+  setSceneDuringLook: (id: string) => Promise<boolean>;
+  /** `setLook` of a preset by id (or a broken copy: `bad`), then the request drawn: `ok`, or the error. */
+  setLook: (id: string) => string;
   /** Image position (pixels, top-left origin) of a world point under the current camera. */
   project: (x: number, y: number, z: number) => [number, number];
 }

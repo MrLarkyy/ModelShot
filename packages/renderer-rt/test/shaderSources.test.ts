@@ -70,7 +70,9 @@ describe('shader sources', () => {
         const light = body.indexOf('sampleBakedLight(v_uv, v_uvRect)');
         expect(light, `${name} ${depthKey}`).toBeGreaterThan(-1);
         expect(light, `${name} ${depthKey}`).toBeLessThan(body.indexOf('discard'));
-        expect(fragment).toContain('return u_bakeOn ? shadeBaked(albedo, n, light) : shadeSurface(albedo, n);');
+        expect(fragment).toContain('return u_bakeOn ? shadeBaked(albedo, n, v, light) : shadeSurface(albedo, n, v);');
+        // The rim reads the view at the fragment's own world position.
+        expect(fragment).toContain('vec3 v = towardEye(v_worldPosition);');
         // The lightmap attribute stays clear of the exact key's corner attributes (4-7).
         expect(vertex).toContain('layout(location = 8) in vec4 a_lightmap;');
         expect(vertex).toContain(depthKey === 'exact' ? 'layout(location = 7)' : 'void passDepthKey(vec4 world) {}');

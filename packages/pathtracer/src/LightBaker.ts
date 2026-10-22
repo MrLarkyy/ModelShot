@@ -1,3 +1,4 @@
+import { DEFAULT_LOOK, checkLookPreset, type LookPreset } from '@modelshot/looks';
 import { RendererError, validateScene, type BakedLighting } from '@modelshot/renderer-rt';
 import type { SceneDocument, SceneMesh } from '@modelshot/scene';
 import type { BakeReply, BakeRequest } from './bake/bakeMessages';
@@ -32,6 +33,12 @@ export interface BakeOptions {
   readonly seed?: number;
   /** Bake the shadow catcher too (`BakedLighting.catcher`). Default `true`. */
   readonly shadowCatcher?: boolean;
+  /**
+   * The look to bake under: its key light and dome shape the light, its key places the shadow catcher, and the result
+   * carries its `lightingKey` (a renderer showing a look of another key refuses it). Default `DEFAULT_LOOK`. An
+   * invalid look rejects with `LookPresetError`.
+   */
+  readonly look?: LookPreset;
   /** Side of the square lightmap tiles one draw covers, 16..512. Default 64. Changes no texel's value. */
   readonly tileSize?: number;
   /** Called with the lighting after samples 4, 16, 64, … (every fourfold) below `samples`. */
@@ -82,8 +89,8 @@ function checkInteger(label: string, value: unknown, min: number, max: number): 
  * OffscreenCanvas runs the path tracer's own ray rules (alpha per texel, sides, the key's cone) for every lightmap
  * texel of `lightmapLayout`, and for the shadow catcher. The main thread only validates and posts the document; the
  * worker flattens, builds the BVH, decodes the textures (from their bytes, never fetched) and draws one tile at a time,
- * at most one draw in flight. Deterministic: the lighting is a pure function of the document, seed, sample count and
- * catcher option. No main-thread fallback: without workers or WebGL2 there, `create` throws or `bake` rejects.
+ * at most one draw in flight. Deterministic: the lighting is a pure function of the document, seed, sample count,
+ * catcher option and look. No main-thread fallback: without workers or WebGL2 there, `create` throws or `bake` rejects.
  */
 export class LightBaker {
   private readonly pending = new Map<number, Pending>();
@@ -131,7 +138,8 @@ export class LightBaker {
   }
 
   /**
-   * Bakes `doc`. Validates it here first (`PathTracerError` `INVALID_SCENE`) and the options (`RangeError`); the worker
+   * Bakes `doc`. Validates it here first (`PathTracerError` `INVALID_SCENE`) and the options (`RangeError`,
+   * `LookPresetError`); the worker
    * rejects with `SCENE_TOO_LARGE` over a limit and with `WEBGL2_UNAVAILABLE`, `FLOAT_TARGETS_UNAVAILABLE` or
    * `HIGHP_UNAVAILABLE` where its context cannot bake. A later `bake` or `dispose` supersedes a pending one, which then
    * resolves with `applied: false` after the tile in progress. Only what the worker does not hold is posted: texture
@@ -229,6 +237,7 @@ export class LightBaker {
     const samples = checkInteger('samples', options.samples ?? DEFAULT_BAKE_SAMPLES, 1, MAX_BAKE_SAMPLES);
     const seed = checkInteger('seed', options.seed ?? 1, 0, MAX_SEED);
     const tileSize = checkInteger('tileSize', options.tileSize ?? DEFAULT_BAKE_TILE, 16, 512);
+    const look = checkLookPreset(options.look ?? DEFAULT_LOOK);
     try {
       validateScene(doc);
     } catch (error) {
@@ -243,6 +252,7 @@ export class LightBaker {
       seed,
       samples,
       shadowCatcher: options.shadowCatcher ?? true,
+      look,
       tileSize,
       maxTriangles: this.options.maxTriangles ?? DEFAULT_MAX_TRIANGLES,
       countCapped: options.countCappedTraversals === true,

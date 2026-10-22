@@ -1,3 +1,4 @@
+import { LOOK_VIEW_NONE, uploadLookUniforms, type LookPreset } from '@modelshot/looks';
 import type { RawImage, ShadowCatcherPlane } from '@modelshot/renderer-rt';
 import { AccumulationTargets } from '../accumulationTargets';
 import { disposeGpuScene, uploadData, uploadGpuScene, type GpuScene } from '../gpuScene';
@@ -15,6 +16,8 @@ export interface BakeScene {
   readonly images: readonly (ImageBitmap | RawImage)[];
   readonly charts: ChartTable;
   readonly catcher: ShadowCatcherPlane | null;
+  /** The look baked under: its key and dome. */
+  readonly look: LookPreset;
 }
 
 /** A rectangle of lightmap texels drawn in one draw call. */
@@ -147,6 +150,8 @@ export class BakeSession {
     gl.uniform1f(uniform('u_backSideOrder'), 0);
     // Lightmap texels are coarser than the rounded band: the bake lights the unrounded surface.
     gl.uniform1f(uniform('u_edgeWidth'), 0);
+    // No backdrop and no rim in a bake: the frame height and the camera are unused.
+    uploadLookUniforms(gl, uniform, scene.look, 1, LOOK_VIEW_NONE);
     gl.uniform1ui(uniform('u_seed'), seed);
     gl.uniform1ui(uniform('u_sample'), sample);
     const catcher = scene.catcher;

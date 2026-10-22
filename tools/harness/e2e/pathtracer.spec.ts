@@ -3,10 +3,12 @@ import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 // The package index pulls in GLSL through Vite's ?raw, which Playwright cannot load: the two plain modules directly.
 import { agxToneMap } from '../../../packages/looks/src/agxToneMap';
+import { backdropColor } from '../../../packages/looks/src/backdropColor';
 import { LIGHT_RIG_V0, unoccludedRadiance } from '../../../packages/looks/src/lightRig';
 import type { ModelViewProbe, PtProbe } from '../fixtures/src/fixtureApi';
 import { compareImages, type CompareOptions } from '../src/compareImages';
 import { encodeFlipped, expectGolden, openFixture, renderFixture, type FixtureInfo } from '../src/expectGolden';
+import { lookPresetFile } from '../src/lookPresetFile';
 import type { GoldenSpec, PathTracedGoldenSpec } from '../src/goldenSpec';
 import { expect, test } from '../src/harnessTest';
 import {
@@ -17,6 +19,9 @@ import {
   pixel,
   sentinelPixels,
   silhouetteMismatches,
+  silhouettePixels,
+  whiteCount,
+  type BackdropRow,
   type Image,
 } from '../src/imageMetrics';
 import { shadowStep } from '../src/shadowStep';
@@ -54,6 +59,8 @@ const PLAYER_HOLD = pt('player-hold-34', 'player-hold-34', 64);
 const CUTOUT_CHECKER = pt('cutout-checker', 'cutout-checker', 128);
 // MS-15: rounded edges on a cube and a wedge, none on a plane, a card and a sphere; paired with rt-edges.
 const EDGES = pt('edges', 'edges', 128);
+// MS-19: the Marketplace and Rim looks on the held-cube player; paired with rt-preset-marketplace and rt-preset-rim.
+const MARKETPLACE = pt('preset-marketplace', 'preset-marketplace', 64);
 const GOLDENS: readonly PathTracedGoldenSpec[] = [
   TURNTABLE,
   pt('iso', 'iso', 64),
@@ -65,7 +72,23 @@ const GOLDENS: readonly PathTracedGoldenSpec[] = [
   PLAYER_HOLD,
   CUTOUT_CHECKER,
   EDGES,
+  MARKETPLACE,
+  pt('preset-rim', 'preset-rim', 64),
 ];
+
+/** The look preset of a fixture variant (rtScenes.ts RT_VARIANTS), Studio unless the variant names one. */
+const VARIANT_PRESET: Readonly<Record<string, string>> = {
+  'preset-marketplace': 'marketplace',
+  'preset-marketplace-yaw30': 'marketplace',
+  'preset-rim': 'rim',
+};
+
+/** The display colour (0..255) of the look's backdrop in image row y (top 0): its TS mirror. */
+function backdropRowOf(presetId: string): BackdropRow {
+  const look = lookPresetFile(presetId);
+  return (y, height) =>
+    agxToneMap(backdropColor(look, (height - y - 0.5) / height), look.toneMapping).map((v) => v * 255);
+}
 
 async function render(page: Page, query: string): Promise<{ png: Buffer; image: Image; info: FixtureInfo }> {
   const info = await openFixture(page, `/pt.html?${query}`);
@@ -271,7 +294,7 @@ test.describe('transparency, shadows and sides (scene format rules)', () => {
   }) => {
     const { image } = await render(page, 'variant=alpha-ramp-blend&seed=1&samples=128');
     const lit = unoccludedRadiance(LIGHT_RIG_V0, [1, 1, 1], [0, 0, 1]);
-    const background = LIGHT_RIG_V0.background;
+    const background = lookPresetFile('studio').backdrop.top;
     let worst = 0;
     for (let k = 0; k < 256; k++) {
       const [col, row] = [k % 16, Math.floor(k / 16)];
@@ -335,6 +358,13 @@ const PT_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions>> = {
   'player-hold-34': { threshold: 0.1, maxDiffRatio: 0.0232, maxMeanDelta: 1.62 },
   'cutout-checker': { threshold: 0.1, maxDiffRatio: 0.00525, maxMeanDelta: 0.908 },
   edges: { threshold: 0.1, maxDiffRatio: 0.00082, maxMeanDelta: 0.496 },
+  // MS-19 with the narrow view-relative rims (round 5), measured 0.01936 / 1.237, 0.02147 / 1.109 and 0.02116 /
+  // 1.281; a limit stays where the measurement x 1.25 would raise it (earlier rounds' 0.0223 / 1.43, 0.0241 / 1.13,
+  // 1.52). The Rim preset's exponent 5 and colour 4 keep its pair under 1.13 (exponent 10, colour 8: 0.02567 / 1.263).
+  'preset-marketplace': { threshold: 0.1, maxDiffRatio: 0.0223, maxMeanDelta: 1.43 },
+  'preset-rim': { threshold: 0.1, maxDiffRatio: 0.0241, maxMeanDelta: 1.13 },
+  // The app's default yaw: the rim follows the camera to the screen-left silhouettes.
+  'preset-marketplace-yaw30': { threshold: 0.1, maxDiffRatio: 0.0265, maxMeanDelta: 1.52 },
 };
 
 const PAIR_SAMPLES: Readonly<Record<string, number>> = { 'alpha-plane': 128, 'cutout-checker': 128, edges: 128 };
@@ -350,7 +380,11 @@ test.describe('the render frames and lights like the baked preview', () => {
       const traced = await render(page, `variant=${variant}&seed=1&samples=${samples}`);
       const framingPreview = decodePng(encodeFlipped(await preview(0)));
       const framingTraced = await render(page, `variant=${variant}&seed=1&samples=${samples}&catcher=0`);
-      const framing = silhouetteMismatches(framingPreview, framingTraced.image);
+      const framing = silhouetteMismatches(
+        framingPreview,
+        framingTraced.image,
+        backdropRowOf(VARIANT_PRESET[variant] ?? 'studio'),
+      );
       const radiance = compareImages(traced.png, previewPng, tolerance);
       const line =
         `${variant}: framing ${framing.mismatches} mismatches off ${framing.silhouette} silhouette px; ` +
@@ -366,6 +400,55 @@ test.describe('the render frames and lights like the baked preview', () => {
       );
       expect(framing.mismatches, 'backdrop/model mismatches off silhouettes').toBe(0);
       expect(radiance.pass, line).toBe(true);
+    });
+  }
+});
+
+/**
+ * Marketplace's view-relative rim on the held-cube player at 512 px, pitch 20, from the review yaw 210 and the app's
+ * default 30, in the baked preview and the render (16 samples). The silhouette is the outline band (a backdrop pixel
+ * within 2 px), the interior the rest of the model. A near-white line (every channel above 200) on the outline: at
+ * least the measured count / 1.25, preview and render within 25 % of each other. The interior keeps its texels: its
+ * near-white pixels at most the measured count x 1.25 (a broad rim washed upward faces white: 4 097 in round 4), its
+ * blown-out ones (every channel 250 or more) at most the measured share x 1.25 and never 2 %. The saturated test skin
+ * is where a diffuse rim gave no white at all (docs/testing.md, look presets).
+ */
+const RIM_PROBES: Readonly<Record<number, { outlineFloor: number; interiorWhite: number; blownShare: number }>> = {
+  // Measured outline white 575 preview / 548 render, interior white 309 / 394, interior blown out 0 / 0.
+  210: { outlineFloor: 438, interiorWhite: 493, blownShare: 0 },
+  // Measured outline white 412 / 448, interior white 101 / 113, interior blown out 0 / 0.
+  30: { outlineFloor: 330, interiorWhite: 141, blownShare: 0 },
+};
+
+test.describe('the Marketplace rim draws a white silhouette line and leaves the faces their texels', () => {
+  for (const [yaw, limits] of Object.entries(RIM_PROBES)) {
+    test(`yaw ${yaw}: preview and render`, async ({ page }, testInfo) => {
+      test.setTimeout(300_000);
+      const query = `variant=preset-marketplace&yaw=${yaw}&size=512`;
+      const preview = decodePng(encodeFlipped(await openFixture(page, `/rt.html?${query}`)));
+      const traced = (await render(page, `${query}&seed=1&samples=16`)).image;
+      const measured = [preview, traced].map((image) => {
+        const { silhouette, interior } = silhouettePixels(image, { backdropTolerance: 4, reach: 2 });
+        return {
+          outline: whiteCount(silhouette, 200),
+          inside: whiteCount(interior, 200),
+          blown: whiteCount(interior, 249) / interior.length,
+        };
+      });
+      const [p, r] = measured as [(typeof measured)[0], (typeof measured)[0]];
+      const line =
+        `yaw ${yaw}: outline white preview ${p.outline} / render ${r.outline} (floor ${limits.outlineFloor}), ` +
+        `interior white ${p.inside} / ${r.inside} (max ${limits.interiorWhite}), ` +
+        `interior blown-out share ${p.blown.toFixed(5)} / ${r.blown.toFixed(5)} (max ${limits.blownShare})`;
+      console.log(`[pt probe] rim ${line}`);
+      testInfo.annotations.push({ type: 'rim probe', description: line });
+      for (const { outline, inside, blown } of measured) {
+        expect(outline, line).toBeGreaterThanOrEqual(limits.outlineFloor);
+        expect(inside, line).toBeLessThanOrEqual(limits.interiorWhite);
+        expect(blown, line).toBeLessThanOrEqual(limits.blownShare);
+        expect(blown, line).toBeLessThan(0.02);
+      }
+      expect(Math.abs(p.outline - r.outline) / Math.max(p.outline, r.outline), line).toBeLessThanOrEqual(0.25);
     });
   }
 });
@@ -444,6 +527,91 @@ test.describe('rounded edges', () => {
     const after = await readPng(page, info);
     expect(during.equals(initial), 'the new scene is not drawn with the old angle').toBe(false);
     expect(during.equals(after), 'the same bytes as packed at 100 degrees after loading').toBe(true);
+  });
+});
+
+test.describe('look presets', () => {
+  test.describe.configure({ timeout: 180_000 });
+
+  test('the backdrop gradient matches its TS mirror in 64-pixel tiles, before and after the first sample', async ({
+    page,
+  }) => {
+    const row = backdropRowOf('marketplace');
+    for (const samples of [1, 4]) {
+      const { image } = await render(page, `scene=empty&preset=marketplace&seed=1&samples=${samples}&tile=64`);
+      let worst = 0;
+      for (let y = 0; y < image.height; y++) {
+        const expected = row(y, image.height);
+        for (const x of [0, 100, image.width - 1]) {
+          const seen = pixel(image, x, y);
+          worst = Math.max(worst, ...seen.map((v, c) => Math.abs(v - (expected[c] ?? 0))));
+        }
+      }
+      console.log(`[pt probe] marketplace backdrop, ${samples} samples: worst ${worst} levels from the mirror`);
+      expect(worst).toBeLessThanOrEqual(2);
+      // A gradient: the bottom row is brighter than the top.
+      expect(luminance(pixel(image, 0, image.height - 1)) - luminance(pixel(image, 0, 0))).toBeGreaterThan(5);
+    }
+  });
+
+  test('a look set while setScene decodes applies to the new scene: the bytes of a fresh render', async ({ page }) => {
+    const { info, png: studio } = await render(page, 'variant=turntable-y030&seed=1&samples=4');
+    expect(await page.evaluate(() => window.__msFixture!.pt!.setSceneDuringLook('marketplace'))).toBe(true);
+    const during = await readPng(page, info);
+    const fresh = await render(page, 'variant=turntable-y030&preset=marketplace&seed=1&samples=4');
+    expect(during.equals(studio)).toBe(false);
+    expect(during.equals(fresh.png), 'the same bytes as rendered under Marketplace from the start').toBe(true);
+  });
+
+  test('setLook restarts with the look; an invalid look names its field and changes nothing', async ({ page }) => {
+    const { info, png: studio } = await render(page, 'variant=turntable-y030&seed=1&samples=4');
+    const set = (id: string) => page.evaluate((name) => window.__msFixture!.pt!.setLook(name), id);
+    expect(await set('rim')).toBe('ok');
+    const rim = await readPng(page, info);
+    expect(rim.equals(studio)).toBe(false);
+    expect(await set('bad')).toMatch(/^LookPresetError: catcher\.strength/);
+    expect((await readPng(page, info)).equals(rim), 'a rejected look changes nothing').toBe(true);
+    expect(await set('studio')).toBe('ok');
+    expect((await readPng(page, info)).equals(studio), 'back to Studio: the first bytes').toBe(true);
+  });
+
+  test('Marketplace renders the same bytes in batches of 7 samples and 64-pixel tiles', async ({ page }) => {
+    const reference = await referencePixels(page, MARKETPLACE);
+    const { image, info } = await render(page, 'variant=preset-marketplace&seed=1&samples=64&batch=7&tile=64');
+    expect(info.samplesDone).toBe(64);
+    expect(image.data.equals(reference)).toBe(true);
+  });
+
+  /**
+   * The rim light is unshadowed in both renderers: every pixel it brightens in the preview (Rim against Rim with the
+   * rim light black) it brightens in the render too, which a rim shadowed in the render would not. The render brightens
+   * a few more: its jittered camera rays catch more of the grazing fillets (the rim is added at the camera hit only).
+   */
+  test('the rim light brightens in the render every pixel it brightens in the preview', async ({ page }) => {
+    const lit = (on: Image, off: Image): Uint8Array => {
+      const mask = new Uint8Array(on.width * on.height);
+      for (let p = 0; p < mask.length; p++) {
+        const x = p % on.width;
+        const y = Math.floor(p / on.width);
+        if (luminance(pixel(on, x, y)) - luminance(pixel(off, x, y)) > 12) mask[p] = 1;
+      }
+      return mask;
+    };
+    const preview = async (rim: 0 | 1) =>
+      decodePng(encodeFlipped(await openFixture(page, `/rt.html?variant=preset-rim&bake=0&rim=${rim}`)));
+    const traced = async (rim: 0 | 1) => (await render(page, `variant=preset-rim&seed=1&samples=16&rim=${rim}`)).image;
+    const previewMask = lit(await preview(1), await preview(0));
+    const tracedMask = lit(await traced(1), await traced(0));
+    let both = 0;
+    for (let p = 0; p < previewMask.length; p++) if (previewMask[p] && tracedMask[p]) both++;
+    const count = (mask: Uint8Array) => mask.reduce((sum, v) => sum + v, 0);
+    console.log(
+      `[pt probe] rim: preview ${count(previewMask)} px, render ${count(tracedMask)} px brightened, ` +
+        `share of the preview's in the render ${(both / Math.max(count(previewMask), 1)).toFixed(4)}`,
+    );
+    expect(count(previewMask)).toBeGreaterThan(300);
+    expect(count(tracedMask)).toBeGreaterThan(300);
+    expect(both / count(previewMask)).toBeGreaterThan(0.95);
   });
 });
 

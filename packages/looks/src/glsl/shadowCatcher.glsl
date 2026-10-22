@@ -12,12 +12,12 @@ float catcherLuminance(vec3 c) {
 // may evaluate it once on baked means: both give the same value. 1 where nothing blocks the light, fading to 1 over the
 // outer 10 % of the rectangle so the catcher has no visible edge.
 float catcherShade(vec3 fill, float keyT, vec2 xz, vec4 rect) {
-  float keyWeight = catcherLuminance(KEY_COLOR) * KEY_DIRECTION.y;
+  float keyWeight = catcherLuminance(u_lookKeyColor) * u_lookKeyDirection.y;
   float fillWeight = catcherLuminance(hemisphereFill(vec3(0.0, 1.0, 0.0)));
-  float lit = (catcherLuminance(fill) + keyWeight * keyT) / (fillWeight + keyWeight);
+  float lit = (catcherLuminance(fill) + keyWeight * keyT) / max(fillWeight + keyWeight, 1.0e-6);
   vec2 size = max(rect.zw - rect.xy, vec2(1.0e-6));
   vec2 u = (xz - rect.xy) / size;
   float edge = min(min(u.x, 1.0 - u.x), min(u.y, 1.0 - u.y));
   float fade = clamp(edge / 0.1, 0.0, 1.0);
-  return 1.0 - CATCHER_STRENGTH * (1.0 - lit) * fade;
+  return 1.0 - u_lookCatcherStrength * (1.0 - lit) * fade;
 }

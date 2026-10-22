@@ -21,11 +21,12 @@ requestAnimationFrame(frame);
 
 ## API
 
-- `PathTracer.create(canvas, options)`: creates the WebGL2 context. Options: `background` (scene-linear, default the
-  look's backdrop, as in the preview), `maxBounces` (1..16, default 4), `maxTriangles` (default 200 000, the loaders'
+- `PathTracer.create(canvas, options)`: creates the WebGL2 context. Options: `look` (a look preset, default
+  `DEFAULT_LOOK`, the preview's; [look-presets.md](look-presets.md)), `background` (scene-linear, a flat backdrop over the
+  initial look's; three finite channels in 0..16, else a `RangeError`), `maxBounces` (1..16, default 4), `maxTriangles` (default 200 000, the loaders'
   limit), `maxTextureSide` (default 4096, capped by `MAX_TEXTURE_SIZE`), `maxTexturePixelsTotal` (default 64 Mi),
   `tileSize` (16..4096, default 256), `maxPixels`, `preserveDrawingBuffer`, `edges` (`Partial<EdgeLook>`, the
-  preview's rounded edges, default `EDGE_LOOK_V0`; out of range a `RangeError` naming `edges.width` or
+  preview's rounded edges over the initial look's; out of range a `RangeError` naming `edges.width` or
   `edges.sharpAngleDeg`).
 - `setScene(doc, { emission, shadowCatcher })`: validates, checks the material count, flattens, builds the BVH and packs the data
   (synchronously, before its first `await`), then decodes the textures, lays them out and swaps the scene in. Resolves
@@ -38,6 +39,9 @@ requestAnimationFrame(frame);
   and changes nothing). A new width restarts the accumulation; a new sharp angle detects the edges again and rewrites
   the triangles' edge texels (`packTriangleEdges`) before uploading them. A scene whose `setScene` was still decoding
   when the angle changed is packed again with the current angle before its first upload.
+- `setLook(look)`, `look`: the look (an invalid one throws `LookPresetError` naming the field and changes nothing). The
+  shadow catcher moves under the new key; edges as `setEdges`; a scene whose `setScene` is still decoding gets the
+  look too (its catcher is placed when it is swapped in).
 - `start({ seed, samples })`: a request for exactly `samples` samples per pixel (1..65 536) from `seed`
   (0..2^32 − 1); anything else throws a `RangeError`.
 - `step(maxSamples = 1)`: draws up to `maxSamples` more samples, never past the request, presents the mean and returns
@@ -49,12 +53,13 @@ requestAnimationFrame(frame);
   the per-ray node cap (not divided; 0 in ordinary scenes, see Limits and errors).
 - `onContextRestored(listener)`, `dispose()` (every GL object, decoded image and listener).
 
-`setScene`, `setCamera`, `resize`, `setEdges` and `start` restart the accumulation at sample 0.
+`setScene`, `setCamera`, `resize`, `setEdges`, `setLook` and `start` restart the accumulation at sample 0.
 
 Emission is a per-material linear RGB input (`SetSceneOptions.emission`, indexed like `materials`; negative or
 non-finite channels count as 0). The scene format has no emission field yet; MS-32 maps one here.
 `SetSceneOptions.shadowCatcher` (default `true`) puts the shadow catcher under the model (see Lighting); its plane is
-computed in `setScene` with the scene and kept through a context loss.
+computed from the scene's bounds and the look's key when the scene is swapped in (again on `setLook`) and kept through a
+context loss.
 
 ## Pipeline
 
@@ -127,25 +132,33 @@ one set of ray rules.
 
 ## Lighting
 
-Materials are Lambert (albedo = the texel's linear colour) plus emission. The light rig is the preview's
-(`lightRig` chunk of `@modelshot/looks`): a directional key and a sky/ground fill.
+Materials are Lambert (albedo = the texel's linear colour) plus emission. The light rig is the look's, the preview's
+(`lightRig` chunk of `@modelshot/looks`, uniforms uploaded by `uploadLookUniforms`): a directional key, a sky/ground
+dome and two unshadowed accents ([look-presets.md](look-presets.md#lighting-model)).
 
-- Key: a disc of angular radius `KEY_ANGULAR_RADIUS` (0.04 rad, `LIGHT_RIG_V0.keyAngularRadius`) around
-  `KEY_DIRECTION` with irradiance π · `KEY_COLOR`, sampled at every path vertex with one shadow ray in a direction
-  drawn uniformly in the cone (`keyConeDirection`, `keyLight.glsl`). The cosine stays `n · KEY_DIRECTION`, so Lambert
-  albedo / π times that is the preview's `albedo · KEY_COLOR · max(n · k, 0)` on an unoccluded surface, with soft
+- Key: a disc of angular radius `lights.key.angularRadius` (Studio 0.04 rad; the shader takes its cosine,
+  `u_lookKeyCosRadius`) around `lights.key.direction` with irradiance π · `lights.key.color`, sampled at every path vertex with one shadow ray in a direction
+  drawn uniformly in the cone (`keyConeDirection`, `keyLight.glsl`). The cosine stays `n · k`, so Lambert
+  albedo / π times that is the preview's `albedo · key colour · max(n · k, 0)` on an unoccluded surface, with soft
   shadows that keep the texel's shape near their caster (penumbra ≈ 2 · 0.04 · distance to the occluder). The radius
   is the largest measured that keeps alpha-plane's shadow edge within 2 px with margin: 0.04 gives 0.99 px, 0.045
   sits at the limit (1.98 px) and 0.05 is over it (2.96 px).
-- Fill: rays that escape the scene after a bounce see `environmentRadiance(d) = mix(GROUND, SKY, ½ + ¾ d.y)`
-  (positive for every direction; the lowest channel straight down is 0.0875). The cosine-weighted mean of d.y over the
-  hemisphere around n is ⅔ n.y, so an unoccluded Lambert surface receives exactly `mix(GROUND, SKY, ½ + ½ n.y)`: the
+- Fill: rays that escape the scene after a bounce see `environmentRadiance(d) = mix(ground, sky, ½ + ¾ d.y)` (`environment.ground` and `.sky` of the look)
+  (never negative: the look checker keeps each dome channel within five times the other; Studio's lowest channel
+  straight down is 0.0875). The cosine-weighted mean of d.y over the
+  hemisphere around n is ⅔ n.y, so an unoccluded Lambert surface receives exactly `mix(ground, sky, ½ + ½ n.y)`: the
   preview's `hemisphereFill(n)`. An unoccluded convex surface therefore converges to the preview's value; only
   shadows and interreflection differ (tested in `looks` numerically and by the pair test).
-- Camera rays that escape show the `background` (the same default and AgX as the preview).
+- Fill and rim accents, added at the camera hit only without a ray: `albedo × fillLight(n)` and the rim's radiance
+  `rimLight(n, −direction, albedo)`, seen back along the camera ray (the preview's `towardEye`; the rim's direction
+  is turned into world space from the camera, [look-presets.md](look-presets.md#lighting-model)). The preview adds
+  them without shadow and has no accent bounce: unshadowed at every vertex they would light faces the rig hides and
+  bounce out of them. No random dimension is added, so the sample table and seeds are unchanged.
+- Camera rays that escape show the look's backdrop at their pixel (`backdropHere()`: screen y over the full frame
+  height, never the tile's), the preview's gradient; before the first sample `present` shows it too.
 - Shadow catcher (`shadowCatcherPlane` of the realtime renderer): a camera ray that meets the plane from above,
   inside its rectangle and nearer than the model, traces one key ray in the cone and one cosine-weighted fill ray
-  (escaped: `environmentRadiance`) and shows `background × catcherShade(fill, keyT, xz, rect)` of the look. The fill
+  (escaped: `environmentRadiance`) and shows the pixel's backdrop × `catcherShade(fill, keyT, xz, rect)` of the look. The fill
   ray accepts partial texels with its own random number (vertex 0's roulette dimension, unused there), not the camera
   ray's, so a catcher point seen through glass still has the glass's fill shadow, as in the bake. The shade
   is affine in fill and key, so the mean over samples equals the preview's shade of its baked means. The plane is
@@ -201,8 +214,11 @@ OffscreenCanvas WebGL2 context. There is no main-thread fallback.
 import.meta.url), { type: 'module' })`); without module workers or OffscreenCanvas it throws `PathTracerError`
   `WORKER_UNAVAILABLE`, as every pending bake rejects when the worker fails, and every later bake with the same error
   (after `dispose()` a bake resolves `applied: false`).
-- `bake(doc, { samples = 64 (1..1024), seed = 1 (0..2^32 − 1), shadowCatcher = true, tileSize = 64 (16..512),
-onProgress })` resolves `{ applied, warnings, lighting }`. The call only checks the options (`RangeError`) and
+- `bake(doc, { samples = 64 (1..1024), seed = 1 (0..2^32 − 1), shadowCatcher = true, tileSize = 64 (16..512), look =
+DEFAULT_LOOK, onProgress })` resolves `{ applied, warnings, lighting }`. The look's key and dome shape the light and
+  its key places the catcher; the lighting carries `lightingKey(look)`, which `setLighting` of the preview checks
+  ([look-presets.md](look-presets.md#baked-light-and-lightingkey)). The call only checks the options (`RangeError`,
+  `LookPresetError`) and
   validates the document (`INVALID_SCENE`, about a millisecond); posting runs in later tasks, one bake at a time, and
   a bake superseded before its turn is never posted. Only what the worker does not hold is posted: meshes it has not
   received before (a re-bake of the same meshes, a new pose or new options post none; meshes and the textures array
@@ -226,7 +242,7 @@ onProgress })` resolves `{ applied, warnings, lighting }`. The call only checks 
   with the normal up.
 - Determinism: seeded `sampleHash(seed, sample, texel)`, exact float32 ping-pong sums in sample order, per-texel
   independence, so tiles of 32 or 64, the progress cadence and message order change no byte (tested). The lighting is
-  a pure function of document, seed, sample count and catcher option.
+  a pure function of document, seed, sample count, catcher option and look.
 - Progress: `onProgress({ samplesDone, samples, lighting })` after 4, 16, 64, … samples (each fourfold) below the
   total; the final lighting comes with the result. Half floats are converted in the worker (round to nearest even).
 - Pacing: tiles of `tileSize`² texels per draw, at most one draw in flight (a fence, polled on later tasks), so the
@@ -265,8 +281,8 @@ measured on real hardware yet.
 
 ## What v0 lacks
 
-Denoising and supersampling (MS-18), look presets (MS-19; the key radius and catcher strength are rig data for them),
-emission from the scene format (MS-32), user lights (MS-33; one directional key and the environment here), geometric
+Denoising and supersampling (MS-18), emission from the scene format (MS-32), user lights (MS-33; the look's key,
+accents and dome here), an image-based environment (the dome is analytic), geometric
 bevels (edges are rounded in shading only), a Web Worker or WASM build of the render's BVH (the bake builds its own in its worker), glossy or
 transmissive materials, textured environments, and WebGPU. The bake has no interreflection, no animated GI, and bakes
 untextured meshes per vertex (no world-density charts yet), so a large untextured ground such as alpha-plane's shows no

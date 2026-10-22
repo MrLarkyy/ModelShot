@@ -69,7 +69,7 @@ int chartTriangle(int entry) {
 vec4 bakePoint(vec3 position, vec3 normal, vec3 side, int skip, uint key) {
   vec3 origin = leave(position, side);
   float keyT = 0.0;
-  if (dot(side, KEY_DIRECTION) > 0.0) {
+  if (dot(side, u_lookKeyDirection) > 0.0) {
     vec3 cone = keyConeDirection(unitRandom(key, KEY_DIMENSION, 0u), unitRandom(key, KEY_DIMENSION + 1u, 0u));
     keyT = shadowTransmittance(origin, cone, skip);
   }
