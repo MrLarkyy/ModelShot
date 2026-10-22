@@ -576,7 +576,7 @@ test.describe('look presets', () => {
   /**
    * The rim light is unshadowed in both renderers: every pixel it brightens in the preview (Rim against Rim with the
    * rim light black) it brightens in the render too, which a rim shadowed in the render would not. The render brightens
-   * more: the rim light also reaches other surfaces by interreflection.
+   * a few more: its jittered camera rays catch more of the grazing fillets (the rim is added at the camera hit only).
    */
   test('the rim light brightens in the render every pixel it brightens in the preview', async ({ page }) => {
     const lit = (on: Image, off: Image): Uint8Array => {
