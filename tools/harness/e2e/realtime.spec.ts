@@ -358,35 +358,52 @@ test.describe('look presets', () => {
   });
 
   /**
-   * An upward face at the default pitch 20 keeps its texel colour: the head top's centre (3 x 3 pixels around the
-   * projection of (0, 32, 0)) of the held-cube player, unbaked, 512 px, with the preset's rim against the rim black,
-   * at most `HEAD_TOP_LEVELS` apart per channel. The round-4 Marketplace rim turned it from (255, 95, 95) to
-   * (232, 208, 214).
+   * Faces the rim does not outline keep their texel colour: the centre (3 x 3 pixels around the projection) of the
+   * held-cube player's head top, (0, 32, 0), and of its screen-right side, the face x = -4 from yaw 210 and x = 4
+   * from yaw 30, unbaked, 512 px, pitch 20, with the preset's rim against the rim black, at most `FACE_LEVELS` apart
+   * per channel. The round-4 Marketplace rim turned the head top from (255, 95, 95) to (232, 208, 214). Measured 0
+   * levels everywhere but Rim's right side, which its rim greys: (32, 8, 9) to (95, 83, 83) at yaw 210, (97, 13, 14)
+   * to (117, 69, 69) at yaw 30, worst 75 levels; a known loss (docs/look-presets.md, presets), held at measured
+   * x 1.25 so it cannot grow.
    */
-  // Measured: 0 levels for both presets at both yaws (the rim's light is 0 on a face turned up at pitch 20).
-  const HEAD_TOP_LEVELS = 3;
+  const FACE_LEVELS: Readonly<Record<string, readonly [number, number]>> = { marketplace: [3, 3], rim: [3, 94] };
+  const FACES = [
+    { face: 'head top', at: (): [number, number, number] => [0, 32, 0] },
+    { face: 'head right side', at: (yaw: number): [number, number, number] => [yaw === 210 ? -4 : 4, 28, 0] },
+  ];
   for (const preset of ['marketplace', 'rim']) {
-    test(`${preset}: the rim leaves the head top its texel colour at yaw 210 and 30`, async ({ page }) => {
+    test(`${preset}: the rim leaves the head top and right side their texel colour at yaw 210 and 30`, async ({
+      page,
+    }) => {
       const lines: string[] = [];
       for (const yaw of [210, 30]) {
         const query = `variant=preset-${preset}&yaw=${yaw}&bake=0&size=512`;
-        const mean = async (rim: 0 | 1): Promise<number[]> => {
+        const means = async (rim: 0 | 1): Promise<number[][]> => {
           const { image } = await render(page, `${query}&rim=${rim}`);
-          const [x, y] = await page.evaluate(() => window.__msFixture!.rt!.project(0, 32, 0));
-          const sum = [0, 0, 0];
-          for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++)
-              pixel(image, x + dx, y + dy).forEach((v, c) => (sum[c] = (sum[c] ?? 0) + v / 9));
+          const out: number[][] = [];
+          for (const { at } of FACES) {
+            const [x, y] = await page.evaluate((p) => window.__msFixture!.rt!.project(p[0], p[1], p[2]), at(yaw));
+            const sum = [0, 0, 0];
+            for (let dy = -1; dy <= 1; dy++) {
+              for (let dx = -1; dx <= 1; dx++)
+                pixel(image, x + dx, y + dy).forEach((v, c) => (sum[c] = (sum[c] ?? 0) + v / 9));
+            }
+            out.push(sum);
           }
-          return sum;
+          return out;
         };
-        const on = await mean(1);
-        const off = await mean(0);
-        const worst = Math.max(...on.map((v, c) => Math.abs(v - (off[c] ?? 0))));
-        lines.push(`yaw ${yaw}: ${on.map(Math.round).join(',')} vs rim black ${off.map(Math.round).join(',')}`);
-        expect(worst, lines.join('; ')).toBeLessThanOrEqual(HEAD_TOP_LEVELS);
+        const on = await means(1);
+        const off = await means(0);
+        FACES.forEach(({ face }, i) => {
+          const limit = FACE_LEVELS[preset]?.[i] ?? 0;
+          const a = on[i] ?? [];
+          const b = off[i] ?? [];
+          const worst = Math.max(...a.map((v, c) => Math.abs(v - (b[c] ?? 0))));
+          lines.push(`yaw ${yaw} ${face}: ${a.map(Math.round).join(',')} vs rim black ${b.map(Math.round).join(',')}`);
+          expect(worst, lines.join('; ')).toBeLessThanOrEqual(limit);
+        });
       }
-      console.log(`[rt probe] ${preset} head top: ${lines.join('; ')}`);
+      console.log(`[rt probe] ${preset} faces: ${lines.join('; ')}`);
     });
   }
 

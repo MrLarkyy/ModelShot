@@ -151,5 +151,12 @@ Marketplace's numbers are matched by the look review page (`tools/harness/fixtur
 (−0.9, 0.12, −0.42): screen left, a little up, behind; colour (12, 13, 15), exponent 6, albedo share 0.15) draws a
 thin near-white line along the rounded edges of the silhouettes from any yaw, as the references do, on light and
 saturated textures alike; faces turned to the camera or up (pitch 20) keep their texel colour. Rim's rim mirrors the
-direction to screen right (colour 4, exponent 5, albedo share 0.3; a narrower one breaks its preview-vs-render pair
-limit, [testing.md](testing.md#look-presets)), so its screen-right side faces brighten a little. Studio's rim is black (exponent 4, albedo share 1: inert).
+direction to screen right (colour 4, exponent 5, albedo share 0.3). **Known loss**: it greys the side faces turned
+screen right. On the test player's head the right side goes from (32, 8, 9) to (95, 83, 83) at yaw 210 and from
+(97, 13, 14) to (117, 69, 69) at yaw 30, so its red texel is mostly lost in the dark look. Every Rim rim that spares
+those faces and still draws a white line puts the preview-vs-render pair over its limits (from behind, (0.45, 0.12,
+−0.88), exponent 5: side faces untouched, pair ratio 0.0267 against 0.0241), and every one that fits the limits and
+spares them draws no white line ([testing.md](testing.md#look-presets)). The reason is the silhouette: the render's
+jittered rays catch the rim on pixels the face only partly covers, the preview shades such pixels at their centre,
+off the face, so a thin silhouette rim adds pixels that differ. Studio's rim is black (exponent 4, albedo share 1:
+inert).

@@ -392,7 +392,12 @@ view-relative rim (round 4) and its narrow tuning (round 5), where a limit staye
 would have raised it. `preset-marketplace-yaw30` (the same player and look from the app's default yaw 30, where the
 rim follows the camera) came in round 4 at measured x 1.25 (0.0266, 1.52) and its ratio fell to 0.0265 in round 5. A
 narrow rim raises a pair's numbers (the preview filters the fillet normal per pixel, the render averages jittered
-rays): Rim at exponent 10 measured 0.02567, 1.263, over its limits, so it ships at exponent 5.
+rays): Rim at exponent 10 measured 0.02567, 1.263, over its limits, so it ships at exponent 5. Round 6 searched for a Rim rim that spares its screen-right side faces within the limits (look-presets.md, presets):
+from behind ((0.45, 0.12, −0.88), (0.5, 0.12, −0.86)) the side faces stay within 3 levels, but colour 6 at exponent
+5, which keeps a white line (414-480 near-white outline pixels at 512 px), measures ratio 0.0267; colour 3 at exponent
+2 has already lost the line (0 in the render) and still measures 0.0255; the configurations under 0.0241 (colour
+1.2-3, exponent 1-3, albedo share 0.3-0.8) draw no near-white outline pixel. The shipped rim keeps the line (587-641)
+and greys the side faces (measured, held by the face probe below).
 
 alpha-plane's large ground is an untextured box, baked per vertex, so its preview shows no ground shadow (world-density
 charts for untextured meshes are not in MS-16); the catcher under it darkens its mean delta a little.
@@ -429,9 +434,11 @@ and `pathtracer.spec.ts`, golden project):
   20, yaws 0 to 330 in steps of 30: interior blown-out share at most 0.00205 (worst measured 0.00164, yaw 60: the
   inner side of a thick band at a 45° silhouette), at least 71 outline white pixels (the fewest measured: 89, at yaw
   0, the player's back);
-- the head top keeps its texel (`realtime.spec.ts`, Marketplace and Rim): the 3 x 3 pixels around the projection of
-  (0, 32, 0), unbaked, 512 px, pitch 20, yaw 210 and 30, with the preset's rim and with it black, at most 3 levels
-  apart per channel (measured 0: (244, 54, 54) Marketplace at 210; the round-4 rim made it (232, 208, 214));
+- the head's top and screen-right side keep their texels (`realtime.spec.ts`, Marketplace and Rim): the 3 x 3 pixels
+  around the projection of (0, 32, 0) and of the right side's centre (x = −4 from yaw 210, x = 4 from yaw 30, y 28),
+  unbaked, 512 px, pitch 20, with the preset's rim and with it black, at most 3 levels apart per channel (measured 0:
+  (244, 54, 54) Marketplace head top at 210; the round-4 rim made it (232, 208, 214)), but for Rim's right side, the
+  known loss, at most 94 levels (measured worst 75: (32, 8, 9) to (95, 83, 83) at yaw 210);
 - a lost preview context comes back with the look, byte-identical;
 - (bake project) light baked under Marketplace is refused by a Studio renderer and taken once it shows Marketplace.
 
