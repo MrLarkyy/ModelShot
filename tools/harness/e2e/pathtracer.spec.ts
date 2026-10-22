@@ -358,12 +358,13 @@ const PT_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions>> = {
   'player-hold-34': { threshold: 0.1, maxDiffRatio: 0.0232, maxMeanDelta: 1.62 },
   'cutout-checker': { threshold: 0.1, maxDiffRatio: 0.00525, maxMeanDelta: 0.908 },
   edges: { threshold: 0.1, maxDiffRatio: 0.00082, maxMeanDelta: 0.496 },
-  // MS-19 with the view-relative rim (round 4), measured 0.01782 / 1.229, 0.01984 / 1.059 and 0.02130 / 1.219; a
-  // limit stays where the measurement x 1.25 would raise it (the earlier rims' 0.0236 / 1.43 and 0.0241 / 1.13).
+  // MS-19 with the narrow view-relative rims (round 5), measured 0.01936 / 1.237, 0.02147 / 1.109 and 0.02116 /
+  // 1.281; a limit stays where the measurement x 1.25 would raise it (earlier rounds' 0.0223 / 1.43, 0.0241 / 1.13,
+  // 1.52). The Rim preset's exponent 5 and colour 4 keep its pair under 1.13 (exponent 10, colour 8: 0.02567 / 1.263).
   'preset-marketplace': { threshold: 0.1, maxDiffRatio: 0.0223, maxMeanDelta: 1.43 },
   'preset-rim': { threshold: 0.1, maxDiffRatio: 0.0241, maxMeanDelta: 1.13 },
   // The app's default yaw: the rim follows the camera to the screen-left silhouettes.
-  'preset-marketplace-yaw30': { threshold: 0.1, maxDiffRatio: 0.0266, maxMeanDelta: 1.52 },
+  'preset-marketplace-yaw30': { threshold: 0.1, maxDiffRatio: 0.0265, maxMeanDelta: 1.52 },
 };
 
 const PAIR_SAMPLES: Readonly<Record<string, number>> = { 'alpha-plane': 128, 'cutout-checker': 128, edges: 128 };

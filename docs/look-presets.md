@@ -102,7 +102,10 @@ round 4); no v1 file existed outside this repository, so the version stayed 1. S
   same screen side from every orbit yaw. A face turned to the eye gets exactly 0 (no blow-out from any yaw); normals
   that graze the view, the rounded edges along the silhouettes (`edges.width`), get the most, a thin line; with a low
   `albedoShare` the line stays near white on a saturated texel. Without rounded edges a flat cube shows only faces
-  that already graze the view. At a steep pitch the top faces graze too and brighten a little.
+  that already graze the view. At the default pitch 20 a face turned up grazes almost as much as a side
+  silhouette's fillet (n · v 0.34 against 0.24), so the exponent alone cannot spare it: a rim direction low in view y
+  and behind (both shipped rims: y 0.12, z −0.42) has `n · l` ≤ 0 there, and upward faces keep their texel colour at
+  pitches above about 16°.
 - **Both accents** cast **no shadow in any renderer**: the preview adds them to baked and unbaked shading alike, the
   path tracer adds them at the camera hit only, without a ray (as the preview has no accent bounce; no random
   dimension, so seeds and the sample table are unchanged), the rim seen back along the camera ray; the bake ignores
@@ -135,16 +138,18 @@ grading share baked light.
 
 ## Presets
 
-| preset      | key                                 | accents                                     | dome, backdrop                             | grade                                  |
-| ----------- | ----------------------------------- | ------------------------------------------- | ------------------------------------------ | -------------------------------------- |
-| Studio      | v0: above, behind right, warm white | none (black)                                | v0 grey dome, flat grey (0.14, 0.15, 0.17) | neutral                                |
-| Marketplace | front, above, warm                  | white rim screen left, above; dim blue fill | dim blue dome; navy gradient, lighter low  | exposure 0, power 1.1, saturation 1.15 |
-| Rim         | weak, front                         | white rim screen right, above, behind       | low dome; dark grey gradient               | power 1.25                             |
+| preset      | key                                 | accents                                             | dome, backdrop                             | grade                                  |
+| ----------- | ----------------------------------- | --------------------------------------------------- | ------------------------------------------ | -------------------------------------- |
+| Studio      | v0: above, behind right, warm white | none (black)                                        | v0 grey dome, flat grey (0.14, 0.15, 0.17) | neutral                                |
+| Marketplace | front, above, warm                  | narrow white rim screen left, behind; dim blue fill | dim blue dome; navy gradient, lighter low  | exposure 0, power 1.1, saturation 1.15 |
+| Rim         | weak, front                         | white rim screen right, behind                      | low dome; dark grey gradient               | power 1.25                             |
 
 Studio is the v0 look number for number (`LIGHT_RIG_V0`, `EDGE_LOOK_V0`; tested), so every golden from before look
 presets holds unregenerated. Every preset rounds edges at 30°, so switching presets never detects sharp edges again.
 Marketplace's numbers are matched by the look review page (`tools/harness/fixtures/review.html`,
 [testing.md](testing.md#look-presets)) against reference renders kept outside the repository. Its rim (view direction
-(−0.8, 0.6, 0): screen left and up, colour (8, 8.6, 10), exponent 4, albedo share 0.15) draws a near-white line along
-the rounded edges of the left and top silhouettes from any yaw, as the references do, on light and saturated textures
-alike; faces turned to the camera get none. Studio's rim is black (exponent 4, albedo share 1: inert).
+(−0.9, 0.12, −0.42): screen left, a little up, behind; colour (12, 13, 15), exponent 6, albedo share 0.15) draws a
+thin near-white line along the rounded edges of the silhouettes from any yaw, as the references do, on light and
+saturated textures alike; faces turned to the camera or up (pitch 20) keep their texel colour. Rim's rim mirrors the
+direction to screen right (colour 4, exponent 5, albedo share 0.3; a narrower one breaks its preview-vs-render pair
+limit, [testing.md](testing.md#look-presets)), so its screen-right side faces brighten a little. Studio's rim is black (exponent 4, albedo share 1: inert).

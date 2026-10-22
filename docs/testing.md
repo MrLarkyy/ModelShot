@@ -30,8 +30,8 @@ depends on `golden` (a dependency put every golden test into the bench's shard: 
 none). The `golden` project excludes the tests titled `baked lighting` or `like the baked preview` (`grepInvert`); the
 `bake` project runs only the first, the `pair` project (the 9 preview-vs-render pairing tests of `pathtracer.spec.ts`)
 only the second: shards are contiguous ranges, so a block of slow tests always landed in one or two shards. Listed locally
-(`--list`, MS-19): `golden` 208 tests in 4 shards, 52 / 52 / 52 / 52; `pair` 9 tests, 5 / 4; `bake` 24 tests, 8 / 8 / 8;
-`bench` 1 test; 242 in all, each once, as the plain `playwright test` (and so `pnpm test`) runs every project. By the times of
+(`--list`, MS-19): `golden` 210 tests in 4 shards, 53 / 53 / 52 / 52; `pair` 9 tests, 5 / 4; `bake` 24 tests, 8 / 8 / 8;
+`bench` 1 test; 244 in all, each once, as the plain `playwright test` (and so `pnpm test`) runs every project. By the times of
 run 39624802150 (normal VM) the heaviest golden shard (2) takes about 5 minutes (about 10 on a 2x slow VM), a pair shard 3.8 (1.1-1.3 minutes per test; 7.6 on a 2x
 slow VM; with the three look-preset pairs of MS-19 a pair shard holds up to 5 tests, about 6 minutes, 12 on a slow VM),
 against the 20-minute limit.
@@ -377,18 +377,20 @@ Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with r
 | `player-hold-34`           | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295) | 0.0232, 1.62                          |
 | `cutout-checker`           | 0 (3 307)                           | 293, 0.00447, 0.731 (275, 0.00420, 0.726)     | 0.00525, 0.908                        |
 | `edges`                    | 0 (1 979)                           | 43, 0.00066, 0.397                            | 0.00082, 0.496                        |
-| `preset-marketplace`       | 0 (1 322)                           | 1 168, 0.01782, 1.229                         | 0.0223, 1.43                          |
-| `preset-rim`               | 0 (1 322)                           | 1 300, 0.01984, 1.059                         | 0.0241, 1.13                          |
-| `preset-marketplace-yaw30` | 0 (1 304)                           | 1 396, 0.02130, 1.219                         | 0.0266, 1.52                          |
+| `preset-marketplace`       | 0 (1 322)                           | 1 269, 0.01936, 1.237                         | 0.0223, 1.43                          |
+| `preset-rim`               | 0 (1 322)                           | 1 407, 0.02147, 1.109                         | 0.0241, 1.13                          |
+| `preset-marketplace-yaw30` | 0 (1 304)                           | 1 387, 0.02116, 1.281                         | 0.0265, 1.52                          |
 
 MS-19 measured the table again with the backdrop mask by rows: every earlier view kept its numbers and limits. The two
 look-preset pairs (`preset-marketplace`, `preset-rim`: the held-cube player baked under its look) are new at measured
 x 1.25, measured again after the preset numbers were tuned against the references and the path tracer's
 accents moved to the camera hit (round 2), Marketplace once more after its rim moved behind the key side and grew
 (round 3: a different look, so a new baseline above round 2's 0.0222, 1.32), and all of them again with the
-view-relative rim (round 4), where a limit stayed wherever the measurement x 1.25 would have raised it.
-`preset-marketplace-yaw30` (the same player and look from the app's default yaw 30, where the rim follows the camera)
-is new at measured x 1.25.
+view-relative rim (round 4) and its narrow tuning (round 5), where a limit stayed wherever the measurement x 1.25
+would have raised it. `preset-marketplace-yaw30` (the same player and look from the app's default yaw 30, where the
+rim follows the camera) came in round 4 at measured x 1.25 (0.0266, 1.52) and its ratio fell to 0.0265 in round 5. A
+narrow rim raises a pair's numbers (the preview filters the fillet normal per pixel, the render averages jittered
+rays): Rim at exponent 10 measured 0.02567, 1.263, over its limits, so it ships at exponent 5.
 
 alpha-plane's large ground is an untextured box, baked per vertex, so its preview shows no ground shadow (world-density
 charts for untextured meshes are not in MS-16); the catcher under it darkens its mean delta a little.
@@ -412,16 +414,22 @@ and `pathtracer.spec.ts`, golden project):
 - the rim light, unshadowed: of the pixels it brightens by more than 12 levels in the preview (Rim against `rim=0`,
   unbaked) the render brightens 99.97 % too (3 277 preview, 3 553 render pixels: the jittered camera rays catch a
   little more of the grazing fillets);
-- the Marketplace rim's white line (`pathtracer.spec.ts`): the held-cube player at 512 px, pitch 20, yaw 210 and 30,
-  baked preview and render (16 samples). Silhouette pixels (`silhouettePixels` of `imageMetrics.ts`: more than 4
-  levels off the row's backdrop in column 1, a backdrop pixel within 2 px) with every channel above 200
-  (`whiteCount`): at least the measured count / 1.25 in both (896 preview / 826 render at 210, 503 / 520 at 30;
-  floors 660 and 402), preview and render within 25 % of each other; blown-out pixels (every channel 250 or more) at
-  most the measured share x 1.25 (none anywhere) and under 2 % of the model. The saturated test skin is the case a
-  diffuse rim (round 3) never drew white on;
+- the Marketplace rim's line and the faces' texels (`pathtracer.spec.ts`): the held-cube player at 512 px, pitch 20,
+  yaw 210 and 30, baked preview and render (16 samples). `silhouettePixels` of `imageMetrics.ts` splits the model
+  (more than 4 levels off the row's backdrop in column 1) into the outline band (a backdrop pixel within 2 px) and
+  the interior; `whiteCount` counts pixels with every channel above a level. Outline near-white (above 200): at least
+  the measured count / 1.25 in both (575 preview / 548 render at 210, 412 / 448 at 30; floors 438 and 330), preview
+  and render within 25 % of each other. Interior near-white: at most the measured count x 1.25 (309 / 394 at 210,
+  101 / 113 at 30; caps 493 and 141; the round-4 rim washed upward faces: 4 097). Interior blown out (250 or more): at
+  most the measured share x 1.25 (none) and under 2 %. The saturated test skin is the case a diffuse rim (round 3)
+  never drew white on;
 - the turntable (`realtime.spec.ts`): Marketplace on the same player unbaked (the bake only darkens), 512 px, pitch
-  20, yaws 0 to 330 in steps of 30: no blown-out pixel (measured none), at least 85 white silhouette pixels (the
-  fewest measured: 107, at yaw 0, the player's back);
+  20, yaws 0 to 330 in steps of 30: interior blown-out share at most 0.00205 (worst measured 0.00164, yaw 60: the
+  inner side of a thick band at a 45° silhouette), at least 71 outline white pixels (the fewest measured: 89, at yaw
+  0, the player's back);
+- the head top keeps its texel (`realtime.spec.ts`, Marketplace and Rim): the 3 x 3 pixels around the projection of
+  (0, 32, 0), unbaked, 512 px, pitch 20, yaw 210 and 30, with the preset's rim and with it black, at most 3 levels
+  apart per channel (measured 0: (244, 54, 54) Marketplace at 210; the round-4 rim made it (232, 208, 214));
 - a lost preview context comes back with the look, byte-identical;
 - (bake project) light baked under Marketplace is refused by a Studio renderer and taken once it shows Marketplace.
 
