@@ -25,6 +25,11 @@ const PROBES: Readonly<Record<ModelViewModel, readonly ProbeRequest[]>> = {
     { name: 'flat-shadow-of-opaque-texel', mesh: 'flat-plane', uv: [14, 6], groundY: 0, facesLight: true },
     { name: 'flat-shadow-of-transparent-texel', mesh: 'flat-plane', uv: [14, 2], groundY: 0, facesLight: true },
   ],
+  'alpha-plane-camera-only': [
+    { name: 'opaque-texel', mesh: 'cutout-plane', uv: [6, 14] },
+    { name: 'shadow-of-opaque-texel', mesh: 'cutout-plane', uv: [6, 14], groundY: 0 },
+    { name: 'shadow-of-transparent-texel', mesh: 'cutout-plane', uv: [2, 14], groundY: 0 },
+  ],
   'mesh-shapes': [],
   // Texel (3, 1): yellow in checker.png, blue in uv-grid.png. Each pair is coincident; the probe names the winner.
   'render-order': [

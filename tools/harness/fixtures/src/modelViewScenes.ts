@@ -17,6 +17,8 @@ export function modelViewScene(model: ModelViewModel): SceneDocument {
   switch (model) {
     case 'alpha-plane':
       return loadBbmodel(alphaPlaneSource).scene;
+    case 'alpha-plane-camera-only':
+      return cameraOnlyMeshes(loadBbmodel(alphaPlaneSource).scene, ['cutout-plane']);
     case 'mesh-shapes':
       return loadBbmodel(meshShapesSource).scene;
     case 'render-order':
@@ -26,6 +28,15 @@ export function modelViewScene(model: ModelViewModel): SceneDocument {
     case 'gltf-nodes':
       return hideMeshes(loadGltf(sceneNodesSource, { unitScale: 8 }).scene, ['glass-plane']);
   }
+}
+
+function cameraOnlyMeshes(scene: SceneDocument, names: readonly string[]): SceneDocument {
+  return {
+    ...scene,
+    meshes: scene.meshes.map((mesh) =>
+      names.includes(mesh.name) ? { ...mesh, groups: mesh.groups.map((g) => ({ ...g, cameraOnly: true })) } : mesh,
+    ),
+  };
 }
 
 function hideMeshes(scene: SceneDocument, names: readonly string[]): SceneDocument {

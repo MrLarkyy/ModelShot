@@ -19,7 +19,8 @@ const ROWS_PER_TRIANGLE = 9;
 /**
  * One camera ray through each pixel centre to the nearest hit whose texel passes the alpha test (single-sided faces
  * only from the front; coincident hits by render order), shaded with the interpolated vertex normal, then one shadow
- * ray toward the light blocked by any alpha-passing hit except a camera-only one, single-sided faces only when their front faces the light.
+ * ray toward the light blocked by any alpha-passing hit except a camera-only one, single-sided faces only when their
+ * front faces the light.
  * Deterministic: no samples, no seed.
  */
 export function renderRaycast(

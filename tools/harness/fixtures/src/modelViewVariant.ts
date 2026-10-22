@@ -1,4 +1,5 @@
-export type ModelViewModel = 'alpha-plane' | 'mesh-shapes' | 'render-order' | 'gltf-nodes' | 'player';
+export type ModelViewModel =
+  'alpha-plane' | 'mesh-shapes' | 'render-order' | 'gltf-nodes' | 'player' | 'alpha-plane-camera-only';
 export type ModelViewMode = 'raster' | 'raycast';
 
 export interface ModelViewVariant {
@@ -9,6 +10,8 @@ export interface ModelViewVariant {
 const VARIANTS: Readonly<Record<string, ModelViewVariant>> = Object.freeze({
   'alpha-plane-raster': { model: 'alpha-plane', mode: 'raster' },
   'alpha-plane-raycast': { model: 'alpha-plane', mode: 'raycast' },
+  'alpha-plane-camera-only-raster': { model: 'alpha-plane-camera-only', mode: 'raster' },
+  'alpha-plane-camera-only-raycast': { model: 'alpha-plane-camera-only', mode: 'raycast' },
   'mesh-shapes-raster': { model: 'mesh-shapes', mode: 'raster' },
   'mesh-shapes-raycast': { model: 'mesh-shapes', mode: 'raycast' },
   'render-order-raster': { model: 'render-order', mode: 'raster' },
