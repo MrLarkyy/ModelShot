@@ -55,10 +55,26 @@ export interface SetSceneResult {
   readonly triangles: number;
 }
 
-/** One progressive render: exactly `samples` samples per pixel from `seed`. */
+/**
+ * One progressive render: exactly `samples` samples per pixel from `seed` (with `noiseThreshold`, at most). The quality
+ * fields left out render as without them, byte for byte; a field out of range throws a `RangeError` naming it.
+ */
 export interface RenderRequest {
   /** Integer 0..2^32 − 1. */
   readonly seed: number;
-  /** Integer 1..65536. */
+  /** Integer 1..65536; the maximum with `noiseThreshold`. */
   readonly samples: number;
+  /**
+   * Integer 1..4, default 1: traces s × s samples per canvas pixel (each `samples` counts per traced pixel) and
+   * box-downsamples them. Lowered to fit the GPU's target size and `MAX_SUPERSAMPLED_PIXELS`; `progress.supersample`
+   * reports the scale used.
+   */
+  readonly supersample?: number;
+  /** Default `false`: filters the noise, guided by albedo and normal, stopping at their edges (pixel-art texels). */
+  readonly denoise?: boolean;
+  /**
+   * In (0, 1]: stops at a checkpoint (samples 1, 2, 4, 8, 16, then every 16) once the 0.99 quantile of the noise
+   * estimate (relative standard error of each pixel's luminance, the worst of each 4 × 4 block) is at or under it.
+   */
+  readonly noiseThreshold?: number;
 }
