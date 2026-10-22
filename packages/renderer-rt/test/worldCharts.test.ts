@@ -1,6 +1,7 @@
 import type { SceneMesh } from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
 import { worldChartTexels, worldCharts, type WorldChartTriangle } from '../src/worldCharts';
+import { expectCpuBelow } from './expectCpuBelow';
 
 function mesh(positions: number[], indices: number[]): SceneMesh {
   const vertices = positions.length / 3;
@@ -142,11 +143,9 @@ describe('worldCharts', () => {
     const fan = mesh(positions, indices);
     const triangles = all(fan);
     expect(worldCharts(fan, triangles, 32)).toHaveLength(4096);
-    const start = performance.now();
-    for (let m = 0; m < 49; m++) worldCharts(fan, triangles, 32);
-    const ms = performance.now() - start;
-    console.log(`[world charts] 49 fans of 4096 triangles: ${ms.toFixed(0)} ms`);
     // The 49 meshes of the load scene took 11.3 s before; the load budget is 3.5 s for everything.
-    expect(ms).toBeLessThan(3000);
+    expectCpuBelow(3000, () => {
+      for (let m = 0; m < 49; m++) worldCharts(fan, triangles, 32);
+    });
   });
 });
