@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sampleTiles, samplesToDraw } from '../src/sampleSchedule';
+import { isCheckpoint, nextCheckpoint, sampleTiles, samplesToDraw } from '../src/sampleSchedule';
 
 describe('sampleTiles', () => {
   for (const [width, height, tile] of [
@@ -37,5 +37,18 @@ describe('samplesToDraw', () => {
     expect(samplesToDraw(10, 64, Number.NaN)).toBe(0);
     expect(samplesToDraw(0, 64, -3)).toBe(0);
     expect(samplesToDraw(0, 64, 2.9)).toBe(2);
+  });
+});
+
+describe('checkpoints', () => {
+  it('are 1, 2, 4, 8, 16, then every 16', () => {
+    const upTo64 = Array.from({ length: 64 }, (_, i) => i + 1).filter(isCheckpoint);
+    expect(upTo64).toEqual([1, 2, 4, 8, 16, 32, 48, 64]);
+    expect(isCheckpoint(4096)).toBe(true);
+    expect(isCheckpoint(4097)).toBe(false);
+  });
+
+  it('round a count up to the next checkpoint', () => {
+    expect([0, 1, 2, 3, 5, 8, 9, 16, 17, 33, 48].map(nextCheckpoint)).toEqual([1, 1, 2, 4, 8, 8, 16, 16, 32, 48, 48]);
   });
 });

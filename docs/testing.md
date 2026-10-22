@@ -315,26 +315,31 @@ after a time. Random numbers come from a seeded integer hash, never `Math.random
 `e2e/pathtracer.spec.ts` renders `fixtures/pt.html` (`@modelshot/pathtracer` on SwiftShader, 256 x 256, 4 bounces,
 seed 1). The page takes the realtime fixture's scenes and views (`rtScenes.ts`: `variant`, `scene`, `look`, ...) so
 every path-traced golden pairs with a preview of the same view, plus `seed`, `samples`, `batch` (samples per `step`),
-`tile` (tile side), `size`, `maxTriangles`, `track=1` and `timing=1`; the path-tracer-only variant `emissive` sets an
+`tile` (tile side), `size`, `maxTriangles`, `track=1`, `timing=1` and the render quality of the request (MS-18):
+`supersample=1..4`, `denoise=0|1`, `noise=<threshold>`, which the sample bench uses too; the path-tracer-only variant `emissive` sets an
 emission on the showcase's brick material. A golden spec names its view in `variant` (`PathTracedGoldenSpec.variant`,
-put in the URL, not in the file name).
+put in the URL, not in the file name); so are its quality fields (`supersample`, `denoise`), so the name of such a
+golden says them (`-x2-denoised`).
 
-| golden                         | view                                            | checks                                       |
-| ------------------------------ | ----------------------------------------------- | -------------------------------------------- |
-| `pt-turntable-y030.s1.n64`     | showcase, perspective 35°                       | golden; determinism; bleeding; pair          |
-| `pt-iso.s1.n64`                | showcase, orthographic isometric                | golden; pair                                 |
-| `pt-closeup.s1.n64`            | showcase, half the fit distance (texels ~28 px) | golden                                       |
-| `pt-alpha-plane.s1.n128`       | alpha-plane.bbmodel, model-view camera          | golden; shadow probes; back side; pair       |
-| `pt-alpha-ramp-blend.s1.n128`  | the 16 x 16 alpha ramp (blend, cutoff 0.01)     | golden; stochastic transparency              |
-| `pt-render-order.s1.n16`       | render-order.bbmodel, model-view camera         | golden; render-order probes                  |
-| `pt-emissive.s1.n64`           | showcase, bricks emitting (4, 2.2, 0.8)         | golden; the post beside the bricks brightens |
-| `pt-player-hold-34.s1.n64`     | MS-20 player, hold preset, cube in the hand     | golden; pair with `rt-player-hold-34`        |
-| `pt-cutout-checker.s1.n128`    | generated cut-out checker and box, `checker`    | golden; checker shadow probes; pair          |
-| `pt-edges.s1.n128`             | generated `edges` scene (MS-15)                 | golden; rounded-edge probes; pair            |
-| `pt-preset-marketplace.s1.n64` | `player-hold-34` under Marketplace (MS-19)      | golden; tile/batch determinism; pair         |
-| `pt-preset-rim.s1.n64`         | `player-hold-34` under Rim (MS-19)              | golden; pair                                 |
-| `pt-outline-hull.s1.n64`       | outline-hull.bbmodel, board in an inverted hull | golden; board and rim probes; pair (MS-50)   |
-| `pt-gltf-contact.s1.n128`      | contact-shadow.gltf, `contact`, no catcher      | golden; contact probes; pair (MS-41)         |
+| golden                                 | view                                                 | checks                                          |
+| -------------------------------------- | ---------------------------------------------------- | ----------------------------------------------- |
+| `pt-turntable-y030.s1.n64`             | showcase, perspective 35°                            | golden; determinism; bleeding; pair             |
+| `pt-iso.s1.n64`                        | showcase, orthographic isometric                     | golden; pair                                    |
+| `pt-closeup.s1.n64`                    | showcase, half the fit distance (texels ~28 px)      | golden                                          |
+| `pt-alpha-plane.s1.n128`               | alpha-plane.bbmodel, model-view camera               | golden; shadow probes; back side; pair          |
+| `pt-alpha-ramp-blend.s1.n128`          | the 16 x 16 alpha ramp (blend, cutoff 0.01)          | golden; stochastic transparency                 |
+| `pt-render-order.s1.n16`               | render-order.bbmodel, model-view camera              | golden; render-order probes                     |
+| `pt-emissive.s1.n64`                   | showcase, bricks emitting (4, 2.2, 0.8)              | golden; the post beside the bricks brightens    |
+| `pt-player-hold-34.s1.n64`             | MS-20 player, hold preset, cube in the hand          | golden; pair with `rt-player-hold-34`           |
+| `pt-cutout-checker.s1.n128`            | generated cut-out checker and box, `checker`         | golden; checker shadow probes; pair             |
+| `pt-edges.s1.n128`                     | generated `edges` scene (MS-15)                      | golden; rounded-edge probes; pair               |
+| `pt-preset-marketplace.s1.n64`         | `player-hold-34` under Marketplace (MS-19)           | golden; tile/batch determinism; pair            |
+| `pt-preset-rim.s1.n64`                 | `player-hold-34` under Rim (MS-19)                   | golden; pair                                    |
+| `pt-outline-hull.s1.n64`               | outline-hull.bbmodel, board in an inverted hull      | golden; board and rim probes; pair (MS-50)      |
+| `pt-closeup-reference.s1.n2048`        | `closeup`, 2048 samples, no denoiser (MS-18)         | rendered on golden update only; AC1, AC2, drift |
+| `pt-closeup-denoised.s1.n64`           | `closeup`, `denoise` (MS-18)                         | golden; AC1; AC2                                |
+| `pt-turntable-y030-x2-denoised.s1.n16` | `turntable-y030`, `supersample=2`, `denoise` (MS-18) | golden; determinism; bleeding; pair             |
+| `pt-gltf-contact.s1.n128`              | contact-shadow.gltf, `contact`, no catcher           | golden; contact probes; pair (MS-41)            |
 
 All eight earlier `pt-*` goldens were regenerated in MS-16 on purpose (same seeds, samples and size): the key became
 a 0.04 rad cone, the shadow catcher appeared under every model, and the random dimensions per path vertex grew from
@@ -480,6 +485,76 @@ origin. Step 14 of MS-19 compares its Marketplace output with reference renders 
 
 For a manual run on real hardware open `pt.html?scene=bench&size=512&samples=256&timing=1`: one sample per animation
 frame with the elapsed time and the renderer string.
+
+### Render quality
+
+MS-18 ([path-tracer.md](path-tracer.md#render-quality)), the describe `render quality` of `pathtracer.spec.ts`. Every
+limit is a measured value with a margin, measured on the local Windows dev machine (SwiftShader, deterministic), never
+widened.
+
+- **Reference**: `pt-closeup-reference.s1.n2048`, the closeup at 256 x 256, seed 1, 2048 samples, no denoiser. Its test
+  renders it only under `--update-snapshots` (`pnpm golden:update pathtracer.spec`, or the run tool's filtered golden
+  update): 129 s locally, so its own timeout is 20 min (CI runners are 3-5x slower); every other run only reads the PNG.
+  **Drift guard**: the 16 x 16 block means of a 64-sample closeup rendered in the run stay within 1 level of the
+  reference's (measured 0.77, x 1.25), so a tracer change that moves the light (MS-50's hull rays, a look change)
+  fails here and asks for the reference to be rendered again, instead of failing AC1 for the wrong reason.
+- **AC1**, error against the reference in 8-bit levels (`imageError`, RGB): the plain 64-sample closeup measures RMSE
+  1.880 (MAE 0.870), the denoised one 1.110 (MAE 0.399). Limits: RMSE at most 1.39 (1.110 x 1.25) and at most 0.65 of
+  the plain one's (measured 0.590 x 1.1; the MSE ratio is 0.35). The plan's "at most half the plain RMSE" is not
+  reached: what remains is concentrated in pixels across a silhouette (57 % of the squared error is within the edge
+  mask), where two surfaces lit apart share a pixel in a proportion no neighbour has. Tuning, RMSE of the denoised
+  closeup in the order tried: guides from 8 rays of the first samples 2.172 (worse than no denoiser), from the 64 rays
+  of the first 64 samples 1.750, from 64 stratified rays 1.537; with 1024 rays at partial texels and the depth weight
+  1.160 (256 rays instead: 1.291); albedo sigma 0.5 instead of 0.1 1.164; luminance sigma 2 instead of 4 with
+  silhouette pixels left unfiltered 1.149, the same filtering them too 1.110 (shipped); from there luminance sigma 1.5
+  1.113, no luminance floor 1.115, no depth weight 1.190; normal power 32 instead of 128 changed nothing (1.151 vs
+  1.149).
+- **AC2**, pixel art stays sharp: `edgeSharpness` of the denoised closeup on `edgeMask(reference, 24)` (8 772 pixels on
+  either side of a luma step of 24 levels or more) at least 0.9, measured 1.0028 (the projection of the luma steps onto
+  the reference's: 1 for the reference, under 1 blurred); the RMSE more than 2 pixels from any such edge within the AC1
+  limit, measured 0.669 on 43 836 pixels; no magenta sentinel texel in the denoised closeup or the denoised 2x turntable
+  (the face-rectangle probe).
+- **2x**: the 2x turntable at 16 samples against the 1x at 64, catcher off, `silhouetteMismatches` 0 (off 1 605
+  silhouette pixels); `accumulationSize` 512 x 512 and `progress.supersample` 2; the Marketplace backdrop at 2x in
+  64-pixel tiles within 0.5 levels of its TS mirror (limit 2, as at 1x).
+- **Determinism**: the denoised 2x turntable (16 samples) gives the bytes of a one-pass reference rendered in the same
+  run in batches of 7 and 3, in 64-pixel tiles, and after a context loss and restore.
+- **Convergence** (64 x 64 closeup, maximum 1024 samples): `noise=0.1` stops at 368 with a noise of 0.0968, `noise=0.07`
+  at 800 with 0.0686, each converged, not running, remaining 0, at a multiple of 16; denoised without a threshold
+  draws all 1024. The plan's thresholds 0.05 and 0.0125 were for a 256-pixel closeup, which does not reach 0.05 within
+  1024 samples at 64 pixels (0.0608) and would take minutes at 256.
+- **Progress**: before the first sample `remainingMs` null and `noise` null; after 8 of 32 samples at 2x a noise, an
+  elapsed and a remaining time above 0; done, remaining 0. The scale stays within 2^22 traced pixels: 1024 x 1024 at 2x
+  traces 2048 x 2048, 1448 x 1448 at 2x falls back to 1x.
+- **Fields**: `supersample` 0, 5, 2.5, NaN, "2"; `denoise` 1, "yes", null; `noiseThreshold` 0, −1, 1.5, NaN, Infinity
+  each throw a `RangeError` naming the field.
+- **Pair**: the denoised 2x turntable (16 samples) against `rt-turntable-y030` baked, under the turntable's pair
+  limits (0.00353, 0.953): framing 0 mismatches, 168 pixels differ, ratio 0.00256, mean delta 0.670 (the plain
+  64-sample render measures 0.00307, 0.772).
+- **Lifetime**: `dispose()` after a denoised 2x request with a threshold leaves no WebGL object (`track=1`).
+- **Defaults**: `supersample=1&denoise=0` (the fields given explicitly) renders the bytes of the turntable request
+  without them.
+- **Emitter over black**: `variant=emissive-dark` (the bricks glowing at 4x the `emissive` variant over a copy of
+  their texture whose texels are sRGB 2, so the albedo floor 0.01 makes one sample's luminance variance about 1e6,
+  over half precision) at 1 sample, denoised against plain: of the 7 019 pixels above 150 levels in the plain render
+  none falls under 30 denoised, and no pixel over 30 turns black (under 2). SwiftShader did not show the NaN with the
+  half-float filter images either (its conversion does not yield Inf here), so this browser test pins the outcome.
+  The cause is pinned by two unit tests: `pathTracerShaders.test.ts` checks that the zero-weight skip in
+  `denoise.frag` comes after the weight line and before the tap is added to the sums, and `resolveTargets.test.ts`
+  (a recording stub of WebGL2) checks that the filter images are allocated as RGBA32F and the guides as RGBA16F.
+- **Lost context**: a threshold request (0.01) whose context is lost inside the first noise readback (the fixture's
+  `loseDuringNoise`) stops after 2 samples with `converged` false and `noise` null; without the guard it reported
+  converged. `readAccumulation` gives null from the moment the context is lost, before its event, as after it
+  (browser test, the fixture's `lose`); without the check it returned zeros.
+- **Programs**: with `track=1`, a plain request leaves 2 live programs (trace, present); a threshold request adds
+  `noise` (3), a denoised 2x one `guide`, `denoise`, `resolve` (6); after a loss and restore only trace and present
+  are linked again, a plain render adds none, a threshold request `noise` again. The scale survives a loss:
+  `progress.supersample` 2 and `accumulationSize` 128 x 128 while the context is lost. `tracerPrograms.test.ts` (stub
+  WebGL2): a program that fails to compile is compiled once, a second `require` throws the same error without
+  compiling again, other programs still link, and a rebuilt context starts over.
+
+Times on the local machine: the denoised 64-sample closeup page about 8-9 s against 5 s plain (most of the difference
+is the guide's 1024 rays at partial texels); the determinism test about 47 s.
 
 ## Model-view fixture
 
@@ -662,6 +737,11 @@ round 7); its max was 750 ms then.
   medians 6096, 5160 and 4970 ms (3 runs, MS-17); max 52 000 ms is 10x the middle run, rounded up, as for
   `rt-bench-512` was first set, until a CI artefact allows 3-4x the CI median. Under 60 s locally, so the bench stays at 128 x 128.
   Real hardware (RTX 3080, ANGLE D3D11): 88 ms at 128 x 128, 234 ms at 512 x 512.
+- `timeToSamplesMs.pt-bench-128-n64-x2-denoised` (MS-18): the final-render path on the same scene, 64 samples at 2x
+  (256 x 256 traced) in one step, the guides, a noise estimate at every checkpoint from 2 to 64 and one denoised
+  resolve at the end, until the GPU finished, median of 3. Local SwiftShader median 7209 ms (one bench run, where
+  `pt-bench-128-n256` measured 4703; 6657 and 4886 with RGBA32F filter images and lazy programs, round 2); max 73 000 ms is 10x, rounded up, as for `pt-bench-128-n256`, until a CI
+  artefact allows 3-4x the CI median (the plan's 1.5x would fail on runners 3-5x slower than this machine).
 - `frameTimeMs.pt-load-200k`: `setScene` of the generated 200 000-triangle scene of
   `rt-load-first-frame-200k-order` (validate, flatten, BVH build in JavaScript, upload) plus its first sample. Local
   SwiftShader 1554, 919 and 941 ms; max 10 000 ms (10x the middle run, rounded up).

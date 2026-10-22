@@ -89,6 +89,16 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
     return [fixture.timeToSamples(256), fixture.timeToSamples(256), fixture.timeToSamples(256)];
   });
 
+  // The final-render path (MS-18) on the same scene: 64 samples at 2x (256 x 256 traced pixels) in one step, the
+  // guides, a noise estimate at every checkpoint from 2 to 64 and one denoised resolve at the end, until the GPU
+  // finished; median of 3.
+  await openFixture(page, '/pt.html?scene=bench&size=128&samples=1&supersample=2&denoise=1');
+  const ptQualityRuns = await page.evaluate(() => {
+    const fixture = window.__msFixture;
+    if (!fixture?.timeToSamples) throw new Error('sample bench missing');
+    return [fixture.timeToSamples(64), fixture.timeToSamples(64), fixture.timeToSamples(64)];
+  });
+
   // Path-tracer load at the loader's limits: validate, flatten, build the BVH of 200 000 triangles, upload, one sample.
   await openFixture(page, '/pt.html?scene=empty&size=128&samples=1');
   const ptLoadMs = await page.evaluate(async () => {
@@ -181,7 +191,11 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
       'rt-load-first-frame-200k-world': worldLoadMs,
       'pt-load-200k': ptLoadMs,
     },
-    timeToSamplesMs: { 'progressive-256-n64': median(runs), 'pt-bench-128-n256': median(ptRuns) },
+    timeToSamplesMs: {
+      'progressive-256-n64': median(runs),
+      'pt-bench-128-n256': median(ptRuns),
+      'pt-bench-128-n64-x2-denoised': median(ptQualityRuns),
+    },
     bundleGzipBytes,
     bakeTimeMs: { 'bake-bench-n16': median(bakeRuns) },
     mainThreadBlockMs: { 'bake-bench': trace.maxBlocking, 'bake-post-200k': postTrace.maxBlocking },

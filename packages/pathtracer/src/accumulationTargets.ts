@@ -2,13 +2,17 @@ import { PathTracerError } from './PathTracerError';
 
 interface Target {
   readonly texture: WebGLTexture;
+  /** R32F sum of the samples' squared luminance at COLOR_ATTACHMENT1; `null` without moments. */
+  readonly moments: WebGLTexture | null;
   readonly framebuffer: WebGLFramebuffer;
 }
 
 /**
  * Two RGBA32F images of the running per-pixel sum of samples, used in turn: a sample reads the sum so far from one and
  * writes sum + sample into the other, then they swap. No blending (which would need EXT_float_blend), and exact float
- * adds in sample order, so the result depends only on the samples, never on how they were batched.
+ * adds in sample order, so the result depends only on the samples, never on how they were batched. With `moments`
+ * each also holds the running sum of squared luminance (R32F, the same way), from which the noise estimate and the
+ * denoiser take each pixel's variance.
  */
 export class AccumulationTargets {
   private readonly targets: [Target, Target];
@@ -18,14 +22,14 @@ export class AccumulationTargets {
     private readonly gl: WebGL2RenderingContext,
     readonly width: number,
     readonly height: number,
+    readonly moments = false,
   ) {
     const first = this.createTarget();
     let second: Target;
     try {
       second = this.createTarget();
     } catch (error) {
-      gl.deleteFramebuffer(first.framebuffer);
-      gl.deleteTexture(first.texture);
+      this.deleteTarget(first);
       throw error;
     }
     this.targets = [first, second];
@@ -46,12 +50,13 @@ export class AccumulationTargets {
     this.current = 1 - this.current;
   }
 
-  /** Zeroes both sums. */
+  /** Zeroes both sums (and both moment sums). */
   clear(): void {
     const gl = this.gl;
     for (const target of this.targets) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
       gl.clearBufferfv(gl.COLOR, 0, [0, 0, 0, 0]);
+      if (target.moments) gl.clearBufferfv(gl.COLOR, 1, [0, 0, 0, 0]);
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     this.current = 0;
@@ -68,30 +73,49 @@ export class AccumulationTargets {
   }
 
   dispose(): void {
-    for (const target of this.targets) {
-      this.gl.deleteFramebuffer(target.framebuffer);
-      this.gl.deleteTexture(target.texture);
-    }
+    for (const target of this.targets) this.deleteTarget(target);
+  }
+
+  private deleteTarget(target: Target): void {
+    this.gl.deleteFramebuffer(target.framebuffer);
+    this.gl.deleteTexture(target.texture);
+    if (target.moments) this.gl.deleteTexture(target.moments);
+  }
+
+  private createTexture(format: number): WebGLTexture {
+    const gl = this.gl;
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, format, this.width, this.height);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    return texture;
   }
 
   private createTarget(): Target {
     const gl = this.gl;
-    const texture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA32F, this.width, this.height);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.bindTexture(gl.TEXTURE_2D, null);
+    const texture = this.createTexture(gl.RGBA32F);
+    const moments = this.moments ? this.createTexture(gl.R32F) : null;
     const framebuffer = gl.createFramebuffer();
     gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+    if (moments) {
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, moments, 0);
+      gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+    }
     const complete = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const target = { texture, moments, framebuffer };
     if (!complete && !gl.isContextLost()) {
-      gl.deleteFramebuffer(framebuffer);
-      gl.deleteTexture(texture);
-      throw new PathTracerError('FLOAT_TARGETS_UNAVAILABLE', 'RGBA32F accumulation targets are not renderable here');
+      this.deleteTarget(target);
+      throw new PathTracerError(
+        'FLOAT_TARGETS_UNAVAILABLE',
+        moments
+          ? 'RGBA32F + R32F accumulation targets are not renderable here'
+          : 'RGBA32F accumulation targets are not renderable here',
+      );
     }
-    return { texture, framebuffer };
+    return target;
   }
 }

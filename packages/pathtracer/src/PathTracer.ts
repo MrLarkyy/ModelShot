@@ -48,11 +48,15 @@ import {
 import { PathTracerError } from './PathTracerError';
 import type { PathTracerOptions, RenderRequest, SetSceneOptions, SetSceneResult } from './PathTracerOptions';
 import type { PathTracerWarning } from './PathTracerWarning';
-import { sampleTiles, samplesToDraw } from './sampleSchedule';
+import { isCheckpoint, sampleTiles, samplesToDraw, type Tile } from './sampleSchedule';
+import { noiseQuantile } from './noiseQuantile';
+import { checkRenderQuality, supersampledScale, type RenderQuality, type TargetLimits } from './renderQuality';
+import { estimateRemainingMs, type RenderProgress } from './renderProgress';
+import { ResolveTargets, type ResolveLayout } from './resolveTargets';
 import { requireExactAccumulation } from './requireExactAccumulation';
 import { layoutTextures } from './layoutTextures';
 import type { TextureLayerPlan } from './textureLayers';
-import { createTracerPrograms, disposeTracerPrograms, type TracerPrograms } from './tracerPrograms';
+import { TracerPrograms, type QualityProgramName, type TracerProgram } from './tracerPrograms';
 
 const DEFAULT_MAX_BOUNCES = 4;
 const MAX_BOUNCES = 16;
@@ -60,6 +64,18 @@ const DEFAULT_TILE_SIZE = 256;
 const DEFAULT_MAX_TEXTURE_SIDE = 4096;
 export const MAX_SAMPLES = 65536;
 export const MAX_SEED = 2 ** 32 - 1;
+const DEFAULT_QUALITY: RenderQuality = { supersample: 1, denoise: false, noiseThreshold: null };
+// Iterations of the à-trous filter: taps 1, 2, 4, 8 and 16 pixels apart, a footprint of 125 pixels.
+const DENOISE_ITERATIONS = 5;
+// Camera rays per pixel of the denoiser's guides, and where one meets a partial texel (guide.frag).
+const GUIDE_RAYS = 64;
+const PARTIAL_GUIDE_RAYS = 1024;
+// A guide pixel at a partial texel traces 1024 camera rays, a trace pixel about ten rays per sample: the guide draws
+// in tiles this many times narrower (64 times fewer pixels), so its draw calls stay as short as a sample's.
+const GUIDE_TILE_DIVISOR = 8;
+// Texture units: the scene data takes 1..5 in the trace and the guide.
+const UNIT_SUM = 0;
+const UNIT_MOMENTS = 6;
 
 const EMPTY_SCENE: SceneDocument = {
   formatVersion: SCENE_FORMAT_VERSION,
@@ -108,6 +124,10 @@ interface Gpu {
   readonly vao: WebGLVertexArrayObject;
   scene: GpuScene | null;
   targets: AccumulationTargets | null;
+  /** The quality path's guides, filter, resolved image and noise blocks; `null` for a plain request. */
+  resolve: ResolveTargets | null;
+  /** The largest render target on each axis, queried with the context. */
+  readonly targetLimits: TargetLimits;
 }
 
 function positiveInt(value: unknown, fallback: number): number {
@@ -133,7 +153,19 @@ export class PathTracer {
   private loaded: LoadedScene | null = null;
   private camera: SceneCamera | null = null;
   private request: RenderRequest | null = null;
+  private quality: RenderQuality = DEFAULT_QUALITY;
+  /** The supersampling scale the current request traces at: set by `start`, `resize` and a restore, never on a read. */
+  private scale = 1;
   private done = 0;
+  /** The denoiser's guides are drawn for the current request. */
+  private guided = false;
+  /** The 0.99 quantile of the noise estimate and the sample count it was measured at. */
+  private noise: number | null = null;
+  private noiseSamples = 0;
+  private converged = false;
+  /** Clock readings of the request's first step and the end of its latest one; progress only, never a pixel. */
+  private startedAt: number | null = null;
+  private lastStepAt = 0;
   private cancelled = false;
   private generation = 0;
   private lost = false;
@@ -214,9 +246,43 @@ export class PathTracer {
     return this.request?.samples ?? 0;
   }
 
-  /** `step()` would draw more: a request is running, not cancelled and not complete. */
+  /** `step()` would draw more: a request is running, not cancelled, not converged and not complete. */
   get running(): boolean {
-    return this.request !== null && !this.cancelled && this.done < this.request.samples;
+    return this.request !== null && !this.cancelled && !this.converged && this.done < this.request.samples;
+  }
+
+  /** Where the current request stands, with an estimate of the time left; times never change a pixel. */
+  get progress(): RenderProgress {
+    const samplesDone = this.done;
+    const targetSamples = this.targetSamples;
+    const elapsedMs = this.startedAt === null ? 0 : this.lastStepAt - this.startedAt;
+    const finished = this.request !== null && !this.running;
+    return {
+      samplesDone,
+      targetSamples,
+      supersample: this.scale,
+      noise: this.noise,
+      converged: this.converged,
+      elapsedMs,
+      remainingMs: estimateRemainingMs({
+        samplesDone,
+        targetSamples,
+        elapsedMs,
+        finished,
+        noiseThreshold: this.quality.noiseThreshold,
+        noise: this.noise,
+        noiseSamples: this.noiseSamples,
+      }),
+    };
+  }
+
+  /** Width of the traced image, `readAccumulation`'s: the canvas width times `progress.supersample`. */
+  get accumulationWidth(): number {
+    return this.canvas.width * this.scale;
+  }
+
+  get accumulationHeight(): number {
+    return this.canvas.height * this.scale;
   }
 
   /**
@@ -357,40 +423,41 @@ export class PathTracer {
 
   /** Sizes the backing store like the preview (CSS size × pixel ratio within the GPU limits); restarts on a change. */
   resize(size: CanvasCssSize): CanvasSize {
-    const capabilities = this.capabilities ?? this.queryCapabilities();
-    const gl = this.gl;
-    const viewport: unknown = gl.getParameter(gl.MAX_VIEWPORT_DIMS);
-    const dims = viewport instanceof Int32Array ? viewport : new Int32Array([4096, 4096]);
-    const maxRenderbuffer = positiveInt(gl.getParameter(gl.MAX_RENDERBUFFER_SIZE), 2048);
     const result = canvasSize(size, {
-      maxWidth: Math.min(positiveInt(dims[0], 2048), maxRenderbuffer, capabilities.maxTextureSize),
-      maxHeight: Math.min(positiveInt(dims[1], 2048), maxRenderbuffer, capabilities.maxTextureSize),
+      ...this.targetLimits(),
       ...(this.options.maxPixels !== undefined ? { maxPixels: this.options.maxPixels } : {}),
     });
     if (this.canvas.width !== result.width || this.canvas.height !== result.height) {
       this.canvas.width = result.width;
       this.canvas.height = result.height;
+      this.updateScale();
       this.restart();
     }
     return result;
   }
 
   /**
-   * Starts a render of exactly `samples` samples per pixel from `seed`, discarding what was accumulated. `seed` must be
-   * an integer in 0..2^32 − 1 and `samples` in 1..65536, else `RangeError`.
+   * Starts a render of exactly `samples` samples per pixel from `seed` (with `noiseThreshold` at most that many),
+   * discarding what was accumulated. `seed` must be an integer in 0..2^32 − 1, `samples` in 1..65536, `supersample` in
+   * 1..4, `denoise` a boolean and `noiseThreshold` in (0, 1], else a `RangeError` naming the field.
    */
   start(request: RenderRequest): void {
     const seed = checkInteger('seed', request.seed, 0, MAX_SEED);
     const samples = checkInteger('samples', request.samples, 1, MAX_SAMPLES);
+    const quality = checkRenderQuality(request);
     this.request = { seed, samples };
+    this.quality = quality;
+    this.updateScale();
     this.cancelled = false;
     this.restart();
   }
 
   /**
-   * Draws up to `maxSamples` more samples of the current request (never past its count), presents the mean and
-   * returns how many it drew. A no-op returning 0 without a camera, when complete, cancelled, while the context is lost
-   * or after `dispose()`.
+   * Draws up to `maxSamples` more samples of the current request (never past its count, nor past the checkpoint where
+   * it converged), presents the image and returns how many it drew. Supersampled or denoised, the image shown is the
+   * one resolved at the latest checkpoint or at the end. A no-op returning 0 without a camera, when complete,
+   * converged, cancelled, while the context is lost or after `dispose()`. The first step of a request that needs a
+   * quality program links it: a shader failure there throws `PathTracerError` `SHADER_COMPILE` or `SHADER_LINK`.
    */
   step(maxSamples = 1): number {
     const gpu = this.gpu;
@@ -398,34 +465,66 @@ export class PathTracer {
     if (!gpu || !request || !this.camera || this.cancelled || this.lost || this.disposed || this.gl.isContextLost()) {
       return 0;
     }
-    const count = samplesToDraw(this.done, request.samples, maxSamples);
+    const count = this.converged ? 0 : samplesToDraw(this.done, request.samples, maxSamples);
     if (count === 0) return 0;
     const targets = this.ensureTargets(gpu);
+    this.startedAt ??= performance.now();
+    const extra = gpu.resolve;
     const camera = cameraUniforms(this.camera, this.canvas.width / this.canvas.height);
-    this.bindTrace(gpu, camera, request.seed);
-    const gl = this.gl;
-    const trace = gpu.programs.trace;
     const tiles = sampleTiles(targets.width, targets.height, this.tileSize);
-    gl.enable(gl.SCISSOR_TEST);
-    for (let i = 0; i < count; i++) {
+    const gl = this.gl;
+    if (extra?.guide && !this.guided) {
+      const guide = gpu.programs.get('guide');
+      this.bindScene(gpu, guide, camera, request.seed, targets);
+      gl.uniform1ui(guide.uniform('u_guideRays'), GUIDE_RAYS);
+      gl.uniform1ui(guide.uniform('u_partialGuideRays'), PARTIAL_GUIDE_RAYS);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, extra.guide.framebuffer);
+      const guideTile = Math.max(16, Math.floor(this.tileSize / GUIDE_TILE_DIVISOR));
+      this.drawTiles(sampleTiles(targets.width, targets.height, guideTile));
+      this.guided = true;
+    }
+    this.bindTrace(gpu, camera, request.seed, targets);
+    const trace = gpu.programs.trace;
+    const threshold = this.quality.noiseThreshold;
+    let drawn = 0;
+    let checkpoint = false;
+    while (drawn < count) {
       gl.uniform1ui(trace.uniform('u_sample'), this.done);
       gl.bindFramebuffer(gl.FRAMEBUFFER, targets.next.framebuffer);
-      gl.activeTexture(gl.TEXTURE0);
+      gl.activeTexture(gl.TEXTURE0 + UNIT_SUM);
       gl.bindTexture(gl.TEXTURE_2D, targets.sum.texture);
-      for (const tile of tiles) {
-        gl.scissor(tile.x, tile.y, tile.width, tile.height);
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
-      }
+      gl.activeTexture(gl.TEXTURE0 + UNIT_MOMENTS);
+      gl.bindTexture(gl.TEXTURE_2D, targets.sum.moments);
+      this.drawTiles(tiles);
       targets.swap();
       this.done++;
+      drawn++;
+      if (!isCheckpoint(this.done)) continue;
+      checkpoint = true;
+      // Checkpoints are sample counts, so the stop and the image do not depend on how the samples were batched.
+      if (extra?.noise && this.done >= 2) {
+        this.measureNoise(gpu, targets, extra);
+        // Lost while drawing: the readback holds nothing, and the restore restarts the request anyway.
+        if (gl.isContextLost()) break;
+        if (threshold !== null && this.noise !== null && this.noise <= threshold) {
+          this.converged = true;
+          break;
+        }
+        this.bindTrace(gpu, camera, request.seed, targets);
+      }
     }
-    gl.disable(gl.SCISSOR_TEST);
-    gl.bindTexture(gl.TEXTURE_2D, null);
+    this.unbindTextures(UNIT_MOMENTS + 1);
+    const finished = this.converged || this.done >= request.samples;
+    if (extra?.resolved && (checkpoint || finished)) this.resolveImage(gpu, targets, extra, tiles);
     this.present(gpu);
-    return count;
+    this.lastStepAt = performance.now();
+    return drawn;
   }
 
-  /** Stops the current request: `step()` draws nothing more until `start`; the image of the samples done stays. */
+  /**
+   * Stops the current request: `step()` draws nothing more until `start`; the image shown stays (supersampled or
+   * denoised, the one resolved at the latest step that crossed a checkpoint).
+   */
   cancel(): void {
     this.cancelled = true;
   }
@@ -433,11 +532,11 @@ export class PathTracer {
   /**
    * The per-pixel float sums of the samples done (rows bottom to top): rgb the radiance (divide by `samplesDone`), a
    * the traversals stopped by the per-ray node cap (0 in any ordinary scene). For a denoiser or a test; `null` while
-   * the context is lost or before a sample.
+   * the context is lost (from the moment it is, before its event too, when a read would give zeros) or before a sample.
    */
   readAccumulation(): Float32Array | null {
     const targets = this.gpu?.targets;
-    if (!targets || this.lost || this.done === 0) return null;
+    if (!targets || this.lost || this.gl.isContextLost() || this.done === 0) return null;
     return targets.read();
   }
 
@@ -500,8 +599,40 @@ export class PathTracer {
     const gl = this.gl;
     requireExactAccumulation(gl);
     const capabilities = this.queryCapabilities();
-    const programs = createTracerPrograms(gl);
-    return { capabilities, programs, vao: gl.createVertexArray(), scene: null, targets: null };
+    const programs = new TracerPrograms(gl);
+    return {
+      capabilities,
+      programs,
+      vao: gl.createVertexArray(),
+      scene: null,
+      targets: null,
+      resolve: null,
+      targetLimits: this.queryTargetLimits(capabilities),
+    };
+  }
+
+  /** The largest render target on each axis, from the context's `Gpu` (queried once) or queried now without one. */
+  private targetLimits(): TargetLimits {
+    return this.gpu?.targetLimits ?? this.queryTargetLimits(this.capabilities ?? this.queryCapabilities());
+  }
+
+  /** The largest render target side on each axis: min of MAX_TEXTURE_SIZE, MAX_RENDERBUFFER_SIZE, MAX_VIEWPORT_DIMS. */
+  private queryTargetLimits(capabilities: PathTracerCapabilities): TargetLimits {
+    const gl = this.gl;
+    const viewport: unknown = gl.getParameter(gl.MAX_VIEWPORT_DIMS);
+    const dims = viewport instanceof Int32Array ? viewport : new Int32Array([4096, 4096]);
+    const maxRenderbuffer = positiveInt(gl.getParameter(gl.MAX_RENDERBUFFER_SIZE), 2048);
+    return {
+      maxWidth: Math.min(positiveInt(dims[0], 2048), maxRenderbuffer, capabilities.maxTextureSize),
+      maxHeight: Math.min(positiveInt(dims[1], 2048), maxRenderbuffer, capabilities.maxTextureSize),
+    };
+  }
+
+  /** The supersampling scale of the current request on this canvas, within the target limits. */
+  private updateScale(): void {
+    const requested = this.quality.supersample;
+    this.scale =
+      requested === 1 ? 1 : supersampledScale(requested, this.canvas.width, this.canvas.height, this.targetLimits());
   }
 
   private uploadLoaded(gpu: Gpu): void {
@@ -510,28 +641,113 @@ export class PathTracer {
     gpu.scene = uploadGpuScene(this.gl, loaded.geometry, loaded.materials, loaded.plan, loaded.images);
   }
 
+  /**
+   * The accumulation at the request's scale (with moments for denoise or a threshold) and the quality path's targets,
+   * each allocated only when needed; anything new restarts at sample 0.
+   */
   private ensureTargets(gpu: Gpu): AccumulationTargets {
-    const { width, height } = this.canvas;
-    if (gpu.targets && gpu.targets.width === width && gpu.targets.height === height) return gpu.targets;
-    gpu.targets?.dispose();
-    gpu.targets = null;
-    gpu.targets = new AccumulationTargets(this.gl, width, height);
-    this.done = 0;
-    return gpu.targets;
+    const scale = this.scale;
+    const width = this.canvas.width * scale;
+    const height = this.canvas.height * scale;
+    const { denoise, noiseThreshold } = this.quality;
+    const moments = denoise || noiseThreshold !== null;
+    // The programs first: a shader failure throws before any target is made, freed or cleared.
+    const programs: QualityProgramName[] = [];
+    if (denoise) programs.push('guide', 'denoise');
+    if (scale > 1 || denoise) programs.push('resolve');
+    if (moments) programs.push('noise');
+    gpu.programs.require(programs);
+    let targets = gpu.targets;
+    if (!targets || targets.width !== width || targets.height !== height || targets.moments !== moments) {
+      targets?.dispose();
+      gpu.targets = null;
+      targets = new AccumulationTargets(this.gl, width, height, moments);
+      gpu.targets = targets;
+      this.resetAccumulation();
+    }
+    const layout: ResolveLayout = {
+      width,
+      height,
+      outputWidth: this.canvas.width,
+      outputHeight: this.canvas.height,
+      denoise,
+      resolve: scale > 1 || denoise,
+      noise: moments,
+    };
+    if (!layout.resolve && !layout.noise) {
+      gpu.resolve?.dispose();
+      gpu.resolve = null;
+    } else if (!gpu.resolve?.matches(layout)) {
+      gpu.resolve?.dispose();
+      gpu.resolve = null;
+      gpu.resolve = new ResolveTargets(this.gl, layout);
+      this.resetAccumulation();
+      targets.clear();
+    }
+    return targets;
   }
 
   /** Back to sample 0 of the current request (scene, camera or size changed, or a new request). */
   private restart(): void {
-    this.done = 0;
+    this.resetAccumulation();
     if (this.gpu?.targets && !this.lost) this.gpu.targets.clear();
   }
 
-  private bindTrace(gpu: Gpu, camera: CameraUniforms, seed: number): void {
+  private resetAccumulation(): void {
+    this.done = 0;
+    this.guided = false;
+    this.noise = null;
+    this.noiseSamples = 0;
+    this.converged = false;
+    this.startedAt = null;
+    this.lastStepAt = 0;
+  }
+
+  private drawTiles(tiles: readonly Tile[]): void {
     const gl = this.gl;
-    const { program, uniform } = gpu.programs.trace;
+    gl.enable(gl.SCISSOR_TEST);
+    for (const tile of tiles) {
+      gl.scissor(tile.x, tile.y, tile.width, tile.height);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+    gl.disable(gl.SCISSOR_TEST);
+  }
+
+  /** Unbinds 2D textures from units 0..count − 1 and leaves unit 0 active. */
+  private unbindTextures(count: number): void {
+    const gl = this.gl;
+    for (let unit = count - 1; unit >= 0; unit--) {
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+    }
+  }
+
+  private bindTrace(gpu: Gpu, camera: CameraUniforms, seed: number, targets: AccumulationTargets): void {
+    const gl = this.gl;
+    const { uniform } = gpu.programs.trace;
+    this.bindScene(gpu, gpu.programs.trace, camera, seed, targets);
+    gl.uniform1i(uniform('u_previous'), UNIT_SUM);
+    gl.uniform1i(uniform('u_previousMoments'), UNIT_MOMENTS);
+    gl.uniform1i(uniform('u_moments'), targets.moments ? 1 : 0);
+    gl.uniform1i(uniform('u_maxBounces'), this.maxBounces);
+  }
+
+  /**
+   * Uses `traced` (the trace or the guide) with the scene data on units 1..5 and the camera, look, edge and catcher
+   * uniforms, the frame being the accumulation's size.
+   */
+  private bindScene(
+    gpu: Gpu,
+    traced: TracerProgram,
+    camera: CameraUniforms,
+    seed: number,
+    frame: { readonly width: number; readonly height: number },
+  ): void {
+    const gl = this.gl;
+    const { program, uniform } = traced;
     const scene = gpu.scene ?? this.emptyScene(gpu);
     gl.useProgram(program);
-    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    gl.viewport(0, 0, frame.width, frame.height);
     gl.disable(gl.BLEND);
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.CULL_FACE);
@@ -543,7 +759,6 @@ export class PathTracer {
       ['u_materials', gl.TEXTURE_2D, scene.materials],
       ['u_textureLayers', gl.TEXTURE_2D_ARRAY, scene.layers],
     ];
-    gl.uniform1i(uniform('u_previous'), 0);
     textures.forEach(([name, target, texture], i) => {
       gl.activeTexture(gl.TEXTURE1 + i);
       gl.bindTexture(target, texture);
@@ -562,10 +777,10 @@ export class PathTracer {
     gl.uniform2fv(uniform('u_cameraScale'), camera.scale);
     gl.uniform1f(uniform('u_near'), camera.near);
     gl.uniform1f(uniform('u_far'), camera.far);
-    gl.uniform2f(uniform('u_viewportSize'), this.canvas.width, this.canvas.height);
+    // The traced frame: a supersampled one spans the same view, its backdrop gradient its full height.
+    gl.uniform2f(uniform('u_viewportSize'), frame.width, frame.height);
     gl.uniform1ui(uniform('u_seed'), seed);
-    gl.uniform1i(uniform('u_maxBounces'), this.maxBounces);
-    uploadLookUniforms(gl, uniform, this.lookPreset, this.canvas.height, lookView(camera));
+    uploadLookUniforms(gl, uniform, this.lookPreset, frame.height, lookView(camera));
     gl.uniform1f(uniform('u_edgeWidth'), this.edges.width);
     const catcher = this.loaded?.catcher ?? null;
     gl.uniform1i(uniform('u_catcherOn'), catcher ? 1 : 0);
@@ -587,16 +802,105 @@ export class PathTracer {
     return gpu.scene;
   }
 
+  /** The noise estimate of the samples so far: per block on the GPU, its quantile on the CPU. */
+  private measureNoise(gpu: Gpu, targets: AccumulationTargets, extra: ResolveTargets): void {
+    const gl = this.gl;
+    const noise = extra.noise;
+    if (!noise) return;
+    const { program, uniform } = gpu.programs.get('noise');
+    gl.useProgram(program);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, noise.framebuffer);
+    gl.viewport(0, 0, extra.noiseWidth, extra.noiseHeight);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, targets.sum.texture);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, targets.sum.moments);
+    gl.uniform1i(uniform('u_sum'), 0);
+    gl.uniform1i(uniform('u_moments'), 1);
+    gl.uniform1f(uniform('u_samples'), this.done);
+    gl.uniform1i(uniform('u_scale'), targets.width / this.canvas.width);
+    gl.uniform2i(uniform('u_outputSize'), this.canvas.width, this.canvas.height);
+    gl.bindVertexArray(gpu.vao);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    const blocks = extra.readNoise();
+    // A lost context reads zeros, which would pass any threshold.
+    if (gl.isContextLost()) return;
+    this.noise = noiseQuantile(blocks);
+    this.noiseSamples = this.done;
+  }
+
+  /**
+   * The canvas-size linear image of the samples so far into `extra.resolved`: denoised (DENOISE_ITERATIONS filter
+   * passes over the traced frame, tiled like the trace) or not, then box-downsampled. A function of the sums and the
+   * guides alone.
+   */
+  private resolveImage(gpu: Gpu, targets: AccumulationTargets, extra: ResolveTargets, tiles: readonly Tile[]): void {
+    const gl = this.gl;
+    const resolved = extra.resolved;
+    if (!resolved) return;
+    gl.bindVertexArray(gpu.vao);
+    let source = targets.sum.texture;
+    const denoised = extra.guide !== null && extra.filtered !== null;
+    if (extra.guide && extra.filtered) {
+      const { program, uniform } = gpu.programs.get('denoise');
+      gl.useProgram(program);
+      gl.viewport(0, 0, targets.width, targets.height);
+      const inputs: [string, WebGLTexture | null][] = [
+        ['u_sum', targets.sum.texture],
+        ['u_moments', targets.sum.moments],
+        ['u_albedo', extra.guide.albedo],
+        ['u_normal', extra.guide.normal],
+      ];
+      inputs.forEach(([name, texture], unit) => {
+        gl.activeTexture(gl.TEXTURE0 + unit);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.uniform1i(uniform(name), unit);
+      });
+      const sourceUnit = inputs.length;
+      gl.uniform1i(uniform('u_source'), sourceUnit);
+      gl.uniform1f(uniform('u_samples'), this.done);
+      for (let i = 0; i < DENOISE_ITERATIONS; i++) {
+        const output = extra.filtered[i % 2] as (typeof extra.filtered)[0];
+        // Never the texture being written: the first pass reads the accumulation instead.
+        gl.activeTexture(gl.TEXTURE0 + sourceUnit);
+        gl.bindTexture(gl.TEXTURE_2D, i === 0 ? null : (extra.filtered[(i + 1) % 2]?.texture ?? null));
+        gl.uniform1i(uniform('u_first'), i === 0 ? 1 : 0);
+        gl.uniform1i(uniform('u_step'), 1 << i);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, output.framebuffer);
+        this.drawTiles(tiles);
+        source = output.texture;
+      }
+      this.unbindTextures(sourceUnit + 1);
+    }
+    const { program, uniform } = gpu.programs.get('resolve');
+    gl.useProgram(program);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, resolved.framebuffer);
+    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, source);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, extra.guide?.albedo ?? null);
+    gl.uniform1i(uniform('u_source'), 0);
+    gl.uniform1i(uniform('u_albedo'), 1);
+    gl.uniform1i(uniform('u_denoised'), denoised ? 1 : 0);
+    gl.uniform1f(uniform('u_samples'), this.done);
+    gl.uniform1i(uniform('u_scale'), targets.width / this.canvas.width);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    this.unbindTextures(2);
+  }
+
+  /** The mean so far, or on the quality path the image resolved at the latest checkpoint, through AgX. */
   private present(gpu: Gpu): void {
     const gl = this.gl;
     const { program, uniform } = gpu.programs.present;
+    const resolved = this.done > 0 ? gpu.resolve?.resolved : undefined;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.useProgram(program);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, gpu.targets?.sum.texture ?? null);
+    gl.bindTexture(gl.TEXTURE_2D, resolved?.texture ?? gpu.targets?.sum.texture ?? null);
     gl.uniform1i(uniform('u_sum'), 0);
-    gl.uniform1f(uniform('u_samples'), gpu.targets ? this.done : 0);
+    gl.uniform1f(uniform('u_samples'), resolved ? 1 : gpu.targets ? this.done : 0);
     // Backdrop and tone mapping only: no rim, so no camera.
     uploadLookUniforms(gl, uniform, this.lookPreset, this.canvas.height, LOOK_VIEW_NONE);
     gl.bindVertexArray(gpu.vao);
@@ -617,7 +921,8 @@ export class PathTracer {
     const gl = this.gl;
     if (gpu.scene) disposeGpuScene(gl, gpu.scene);
     gpu.targets?.dispose();
-    disposeTracerPrograms(gl, gpu.programs);
+    gpu.resolve?.dispose();
+    gpu.programs.dispose();
     gl.deleteVertexArray(gpu.vao);
   }
 
@@ -635,11 +940,12 @@ export class PathTracer {
     try {
       this.gpu = this.createGpu();
       this.uploadLoaded(this.gpu);
+      this.updateScale();
     } catch {
       this.gpu = null;
       return;
     }
-    this.done = 0;
+    this.resetAccumulation();
     for (const listener of [...this.restoredListeners]) listener();
   };
 }

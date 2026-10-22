@@ -178,6 +178,30 @@ export interface PtControls {
   setLook: (id: string) => string;
   /** Image position (pixels, top-left origin) of a world point under the current camera. */
   project: (x: number, y: number, z: number) => [number, number];
+  /** Length of `readAccumulation()`, or `null` when it returns none. */
+  accumulationLength: () => number | null;
+  /** Live WebGL programs; -1 unless the page was opened with track=1. */
+  livePrograms: () => number;
+  /** Loses the context inside the next float readback (the noise estimate's), mid-step; resolves once it is lost. */
+  loseDuringNoise: () => Promise<void>;
+  /** `PathTracer.progress` and `running` of the current request. */
+  readonly progress: PtProgress;
+  readonly running: boolean;
+  /** `accumulationWidth` × `accumulationHeight`: the traced size. */
+  readonly accumulationSize: [number, number];
+  /** The error `start` throws for the page's seed and samples with these quality fields (`name: message`), or `ok`. */
+  tryQuality: (fields: { supersample?: unknown; denoise?: unknown; noiseThreshold?: unknown }) => string;
+}
+
+/** `RenderProgress` of the path tracer. */
+export interface PtProgress {
+  samplesDone: number;
+  targetSamples: number;
+  supersample: number;
+  noise: number | null;
+  converged: boolean;
+  elapsedMs: number;
+  remainingMs: number | null;
 }
 
 declare global {

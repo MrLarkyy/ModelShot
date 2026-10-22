@@ -1,0 +1,50 @@
+/** One recorded WebGL call. */
+export interface GlCall {
+  readonly name: string;
+  readonly args: readonly unknown[];
+}
+
+export interface StubGlOptions {
+  /** Whether a shader of this source compiles; default every one. */
+  readonly compiles?: (source: string) => boolean;
+}
+
+/**
+ * A WebGL2 context that records every call and does nothing: each constant (an upper-case name) is a distinct number,
+ * `create*` returns a fresh object, shaders compile as `options.compiles` says, programs link, framebuffers are
+ * complete and the context is never lost. Enough for the resource and program code, never for drawing.
+ */
+export function stubGl(options: StubGlOptions = {}): { gl: WebGL2RenderingContext; calls: GlCall[] } {
+  const calls: GlCall[] = [];
+  const constants = new Map<string, number>();
+  const sources = new Map<unknown, string>();
+  const constant = (name: string): number => {
+    if (!constants.has(name)) constants.set(name, 0x10000 + constants.size);
+    return constants.get(name) as number;
+  };
+  const results: Record<string, (...args: unknown[]) => unknown> = {
+    shaderSource: (shader, source) => sources.set(shader, String(source)),
+    getShaderParameter: (shader) => (options.compiles ?? (() => true))(sources.get(shader) ?? ''),
+    getProgramParameter: () => true,
+    getShaderInfoLog: () => 'stub compile log',
+    getProgramInfoLog: () => '',
+    checkFramebufferStatus: () => constant('FRAMEBUFFER_COMPLETE'),
+    isContextLost: () => false,
+    getUniformLocation: () => ({}),
+  };
+  const gl = new Proxy(
+    {},
+    {
+      get: (_, property) => {
+        if (typeof property !== 'string') return undefined;
+        if (/^[A-Z0-9_]+$/.test(property)) return constant(property);
+        return (...args: unknown[]) => {
+          calls.push({ name: property, args });
+          if (property.startsWith('create')) return { created: property };
+          return results[property]?.(...args);
+        };
+      },
+    },
+  ) as WebGL2RenderingContext;
+  return { gl, calls };
+}
