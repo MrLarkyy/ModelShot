@@ -362,7 +362,8 @@ bytes of `edges=0`, the angle round trip the initial bytes, bad values a `RangeE
 shadow catcher off on both sides (its edge fades into the backdrop): the backdrop masks (within 2 levels of the view's
 look's backdrop in that row, `agxToneMap(backdropColor(look, y), look.toneMapping)`, so a gradient counts as backdrop;
 before MS-19 the top-left pixel) must agree on every pixel off the silhouette (a pixel whose 3 x 3 neighbourhood in the preview holds
-both classes); 0 mismatches is the limit. Radiance, catcher on both: pixelmatch `threshold 0.1` with `maxDiffRatio`
+both classes) that the two images draw more than 2 levels apart (a dark texel near the backdrop colour falls on either
+side of the mask test, with the same colour in both views); 0 mismatches is the limit. Radiance, catcher on both: pixelmatch `threshold 0.1` with `maxDiffRatio`
 and `maxMeanDelta` = measured x 1.25 and never above the previous limit, never widened; the render differs where it
 has interreflection and noise. Logged as `[pt pair] <view>: ...`, values in `test-results/pt-pair-<view>.json`.
 Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with rounded edges and the mirrored bounce
@@ -376,13 +377,14 @@ Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with r
 | `player-hold-34`     | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295) | 0.0232, 1.62                          |
 | `cutout-checker`     | 0 (3 307)                           | 293, 0.00447, 0.731 (275, 0.00420, 0.726)     | 0.00525, 0.908                        |
 | `edges`              | 0 (1 979)                           | 43, 0.00066, 0.397                            | 0.00082, 0.496                        |
-| `preset-marketplace` | 0 (1 322)                           | 1 164, 0.01776, 1.058                         | 0.0222, 1.32                          |
+| `preset-marketplace` | 0 (1 322)                           | 1 238, 0.01889, 1.141                         | 0.0236, 1.43                          |
 | `preset-rim`         | 0 (1 322)                           | 1 259, 0.01921, 0.902                         | 0.0241, 1.13                          |
 
 MS-19 measured the table again with the backdrop mask by rows: every earlier view kept its numbers and limits. The two
 look-preset pairs (`preset-marketplace`, `preset-rim`: the held-cube player baked under its look) are new at measured
 x 1.25, measured again after the preset numbers were tuned against the references and the path tracer's
-accents moved to the camera hit (round 2).
+accents moved to the camera hit (round 2), and Marketplace once more after its rim moved behind the key side and grew
+(round 3: a different look, so a new baseline above round 2's 0.0222, 1.32; preset-rim unchanged).
 
 alpha-plane's large ground is an untextured box, baked per vertex, so its preview shows no ground shadow (world-density
 charts for untextured meshes are not in MS-16); the catcher under it darkens its mean delta a little.

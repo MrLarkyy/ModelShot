@@ -352,8 +352,9 @@ const PT_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions>> = {
   'player-hold-34': { threshold: 0.1, maxDiffRatio: 0.0232, maxMeanDelta: 1.62 },
   'cutout-checker': { threshold: 0.1, maxDiffRatio: 0.00525, maxMeanDelta: 0.908 },
   edges: { threshold: 0.1, maxDiffRatio: 0.00082, maxMeanDelta: 0.496 },
-  // MS-19, measured 0.01776 / 1.058 and 0.01921 / 0.902 after the tuning of the preset numbers against the references.
-  'preset-marketplace': { threshold: 0.1, maxDiffRatio: 0.0222, maxMeanDelta: 1.32 },
+  // MS-19, measured 0.01889 / 1.141 (Marketplace's stronger rim, round 3) and 0.01921 / 0.902 after the tuning of the
+  // preset numbers against the references.
+  'preset-marketplace': { threshold: 0.1, maxDiffRatio: 0.0236, maxMeanDelta: 1.43 },
   'preset-rim': { threshold: 0.1, maxDiffRatio: 0.0241, maxMeanDelta: 1.13 },
 };
 

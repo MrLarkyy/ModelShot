@@ -122,10 +122,14 @@ grading share baked light.
 | preset      | key                                 | accents                                    | dome, backdrop                             | grade                                  |
 | ----------- | ----------------------------------- | ------------------------------------------ | ------------------------------------------ | -------------------------------------- |
 | Studio      | v0: above, behind right, warm white | none (black)                               | v0 grey dome, flat grey (0.14, 0.15, 0.17) | neutral                                |
-| Marketplace | front, above, warm                  | cool rim from behind, above; dim blue fill | dim blue dome; navy gradient, lighter low  | exposure 0, power 1.1, saturation 1.15 |
+| Marketplace | front, above, warm                  | bright rim behind right; dim blue fill     | dim blue dome; navy gradient, lighter low  | exposure 0, power 1.1, saturation 1.15 |
 | Rim         | weak, front                         | strong white rim from behind, above        | low dome; dark grey gradient               | power 1.25                             |
 
 Studio is the v0 look number for number (`LIGHT_RIG_V0`, `EDGE_LOOK_V0`; tested), so every golden from before look
 presets holds unregenerated. Every preset rounds edges at 30°, so switching presets never detects sharp edges again.
 Marketplace's numbers are matched by the look review page (`tools/harness/fixtures/review.html`,
-[testing.md](testing.md#look-presets)) against reference renders kept outside the repository.
+[testing.md](testing.md#look-presets)) against reference renders kept outside the repository. Its rim (behind, above, on
+the model's right, the key's side) is strong (about 10) and comes from behind the model as the review view (yaw 210,
+pitch 20) sees it: it lights the rounded edges along the left and top silhouettes as a thin bright line, top faces a
+little and the front and side faces facing the camera not at all. Being a diffuse light, the line takes the colour of
+the texture under it (near white on light textures).
