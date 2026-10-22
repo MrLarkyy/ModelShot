@@ -130,7 +130,7 @@ const at = <T extends { name: string }>(probes: readonly T[], name: string): T =
 };
 
 test.describe('path-tracer goldens', () => {
-  // 10.5-22.4 s on a SwiftShader runner (default timeout 30 s).
+  // 10.5-22.4 s on a SwiftShader runner (default timeout 30 s); MS-39's two loader scenes 5.2 and 3.5 s locally.
   test.describe.configure({ timeout: 120_000 });
   for (const golden of GOLDENS) {
     test(`${golden.name} matches its golden`, async ({ page }, testInfo) => {
@@ -529,7 +529,7 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
 });
 
 test.describe('transparency, shadows and sides (scene format rules)', () => {
-  // 11.2-22.5 s on a SwiftShader runner (default timeout 30 s).
+  // 11.2-22.5 s on a SwiftShader runner (default timeout 30 s); MS-39's sentinel and catcher tests 5.0 and 9.7 s locally.
   test.describe.configure({ timeout: 120_000 });
   test('light passes cut-out texels and opaque texels cast pixel-shaped shadows', async ({ page }) => {
     const { image } = await render(page, 'variant=alpha-plane&seed=1&samples=128');

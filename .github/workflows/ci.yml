@@ -31,8 +31,8 @@ jobs:
       - run: pnpm -r build
       - run: pnpm run test:unit
 
-  # The browser tests in 9 shards, each on its own VM with one Playwright worker (docs/testing.md, CI): 4 of the golden
-  # project, 2 of the pair project (the preview-vs-render pairing tests, about 11 minutes together) and 3 of the bake
+  # The browser tests in 10 shards, each on its own VM with one Playwright worker (docs/testing.md, CI): 5 of the golden
+  # project, 2 of the pair project (the preview-vs-render pairing tests, about 17 minutes together) and 3 of the bake
   # project (the baked lighting tests, 13-15 minutes together on a slow VM); either block would fill a
   # contiguous shard. One runner ran past the 20-minute limit with the whole suite.
   e2e:
@@ -42,10 +42,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: golden-1, project: golden, shard: '1/4' }
-          - { name: golden-2, project: golden, shard: '2/4' }
-          - { name: golden-3, project: golden, shard: '3/4' }
-          - { name: golden-4, project: golden, shard: '4/4' }
+          - { name: golden-1, project: golden, shard: '1/5' }
+          - { name: golden-2, project: golden, shard: '2/5' }
+          - { name: golden-3, project: golden, shard: '3/5' }
+          - { name: golden-4, project: golden, shard: '4/5' }
+          - { name: golden-5, project: golden, shard: '5/5' }
           - { name: pair-1, project: pair, shard: '1/2' }
           - { name: pair-2, project: pair, shard: '2/2' }
           - { name: bake-1, project: bake, shard: '1/3' }

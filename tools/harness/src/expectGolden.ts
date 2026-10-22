@@ -21,9 +21,34 @@ export interface FixtureInfo {
   rgba: string;
 }
 
+/** The fixture module sets `__msFixture` as it evaluates, before any scene work: a page without it after this long never ran it. */
+const FIXTURE_BOOT_MS = 20_000;
+
+/**
+ * Opens a fixture page. Its module graph is served by Vite on demand; a module request that failed (Vite's
+ * "Outdated Optimize Dep" after it re-optimised its dependencies mid-run) leaves the page loaded without `__msFixture`,
+ * and a plain wait would sit there until the test timeout (pt-gltf-contact, 120 s, in a full pathtracer.spec run). One
+ * reload gets the settled graph; a second failure names the page's errors.
+ */
 export async function openFixture(page: Page, url: string): Promise<FixtureInfo> {
-  await page.goto(url);
-  await page.waitForFunction(() => window.__msFixture !== undefined);
+  const errors: string[] = [];
+  const onError = (error: Error): void => void errors.push(error.message);
+  page.on('pageerror', onError);
+  try {
+    await page.goto(url);
+    const booted = () =>
+      page.waitForFunction(() => window.__msFixture !== undefined, undefined, { timeout: FIXTURE_BOOT_MS });
+    try {
+      await booted();
+    } catch {
+      await page.reload();
+      await booted().catch(() => {
+        throw new Error(`fixture ${url} did not boot after a reload; page errors: ${errors.join(' | ') || 'none'}`);
+      });
+    }
+  } finally {
+    page.off('pageerror', onError);
+  }
   const info = await page.evaluate(async () => {
     const fixture = window.__msFixture;
     if (!fixture) throw new Error('fixture API missing');
