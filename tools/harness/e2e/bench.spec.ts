@@ -85,8 +85,9 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
     return [fixture.timeToSamples(256), fixture.timeToSamples(256), fixture.timeToSamples(256)];
   });
 
-  // The final-render path (MS-18) on the same scene: 64 samples at 2x (256 x 256 traced pixels), the guides, a noise
-  // estimate at every checkpoint and the denoised resolve at 16, 32, 48 and 64, until the GPU finished; median of 3.
+  // The final-render path (MS-18) on the same scene: 64 samples at 2x (256 x 256 traced pixels) in one step, the
+  // guides, a noise estimate at every checkpoint from 2 to 64 and one denoised resolve at the end, until the GPU
+  // finished; median of 3.
   await openFixture(page, '/pt.html?scene=bench&size=128&samples=1&supersample=2&denoise=1');
   const ptQualityRuns = await page.evaluate(() => {
     const fixture = window.__msFixture;

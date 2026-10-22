@@ -504,6 +504,21 @@ widened.
   limits (0.00353, 0.953): framing 0 mismatches, 168 pixels differ, ratio 0.00256, mean delta 0.670 (the plain
   64-sample render measures 0.00307, 0.772).
 - **Lifetime**: `dispose()` after a denoised 2x request with a threshold leaves no WebGL object (`track=1`).
+- **Defaults**: `supersample=1&denoise=0` (the fields given explicitly) renders the bytes of the turntable request
+  without them.
+- **Emitter over black**: `variant=emissive-dark` (the bricks glowing at 4x the `emissive` variant over a copy of
+  their texture whose texels are sRGB 2, so the albedo floor 0.01 makes one sample's luminance variance about 1e6,
+  over half precision) at 1 sample, denoised against plain: of the 7 019 pixels above 150 levels in the plain render
+  none falls under 30 denoised, and no pixel over 30 turns black (under 2). SwiftShader did not show the NaN with the
+  half-float filter images either (its conversion does not yield Inf here); the test pins the outcome, the RGBA32F
+  filter and the skipped zero-weight taps remove the cause.
+- **Lost context**: a threshold request (0.01) whose context is lost inside the first noise readback (the fixture's
+  `loseDuringNoise`) stops after 2 samples with `converged` false and `noise` null; without the guard it reported
+  converged.
+- **Programs**: with `track=1`, a plain request leaves 2 live programs (trace, present); a threshold request adds
+  `noise` (3), a denoised 2x one `guide`, `denoise`, `resolve` (6); after a loss and restore only trace and present
+  are linked again, a plain render adds none, a threshold request `noise` again. The scale survives a loss:
+  `progress.supersample` 2 and `accumulationSize` 128 x 128 while the context is lost.
 
 Times on the local machine: the denoised 64-sample closeup page about 8-9 s against 5 s plain (most of the difference
 is the guide's 1024 rays at partial texels); the determinism test about 47 s.
@@ -688,9 +703,9 @@ round 7); its max was 750 ms then.
   `rt-bench-512` was first set, until a CI artefact allows 3-4x the CI median. Under 60 s locally, so the bench stays at 128 x 128.
   Real hardware (RTX 3080, ANGLE D3D11): 88 ms at 128 x 128, 234 ms at 512 x 512.
 - `timeToSamplesMs.pt-bench-128-n64-x2-denoised` (MS-18): the final-render path on the same scene, 64 samples at 2x
-  (256 x 256 traced), the guides, a noise estimate at every checkpoint and the denoised resolve at 16, 32, 48 and
-  64, until the GPU finished, median of 3. Local SwiftShader median 7209 ms (one bench run, where
-  `pt-bench-128-n256` measured 4703); max 73 000 ms is 10x, rounded up, as for `pt-bench-128-n256`, until a CI
+  (256 x 256 traced) in one step, the guides, a noise estimate at every checkpoint from 2 to 64 and one denoised
+  resolve at the end, until the GPU finished, median of 3. Local SwiftShader median 7209 ms (one bench run, where
+  `pt-bench-128-n256` measured 4703; 6657 and 4886 with RGBA32F filter images and lazy programs, round 2); max 73 000 ms is 10x, rounded up, as for `pt-bench-128-n256`, until a CI
   artefact allows 3-4x the CI median (the plan's 1.5x would fail on runners 3-5x slower than this machine).
 - `frameTimeMs.pt-load-200k`: `setScene` of the generated 200 000-triangle scene of
   `rt-load-first-frame-200k-order` (validate, flatten, BVH build in JavaScript, upload) plus its first sample. Local

@@ -47,11 +47,14 @@ requestAnimationFrame(frame);
   integer 1..4 (default 1), `denoise` a boolean (default `false`), `noiseThreshold` a number in (0, 1] (default none),
   with which `samples` is the maximum. Left out, the render is byte for byte the one without them. Anything else throws
   a `RangeError` naming the field.
-- `step(maxSamples = 1)`: draws up to `maxSamples` more samples, never past the request, presents the mean and returns
-  how many it drew. The caller paces it (there is no clock or animation loop inside); a no-op returning 0 without a
-  camera, when complete, cancelled, while the context is lost or after `dispose()`.
+- `step(maxSamples = 1)`: draws up to `maxSamples` more samples, never past the request, presents the image and
+  returns how many it drew. The caller paces it (there is no clock or animation loop inside); a no-op returning 0
+  without a camera, when complete, converged, cancelled, while the context is lost or after `dispose()`. The first
+  step of a request that needs a quality program links it (Render quality), so a shader failure there throws
+  `PathTracerError` `SHADER_COMPILE` / `SHADER_LINK` from `step`.
 - `samplesDone`, `targetSamples`, `running` (false once complete, converged or cancelled); `cancel()` stops the
-  request and keeps the image of the samples done.
+  request and keeps the image shown: the mean of the samples done, or with `supersample` or `denoise` the image
+  resolved at the end of the latest step that crossed a checkpoint (Render quality), which may hold fewer samples.
 - `progress`: `RenderProgress` `{ samplesDone, targetSamples, supersample, noise, converged, elapsedMs, remainingMs }`.
   `supersample` is the scale traced at, `noise` the 0.99 quantile of the noise estimate at the last checkpoint (`null`
   without denoise or threshold, and before sample 2), `elapsedMs` from the request's first `step` to the end of its
@@ -107,7 +110,10 @@ context loss.
 ## Render quality
 
 `supersample`, `denoise` and `noiseThreshold` on `RenderRequest` (MS-18; MS-22's export passes them per image). The
-default request (none of them) runs none of the passes below and allocates none of their targets.
+default request (none of them) runs none of the passes below, allocates none of their targets and links none of
+their programs: the context links `trace` and `present`; `guide` and `denoise` are linked on the first step of a
+denoised request, `resolve` of a supersampled or denoised one, `noise` of one with denoise or a threshold, and a
+restore links only what the current request needs again (`TracerPrograms`).
 
 1. **Supersampling**: the trace runs at s·width × s·height (`u_viewportSize` and the backdrop's frame height scaled, so
    the view and the gradient are the same) with the jitter of every traced pixel, and resolve takes the box mean of
@@ -136,7 +142,9 @@ default request (none of them) runs none of the passes below and allocates none 
    propagated through the iterations; the 0.02 keeps a cavity no sample lit from taking nothing from its neighbours).
    Only the light is smoothed: resolve multiplies the guide albedo in again, so texels keep their colour and their
    edges, and the filter stops at a silhouette (normal, depth), at a surface seen through a cut-out (depth) and at a
-   shadow edge beyond the noise. RGBA16F ping-pong at the traced size. The constants are measured against the
+   shadow edge beyond the noise. RGBA32F ping-pong at the traced size: with the albedo floored at 0.01 the variance
+   of one sample of a bright emitter over a black texel exceeds half precision. A tap of weight 0 adds nothing, so
+   no 0 · Inf can make a NaN. The constants are measured against the
    2048-sample reference ([testing.md](testing.md#render-quality)).
 5. **Resolve** (`resolve.frag`): box-downsamples the denoised radiance times the albedo (or the mean, undenoised) into
    a canvas-size RGBA32F image; present reads it with a sample count of 1.
@@ -152,8 +160,13 @@ the end of a `step` that crossed a checkpoint or finished, resolve runs (with th
 checkpoints the image shown is the last resolved one. So denoising never runs per sample, and a readback is 1/16 of
 the canvas.
 
-Memory: about 72 bytes per traced pixel with denoising (32 the sums, 8 the moments, 16 the guides, 16 the filter
-images), so the 2^22 cap is about 300 MB, plus 16 bytes per canvas pixel for the resolved image.
+Memory: about 88 bytes per traced pixel with denoising (32 the sums, 8 the moments, 16 the guides, 32 the filter
+images), so the 2^22 cap is about 370 MB, plus 16 bytes per canvas pixel for the resolved image.
+
+The scale is computed by `start`, `resize` and a restore from the target limits queried once with the context, and
+the targets are made at it, so `progress.supersample` and `accumulationWidth` report the scale traced (also while
+the context is lost). A noise readback that finds the context lost is discarded: zeros would pass any threshold, so a
+loss never reads as convergence (tested).
 
 ## Determinism
 
@@ -332,8 +345,8 @@ DEFAULT_LOOK, onProgress })` resolves `{ applied, warnings, lighting }`. The loo
 Drawing pauses (`step` returns 0) while the context is lost. On restore every GPU resource is rebuilt from the
 retained CPU data (packed geometry, material table, layer plan and decoded images) and the current request restarts at
 sample 0; rendering it again gives the same bytes (tested against the golden). The quality path's targets (moments,
-guides, filter, resolved image, noise blocks) are recreated on the first step after the restore and the guides drawn
-again, so a denoised 2x render also gives its bytes again (tested); `dispose()` deletes them with the rest.
+guides, filter, resolved image, noise blocks) and the programs the request needs are recreated on the first step
+after the restore and the guides drawn again, so a denoised 2x render also gives its bytes again (tested); `dispose()` deletes them with the rest.
 
 ## Budgets
 
