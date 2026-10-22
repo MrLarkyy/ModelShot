@@ -137,6 +137,17 @@ describe('path tracer shaders', () => {
     expect(denoise).toContain('const float KERNEL[3] = float[3](0.375, 0.25, 0.0625);');
   });
 
+  it('skips a tap of weight 0 after weighting it and before adding it, so no 0 * Inf reaches the sums', () => {
+    const denoise = pathTracerProgramSource('denoise').fragment;
+    const weighted = denoise.indexOf('w *= wNormal * wAlbedo * wLuminance * wDepth;');
+    const skip = denoise.indexOf('if (!(w > 0.0)) continue;');
+    const added = denoise.indexOf('filtered += w * c.rgb;');
+    expect(weighted).toBeGreaterThan(-1);
+    expect(skip).toBeGreaterThan(weighted);
+    expect(added).toBeGreaterThan(skip);
+    expect(denoise.match(/if \(!\(w > 0\.0\)\) continue;/g)).toHaveLength(1);
+  });
+
   it('filters demodulated radiance and multiplies the same floored albedo back', () => {
     const denoise = pathTracerProgramSource('denoise').fragment;
     expect(denoise).toContain('sum / u_samples / texelFetch(u_albedo, p, 0).rgb');
