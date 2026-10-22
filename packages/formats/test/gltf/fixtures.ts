@@ -4,7 +4,7 @@ import { fromBase64 } from './gltfBuilder';
 
 const sources = import.meta.glob<string>('../fixtures/gltf/*.gltf', { query: '?raw', import: 'default', eager: true });
 
-export const GLTF_FIXTURE_NAMES = ['scene-nodes', 'external'] as const;
+export const GLTF_FIXTURE_NAMES = ['scene-nodes', 'external', 'contact-shadow'] as const;
 export type GltfFixtureName = (typeof GLTF_FIXTURE_NAMES)[number];
 
 export function gltfFixture(name: GltfFixtureName): string {

@@ -260,6 +260,10 @@ importers:
       '@modelshot/scene':
         specifier: workspace:*
         version: link:../scene
+    devDependencies:
+      '@types/node':
+        specifier: ~22.20.5
+        version: 22.20.5
 
   packages/scene:
     devDependencies:

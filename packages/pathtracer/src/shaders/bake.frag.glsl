@@ -18,10 +18,12 @@ precision highp sampler2DArray;
 
 // The running sum of earlier samples (AccumulationTargets).
 uniform highp sampler2D u_previous;
-// Per lightmap texel its chart + 1 (chartTable.ts); the chart records and their triangle lists.
+// Per lightmap texel its chart + 1 (chartTable.ts); the chart records, their triangle lists and the world charts'
+// triangle corners in chart-local texels.
 uniform highp usampler2D u_chartIndex;
 uniform highp sampler2D u_charts;
 uniform highp sampler2D u_chartTriangles;
+uniform highp sampler2D u_chartCorners;
 uniform uint u_seed;
 uniform uint u_sample;
 // The shadow catcher pass: texel (x, z) of a u_catcherSize grid over u_catcherRect at height u_catcherY.
@@ -36,6 +38,9 @@ out vec4 outSum;
 
 const int CHART_TEXELS = 4;
 const int CHART_MODE_TEXEL = 0;
+const int CHART_MODE_VERTEX = 1;
+const int CHART_MODE_WORLD = 2;
+const int CORNER_TEXELS = 2;
 const int MAX_CHART_TRIANGLES = 32;
 // Random dimensions: 0-1 the point in the texel, 2-3 the key cone, 4-5 the fill direction, 6 partial texels.
 const uint KEY_DIMENSION = 2u;
@@ -49,15 +54,25 @@ vec2 cornerUv(int triangle, int corner) {
   return dataTexel(u_triAttributes, base + 3).yz;
 }
 
-// Weights of corners 1 and 2 of uv in the triangle's UV corners (unclamped; zero area gives a large negative).
-vec2 uvBarycentric(int triangle, vec2 uv) {
-  vec2 a = cornerUv(triangle, 0);
-  vec2 e1 = cornerUv(triangle, 1) - a;
-  vec2 e2 = cornerUv(triangle, 2) - a;
-  vec2 d = uv - a;
+// Weights of corners b and c of point p in triangle (a, b, c) (unclamped; zero area gives a large negative).
+vec2 barycentric(vec2 a, vec2 b, vec2 c, vec2 p) {
+  vec2 e1 = b - a;
+  vec2 e2 = c - a;
+  vec2 d = p - a;
   float det = e1.x * e2.y - e1.y * e2.x;
   if (abs(det) < 1.0e-20) return vec2(-1.0e9);
   return vec2(d.x * e2.y - d.y * e2.x, e1.x * d.y - e1.y * d.x) / det;
+}
+
+vec2 uvBarycentric(int triangle, vec2 uv) {
+  return barycentric(cornerUv(triangle, 0), cornerUv(triangle, 1), cornerUv(triangle, 2), uv);
+}
+
+// The same for a world chart's triangle, whose corners the chart table lists in chart-local texels.
+vec2 worldBarycentric(int corners, vec2 point) {
+  vec4 ab = dataTexel(u_chartCorners, corners * CORNER_TEXELS);
+  vec4 c = dataTexel(u_chartCorners, corners * CORNER_TEXELS + 1);
+  return barycentric(ab.xy, ab.zw, c.xy, point);
 }
 
 int chartTriangle(int entry) {
@@ -104,16 +119,20 @@ vec4 bakeChart(ivec2 texel, uint key) {
   int count = int(info.y);
   int triangle = -1;
   vec2 b = extra.xy;
-  if (int(info.w) == CHART_MODE_TEXEL) {
+  int mode = int(info.w);
+  if (mode != CHART_MODE_VERTEX) {
     vec2 jitter = vec2(unitRandom(key, 0u, 0u), unitRandom(key, 1u, 0u));
-    vec2 uv = uvMap.xy + (local + jitter) * uvMap.zw;
+    bool world = mode == CHART_MODE_WORLD;
+    // Texel mode: the point's UV; world mode: the chart-local point itself.
+    vec2 point = world ? local + jitter : uvMap.xy + (local + jitter) * uvMap.zw;
+    int corners = int(uvMap.x);
     // The triangle holding the point, else the one it is nearest to inside (a texel sticking out of the face).
     float best = -3.0e38;
     for (int i = 0; i < MAX_CHART_TRIANGLES; i++) {
       if (i >= count) break;
       int candidate = chartTriangle(first + i);
       if (candidate < 0) continue;
-      vec2 w = uvBarycentric(candidate, uv);
+      vec2 w = world ? worldBarycentric(corners + i, point) : uvBarycentric(candidate, point);
       float inside = min(min(w.x, w.y), 1.0 - w.x - w.y);
       if (inside > best) {
         best = inside;

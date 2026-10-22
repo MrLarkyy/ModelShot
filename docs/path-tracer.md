@@ -318,9 +318,12 @@ DEFAULT_LOOK, onProgress })` resolves `{ applied, warnings, lighting }`. The loo
   lightmap (`SCENE_TOO_LARGE` over its limit, before the triangle limit), flattens, builds the BVH, packs the data,
   decodes the textures (header limits, a `Blob`, never a fetch), and checks its GL capabilities
   (`WEBGL2_UNAVAILABLE`, `FLOAT_TARGETS_UNAVAILABLE`, `HIGHP_UNAVAILABLE`).
-- Per lightmap texel and sample: a point jittered in the texel (texel charts; the vertex itself, just inside its
-  corner, for vertex charts) found through the chart table (UV of the texel point, barycentrics of the triangle that
-  holds it, `surfaceAt`), one key ray in the cone (`shadowTransmittance`, skipping the texel's triangle, only where its
+- Per lightmap texel and sample: a point jittered in the texel (texel and world charts; the vertex itself, just inside
+  its corner, for vertex charts) found through the chart table (`chartTable.ts`: per chart a record of position,
+  UV map, triangle list, back offset and mode 0 texel, 1 vertex or 2 world; world charts (MS-41) also list their
+  triangles' corners in chart-local texels in a corners texture, 2 texels per triangle, whose first entry the record
+  holds): the UV of the texel point, or for a world chart the point itself, then the barycentrics of the triangle
+  that holds it (else the one it is nearest to inside), `surfaceAt`, one key ray in the cone (`shadowTransmittance`, skipping the texel's triangle, only where its
   side faces the key) and one cosine-weighted fill ray around the shading normal (escaped: `environmentRadiance`,
   below the surface 0) divided by `hemisphereFill(n)`. No interreflection. Catcher texels do the same on the plane
   with the normal up.
@@ -372,6 +375,6 @@ measured on real hardware yet.
 Temporal (video) denoising, emission from the scene format (MS-32), user lights (MS-33; the look's key,
 accents and dome here), an image-based environment (the dome is analytic), geometric
 bevels (edges are rounded in shading only), a Web Worker or WASM build of the render's BVH (the bake builds its own in its worker), glossy or
-transmissive materials, textured environments, and WebGPU. The bake has no interreflection, no animated GI, and bakes
-untextured meshes per vertex (no world-density charts yet), so a large untextured ground such as alpha-plane's shows no
-baked shadow in the preview while the render has one.
+transmissive materials, textured environments, and WebGPU. The bake has no interreflection and no animated GI;
+untextured and smooth meshes of more than 4096 triangles are still baked per vertex (world-density charts, MS-41,
+stop at that gate).

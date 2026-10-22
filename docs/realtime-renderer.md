@@ -65,11 +65,21 @@ if (lighting) renderer.setLighting(lighting);
   grid (`faceTexelRange` of its UV rectangle), so light changes per texel like the albedo, rotated or mirrored UVs
   included. Faces sharing atlas cells each get their own chart; a double-sided face gets a second chart for its back,
   right after the front one. A mesh with a vertex shared by triangles of different UV maps (smooth glTF and OBJ
-  meshes), an untextured face, a degenerate UV triangle or a chart of more than `MAX_CHART_TRIANGLES` (32) triangles
-  is baked per vertex instead: one texel per vertex (two when double-sided), interpolated. The atlas is
-  `LIGHTMAP_WIDTH` (2048) wide; when the charts would need more than `MAX_LIGHTMAP_TEXELS` (2²¹) texels, texel charts
-  take 2, 4, … texture texels per lightmap texel, and when even that fails `setScene` rejects with `RendererError`
-  `SCENE_TOO_LARGE` (path `meshes`) before allocating anything.
+  meshes), an untextured face (a glTF base colour swatch included), a degenerate UV triangle or a chart of more than
+  `MAX_CHART_TRIANGLES` (32) triangles gets **world charts** instead (MS-41), when it has at most
+  `MAX_WORLD_MESH_TRIANGLES` (4096) triangles: edge-connected coplanar triangles of one group (edges matched by
+  position, so faces with their own vertices join; only an edge of exactly two triangles joins, so a fan of thousands
+  on one edge costs linear time), at most 32 per chart, projected onto their plane along the
+  triangle edge that bounds them tightest, at one **world texel** for the whole scene: the diagonal of the bounds of the
+  visible meshes' kept triangles at rest (a vertex no triangle uses does not count) / `WORLD_TEXELS_PER_EXTENT` (256), never finer than the finest texture texel of a texel
+  chart. A two-triangle ground of a glTF or OBJ scene so gets a shadow where the box on it stands, not one light value
+  per corner. A denser mesh is baked per vertex: one texel per vertex (two when double-sided), interpolated. The atlas
+  is `LIGHTMAP_WIDTH` (2048) wide; when the charts would need more than `MAX_LIGHTMAP_TEXELS` (2²¹) texels, the world
+  texel doubles (up to 256 times) first, so world light never costs a textured face its resolution; then the
+  world-charted meshes fall back to per-vertex light; then texel charts take 2, 4, … texture texels per lightmap
+  texel, and when even that fails `setScene` rejects with `RendererError` `SCENE_TOO_LARGE` (path `meshes`) before
+  allocating anything. A scene without a world-charted mesh lays out exactly as before world charts existed (same
+  `layoutKey`).
 - **Values.** RGBA16F (`BakedLighting`): rgb the fill as a multiple of the unoccluded fill `hemisphereFill(n)`, a the
   key's visibility. Texels of no chart and vertices of no triangle hold 1, so an anti-aliasing tap outside a face, or
   a degenerate triangle, never darkens. `shadeBaked` (`shading.glsl`) is `albedo × (hemisphereFill(n) × rgb +
@@ -78,14 +88,20 @@ u_lookKeyColor × max(n·u_lookKeyDirection, 0) × a + fillLight(n)) + rimLight(
   exactly.
 - **Sampling.** Texel charts are read with the albedo's own seam taps (`seamTaps` of `texelSample.glsl`): the same
   2 × 2 texels and weights, clamped to the chart, so light and albedo change at the same pixels and the bake adds no
-  shimmer of its own. Vertex charts are fetched in `mesh.vert.glsl` and interpolated; the back pass reads the back
+  shimmer of its own. World charts are read bilinearly at their own grid (an untextured face has no texel grid to
+  keep; seam taps would show its blocks), the 2 × 2 texels clamped to the chart: a world-charted mesh is drawn
+  de-indexed, a vertex per triangle corner (`LightmapLayout.cornerData`, composed with the sharp-edge split, so edge
+  rounding stays), each corner carrying its point in the lightmap and its chart's rectangle (attribute 11, uploaded
+  only for a batch with world charts and left disabled elsewhere, as no other vertex reads it); the
+  vertex shader passes them in the vertex-light varyings, as two more varyings would exceed the minimum of 15 next to
+  the exact depth key's. Vertex charts are fetched in `mesh.vert.glsl` and interpolated; the back pass reads the back
   chart. The light is sampled before the first `discard` (derivatives).
 - **Kept across poses.** `setScene` keeps the lighting when the new document has the same `layoutKey` (the same model
   in another pose), so the old light shows until the re-bake's first update; another layout drops it. A document that
   differs from the shown one only in its pose (`poseOnlyChange`: the same meshes, materials and textures arrays, nodes
   with the same parents, pivots, rest rotations, visibility and meshes) keeps the layout without laying it out again;
-  the renderer keeps only what it reads of a layout (`LightmapLayoutSummary`: sizes, downscale, per-vertex data,
-  finest texel, key), not its charts. `setLighting`
+  the renderer keeps only what it reads of a layout (`LightmapLayoutSummary`: sizes, downscale, per-vertex and
+  per-corner data, finest texel, key), not its charts. World charts come from rest positions, so a pose keeps them. `setLighting`
   refuses (returns `false`, changes nothing) lighting whose layout key, size or data length does not match the current
   layout, whose `lightingKey` is not the current look's, or whose catcher is malformed (`checkLighting`).
 - **Upload in bands.** `setLighting` uploads nothing itself: each `render()` (or `advanceLighting()`, which uploads

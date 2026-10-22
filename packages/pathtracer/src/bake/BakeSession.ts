@@ -40,6 +40,7 @@ interface SceneTextures {
   readonly gpu: GpuScene;
   readonly charts: WebGLTexture;
   readonly chartTriangles: WebGLTexture;
+  readonly chartCorners: WebGLTexture;
   readonly chartIndex: WebGLTexture;
   readonly model: AccumulationTargets;
   readonly catcher: AccumulationTargets | null;
@@ -96,6 +97,7 @@ export class BakeSession {
       gpu,
       charts: uploadData(gl, scene.charts.charts),
       chartTriangles: uploadData(gl, scene.charts.triangles),
+      chartCorners: uploadData(gl, scene.charts.corners),
       chartIndex,
       model: new AccumulationTargets(gl, scene.charts.width, scene.charts.height),
       catcher: scene.catcher ? new AccumulationTargets(gl, scene.catcher.width, scene.catcher.height) : null,
@@ -137,6 +139,7 @@ export class BakeSession {
       ['u_chartIndex', gl.TEXTURE_2D, textures.chartIndex],
       ['u_charts', gl.TEXTURE_2D, textures.charts],
       ['u_chartTriangles', gl.TEXTURE_2D, textures.chartTriangles],
+      ['u_chartCorners', gl.TEXTURE_2D, textures.chartCorners],
     ];
     bound.forEach(([name, target, texture], i) => {
       gl.activeTexture(gl.TEXTURE0 + i);
@@ -194,7 +197,8 @@ export class BakeSession {
     if (!scene) return;
     const gl = this.gl;
     disposeGpuScene(gl, scene.gpu);
-    for (const texture of [scene.charts, scene.chartTriangles, scene.chartIndex]) gl.deleteTexture(texture);
+    for (const texture of [scene.charts, scene.chartTriangles, scene.chartCorners, scene.chartIndex])
+      gl.deleteTexture(texture);
     scene.model.dispose();
     scene.catcher?.dispose();
     this.scene = null;

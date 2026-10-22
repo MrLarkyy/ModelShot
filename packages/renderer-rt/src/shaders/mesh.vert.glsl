@@ -10,6 +10,8 @@ layout(location = 8) in vec4 a_lightmap;
 // Distances to the triangle's sharp-edge slots and their angles (sharpEdges of @modelshot/scene, batchScene.ts).
 layout(location = 9) in vec4 a_edgeDistances;
 layout(location = 10) in vec4 a_edgeAngles;
+// World charts: the chart's rectangle in the lightmap (x, y, width, height), the same on a triangle's corners.
+layout(location = 11) in vec4 a_lightmapChart;
 
 uniform mat4 u_model;
 // Inverse transpose of u_model's upper 3x3 up to a positive factor (mat4NormalMatrix); node scale makes it differ.
@@ -27,7 +29,9 @@ out vec2 v_uv;
 // Every vertex of a face carries the same rectangle; flat avoids interpolation error at the clamp bounds.
 flat out vec4 v_uvRect;
 flat out vec4 v_lightmap;
-// Vertex charts: the vertex's light for the front and the back side.
+// Vertex charts: the vertex's light for the front and the back side. World charts reuse them, as two more varyings
+// would pass the minimum MAX_VARYING_VECTORS (15) with the exact depth key's: the corner's lightmap point in xy, and
+// the chart rectangle.
 out vec4 v_vertexLight;
 out vec4 v_vertexLightBack;
 out vec3 v_worldPosition;
@@ -49,6 +53,9 @@ void main() {
     ivec2 texel = ivec2(a_lightmap.xy);
     v_vertexLight = texelFetch(u_lightmap, texel, 0);
     v_vertexLightBack = texelFetch(u_lightmap, texel + ivec2(int(a_lightmap.w), 0), 0);
+  } else if (a_lightmap.z == -2.0) {
+    v_vertexLight = vec4(a_lightmap.xy, 0.0, 0.0);
+    v_vertexLightBack = a_lightmapChart;
   }
   vec4 world = u_model * vec4(a_position, 1.0);
   v_worldPosition = world.xyz;
