@@ -70,6 +70,9 @@ const DENOISE_ITERATIONS = 5;
 // Camera rays per pixel of the denoiser's guides, and where one meets a partial texel (guide.frag).
 const GUIDE_RAYS = 64;
 const PARTIAL_GUIDE_RAYS = 1024;
+// A guide pixel at a partial texel traces 1024 camera rays, a trace pixel about ten rays per sample: the guide draws
+// in tiles this many times narrower (64 times fewer pixels), so its draw calls stay as short as a sample's.
+const GUIDE_TILE_DIVISOR = 8;
 // Texture units: the scene data takes 1..5 in the trace and the guide.
 const UNIT_SUM = 0;
 const UNIT_MOMENTS = 6;
@@ -468,7 +471,8 @@ export class PathTracer {
       gl.uniform1ui(gpu.programs.guide.uniform('u_guideRays'), GUIDE_RAYS);
       gl.uniform1ui(gpu.programs.guide.uniform('u_partialGuideRays'), PARTIAL_GUIDE_RAYS);
       gl.bindFramebuffer(gl.FRAMEBUFFER, extra.guide.framebuffer);
-      this.drawTiles(tiles);
+      const guideTile = Math.max(16, Math.floor(this.tileSize / GUIDE_TILE_DIVISOR));
+      this.drawTiles(sampleTiles(targets.width, targets.height, guideTile));
       this.guided = true;
     }
     this.bindTrace(gpu, camera, request.seed, targets);

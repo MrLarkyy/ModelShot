@@ -118,7 +118,7 @@ default request (none of them) runs none of the passes below and allocates none 
 2. **Moments** (denoise or a threshold): the trace writes a second target (`layout(location = 1)`, R32F, ping-pong like
    the sum, gated by `u_moments`) with the running sum of each sample's squared Rec. 709 luminance, so each pixel has
    the variance of its mean. Exact float adds in sample order, as the radiance sum.
-3. **Guides** (denoise), once per request on its first step (`guide.frag`, tiled like the trace): the mean albedo
+3. **Guides** (denoise), once per request on its first step (`guide.frag`, in tiles an eighth of `tileSize` across, at least 16, as a pixel may trace 1024 rays): the mean albedo
    (floored at 0.01), shading normal and view depth of 64 camera rays per pixel through the points of a
    (0,2)-sequence (Van der Corput by Sobol', rotated per pixel), into two RGBA16F targets. Each ray accepts partial
    texels with the trace's rule and the key of sample i, so a cut-out texel is never seen; a pixel whose rays met a
