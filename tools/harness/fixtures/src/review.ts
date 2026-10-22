@@ -11,7 +11,8 @@ import { sceneTriangles } from './sceneTriangles';
 // The look review page (MS-19): a model the user picks (read from the file input, nothing fetched) or the harness
 // player, under a look preset, side by side in the baked preview and the path tracer, each downloadable as a PNG for
 // a comparison with reference images outside the repository. Harness only, never part of a build. URL parameters:
-// preset (default studio), samples (render samples, default 256), size (CSS pixels, default 512). The camera fits the
+// preset (default studio), samples (render samples, default 256), size (CSS pixels, default 512), yaw and pitch (the
+// form's initial values, defaults 210 and 20; the form checks them). The camera fits the
 // model's outline (its vertices) to the view by default, the app's bounding-sphere framing when unticked. It renders
 // once on load and sets data-state="done" on the body when both images are complete.
 
@@ -50,6 +51,8 @@ const status = element<HTMLElement>('status');
 
 for (const look of Object.values(LOOK_PRESETS)) presetSelect.add(new Option(look.name, look.id));
 presetSelect.value = params.get('preset') ?? DEFAULT_LOOK.id;
+yawInput.value = params.get('yaw') ?? yawInput.value;
+pitchInput.value = params.get('pitch') ?? pitchInput.value;
 
 const canvas = (host: string): HTMLCanvasElement => {
   const c = document.createElement('canvas');

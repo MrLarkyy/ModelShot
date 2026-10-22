@@ -10,7 +10,18 @@ import { goldenPath } from '../src/goldenStore';
 import { lookPresetFile } from '../src/lookPresetFile';
 import { expect, test } from '../src/harnessTest';
 import { differenceMask, pixelsFarFrom } from '../src/edgeProbes';
-import { decodePng, hueMatch, luminance, modelBox, near, pixel, sentinelPixels, type Image } from '../src/imageMetrics';
+import {
+  decodePng,
+  hueMatch,
+  luminance,
+  modelBox,
+  near,
+  pixel,
+  sentinelPixels,
+  silhouettePixels,
+  whiteCount,
+  type Image,
+} from '../src/imageMetrics';
 import { traceMainThread } from '../src/mainThreadTrace';
 import { shadowStep } from '../src/shadowStep';
 import { edgesSceneSharpEdges } from '../fixtures/src/edgesScene';
@@ -316,6 +327,33 @@ test.describe('look presets', () => {
     expect((await readPng(page, info)).equals(marketplace), 'a rejected look changes nothing').toBe(true);
     expect(await set('studio')).toBe('ok');
     expect((await readPng(page, info)).equals(studio), 'back to Studio: the first bytes').toBe(true);
+  });
+
+  /**
+   * The view-relative rim never blows out a camera-facing face: the held-cube player under Marketplace, unbaked (the
+   * bake only darkens), 512 px, pitch 20, a turntable of 12 yaws. Blown out: every channel at 250 or more; the limit is
+   * the measured worst share x 1.25 and never 2 % of the model. Each view keeps a near-white silhouette line,
+   * at least the fewest measured / 1.25.
+   */
+  test('Marketplace: no blown-out face from any orbit yaw, a white silhouette line from every one', async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    // Measured: no blown-out pixel from any yaw; the fewest white silhouette pixels 107, at yaw 0 (the back).
+    const worstShare = 0;
+    const minWhite = 85;
+    const lines: string[] = [];
+    for (let yaw = 0; yaw < 360; yaw += 30) {
+      const { image } = await render(page, `variant=preset-marketplace&yaw=${yaw}&bake=0&size=512`);
+      const { model, silhouette } = silhouettePixels(image, { backdropTolerance: 4, reach: 2 });
+      const share = whiteCount(model, 249) / model.length;
+      const white = whiteCount(silhouette, 200);
+      lines.push(`yaw ${yaw}: blown ${share.toFixed(5)}, white ${white}`);
+      expect(share, `yaw ${yaw}`).toBeLessThanOrEqual(worstShare);
+      expect(share, `yaw ${yaw}`).toBeLessThan(0.02);
+      expect(white, `yaw ${yaw}`).toBeGreaterThanOrEqual(minWhite);
+    }
+    console.log(`[rt probe] marketplace turntable: ${lines.join('; ')}`);
   });
 
   test('a lost context comes back with the look', async ({ page }) => {

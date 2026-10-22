@@ -115,3 +115,55 @@ export function silhouetteMismatches(
   }
   return { mismatches, silhouette };
 }
+
+/** How `silhouettePixels` tells the model from the backdrop and how far from it the silhouette reaches. */
+export interface SilhouetteOptions {
+  /** A pixel within this many levels per channel of its row's backdrop (column 1) is backdrop. */
+  readonly backdropTolerance: number;
+  /** A model pixel with a backdrop pixel at most this many pixels away in x and y is on the silhouette. */
+  readonly reach: number;
+}
+
+/**
+ * The model's pixels and, among them, its silhouette's, as RGB: the backdrop of each row is the colour of its pixel
+ * in column 1 (a flat or vertical-gradient backdrop with the model clear of the left edge), and a border of `reach`
+ * pixels around the image is left out.
+ */
+export function silhouettePixels(
+  image: Image,
+  { backdropTolerance, reach }: SilhouetteOptions,
+): { model: [number, number, number][]; silhouette: [number, number, number][] } {
+  const { width, height } = image;
+  const backdrop = new Uint8Array(width * height);
+  for (let y = 0; y < height; y++) {
+    const row = pixel(image, Math.min(1, width - 1), y);
+    for (let x = 0; x < width; x++) backdrop[y * width + x] = near(pixel(image, x, y), row, backdropTolerance) ? 1 : 0;
+  }
+  const model: [number, number, number][] = [];
+  const silhouette: [number, number, number][] = [];
+  for (let y = reach; y < height - reach; y++) {
+    for (let x = reach; x < width - reach; x++) {
+      if (backdrop[y * width + x]) continue;
+      const rgb = pixel(image, x, y);
+      model.push(rgb);
+      let edge = false;
+      for (let dy = -reach; dy <= reach && !edge; dy++) {
+        for (let dx = -reach; dx <= reach; dx++) {
+          if (backdrop[(y + dy) * width + x + dx]) {
+            edge = true;
+            break;
+          }
+        }
+      }
+      if (edge) silhouette.push(rgb);
+    }
+  }
+  return { model, silhouette };
+}
+
+/** Pixels whose every channel is above `level` (near-white at 200, blown out at 249). */
+export function whiteCount(pixels: readonly (readonly number[])[], level: number): number {
+  let count = 0;
+  for (const [r = 0, g = 0, b = 0] of pixels) if (Math.min(r, g, b) > level) count++;
+  return count;
+}

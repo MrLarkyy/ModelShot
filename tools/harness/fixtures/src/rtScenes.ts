@@ -217,6 +217,8 @@ export const RT_VARIANTS: Readonly<Record<string, Partial<RtView>>> = {
   // Look presets (MS-19) on the held-cube player, baked; paired with the path tracer's renders of the same look.
   'preset-marketplace': { scene: 'player-hold', yawDeg: 210, pitchDeg: 20, preset: 'marketplace', bake: 64 },
   'preset-rim': { scene: 'player-hold', yawDeg: 210, pitchDeg: 20, preset: 'rim', bake: 64 },
+  // The app's default orbit yaw: the view-relative rim lights the screen-left silhouettes from here too.
+  'preset-marketplace-yaw30': { scene: 'player-hold', yawDeg: 30, pitchDeg: 20, preset: 'marketplace', bake: 64 },
   'preset-marketplace-fallback': {
     scene: 'player-hold',
     yawDeg: 210,

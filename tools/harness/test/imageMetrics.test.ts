@@ -5,6 +5,8 @@ import {
   modelBox,
   sentinelPixels,
   silhouetteMismatches,
+  silhouettePixels,
+  whiteCount,
   type Image,
 } from '../src/imageMetrics';
 
@@ -65,5 +67,41 @@ describe('image metrics', () => {
     const moved = image(16, 16, (x, y) => square(9, 9, 3, [200, 40, 210])(x, y) ?? gradient(y));
     expect(silhouetteMismatches(img, img, row).mismatches).toBe(0);
     expect(silhouetteMismatches(img, moved, row).mismatches).toBeGreaterThan(0);
+  });
+});
+
+describe('silhouette pixels', () => {
+  // A gradient backdrop (each row its own colour, every other pixel 3 levels off), a red square with a white left
+  // column, clear of the left edge.
+  const row = (y: number) => [20 + y, 22 + y, 26 + y];
+  const img = (): Image =>
+    image(20, 20, (x, y) => {
+      if (x < 6 || x >= 14 || y < 6 || y >= 14) return x === 1 || (x + y) % 2 ? row(y) : row(y + 3);
+      return x === 6 ? [230, 225, 240] : [200, 30, 40];
+    });
+
+  it('splits model from a gradient backdrop within the tolerance and finds the silhouette within reach', () => {
+    const { model, silhouette } = silhouettePixels(img(), { backdropTolerance: 4, reach: 2 });
+    expect(model).toHaveLength(64);
+    // Reach 2: every pixel of the 8 x 8 square but its 4 x 4 core.
+    expect(silhouette).toHaveLength(64 - 16);
+    expect(silhouettePixels(img(), { backdropTolerance: 4, reach: 1 }).silhouette).toHaveLength(64 - 36);
+    // Tolerance 2: the backdrop's 3-level speckle counts as model.
+    expect(silhouettePixels(img(), { backdropTolerance: 2, reach: 2 }).model.length).toBeGreaterThan(64);
+  });
+
+  it('counts pixels whose every channel is above a level', () => {
+    const { silhouette } = silhouettePixels(img(), { backdropTolerance: 4, reach: 2 });
+    expect(whiteCount(silhouette, 200)).toBe(8);
+    expect(whiteCount(silhouette, 229)).toBe(0);
+    expect(
+      whiteCount(
+        [
+          [255, 255, 250],
+          [255, 249, 255],
+        ],
+        249,
+      ),
+    ).toBe(1);
   });
 });

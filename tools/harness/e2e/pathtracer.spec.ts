@@ -19,6 +19,8 @@ import {
   pixel,
   sentinelPixels,
   silhouetteMismatches,
+  silhouettePixels,
+  whiteCount,
   type BackdropRow,
   type Image,
 } from '../src/imageMetrics';
@@ -75,7 +77,11 @@ const GOLDENS: readonly PathTracedGoldenSpec[] = [
 ];
 
 /** The look preset of a fixture variant (rtScenes.ts RT_VARIANTS), Studio unless the variant names one. */
-const VARIANT_PRESET: Readonly<Record<string, string>> = { 'preset-marketplace': 'marketplace', 'preset-rim': 'rim' };
+const VARIANT_PRESET: Readonly<Record<string, string>> = {
+  'preset-marketplace': 'marketplace',
+  'preset-marketplace-yaw30': 'marketplace',
+  'preset-rim': 'rim',
+};
 
 /** The display colour (0..255) of the look's backdrop in image row y (top 0): its TS mirror. */
 function backdropRowOf(presetId: string): BackdropRow {
@@ -352,10 +358,12 @@ const PT_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions>> = {
   'player-hold-34': { threshold: 0.1, maxDiffRatio: 0.0232, maxMeanDelta: 1.62 },
   'cutout-checker': { threshold: 0.1, maxDiffRatio: 0.00525, maxMeanDelta: 0.908 },
   edges: { threshold: 0.1, maxDiffRatio: 0.00082, maxMeanDelta: 0.496 },
-  // MS-19, measured 0.01889 / 1.141 (Marketplace's stronger rim, round 3) and 0.01921 / 0.902 after the tuning of the
-  // preset numbers against the references.
-  'preset-marketplace': { threshold: 0.1, maxDiffRatio: 0.0236, maxMeanDelta: 1.43 },
+  // MS-19 with the view-relative rim (round 4), measured 0.01782 / 1.229, 0.01984 / 1.059 and 0.02130 / 1.219; a
+  // limit stays where the measurement x 1.25 would raise it (the earlier rims' 0.0236 / 1.43 and 0.0241 / 1.13).
+  'preset-marketplace': { threshold: 0.1, maxDiffRatio: 0.0223, maxMeanDelta: 1.43 },
   'preset-rim': { threshold: 0.1, maxDiffRatio: 0.0241, maxMeanDelta: 1.13 },
+  // The app's default yaw: the rim follows the camera to the screen-left silhouettes.
+  'preset-marketplace-yaw30': { threshold: 0.1, maxDiffRatio: 0.0266, maxMeanDelta: 1.52 },
 };
 
 const PAIR_SAMPLES: Readonly<Record<string, number>> = { 'alpha-plane': 128, 'cutout-checker': 128, edges: 128 };
@@ -391,6 +399,47 @@ test.describe('the render frames and lights like the baked preview', () => {
       );
       expect(framing.mismatches, 'backdrop/model mismatches off silhouettes').toBe(0);
       expect(radiance.pass, line).toBe(true);
+    });
+  }
+});
+
+/**
+ * Marketplace's view-relative rim on the held-cube player at 512 px, pitch 20, from the review yaw 210 and the app's
+ * default 30: a near-white line (every channel above 200) on the silhouettes in the baked preview and the render
+ * (16 samples) alike, at least the measured count / 1.25 and within 25 % of each other; and no blown-out face (every
+ * channel at 250 or more) beyond the measured share x 1.25, never 2 % of the model. The saturated test skin is where a
+ * diffuse rim gave no white at all (docs/testing.md, look presets).
+ */
+const RIM_PROBES: Readonly<Record<number, { whiteFloor: number; blownShare: number }>> = {
+  // Measured white 896 preview / 826 render, blown out 0 / 0.
+  210: { whiteFloor: 660, blownShare: 0 },
+  // Measured white 503 / 520, blown out 0 / 0.
+  30: { whiteFloor: 402, blownShare: 0 },
+};
+
+test.describe('the Marketplace rim draws a white silhouette line without blowing out', () => {
+  for (const [yaw, limits] of Object.entries(RIM_PROBES)) {
+    test(`yaw ${yaw}: preview and render`, async ({ page }, testInfo) => {
+      test.setTimeout(300_000);
+      const query = `variant=preset-marketplace&yaw=${yaw}&size=512`;
+      const preview = decodePng(encodeFlipped(await openFixture(page, `/rt.html?${query}`)));
+      const traced = (await render(page, `${query}&seed=1&samples=16`)).image;
+      const measured = [preview, traced].map((image) => {
+        const { model, silhouette } = silhouettePixels(image, { backdropTolerance: 4, reach: 2 });
+        return { white: whiteCount(silhouette, 200), blown: whiteCount(model, 249) / model.length };
+      });
+      const [p, r] = measured as [(typeof measured)[0], (typeof measured)[0]];
+      const line =
+        `yaw ${yaw}: white silhouette px preview ${p.white} / render ${r.white} (floor ${limits.whiteFloor}), ` +
+        `blown-out share preview ${p.blown.toFixed(5)} / render ${r.blown.toFixed(5)} (max ${limits.blownShare})`;
+      console.log(`[pt probe] rim ${line}`);
+      testInfo.annotations.push({ type: 'rim probe', description: line });
+      for (const { white, blown } of measured) {
+        expect(white, line).toBeGreaterThanOrEqual(limits.whiteFloor);
+        expect(blown, line).toBeLessThanOrEqual(limits.blownShare);
+        expect(blown, line).toBeLessThan(0.02);
+      }
+      expect(Math.abs(p.white - r.white) / Math.max(p.white, r.white), line).toBeLessThanOrEqual(0.25);
     });
   }
 });
