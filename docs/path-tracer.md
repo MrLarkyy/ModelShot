@@ -113,7 +113,9 @@ context loss.
 default request (none of them) runs none of the passes below, allocates none of their targets and links none of
 their programs: the context links `trace` and `present`; `guide` and `denoise` are linked on the first step of a
 denoised request, `resolve` of a supersampled or denoised one, `noise` of one with denoise or a threshold, and a
-restore links only what the current request needs again (`TracerPrograms`).
+restore links only what the current request needs again (`TracerPrograms`). A program that fails to compile or link
+keeps its `PathTracerError`: every later step that needs it throws the same error without compiling again, until a
+context restore; the failure comes before any target is made or cleared.
 
 1. **Supersampling**: the trace runs at s·width × s·height (`u_viewportSize` and the backdrop's frame height scaled, so
    the view and the gradient are the same) with the jitter of every traced pixel, and resolve takes the box mean of

@@ -532,11 +532,11 @@ export class PathTracer {
   /**
    * The per-pixel float sums of the samples done (rows bottom to top): rgb the radiance (divide by `samplesDone`), a
    * the traversals stopped by the per-ray node cap (0 in any ordinary scene). For a denoiser or a test; `null` while
-   * the context is lost or before a sample.
+   * the context is lost (from the moment it is, before its event too, when a read would give zeros) or before a sample.
    */
   readAccumulation(): Float32Array | null {
     const targets = this.gpu?.targets;
-    if (!targets || this.lost || this.done === 0) return null;
+    if (!targets || this.lost || this.gl.isContextLost() || this.done === 0) return null;
     return targets.read();
   }
 
@@ -651,6 +651,12 @@ export class PathTracer {
     const height = this.canvas.height * scale;
     const { denoise, noiseThreshold } = this.quality;
     const moments = denoise || noiseThreshold !== null;
+    // The programs first: a shader failure throws before any target is made, freed or cleared.
+    const programs: QualityProgramName[] = [];
+    if (denoise) programs.push('guide', 'denoise');
+    if (scale > 1 || denoise) programs.push('resolve');
+    if (moments) programs.push('noise');
+    gpu.programs.require(programs);
     let targets = gpu.targets;
     if (!targets || targets.width !== width || targets.height !== height || targets.moments !== moments) {
       targets?.dispose();
@@ -668,11 +674,6 @@ export class PathTracer {
       resolve: scale > 1 || denoise,
       noise: moments,
     };
-    const programs: QualityProgramName[] = [];
-    if (layout.denoise) programs.push('guide', 'denoise');
-    if (layout.resolve) programs.push('resolve');
-    if (layout.noise) programs.push('noise');
-    gpu.programs.require(programs);
     if (!layout.resolve && !layout.noise) {
       gpu.resolve?.dispose();
       gpu.resolve = null;
