@@ -125,14 +125,18 @@ export interface SilhouetteOptions {
 }
 
 /**
- * The model's pixels and, among them, its silhouette's, as RGB: the backdrop of each row is the colour of its pixel
- * in column 1 (a flat or vertical-gradient backdrop with the model clear of the left edge), and a border of `reach`
- * pixels around the image is left out.
+ * The model's pixels, split into its silhouette's (the outline band, a backdrop pixel within `reach`) and the interior,
+ * as RGB: the backdrop of each row is the colour of its pixel in column 1 (a flat or vertical-gradient backdrop with
+ * the model clear of the left edge), and a border of `reach` pixels around the image is left out.
  */
 export function silhouettePixels(
   image: Image,
   { backdropTolerance, reach }: SilhouetteOptions,
-): { model: [number, number, number][]; silhouette: [number, number, number][] } {
+): {
+  model: [number, number, number][];
+  silhouette: [number, number, number][];
+  interior: [number, number, number][];
+} {
   const { width, height } = image;
   const backdrop = new Uint8Array(width * height);
   for (let y = 0; y < height; y++) {
@@ -141,6 +145,7 @@ export function silhouettePixels(
   }
   const model: [number, number, number][] = [];
   const silhouette: [number, number, number][] = [];
+  const interior: [number, number, number][] = [];
   for (let y = reach; y < height - reach; y++) {
     for (let x = reach; x < width - reach; x++) {
       if (backdrop[y * width + x]) continue;
@@ -155,10 +160,10 @@ export function silhouettePixels(
           }
         }
       }
-      if (edge) silhouette.push(rgb);
+      (edge ? silhouette : interior).push(rgb);
     }
   }
-  return { model, silhouette };
+  return { model, silhouette, interior };
 }
 
 /** Pixels whose every channel is above `level` (near-white at 200, blown out at 249). */

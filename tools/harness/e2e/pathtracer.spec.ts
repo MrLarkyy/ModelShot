@@ -405,19 +405,21 @@ test.describe('the render frames and lights like the baked preview', () => {
 
 /**
  * Marketplace's view-relative rim on the held-cube player at 512 px, pitch 20, from the review yaw 210 and the app's
- * default 30: a near-white line (every channel above 200) on the silhouettes in the baked preview and the render
- * (16 samples) alike, at least the measured count / 1.25 and within 25 % of each other; and no blown-out face (every
- * channel at 250 or more) beyond the measured share x 1.25, never 2 % of the model. The saturated test skin is where a
- * diffuse rim gave no white at all (docs/testing.md, look presets).
+ * default 30, in the baked preview and the render (16 samples). The silhouette is the outline band (a backdrop pixel
+ * within 2 px), the interior the rest of the model. A near-white line (every channel above 200) on the outline: at
+ * least the measured count / 1.25, preview and render within 25 % of each other. The interior keeps its texels: its
+ * near-white pixels at most the measured count x 1.25 (a broad rim washed upward faces white: 4 097 in round 4), its
+ * blown-out ones (every channel 250 or more) at most the measured share x 1.25 and never 2 %. The saturated test skin
+ * is where a diffuse rim gave no white at all (docs/testing.md, look presets).
  */
-const RIM_PROBES: Readonly<Record<number, { whiteFloor: number; blownShare: number }>> = {
-  // Measured white 896 preview / 826 render, blown out 0 / 0.
-  210: { whiteFloor: 660, blownShare: 0 },
-  // Measured white 503 / 520, blown out 0 / 0.
-  30: { whiteFloor: 402, blownShare: 0 },
+const RIM_PROBES: Readonly<Record<number, { outlineFloor: number; interiorWhite: number; blownShare: number }>> = {
+  // Measured outline white 575 preview / 548 render, interior white 309 / 394, interior blown out 0 / 0.
+  210: { outlineFloor: 438, interiorWhite: 493, blownShare: 0 },
+  // Measured outline white 412 / 448, interior white 101 / 113, interior blown out 0 / 0.
+  30: { outlineFloor: 330, interiorWhite: 141, blownShare: 0 },
 };
 
-test.describe('the Marketplace rim draws a white silhouette line without blowing out', () => {
+test.describe('the Marketplace rim draws a white silhouette line and leaves the faces their texels', () => {
   for (const [yaw, limits] of Object.entries(RIM_PROBES)) {
     test(`yaw ${yaw}: preview and render`, async ({ page }, testInfo) => {
       test.setTimeout(300_000);
@@ -425,21 +427,27 @@ test.describe('the Marketplace rim draws a white silhouette line without blowing
       const preview = decodePng(encodeFlipped(await openFixture(page, `/rt.html?${query}`)));
       const traced = (await render(page, `${query}&seed=1&samples=16`)).image;
       const measured = [preview, traced].map((image) => {
-        const { model, silhouette } = silhouettePixels(image, { backdropTolerance: 4, reach: 2 });
-        return { white: whiteCount(silhouette, 200), blown: whiteCount(model, 249) / model.length };
+        const { silhouette, interior } = silhouettePixels(image, { backdropTolerance: 4, reach: 2 });
+        return {
+          outline: whiteCount(silhouette, 200),
+          inside: whiteCount(interior, 200),
+          blown: whiteCount(interior, 249) / interior.length,
+        };
       });
       const [p, r] = measured as [(typeof measured)[0], (typeof measured)[0]];
       const line =
-        `yaw ${yaw}: white silhouette px preview ${p.white} / render ${r.white} (floor ${limits.whiteFloor}), ` +
-        `blown-out share preview ${p.blown.toFixed(5)} / render ${r.blown.toFixed(5)} (max ${limits.blownShare})`;
+        `yaw ${yaw}: outline white preview ${p.outline} / render ${r.outline} (floor ${limits.outlineFloor}), ` +
+        `interior white ${p.inside} / ${r.inside} (max ${limits.interiorWhite}), ` +
+        `interior blown-out share ${p.blown.toFixed(5)} / ${r.blown.toFixed(5)} (max ${limits.blownShare})`;
       console.log(`[pt probe] rim ${line}`);
       testInfo.annotations.push({ type: 'rim probe', description: line });
-      for (const { white, blown } of measured) {
-        expect(white, line).toBeGreaterThanOrEqual(limits.whiteFloor);
+      for (const { outline, inside, blown } of measured) {
+        expect(outline, line).toBeGreaterThanOrEqual(limits.outlineFloor);
+        expect(inside, line).toBeLessThanOrEqual(limits.interiorWhite);
         expect(blown, line).toBeLessThanOrEqual(limits.blownShare);
         expect(blown, line).toBeLessThan(0.02);
       }
-      expect(Math.abs(p.white - r.white) / Math.max(p.white, r.white), line).toBeLessThanOrEqual(0.25);
+      expect(Math.abs(p.outline - r.outline) / Math.max(p.outline, r.outline), line).toBeLessThanOrEqual(0.25);
     });
   }
 });

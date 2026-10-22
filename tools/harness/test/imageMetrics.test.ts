@@ -81,10 +81,12 @@ describe('silhouette pixels', () => {
     });
 
   it('splits model from a gradient backdrop within the tolerance and finds the silhouette within reach', () => {
-    const { model, silhouette } = silhouettePixels(img(), { backdropTolerance: 4, reach: 2 });
+    const { model, silhouette, interior } = silhouettePixels(img(), { backdropTolerance: 4, reach: 2 });
     expect(model).toHaveLength(64);
-    // Reach 2: every pixel of the 8 x 8 square but its 4 x 4 core.
+    // Reach 2: every pixel of the 8 x 8 square but its 4 x 4 core, the interior.
     expect(silhouette).toHaveLength(64 - 16);
+    expect(interior).toHaveLength(16);
+    expect(interior.every(([r]) => r === 200)).toBe(true);
     expect(silhouettePixels(img(), { backdropTolerance: 4, reach: 1 }).silhouette).toHaveLength(64 - 36);
     // Tolerance 2: the backdrop's 3-level speckle counts as model.
     expect(silhouettePixels(img(), { backdropTolerance: 2, reach: 2 }).model.length).toBeGreaterThan(64);

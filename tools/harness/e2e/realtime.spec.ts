@@ -330,23 +330,24 @@ test.describe('look presets', () => {
   });
 
   /**
-   * The view-relative rim never blows out a camera-facing face: the held-cube player under Marketplace, unbaked (the
-   * bake only darkens), 512 px, pitch 20, a turntable of 12 yaws. Blown out: every channel at 250 or more; the limit is
-   * the measured worst share x 1.25 and never 2 % of the model. Each view keeps a near-white silhouette line,
-   * at least the fewest measured / 1.25.
+   * The view-relative rim never blows out a face: the held-cube player under Marketplace, unbaked (the bake only
+   * darkens), 512 px, pitch 20, a turntable of 12 yaws. Blown out: an interior pixel (off the 2 px outline band) with
+   * every channel at 250 or more; the limit is the measured worst share x 1.25 and never 2 %. Each view keeps a
+   * near-white outline, at least the fewest measured / 1.25.
    */
   test('Marketplace: no blown-out face from any orbit yaw, a white silhouette line from every one', async ({
     page,
   }) => {
     test.setTimeout(240_000);
-    // Measured: no blown-out pixel from any yaw; the fewest white silhouette pixels 107, at yaw 0 (the back).
-    const worstShare = 0;
-    const minWhite = 85;
+    // Measured: the worst interior share 0.00164 (yaw 60: the inner side of a thick band at a 45-degree silhouette),
+    // the fewest outline white pixels 89 (yaw 0, the player's back).
+    const worstShare = 0.00205;
+    const minWhite = 71;
     const lines: string[] = [];
     for (let yaw = 0; yaw < 360; yaw += 30) {
       const { image } = await render(page, `variant=preset-marketplace&yaw=${yaw}&bake=0&size=512`);
-      const { model, silhouette } = silhouettePixels(image, { backdropTolerance: 4, reach: 2 });
-      const share = whiteCount(model, 249) / model.length;
+      const { silhouette, interior } = silhouettePixels(image, { backdropTolerance: 4, reach: 2 });
+      const share = whiteCount(interior, 249) / interior.length;
       const white = whiteCount(silhouette, 200);
       lines.push(`yaw ${yaw}: blown ${share.toFixed(5)}, white ${white}`);
       expect(share, `yaw ${yaw}`).toBeLessThanOrEqual(worstShare);
@@ -355,6 +356,39 @@ test.describe('look presets', () => {
     }
     console.log(`[rt probe] marketplace turntable: ${lines.join('; ')}`);
   });
+
+  /**
+   * An upward face at the default pitch 20 keeps its texel colour: the head top's centre (3 x 3 pixels around the
+   * projection of (0, 32, 0)) of the held-cube player, unbaked, 512 px, with the preset's rim against the rim black,
+   * at most `HEAD_TOP_LEVELS` apart per channel. The round-4 Marketplace rim turned it from (255, 95, 95) to
+   * (232, 208, 214).
+   */
+  // Measured: 0 levels for both presets at both yaws (the rim's light is 0 on a face turned up at pitch 20).
+  const HEAD_TOP_LEVELS = 3;
+  for (const preset of ['marketplace', 'rim']) {
+    test(`${preset}: the rim leaves the head top its texel colour at yaw 210 and 30`, async ({ page }) => {
+      const lines: string[] = [];
+      for (const yaw of [210, 30]) {
+        const query = `variant=preset-${preset}&yaw=${yaw}&bake=0&size=512`;
+        const mean = async (rim: 0 | 1): Promise<number[]> => {
+          const { image } = await render(page, `${query}&rim=${rim}`);
+          const [x, y] = await page.evaluate(() => window.__msFixture!.rt!.project(0, 32, 0));
+          const sum = [0, 0, 0];
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++)
+              pixel(image, x + dx, y + dy).forEach((v, c) => (sum[c] = (sum[c] ?? 0) + v / 9));
+          }
+          return sum;
+        };
+        const on = await mean(1);
+        const off = await mean(0);
+        const worst = Math.max(...on.map((v, c) => Math.abs(v - (off[c] ?? 0))));
+        lines.push(`yaw ${yaw}: ${on.map(Math.round).join(',')} vs rim black ${off.map(Math.round).join(',')}`);
+        expect(worst, lines.join('; ')).toBeLessThanOrEqual(HEAD_TOP_LEVELS);
+      }
+      console.log(`[rt probe] ${preset} head top: ${lines.join('; ')}`);
+    });
+  }
 
   test('a lost context comes back with the look', async ({ page }) => {
     const { info, png } = await render(page, 'variant=turntable-y030&preset=rim');
