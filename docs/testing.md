@@ -542,6 +542,46 @@ widened.
 Times on the local machine: the denoised 64-sample closeup page about 8-9 s against 5 s plain (most of the difference
 is the guide's 1024 rays at partial texels); the determinism test about 47 s.
 
+## Export goldens
+
+MS-22 ([export.md](export.md)): `e2e/export.spec.ts` in the `golden` project, on `fixtures/export.html`
+(`fixtures/src/exportFixture.ts`, decoders in `fixtures/src/exportDecode.ts`). Every render is 64 x 64, seed 1, 16
+samples, through `exportStill` / `exportClip` with a real `PathTracer`; the fixture keeps each `readImage()` the export
+took, so a decoded file is compared with the very frames that were encoded.
+
+- Goldens: `export-still-transparent.s1.n16.png` (the alpha-plane scene without its ground and back plane under the
+  model-view camera, transparent, shadow catcher on, as PNG) and `export-turntable-f0..f3.s1.n16.png` (the frames of a
+  transparent 4-frame turntable of the showcase from the `turntable-y030` camera, as APNG), read by `expectGolden` with
+  threshold 0 like the path-tracer goldens; the fixture hands the decoded file's pixels to `readRGBA`. Nothing compares
+  bytes against a committed PNG.
+- Still: the PNG decodes (the formats package's `decodePngRgba`) to exactly the bytes of `readImage()`; alpha is 255 at
+  the opaque texel probe, 0 at the cut-out texel probe and at the corners where camera rays escape (catcher off); with
+  the catcher on, its shadow under the opaque texel is black with alpha 1 − shade (188 measured).
+- Per format, the decoded frames against the rendered ones: APNG through `decodePngRgba` of each frame rebuilt as a
+  PNG, exact; GIF (ImageDecoder) within the palette bound of export.md (18; 7 measured), alpha 255 exactly where the
+  render's is at least 128 and 0 elsewhere; WebP (ImageDecoder) within 2 (1 measured where alpha is partial); WebM and
+  MP4 by a demux of our own containers in the page and `VideoDecoder`, mean error per channel within 5 (VP9 4.0 and
+  H.264 2.4 measured, max 80 at edges), each with `ALPHA_DROPPED`. The Chromium of the harness encodes H.264; where a
+  browser cannot, the mp4 test accepts the fallback with its warning and the log line names the format used. A run
+  logs each format's size, decoder and time (`[export] ...`; about 0.6-2.4 s for 4 frames locally).
+- Fallback: with the probe stubbed in the page to refuse `webm` (VideoEncoder.isConfigSupported) or `webp`
+  (convertToBlob), the clip comes back as APNG with one `FORMAT_FALLBACK` warning naming both, and decodes exactly.
+- Determinism: frame 0 of two runs is the same bytes; frames 0 and 1 differ.
+- Cancel: aborting at sample 3 of frame 1 rejects with `CANCELLED`, the tracer has 3 samples and is not running, and a
+  further `step` draws nothing.
+- Preview vs render: the transparent still composited over the look's backdrop (TS mirror, `backdropColor` and
+  `agxToneMap`) against the opaque still of the same seed. Catcher off: pixels of alpha 0 or 255 match within 2 (0
+  measured); silhouette pixels are left out, as tone mapping before the mix (the readback) and after it (the canvas)
+  give partial pixels different levels (26 measured). Catcher on: every pixel within 45, 36 measured (the silhouettes
+  and the partly transparent shadow) times 1.25.
+
+Vitest covers the rest without a GPU (`packages/export/test`): every option out of type or range, the limits, frame
+planning, the render loop against a fake renderer (progress, cancel, context loss), PNG and APNG against an independent
+decoder (bitwise CRC, the platform's inflate, all filters), GIF against a textbook LZW decoder, the WebP, WebM and MP4
+structure parsed back, the fallback chains, the video path with a stubbed WebCodecs encoder, a scan of the sources for
+network calls, and `bundleSize.test.ts`: the entry chunk and its static imports at most 6 970 gzip bytes (5 576
+measured, times 1.25) with no encoder in them. That bound lives in the test until `budgets.json` takes it (MS-41).
+
 ## Model-view fixture
 
 `fixtures/model-view.html?variant=<name>` renders a real loader result (`loadBbmodel` or `loadGltf` on a formats test
