@@ -16,7 +16,7 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
 
 ## Supported
 
-- Format versions 3.x, 4.x and 5.x (`meta.format_version`); any project format (`free`, `bedrock`, `java_block`, …).
+- Format versions 3.x, 4.x and 5.x (`meta.format_version`); any project format (`free`, `bedrock`, `java_block`, …). A file whose `meta.model_format` is absent, empty, `null`, `false` or `0` is read as Blockbench does: `java_block`, or `bedrock_old` when `meta.bone_rig` is truthy; its scene `source.modelFormat` stays `unknown`.
 - **Cubes**: `from`/`to` (either order), `origin` (pivot), `rotation` (any angles), `inflate` (also negative),
   `stretch`, per-face `uv` with `rotation` (0, 90, 180, 270) and mirroring (u1 > u2 or v1 > v2), per-face `texture`
   (index or texture uuid), `visibility`, `render_order`.
@@ -51,12 +51,17 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
   multi-file ruleset, which is Blockbench runtime state not saved in the file, so bedrock models use the project
   resolution.
 - **Frame-strip (animated) textures** (MS-27): in the formats where Blockbench animates textures (`free`,
-  `java_block`, `bedrock`, `bedrock_block`, `bedrock_old`) an image whose aspect ratio differs from its UV space's is
+  `java_block`, `bedrock`, `bedrock_block`, `bedrock_old`, `image`, and the plugin formats `geckolib_model` (GeckoLib),
+  `animated_entity_model` (Animation Utils, legacy GeckoLib), `azure_model` (AzureLib), `bamo_model` (BAMO),
+  `free_rotation`, `java_block_sequence` (Java Block Sequencer) and `cosmic_reach_entity_model` (Cosmic Reach Model
+  Editor)) an image whose aspect ratio differs from its UV space's is
   a vertical strip of frames, counted as Blockbench does (Blockbench conventions 14). Faces on it show frame 0, as the
   Blockbench still preview does, and the texture carries [`SceneTexture.frames`](scene-format.md#scenetexture): the
-  count, the frame time in seconds (`java_block`: `frame_time` ticks; the others: `fps`), the play order from
+  count, the frame time in seconds (`java_block`, `geckolib_model`, `free_rotation`, `java_block_sequence`: `frame_time` ticks; the others: `fps`), the play order from
   `frame_order_type` (`loop`, `backwards`, `back_and_forth`, `custom` with `frame_order`) and `frame_interpolate`. In
-  any other format the strip is one image and the fields are ignored. Nothing plays the frames yet.
+  any other format the strip is one image and the fields are ignored: `modded_entity`, `optifine_entity`,
+  `optifine_part`, `skin`, `eme_entity`, `figura`, the Hytale and Cosmic Reach model formats, and a plugin format whose
+  plugin ModelShot does not know (Blockbench opens that as `free` only with the plugin missing; here it stays a still). Nothing plays the frames yet.
 - **Animations** (`animations`): every animation becomes a [`SceneAnimation`](scene-format.md#animations) with its
   `name`, `loop` (`once`, `hold`, `loop`) and `length`. Bone animators play their `rotation`, `position` and `scale`
   keyframes with `linear`, `catmullrom` and `step` interpolation, pre/post data points and numeric data points (a
@@ -215,12 +220,14 @@ format, quad order and split, normal sign, `render_sides`, `render_order` and th
     migration walks only `animators`, so it leaves pre-3.7 `bones` files unchanged; Blockbench 4 played those mirrored
     like every other 4.x file, and ModelShot negates them too, so they move as their author saw them.
 14. **Frame strips** (MS-27, checked against the Blockbench 5 desktop bundle): `Texture.frameCount` exists only when
-    `Format.animated_textures` (`free`, `java_block`, `bedrock`, `bedrock_block`, `bedrock_old`) and the image ratio
+    `Format.animated_textures` (`free`, `java_block`, `bedrock`, `bedrock_block`, `bedrock_old`, `image`, and the plugin
+    formats `geckolib_model`, `animated_entity_model`, `azure_model`, `bamo_model`, `free_rotation`,
+    `java_block_sequence`, `cosmic_reach_entity_model`) and the image ratio
     `width / height` differs (`!==`) from `uvWidth / uvHeight`; it is `ceil(uvWidth / uvHeight / ratio − 0.05)` when
     above 1, so a strip slightly taller than whole frames rounds down and frames may be fractional pixels tall. The cube
     `updateUV` sets v to `(v / uvHeight) / frameCount` (+ frame / frameCount when playing), and the mesh `updateUV`
     `(v / uvHeight + frame) / frameCount`: both show frame 0 at rest. `TextureAnimator.playAnimationFrame`: with
-    `Format.texture_mcmeta` (`java_block`) a frame lasts `max(16.66, 50 · frame_time)` ms, else `1 / max(1, fps)` s
+    `Format.texture_mcmeta` (`java_block`, `geckolib_model`, `free_rotation`, `java_block_sequence`) a frame lasts `max(16.66, 50 · frame_time)` ms, else `1 / max(1, fps)` s
     (`fps` default 7, `frame_time` default 1); the order is `backwards` n − 1 − i, `back_and_forth` i for i < n then
     2n − 2 − i over 2n − 2 frames; `custom` (when `frame_order` is not empty) splits `frame_order` on whitespace and
     reads each token through `parseInt`, so a timed `index:time` token as Blockbench's `.mcmeta` import writes it plays
@@ -375,6 +382,15 @@ texture's `uv_width`/`uv_height` where they differ from the resolution. Files in
 render modes load exactly as before; the new
 fields only ever warn, so no file that loaded before fails. Reload affected models; scene documents need no
 migration (scene format version 1, [Versioning](scene-format.md#versioning)).
+
+MS-45 animates strips in more formats, a behaviour change for files that loaded before: in `image` and the plugin
+formats `geckolib_model`, `animated_entity_model`, `azure_model`, `bamo_model`, `free_rotation`,
+`java_block_sequence` and `cosmic_reach_entity_model`, faces on a strip texture now map into frame 0 and the texture
+gains `frames`; where Blockbench has `texture_mcmeta` (`geckolib_model`, `free_rotation`, `java_block_sequence`) the frame
+time follows `frame_time` ticks. A file whose `meta.model_format` is absent, empty, `null`, `false` or `0` now follows Blockbench's
+compatibility rule: `java_block` rules, or `bedrock_old` when `meta.bone_rig` is truthy, where every rule used to treat
+it as an unknown format; its `source.modelFormat` stays `unknown`. Files with `null`, `false` or `0` there used to fail with `INVALID_FIELD` and now load. Frame fields only ever warn, so no file that loaded
+before fails.
 
 ## Local-first
 

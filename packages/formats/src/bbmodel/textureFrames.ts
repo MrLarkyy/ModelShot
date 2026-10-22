@@ -12,6 +12,22 @@ const ANIMATED_TEXTURE_FORMATS: ReadonlySet<string> = new Set([
   'bedrock',
   'bedrock_block',
   'bedrock_old',
+  'image',
+  'geckolib_model', // plugin geckolib
+  'animated_entity_model', // plugin animation_utils (legacy GeckoLib)
+  'azure_model', // plugin azurelib_utils
+  'bamo_model', // plugin bamo
+  'free_rotation', // plugin free_rotation
+  'java_block_sequence', // plugin java_block_sequencer
+  'cosmic_reach_entity_model', // plugin cosmic_reach_model_editor
+]);
+
+/** Animating formats with Blockbench `texture_mcmeta`: frames last `frame_time` ticks, not `1 / fps`. */
+const MCMETA_TIMING_FORMATS: ReadonlySet<string> = new Set([
+  'java_block',
+  'geckolib_model',
+  'free_rotation',
+  'java_block_sequence',
 ]);
 
 const FRAME_ORDER_TYPES = ['loop', 'backwards', 'back_and_forth', 'custom'] as const;
@@ -33,7 +49,7 @@ type FrameOrderType = (typeof FRAME_ORDER_TYPES)[number];
 /** A texture's raw Blockbench animation fields, read before any image is decoded. */
 export interface TextureFrameSettings {
   readonly path: string;
-  /** `java_block` (Blockbench `texture_mcmeta`) times frames by `frameTicks`, other formats by `fps`. */
+  /** A `texture_mcmeta` format (`java_block`, GeckoLib …) times frames by `frameTicks`, other formats by `fps`. */
   readonly mcmetaTiming: boolean;
   /** `frame_time`, Minecraft ticks per frame. */
   readonly frameTicks: number;
@@ -74,7 +90,7 @@ export function readTextureFrameSettings(
   const number = `a finite number within ±${MAX_ABS_NUMBER}`;
   return {
     path,
-    mcmetaTiming: modelFormat === 'java_block',
+    mcmetaTiming: MCMETA_TIMING_FORMATS.has(modelFormat),
     frameTicks: read('frame_time', 1, isNumber, number),
     fps: read('fps', 7, isNumber, number),
     orderType: read('frame_order_type', 'loop', isOrderType, 'loop, backwards, back_and_forth or custom'),

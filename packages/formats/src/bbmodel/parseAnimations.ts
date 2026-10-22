@@ -31,7 +31,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Blockbench formats that honour an animator's `quaternion_interpolation` (`per_animator_rotation_interpolation`). */
 const PER_ANIMATOR_ROTATION_INTERPOLATION: readonly string[] = ['free'];
 
-/** The file's `meta.format_version` and `meta.model_format`. */
+/** The file's `meta.format_version` and the format whose rules apply (the effective `model_format`). */
 export interface AnimationSource {
   readonly formatVersion: string;
   readonly modelFormat: string;
