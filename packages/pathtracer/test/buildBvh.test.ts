@@ -2,45 +2,70 @@ import { describe, expect, it } from 'vitest';
 import { buildBvh, bvhSahCost, MAX_BVH_DEPTH, MAX_LEAF_TRIANGLES, NODE_FLOATS, type Bvh } from '../src/buildBvh';
 import { randomTriangles } from './testScenes';
 
-/** Checks every structural invariant and returns the leaf depths. */
-function checkInvariants(bvh: Bvh, positions: Float32Array, count: number): number[] {
+interface Leaf {
+  depth: number;
+  count: number;
+}
+
+/** Checks every structural invariant, one assertion each (a per-triangle `expect` makes a large build slow), and returns the leaves. */
+function checkInvariants(bvh: Bvh, positions: Float32Array, count: number): Leaf[] {
   const seen = new Uint8Array(count);
-  const depths: number[] = [];
+  const leaves: Leaf[] = [];
+  const problems: Record<'range' | 'parent' | 'leafSize' | 'point' | 'info', string[]> = {
+    range: [],
+    parent: [],
+    leafSize: [],
+    point: [],
+    info: [],
+  };
   const box = (n: number) => Array.from(bvh.nodes.subarray(n * NODE_FLOATS, n * NODE_FLOATS + NODE_FLOATS));
   const visit = (n: number, depth: number, parent: number[] | null): void => {
-    expect(n).toBeLessThan(bvh.nodeCount);
+    if (!(n < bvh.nodeCount)) {
+      problems.range.push(`node ${n} of ${bvh.nodeCount}`);
+      return;
+    }
     const b = box(n);
     if (parent) {
       for (let k = 0; k < 3; k++) {
-        expect(b[k]).toBeGreaterThanOrEqual(parent[k] ?? 0);
-        expect(b[4 + k]).toBeLessThanOrEqual(parent[4 + k] ?? 0);
+        if (!((b[k] ?? 0) >= (parent[k] ?? 0) && (b[4 + k] ?? 0) <= (parent[4 + k] ?? 0))) {
+          problems.parent.push(`node ${n} axis ${k}`);
+        }
       }
     }
     const info = b[7] ?? 0;
     if (info > 0) {
-      expect(info).toBeLessThanOrEqual(MAX_LEAF_TRIANGLES);
-      depths.push(depth);
+      if (info > MAX_LEAF_TRIANGLES) problems.leafSize.push(`node ${n} holds ${info}`);
+      leaves.push({ depth, count: info });
       for (let i = b[3] ?? 0; i < (b[3] ?? 0) + info; i++) {
         const t = bvh.order[i] ?? 0;
         seen[t] = (seen[t] ?? 0) + 1;
         for (let c = 0; c < 3; c++) {
           for (let k = 0; k < 3; k++) {
             const p = positions[t * 9 + c * 3 + k] ?? 0;
-            expect(p).toBeGreaterThanOrEqual(b[k] ?? 0);
-            expect(p).toBeLessThanOrEqual(b[4 + k] ?? 0);
+            if (!(p >= (b[k] ?? 0) && p <= (b[4 + k] ?? 0))) problems.point.push(`triangle ${t} in node ${n}`);
           }
         }
       }
       return;
     }
-    expect([-1, -2, -3]).toContain(info);
+    if (![-1, -2, -3].includes(info)) {
+      problems.info.push(`node ${n} info ${info}`);
+      return;
+    }
     visit(n + 1, depth + 1, b);
     visit(b[3] ?? 0, depth + 1, b);
   };
   visit(0, 0, null);
-  expect(Array.from(seen).every((s) => s === 1)).toBe(true);
-  expect(Math.max(...depths)).toBe(bvh.depth);
-  return depths;
+  for (const [name, found] of Object.entries(problems)) expect(found[0] ?? '', `${name} (${found.length})`).toBe('');
+  const missing = Array.from(seen).findIndex((v) => v !== 1);
+  expect(missing, 'first triangle not held exactly once').toBe(-1);
+  expect(Math.max(...leaves.map((l) => l.depth))).toBe(bvh.depth);
+  return leaves;
+}
+
+/** Triangle visits of a build: each triangle is touched once per level down to its leaf. */
+function buildWork(leaves: Leaf[]): number {
+  return leaves.reduce((sum, leaf) => sum + leaf.count * (leaf.depth + 1), 0);
 }
 
 describe('buildBvh', () => {
@@ -71,8 +96,12 @@ describe('buildBvh', () => {
     const one = [0, 0, 0, 1, 0, 0, 0, 1, 0];
     const positions = new Float32Array(Array.from({ length: 10_000 }, () => one).flat());
     const bvh = buildBvh(positions, 10_000);
-    checkInvariants(bvh, positions, 10_000);
-    expect(bvh.depth).toBeLessThanOrEqual(MAX_BVH_DEPTH);
+    const leaves = checkInvariants(bvh, positions, 10_000);
+    // Equal boxes force median splits by index: a balanced tree, not a quadratic peel.
+    expect(bvh.depth).toBe(Math.ceil(Math.log2(Math.ceil(10_000 / MAX_LEAF_TRIANGLES))));
+    // A binary tree of that depth has at most 2^(depth + 1) - 1 nodes; halving 10 000 gives leaves of 2 or 3.
+    expect(bvh.nodeCount).toBeLessThanOrEqual(2 ** (bvh.depth + 1) - 1);
+    expect(buildWork(leaves)).toBeLessThanOrEqual(10_000 * (MAX_BVH_DEPTH + 1));
   });
 
   it('stays within depth 31 for a 4096-triangle chain that SAH alone would split one at a time', () => {
@@ -85,8 +114,9 @@ describe('buildBvh', () => {
       }).flat(),
     );
     const bvh = buildBvh(positions, 4096);
-    checkInvariants(bvh, positions, 4096);
+    const leaves = checkInvariants(bvh, positions, 4096);
     expect(bvh.depth).toBe(MAX_BVH_DEPTH);
+    expect(buildWork(leaves)).toBeLessThanOrEqual(4096 * (MAX_BVH_DEPTH + 1));
   });
 
   it('builds nothing for no triangles and a single leaf for a few', () => {

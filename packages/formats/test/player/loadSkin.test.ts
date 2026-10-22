@@ -7,6 +7,7 @@ import { BitWriter } from '../support/BitWriter';
 import { buildPng, imageData, pngChunk, type PngSpec } from '../support/buildPng';
 import { seededRandom } from '../support/seededRandom';
 import { skinBytes } from './skins';
+import { expectCpuBelow } from '../support/expectCpuBelow';
 
 // Pass-through, so the tests can see whether loadSkin decoded the pixels at all.
 vi.mock('../../src/png/decodePngRgba', async (importOriginal) => {
@@ -186,12 +187,10 @@ describe('loadSkin', () => {
     const bomb = new Uint8Array(deflateSync(new Uint8Array(64 * 1024 * 1024), { level: 9 }));
     const png = buildPng({ ...opaqueLegacy, mapIdat: () => bomb });
     expect(png.length).toBeLessThan(DEFAULT_SKIN_LIMITS.maxFileBytes);
-    const start = performance.now();
-    expect(loadSkin(png).legacyHatOpaque).toBe(false);
-    expect(performance.now() - start).toBeLessThan(1000);
+    expect(expectCpuBelow(1000, () => loadSkin(png)).legacyHatOpaque).toBe(false);
   });
 
-  it('walks 2 MiB of minimal dynamic blocks in a legacy skin within a second', () => {
+  it('walks 2 MiB of minimal dynamic blocks in a legacy skin within 1 s of CPU', () => {
     // Each block (91 bits) redefines every code and holds only an end-of-block: the most table builds per byte.
     const w = new BitWriter();
     const order = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1];
@@ -217,15 +216,12 @@ describe('loadSkin', () => {
     const png = buildPng({ ...opaqueLegacy, mapIdat: () => stream });
     expect(png.length).toBeLessThanOrEqual(DEFAULT_SKIN_LIMITS.maxFileBytes);
     expect(png.length).toBeGreaterThan(DEFAULT_SKIN_LIMITS.maxFileBytes - 1024);
-    const start = performance.now();
-    const skin = loadSkin(png);
-    const elapsed = performance.now() - start;
+    const skin = expectCpuBelow(1000, () => loadSkin(png));
     // Decoded through every block to the final stored one.
     expect(skin.legacyHatOpaque).toBe(true);
-    expect(elapsed).toBeLessThan(1000);
   });
 
-  it('decodes a 1024 x 512 16-bit RGBA legacy skin within a second', () => {
+  it('decodes a 1024 x 512 16-bit RGBA legacy skin within 1 s of CPU', () => {
     const width = 1024;
     const height = 512;
     const samples = new Uint16Array(width * height * 4);
@@ -240,11 +236,8 @@ describe('loadSkin', () => {
     }
     const png = buildPng({ width, height, colourType: 6, depth: 16, samples, filter: (row) => row % 5 });
     expect(png.length).toBeLessThan(DEFAULT_SKIN_LIMITS.maxFileBytes);
-    const start = performance.now();
-    const skin = loadSkin(png);
-    const elapsed = performance.now() - start;
+    const skin = expectCpuBelow(1000, () => loadSkin(png));
     expect(skin.legacyHatOpaque).toBe(true);
-    expect(elapsed).toBeLessThan(1000);
   });
 
   it.each([

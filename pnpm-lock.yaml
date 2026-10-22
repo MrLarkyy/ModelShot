@@ -261,7 +261,11 @@ importers:
         specifier: workspace:*
         version: link:../scene
 
-  packages/scene: {}
+  packages/scene:
+    devDependencies:
+      '@types/node':
+        specifier: ~22.20.5
+        version: 22.20.5
 
   packages/site:
     dependencies:
@@ -321,6 +325,8 @@ importers:
       vite:
         specifier: ^8.3.4
         version: 8.3.4(@types/node@22.20.5)
+
+  tools/wiki: {}
 
 packages:
 

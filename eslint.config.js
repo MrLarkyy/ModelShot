@@ -43,6 +43,18 @@ export default defineConfig(
     },
   },
   {
+    files: ['packages/*/test/**/*.ts', 'packages/*/src/**/*.test.ts'],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        ...['performance.now', 'Date.now'].map((name) => {
+          const [object, property] = name.split('.');
+          return { object, property, message: 'Unit tests bound work or CPU time, never wall time (docs/testing.md).' };
+        }),
+      ],
+    },
+  },
+  {
     files: ['packages/*/scripts/**/*.mjs', 'tools/wiki/**/*.mjs'],
     languageOptions: { globals: globals.node },
   },

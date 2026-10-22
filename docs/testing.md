@@ -10,6 +10,51 @@
 Run `pnpm browsers` once per machine (and after a Playwright version bump) to install the browser. Playwright is pinned
 to an exact version in `tools/harness/package.json`, which pins the Chromium revision.
 
+## Time-bounded unit tests
+
+No Vitest test reads the wall clock (`performance.now`, `Date.now`; ESLint refuses both in `packages/*/test` and `*.test.ts`).
+Wall time also counts the time the OS does not run the thread, so a test that passes on an idle machine failed under load
+(MS-42: three loader tests and the 10 000 coincident-triangle BVH build timed out beside about 30 busy cores). A test that
+limits work is written in this order:
+
+1. A deterministic work check: output sizes, an early refusal with the right error code, a spy proving a stage never ran
+   (`cubeToMesh` not called for a 100 000-deep outliner, `decodePrimitive` once for 1000 instances), BVH structure (exact
+   depth, node count, and a work sum of triangle count times leaf depth at most `n × (MAX_BVH_DEPTH + 1)`).
+2. Where the cost of a hostile input itself is the claim, `expectCpuBelow(maxMs, work)`
+   (`packages/formats/test/support/expectCpuBelow.ts`, a copy in `packages/scene/test/` because scene cannot import formats
+   tests). It runs `work` synchronously, reads `process.threadCpuUsage()` (Node 22.19 or later) around it, and asserts
+   the CPU time of the current thread: blocked or descheduled time is not counted, a promise-returning callback throws.
+   Build the fixture outside `work`; the clock ticks in steps of about 15.6 ms on Windows, so bounds under 50 ms are
+   only for work that measures 0 ms. A bound keeps its old number, now in CPU milliseconds; one is never widened to
+   make a test pass.
+3. Each package project has `testTimeout: 60_000` (`vitest.config.ts`), a hang backstop only, never a budget.
+
+A real time budget (frame time, bake time) belongs to the bench ([Budgets](#budgets)), measured on a machine that runs
+nothing else.
+
+CPU ms per converted test, the maximum of 3 runs on an idle machine (Windows, Node 22.23), against its bound:
+
+| Test                                                                                                                         | Idle CPU ms |        Bound |
+| ---------------------------------------------------------------------------------------------------------------------------- | ----------: | -----------: |
+| obj/bounded: default triangle limit                                                                                          |        1046 |         5000 |
+| scene/sharpEdges: 400 000 vertex grid                                                                                        |        1016 |         5000 |
+| obj/bounded: ear clipping worst case                                                                                         |         656 |        15000 |
+| bbmodel/bounded: concave 16-gons at the triangle limit                                                                       |         626 |         5000 |
+| bbmodel/animations: 100 000 name-keyed animators                                                                             |         532 |         3000 |
+| bbmodel/bounded: element limit                                                                                               |         469 |         5000 |
+| bbmodel/hostile: 100 000 Hytale collections                                                                                  |         329 |         2000 |
+| gltf/bounded: triangle and vertex limits                                                                                     |         298 |         5000 |
+| bbmodel/animations: a million keyframes refused                                                                              |         250 |         2000 |
+| obj/robustness: 300 000 distinct keywords                                                                                    |         141 |         3000 |
+| player/loadSkin: 2 MiB of dynamic blocks                                                                                     |         110 |         1000 |
+| player/loadSkin: 1024 x 512 16-bit skin                                                                                      |          94 |         1000 |
+| obj/robustness: 100 000 `mtllib` lines                                                                                       |          78 |         2000 |
+| bbmodel/hostile: 100 000-deep outliner                                                                                       |          63 |         1000 |
+| scene/animateScene: 10 000 nodes, 3 frames                                                                                   |          47 |          600 |
+| gltf/bakeMesh: 300 000 addressed vertices                                                                                    |          31 |         2000 |
+| obj/hostile: 20 MB line                                                                                                      |          15 |         2000 |
+| bbmodel/hostile: the most textures all layered, loadSkin zlib bomb, bbmodel/textureFrames (three tests, bounds 50, 50, 1000) |           0 | 1000 or less |
+
 ## CI
 
 `.github/workflows/ci.yml` has three jobs, each with `timeout-minutes: 20`:
