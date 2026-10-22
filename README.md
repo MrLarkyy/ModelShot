@@ -12,7 +12,7 @@ Status: early development.
 
 ## Development
 
-Requires Node 22 LTS (see `.nvmrc`) and pnpm, pinned through corepack:
+Requires Node 22.19 or later (22 LTS, see `.nvmrc`) and pnpm, pinned through corepack:
 
 ```sh
 npm i -g corepack@latest

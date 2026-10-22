@@ -10,6 +10,7 @@ import {
   type Vec3,
 } from '../src/index';
 import { testMesh } from './sceneDocs';
+import { expectCpuBelow } from './expectCpuBelow';
 
 const OPTIONS = { sharpAngleDeg: 30, reach: 4 };
 
@@ -373,12 +374,9 @@ describe('sharpEdges', () => {
     }
     const mesh = quads(faces);
     expect(mesh.positions.length / 3).toBeGreaterThan(400_000);
-    const start = performance.now();
-    const result = sharpEdges(mesh, OPTIONS);
-    const elapsed = performance.now() - start;
+    // About 0.3 s of CPU here; the bound only catches a quadratic return.
+    const result = expectCpuBelow(5000, () => sharpEdges(mesh, OPTIONS));
     expect(result.edgeCount).toBe(side);
-    // About 0.3 s here; the bound only catches a quadratic return, never a slow machine.
-    expect(elapsed).toBeLessThan(5000);
   });
 
   it('takes one of nearly parallel rim edges: a smooth cylinder wall rounds its own top and bottom edge only', () => {

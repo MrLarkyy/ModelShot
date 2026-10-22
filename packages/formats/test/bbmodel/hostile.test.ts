@@ -11,6 +11,7 @@ import {
   type BbmodelLoadOptions,
 } from '../../src/index';
 import { cube, mesh, meshFace, model, pngDataUri } from './fixtures';
+import { expectCpuBelow } from '../support/expectCpuBelow';
 
 // Spies on the two places that allocate buffers proportional to the input: geometry and texture bytes.
 vi.mock('../../src/bbmodel/cubeToMesh', async (importOriginal) => {
@@ -288,11 +289,11 @@ describe('hostile files fail fast with a coded error', () => {
     expect(cubeToMesh).not.toHaveBeenCalled();
   });
 
-  it('a 100 000-deep outliner fails within a second', () => {
+  it('a 100 000-deep outliner fails within 1 s of CPU', () => {
     const text = nestedGroupsJson(100_000);
-    const start = performance.now();
-    expectFailure(text, 'NESTING_TOO_DEEP', error65Path());
-    expect(performance.now() - start).toBeLessThan(1000);
+    vi.mocked(cubeToMesh).mockClear();
+    expectCpuBelow(1000, () => expectFailure(text, 'NESTING_TOO_DEEP', error65Path()));
+    expect(cubeToMesh).not.toHaveBeenCalled();
   });
 
   it('too many groups fails', () => {
@@ -345,12 +346,11 @@ describe('hostile content is inert', () => {
     for (const warning of warnings) expect(warning.message).not.toMatch(/A{33}/);
   });
 
-  it('the most textures, all layered, composite at most three and load within a second', () => {
+  it('the most textures, all layered, composite at most three and load within 1 s of CPU', () => {
     const max = DEFAULT_BBMODEL_LIMITS.maxTextures;
     const textures = Array.from({ length: max }, (_, i) => ({ name: `t${i}`, render_mode: 'layered', uuid: LONG + i }));
-    const start = performance.now();
-    const { scene } = loadBbmodel(json(model({ meta: { format_version: '4.5', model_format: 'bedrock' }, textures })));
-    expect(performance.now() - start).toBeLessThan(1000);
+    const text = json(model({ meta: { format_version: '4.5', model_format: 'bedrock' }, textures }));
+    const { scene } = expectCpuBelow(1000, () => loadBbmodel(text));
     expect(scene.materials).toHaveLength(max + 1);
     expect(scene.materials[max]?.layers).toEqual([max - 3, max - 2, max - 1]);
     expect(scene.meshes[0]?.groups.map((g) => g.material)).toEqual([max]);
@@ -370,7 +370,7 @@ describe('hostile content is inert', () => {
     expect(error).toMatchObject({ code: 'BAD_TEXTURE', path: '$.textures[0]' });
   });
 
-  it('100 000 Hytale collections over 1 000 cubes load within 2 s with capped warnings', () => {
+  it('100 000 Hytale collections over 1 000 cubes load within 2 s of CPU with capped warnings', () => {
     // A collection lookup per cube (Collection.all.find + contains) would be 10^8 checks; the loader stays linear.
     const cubes = Array.from({ length: 1000 }, (_, i) => cube({ uuid: `c${i}` }));
     const collections = Array.from({ length: 100_000 }, (_, i) =>
@@ -385,9 +385,7 @@ describe('hostile content is inert', () => {
         collections,
       }),
     );
-    const start = performance.now();
-    const { scene, warnings } = loadBbmodel(text);
-    expect(performance.now() - start).toBeLessThan(2000);
+    const { scene, warnings } = expectCpuBelow(2000, () => loadBbmodel(text));
     expect(warnings).toHaveLength(MAX_BBMODEL_WARNINGS);
     expect(warnings.every((w) => w.code === 'UNSUPPORTED_VALUE')).toBe(true);
     expect(scene.meshes).toHaveLength(1000);

@@ -1,15 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadObj, ObjError } from '../../src/index';
 import { expectObjError, lines, QUAD, QUAD_FACE } from './fixtures';
+import { expectCpuBelow } from '../support/expectCpuBelow';
 
 describe('hostile OBJ input', () => {
   const fetchSpy = vi.spyOn(globalThis, 'fetch');
   afterEach(() => expect(fetchSpy).not.toHaveBeenCalled());
 
   it('an over-long line fails at once, before it is split', () => {
-    const start = performance.now();
-    expectObjError(`v ${'9'.repeat(20_000_000)} 0 0`, 'LINE_TOO_LONG', 'model.obj:1');
-    expect(performance.now() - start).toBeLessThan(2000);
+    const text = `v ${'9'.repeat(20_000_000)} 0 0`;
+    expectCpuBelow(2000, () => expectObjError(text, 'LINE_TOO_LONG', 'model.obj:1'));
     expectObjError(lines('v 0 0 0', `# ${'A'.repeat(5000)}`), 'LINE_TOO_LONG', 'model.obj:2');
   });
 

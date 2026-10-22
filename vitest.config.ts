@@ -11,6 +11,8 @@ export default defineConfig({
           name,
           root: `packages/${name}`,
           include: ['{src,test}/**/*.test.ts'],
+          // A hang backstop, not a budget: tests bound work or CPU time, never wall time (docs/testing.md).
+          testTimeout: 60_000,
           environment: 'node',
         },
       })),

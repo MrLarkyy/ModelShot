@@ -3,6 +3,7 @@ import { DEFAULT_OBJ_LIMITS, loadObj } from '../../src/index';
 import * as mtl from '../../src/obj/parseMtl';
 import { MAX_TRACKED_KEYWORDS } from '../../src/obj/KeywordTally';
 import { expectObjError, lines, QUAD, QUAD_FACE } from './fixtures';
+import { expectCpuBelow } from '../support/expectCpuBelow';
 
 vi.mock('../../src/obj/parseMtl', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../src/obj/parseMtl')>();
@@ -14,14 +15,12 @@ afterEach(() => vi.mocked(mtl.parseMtl).mockClear());
 const encode = (text: string) => new TextEncoder().encode(text);
 
 describe('material libraries are parsed once', () => {
-  it('100 000 mtllib lines naming one library parse it once, quickly', () => {
+  it('100 000 mtllib lines naming one library parse it once', () => {
     const library = encode(lines(...Array.from({ length: 200 }, (_, i) => `newmtl m${i}\nKd 1 0 0`)));
     const obj = [...Array<string>(100_000).fill('mtllib a.mtl'), ...QUAD, 'usemtl m7', QUAD_FACE].join(
       String.fromCharCode(10),
     );
-    const start = performance.now();
-    const { scene } = loadObj(obj, { files: new Map([['a.mtl', library]]) });
-    expect(performance.now() - start).toBeLessThan(2000);
+    const { scene } = expectCpuBelow(2000, () => loadObj(obj, { files: new Map([['a.mtl', library]]) }));
     expect(mtl.parseMtl).toHaveBeenCalledTimes(1);
     expect(scene.materials.map((m) => m.name)).toEqual(['m7']);
   });
@@ -80,9 +79,7 @@ describe('unknown keywords are tracked up to a cap', () => {
   it('a file of 300 000 distinct keywords stays bounded', () => {
     // Joined directly: spreading 300 000 arguments into `lines` would overflow the call stack.
     const text = keywords(300_000).join(String.fromCharCode(10));
-    const start = performance.now();
-    expect(loadObj(text).warnings).toHaveLength(MAX_TRACKED_KEYWORDS + 1);
-    expect(performance.now() - start).toBeLessThan(3000);
+    expect(expectCpuBelow(3000, () => loadObj(text)).warnings).toHaveLength(MAX_TRACKED_KEYWORDS + 1);
   });
 });
 
