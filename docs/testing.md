@@ -394,9 +394,9 @@ rim follows the camera) came in round 4 at measured x 1.25 (0.0266, 1.52) and it
 narrow rim raises a pair's numbers (the preview filters the fillet normal per pixel, the render averages jittered
 rays): Rim at exponent 10 measured 0.02567, 1.263, over its limits, so it ships at exponent 5. Round 6 searched for a Rim rim that spares its screen-right side faces within the limits (look-presets.md, presets):
 from behind ((0.45, 0.12, −0.88), (0.5, 0.12, −0.86)) the side faces stay within 3 levels, but colour 6 at exponent
-5, which keeps a white line (414-480 near-white outline pixels at 512 px), measures ratio 0.0267; colour 3 at exponent
+5, which keeps a white line (414-430 near-white outline pixels at 512 px), measures ratio 0.0267; colour 3 at exponent
 2 has already lost the line (0 in the render) and still measures 0.0255; the configurations under 0.0241 (colour
-1.2-3, exponent 1-3, albedo share 0.3-0.8) draw no near-white outline pixel. The shipped rim keeps the line (587-641)
+1.2-3, exponent 1-3, albedo share 0.3-1) draw no near-white outline pixel in the rows whose outline was counted (the share-1 row, (0.45, 0.12, −0.88), colour 3, exponent 2, pair 0.02408, passes but its outline was not counted). The shipped rim keeps the line (587-641)
 and greys the side faces (measured, held by the face probe below).
 
 alpha-plane's large ground is an untextured box, baked per vertex, so its preview shows no ground shadow (world-density
