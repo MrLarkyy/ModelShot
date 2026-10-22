@@ -190,7 +190,8 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
   double-sided plane, factor-only colours, a `KHR_texture_transform` panel on `TEXCOORD_1` and a triangle strip);
   scene `obj-shapes` is `fixtures/obj/shapes.obj` with its `.mtl` and PNG through `loadObj` (quads, a concave star
   from negative indices, faces without `vn` or `vt`, a `map_Kd` cut-out, `Kd` only, `d 0.5`). Both are static
-  imports, CC0, `LICENSE` next to them. The path-tracer fixture can pair goldens with these scenes.
+  imports, CC0, `LICENSE` next to them. The path-tracer fixture has goldens of both (`pt-gltf-nodes-y030.s1.n128`,
+  `pt-obj-shapes-y030.s1.n128`, MS-39); `obj-shapes-y030` is also a preview-vs-render pair, `gltf-nodes-y030` is not yet.
 - Shimmer: between yaw 30° and 30.25°, the share of pixels changing by more than 64 levels must be at most half of
   the same share with nearest sampling (`aa=0`), in the `far` and `closeup` framings.
 - Order independence: reversing the mesh order gives a byte-identical image on the float path and on the fallback,
@@ -377,25 +378,27 @@ emission on the showcase's brick material. A golden spec names its view in `vari
 put in the URL, not in the file name); so are its quality fields (`supersample`, `denoise`), so the name of such a
 golden says them (`-x2-denoised`).
 
-| golden                                 | view                                                 | checks                                          |
-| -------------------------------------- | ---------------------------------------------------- | ----------------------------------------------- |
-| `pt-turntable-y030.s1.n64`             | showcase, perspective 35°                            | golden; determinism; bleeding; pair             |
-| `pt-iso.s1.n64`                        | showcase, orthographic isometric                     | golden; pair                                    |
-| `pt-closeup.s1.n64`                    | showcase, half the fit distance (texels ~28 px)      | golden                                          |
-| `pt-alpha-plane.s1.n128`               | alpha-plane.bbmodel, model-view camera               | golden; shadow probes; back side; pair          |
-| `pt-alpha-ramp-blend.s1.n128`          | the 16 x 16 alpha ramp (blend, cutoff 0.01)          | golden; stochastic transparency                 |
-| `pt-render-order.s1.n16`               | render-order.bbmodel, model-view camera              | golden; render-order probes                     |
-| `pt-emissive.s1.n64`                   | showcase, bricks emitting (4, 2.2, 0.8)              | golden; the post beside the bricks brightens    |
-| `pt-player-hold-34.s1.n64`             | MS-20 player, hold preset, cube in the hand          | golden; pair with `rt-player-hold-34`           |
-| `pt-cutout-checker.s1.n128`            | generated cut-out checker and box, `checker`         | golden; checker shadow probes; pair             |
-| `pt-edges.s1.n128`                     | generated `edges` scene (MS-15)                      | golden; rounded-edge probes; pair               |
-| `pt-preset-marketplace.s1.n64`         | `player-hold-34` under Marketplace (MS-19)           | golden; tile/batch determinism; pair            |
-| `pt-preset-rim.s1.n64`                 | `player-hold-34` under Rim (MS-19)                   | golden; pair                                    |
-| `pt-outline-hull.s1.n64`               | outline-hull.bbmodel, board in an inverted hull      | golden; board and rim probes; pair (MS-50)      |
-| `pt-closeup-reference.s1.n2048`        | `closeup`, 2048 samples, no denoiser (MS-18)         | rendered on golden update only; AC1, AC2, drift |
-| `pt-closeup-denoised.s1.n64`           | `closeup`, `denoise` (MS-18)                         | golden; AC1; AC2                                |
-| `pt-turntable-y030-x2-denoised.s1.n16` | `turntable-y030`, `supersample=2`, `denoise` (MS-18) | golden; determinism; bleeding; pair             |
-| `pt-gltf-contact.s1.n128`              | contact-shadow.gltf, `contact`, no catcher           | golden; contact probes; pair (MS-41)            |
+| golden                                 | view                                                  | checks                                          |
+| -------------------------------------- | ----------------------------------------------------- | ----------------------------------------------- |
+| `pt-turntable-y030.s1.n64`             | showcase, perspective 35°                             | golden; determinism; bleeding; pair             |
+| `pt-iso.s1.n64`                        | showcase, orthographic isometric                      | golden; pair                                    |
+| `pt-closeup.s1.n64`                    | showcase, half the fit distance (texels ~28 px)       | golden                                          |
+| `pt-alpha-plane.s1.n128`               | alpha-plane.bbmodel, model-view camera                | golden; shadow probes; back side; pair          |
+| `pt-alpha-ramp-blend.s1.n128`          | the 16 x 16 alpha ramp (blend, cutoff 0.01)           | golden; stochastic transparency                 |
+| `pt-render-order.s1.n16`               | render-order.bbmodel, model-view camera               | golden; render-order probes                     |
+| `pt-emissive.s1.n64`                   | showcase, bricks emitting (4, 2.2, 0.8)               | golden; the post beside the bricks brightens    |
+| `pt-player-hold-34.s1.n64`             | MS-20 player, hold preset, cube in the hand           | golden; pair with `rt-player-hold-34`           |
+| `pt-cutout-checker.s1.n128`            | generated cut-out checker and box, `checker`          | golden; checker shadow probes; pair             |
+| `pt-edges.s1.n128`                     | generated `edges` scene (MS-15)                       | golden; rounded-edge probes; pair               |
+| `pt-preset-marketplace.s1.n64`         | `player-hold-34` under Marketplace (MS-19)            | golden; tile/batch determinism; pair            |
+| `pt-preset-rim.s1.n64`                 | `player-hold-34` under Rim (MS-19)                    | golden; pair                                    |
+| `pt-outline-hull.s1.n64`               | outline-hull.bbmodel, board in an inverted hull       | golden; board and rim probes; pair (MS-50)      |
+| `pt-closeup-reference.s1.n2048`        | `closeup`, 2048 samples, no denoiser (MS-18)          | rendered on golden update only; AC1, AC2, drift |
+| `pt-closeup-denoised.s1.n64`           | `closeup`, `denoise` (MS-18)                          | golden; AC1; AC2                                |
+| `pt-turntable-y030-x2-denoised.s1.n16` | `turntable-y030`, `supersample=2`, `denoise` (MS-18)  | golden; determinism; bleeding; pair             |
+| `pt-gltf-contact.s1.n128`              | contact-shadow.gltf, `contact`, no catcher            | golden; contact probes; pair (MS-41)            |
+| `pt-gltf-nodes-y030.s1.n128`           | scene-nodes.gltf, perspective 35°, pitch 20°, yaw 30° | golden; sentinel bleeding (MS-39)               |
+| `pt-obj-shapes-y030.s1.n128`           | shapes.obj, same view                                 | golden; pair (MS-39)                            |
 
 All eight earlier `pt-*` goldens were regenerated in MS-16 on purpose (same seeds, samples and size): the key became
 a 0.04 rad cone, the shadow catcher appeared under every model, and the random dimensions per path vertex grew from
@@ -424,7 +427,7 @@ again, by at most 5 levels (mean 1) over their whole catcher; the others did not
   quad of `coincident-double` shows the backdrop exactly, and alpha-plane's double-sided back plane shows its texel
   mirrored (the model-view probe); the render-order pairs resolve as in the model-view fixture; each alpha-ramp texel's
   9 x 9-pixel mean is within 6 levels of AgX(a · lit white + (1 − a) · backdrop) (largest deviation 1.29); no
-  turntable pixel shows the magenta sentinel; the emissive bricks raise the post's south face by 14.6 levels (at
+  turntable pixel and no `gltf-nodes` pixel (seed 1, 128 samples) shows the magenta sentinel; the emissive bricks raise the post's south face by 14.6 levels (at
   least 10).
 - Limits and lifetime: an empty scene draws only the backdrop; corrupt, missing and size-lying textures draw the
   placeholder with the realtime renderer's warning; `maxTriangles=10` fails the page with `SCENE_TOO_LARGE`; seeds and
@@ -468,6 +471,7 @@ Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with r
 | `preset-marketplace-yaw30` | 0 (1 304)                           | 1 387, 0.02116, 1.281                                     | 0.0265, 1.52                          |
 | `outline-hull`             | 0 (1 456)                           | 1 076, 0.01642, 0.912 (MS-50, new)                        | 0.0205, 1.14                          |
 | `gltf-contact`             | 0 (618)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)            | 0.133, 7.03                           |
+| `obj-shapes-y030`          | 0 (1 835)                           | 484, 0.00739, 1.289 (MS-39, new)                          | 0.00924, 1.61                         |
 
 MS-41 (world-density charts) measured the views it changes: `alpha-plane` 682 px, 0.01041, 1.567 (its ground is
 world-charted and shows the render's shadows; before 2 083, 0.03178, 2.187), so its limit is tightened to measured x
@@ -476,6 +480,11 @@ world-charted and shows the render's shadows; before 2 083, 0.03178, 2.187), so 
 limit 0.133, 7.03. Its ground agrees; the box's sides do not: the render lights them with the bounce of the bright
 ground and the bake has no interreflection (box top, lit alike: 207, 176, 162 in both; west side low 85 baked, 132
 unbaked, 150 rendered). Same albedo in both, so no material difference.
+
+MS-39: `obj-shapes-y030` (128 samples, catcher on) is new at measured x 1.25. `gltf-nodes-y030` frames with 0
+mismatches off 2 210 silhouette px but measures 2 931 px, 0.04472, 2.305 radiance, and has no limit yet: 3 045 of the
+3 383 pixels differing by more than 25 levels lie in the lower third (the world-charted ground and roof, and the
+cubes' texel edges), and the unshadowed ground reads 157 rendered against 188 baked (190 unbaked). Open defect.
 
 MS-19 measured the table again with the backdrop mask by rows: every earlier view kept its numbers and limits. The two
 look-preset pairs (`preset-marketplace`, `preset-rim`: the held-cube player baked under its look) are new at measured

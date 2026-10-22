@@ -28,4 +28,7 @@ export const PT_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions>> = {
   // MS-41, catcher off: measured 0.10661 / 5.627, x 1.25. The ground agrees; the box's sides do not: the render lights
   // them with the bright ground's bounce, the bake has no interreflection (its top, lit alike, matches to the level).
   'gltf-contact': { threshold: 0.1, maxDiffRatio: 0.133, maxMeanDelta: 7.03 },
+  // MS-39: the OBJ loader scene, measured 0.00739 / 1.289, x 1.25. Its glTF twin (gltf-nodes-y030) has no pair yet: its
+  // ground renders 17 % darker than the baked preview's (measured 0.04472 / 2.305), see docs/testing.md.
+  'obj-shapes-y030': { threshold: 0.1, maxDiffRatio: 0.00924, maxMeanDelta: 1.61 },
 };

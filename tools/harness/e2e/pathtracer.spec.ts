@@ -81,6 +81,9 @@ const GOLDENS: readonly PathTracedGoldenSpec[] = [
   pt('preset-rim', 'preset-rim', 64),
   // MS-41: the box's contact shadow on an image-less glTF ground; paired with rt-bake-gltf-contact.
   pt('gltf-contact', 'gltf-contact', 128),
+  // MS-39: MS-13 loader fixtures, paired with rt-<v>.
+  pt('gltf-nodes-y030', 'gltf-nodes-y030', 128),
+  pt('obj-shapes-y030', 'obj-shapes-y030', 128),
 ];
 
 /** The look preset of a fixture variant (rtScenes.ts RT_VARIANTS), Studio unless the variant names one. */
@@ -687,6 +690,13 @@ test.describe('transparency, shadows and sides (scene format rules)', () => {
     expect(sentinelPixels(image)).toBe(0);
   });
 
+  test('no gltf-nodes pixel shows a texel from outside its face rectangle', async ({ page }) => {
+    const { image } = await render(page, 'variant=gltf-nodes-y030&seed=1&samples=128');
+    const count = sentinelPixels(image);
+    console.log(`[pt probe] gltf-nodes sentinel pixels ${count} / max 0`);
+    expect(count).toBe(0);
+  });
+
   test('an emissive material lights the post beside it', async ({ page }) => {
     const plain = await render(page, 'variant=turntable-y030&seed=1&samples=64');
     const glowing = await render(page, 'variant=emissive&seed=1&samples=64');
@@ -709,6 +719,7 @@ const PAIR_SAMPLES: Readonly<Record<string, number>> = {
   'cutout-checker': 128,
   edges: 128,
   'gltf-contact': 128,
+  'obj-shapes-y030': 128,
 };
 
 /** Views whose render has no shadow catcher (their variant turns it off): the preview's radiance is compared without. */
