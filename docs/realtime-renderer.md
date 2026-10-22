@@ -26,7 +26,9 @@ Float path (needs `EXT_color_buffer_float`):
 0. With baked lighting that carries one, the shadow catcher (below) right after the clear, without depth test or
    write.
 1. Opaque pass into an RGBA16F + DEPTH24 target with MSAA (min(4, the largest sample count the GPU offers for
-   RGBA16F); 0 samples draws single-sampled), resolved by a blit of colour and depth.
+   RGBA16F); 0 samples draws single-sampled), resolved by a blit of colour and depth. With texel anti-aliasing on
+   and at least 2 samples, raster frames draw it with `SAMPLE_ALPHA_TO_COVERAGE` (alpha written off), so cut-out
+   seams are anti-aliased per sample (Alpha, below).
 2. Weighted blended order-independent transparency (McGuire and Bavoil 2013, weight of equation 10) for partial
    texels: an RGBA16F target (rgb: weighted premultiplied colour, a: product of 1 − alpha) and an R16F target (sum of
    weighted alpha), depth-tested against the resolved depth with depth writes off. Only batches whose texture has
@@ -145,6 +147,20 @@ The rules are the scene format's ([scene-format.md](scene-format.md): `SceneMate
   opaque 1, partial its alpha), so an opaque-mode material ignores alpha and a cut-out neighbour adds no fringe. A
   texture goes to the transparency pass only if one of its alpha bytes is partial under the draw's rule (alpha bytes
   read back once at load).
+- **Anti-aliased cut-out seams** (MS-30): the one exception to the discard above is the opaque pass of a float-path
+  raster frame into the MSAA target with texel anti-aliasing on (`alphaToCoverageActive`). There the same seam taps
+  that blend the colour also blend a coverage indicator (opaque tap 1, invisible 0, a partial tap 1 beside an opaque
+  nearest texel, so an opaque|partial seam stays as it was and OIT keeps the partial side), and the fragment writes it
+  as alpha under `SAMPLE_ALPHA_TO_COVERAGE`. Across an opaque|cut-out seam it ramps over one pixel and is 0.5 exactly
+  on the texel boundary, so the covered area equals the hard per-texel shape while edge pixels resolve to a mix of
+  texel and background; fragments of a cut-out texel in that half-pixel band are kept with the opaque neighbour's
+  colour and write depth only at their covered samples. Which texels are cut out does not change: texel centres show
+  the background exactly. Exact-key frames (single-sampled), 0 or 1 MSAA samples, `texelAntialias: false`, the
+  fallback, OIT, the shadow catcher and the light bake (its own pass in `@modelshot/pathtracer`) keep the binary
+  per-texel cutout; without sample buffers GL ignores A2C, which would grow the shape by half a pixel, so a uniform
+  tells the shader. GLSL ES 3.00 has no `gl_SampleMask`, so A2C is the only per-sample route in WebGL2. Measured on
+  SwiftShader (4 samples, 5 coverage levels per pixel); real GPUs may dither A2C per 2 x 2 pixel quad, and that check
+  is manual.
 - **Sides**: single-sided groups are drawn with back faces culled in every pass. Double-sided groups are drawn twice
   per render order: front faces, then back faces (front faces culled), the back lit with the flipped normal.
 - **Render order**: draws are sorted by render order, descending; per order the front pass, then the back pass of
