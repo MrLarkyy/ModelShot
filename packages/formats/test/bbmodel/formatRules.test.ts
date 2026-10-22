@@ -83,7 +83,7 @@ describe('per-texture UV size (Blockbench per_texture_uv_size)', () => {
     expect(loadBbmodel(text).scene.meshes[0]?.groups[0]?.material).toBe(1);
   });
 
-  it.each(HYTALE)('%s: face UVs use the UV size of the texture shown, with and without collections', (format) => {
+  it.each(HYTALE)('%s: cube face UVs use the UV size of the texture shown, with and without collections', (format) => {
     const list = [
       { name: 'a', uuid: 't-a', uv_width: 16, uv_height: 16 },
       { name: 'b', uuid: 't-b', uv_width: 64, uv_height: 32 },
@@ -99,12 +99,25 @@ describe('per-texture UV size (Blockbench per_texture_uv_size)', () => {
           ...extra,
         }),
       );
+    const material = (value: string) => loadBbmodel(value).scene.meshes[0]?.groups[0]?.material;
     // Without collections the face shows the default texture (16x16), neither the stored one nor the resolution.
     expect(northRect(text(), 16, 16)).toEqual([0, 0, 8, 8]);
-    expect(loadBbmodel(text()).scene.meshes[0]?.groups[0]?.material).toBe(0);
-    const own = text({ collections: COLLECTION });
-    expect(northRect(own, 64, 32)).toEqual([0, 0, 8, 8]);
-    expect(loadBbmodel(own).scene.meshes[0]?.groups[0]?.material).toBe(1);
+    expect(material(text())).toBe(0);
+    // A cube in no collection shows the default texture as well.
+    const outside = text({ collections: COLLECTION });
+    expect(northRect(outside, 16, 16)).toEqual([0, 0, 8, 8]);
+    expect(material(outside)).toBe(0);
+    // A cube in a collection shows the collection's texture in its UV space, whatever the face stores.
+    const inA = text({ collections: [{ uuid: 'k0', children: ['c0'], texture: 't-a' }] });
+    expect(northRect(inA, 16, 16)).toEqual([0, 0, 8, 8]);
+    expect(material(inA)).toBe(0);
+    const inB = text({ collections: [{ uuid: 'k0', children: ['c0'], texture: 't-b' }] });
+    expect(northRect(inB, 64, 32)).toEqual([0, 0, 8, 8]);
+    expect(material(inB)).toBe(1);
+    // A collection without a texture leaves the face untextured, its UVs over the project resolution.
+    const untextured = text({ collections: [{ uuid: 'k0', children: ['c0'], texture: '' }] });
+    expect(northRect(untextured, 32, 32)).toEqual([0, 0, 8, 8]);
+    expect(material(untextured)).toBe(-1);
   });
 
   it('uses the project resolution when the format is missing', () => {
@@ -686,15 +699,111 @@ describe('default texture (Blockbench Face.getTexture, Texture.getDefault)', () 
     expect(load(format, textures([{}, { use_as_default: true }])).groups).toEqual([[[1, 3]]]);
   });
 
-  it.each(HYTALE)('%s with collections: only blank faces show the default texture', (format) => {
-    const root = { collections: COLLECTION };
-    expect(load(format, textures(), ['c0'], root).groups).toEqual([
-      [
-        [0, 2],
-        [1, 1],
-      ],
-    ]);
-    expect(load(format, textures([{}, { use_as_default: true }]), ['c0'], root).groups).toEqual([[[1, 3]]]);
+  it.each(HYTALE)(
+    '%s with collections: a cube outside every collection shows the default texture on every non-null face',
+    (format) => {
+      const root = { collections: COLLECTION };
+      expect(load(format, textures(), ['c0'], root).groups).toEqual([[[0, 3]]]);
+      expect(load(format, textures([{}, { use_as_default: true }]), ['c0'], root).groups).toEqual([[[1, 3]]]);
+    },
+  );
+
+  describe.each(HYTALE)('%s: a cube in a collection (hytale_plugin.js:1283-1302)', (format) => {
+    const collection = (extra: Record<string, unknown>) => ({ name: 'c', uuid: 'k0', ...extra });
+    const nested = [{ name: 'g', uuid: 'g0', children: [{ name: 'h', uuid: 'h0', children: ['c0'] }] }];
+    const scoped = (scope: number) => ({ elements: [cube({ faces, scope })] });
+    const own = (warnings: readonly { code: string; path: string }[]) =>
+      warnings.filter((w) => w.path.startsWith('$.collections')).map((w) => [w.code, w.path]);
+
+    it('by its uuid shows the collection texture on every non-null face', () => {
+      const root = { collections: [collection({ children: ['c0'], texture: 't-1' })] };
+      const { groups, warnings } = load(format, textures(), ['c0'], root);
+      expect(groups).toEqual([[[1, 3]]]);
+      expect(own(warnings)).toEqual([]);
+    });
+
+    it('by an ancestor group uuid', () => {
+      const root = { collections: [collection({ children: ['g0'], texture: 't-1' })] };
+      expect(load(format, textures(), nested, root).groups).toEqual([[[1, 3]]]);
+    });
+
+    it('by an equal non-zero scope, never by scope 0', () => {
+      const withScope = (scope: number) => ({
+        ...scoped(scope),
+        collections: [collection({ children: [], scope, texture: 't-1' })],
+      });
+      expect(load(format, textures(), ['c0'], withScope(2)).groups).toEqual([[[1, 3]]]);
+      expect(load(format, textures(), ['c0'], withScope(0)).groups).toEqual([[[0, 3]]]);
+      const other = { ...scoped(3), collections: [collection({ scope: 2, texture: 't-1' })] };
+      expect(load(format, textures(), ['c0'], other).groups).toEqual([[[0, 3]]]);
+    });
+
+    it('the first collection in file order that contains it wins', () => {
+      const first = (a: string, b: string) => ({
+        collections: [
+          collection({ children: ['g0'], texture: a }),
+          collection({ uuid: 'k1', children: ['c0'], texture: b }),
+        ],
+      });
+      expect(load(format, textures(), nested, first('t-1', 't-0')).groups).toEqual([[[1, 3]]]);
+      expect(load(format, textures(), nested, first('t-0', 't-1')).groups).toEqual([[[0, 3]]]);
+    });
+
+    it.each([{}, { texture: '' }])('a collection with %j leaves its cubes untextured', (extra) => {
+      const root = { collections: [collection({ children: ['c0'], ...extra })] };
+      const { groups, warnings } = load(format, textures(), ['c0'], root);
+      expect(groups).toEqual([[[-1, 3]]]);
+      expect(own(warnings)).toEqual([]);
+    });
+
+    it('an unknown texture uuid warns UNKNOWN_REFERENCE and leaves its cubes untextured', () => {
+      const root = { collections: [collection({ children: ['c0'], texture: 'nope' })] };
+      const { groups, warnings } = load(format, textures(), ['c0'], root);
+      expect(groups).toEqual([[[-1, 3]]]);
+      expect(own(warnings)).toEqual([['UNKNOWN_REFERENCE', '$.collections[0].texture']]);
+    });
+
+    it('a texture, children or scope of the wrong type warns UNSUPPORTED_VALUE and is ignored', () => {
+      const root = {
+        collections: [
+          collection({ children: ['c0'], texture: 1 }),
+          collection({ uuid: 'k1', children: 'c0', scope: '2' }),
+        ],
+      };
+      const { groups, warnings } = load(format, textures(), ['c0'], root);
+      expect(groups).toEqual([[[-1, 3]]]);
+      expect(own(warnings)).toEqual([
+        ['UNSUPPORTED_VALUE', '$.collections[0].texture'],
+        ['UNSUPPORTED_VALUE', '$.collections[1].children'],
+        ['UNSUPPORTED_VALUE', '$.collections[1].scope'],
+      ]);
+    });
+
+    it('children that are no uuid string are skipped without a warning', () => {
+      const children = [5, null, {}, '', 'A'.repeat(5000), 'c0'];
+      const root = { collections: [collection({ children, texture: 't-1' })] };
+      const { groups, warnings } = load(format, textures(), ['c0'], root);
+      expect(groups).toEqual([[[1, 3]]]);
+      expect(own(warnings)).toEqual([]);
+    });
+
+    it.each([[null], [5], ['x'], [[]]])('an entry %j warns, counts as an empty collection and still loads', (entry) => {
+      const { groups, warnings } = load(format, textures(), ['c0'], { collections: [entry] });
+      expect(groups).toEqual([[[0, 3]]]);
+      expect(own(warnings)).toEqual([['UNSUPPORTED_VALUE', '$.collections[0]']]);
+      // It still counts as a collection: a mesh face with texture null is no longer drawn with the default texture.
+      const element = mesh({ faces: { f: meshFace(['a', 'b', 'c'], { texture: null }) } });
+      const text = json(model({ meta: meta(format), textures: textures(), elements: [element], collections: [entry] }));
+      expect(loadBbmodel(text).scene.meshes[0]?.groups.map((g) => g.material)).toEqual([-1]);
+    });
+  });
+
+  it('collections are not read outside the Hytale formats', () => {
+    const collections = [null, { children: ['c0'], texture: 'nope', scope: 'x' }];
+    for (const format of ['bedrock', 'bedrock_block', 'free', 'optifine_entity']) {
+      const { groups, warnings } = load(format, textures(), ['c0'], { collections });
+      expect({ groups, warnings }).toEqual(load(format));
+    }
   });
 
   it.each(HYTALE.flatMap((format) => [[], {}, 'x', null].map((value): [string, unknown] => [format, value])))(
@@ -718,6 +827,11 @@ describe('default texture (Blockbench Face.getTexture, Texture.getDefault)', () 
       };
       expect(materials({})).toEqual([[0, 2]]);
       expect(materials({ collections: COLLECTION })).toEqual([
+        [-1, 1],
+        [1, 1],
+      ]);
+      // The plugin replaces only the cube face lookup: a mesh in a collection keeps Face.getTexture.
+      expect(materials({ collections: [{ uuid: 'k0', children: ['c0'], texture: 't-0' }] })).toEqual([
         [-1, 1],
         [1, 1],
       ]);

@@ -6,6 +6,7 @@ import {
   BbmodelError,
   DEFAULT_BBMODEL_LIMITS,
   loadBbmodel,
+  MAX_BBMODEL_WARNINGS,
   type BbmodelErrorCode,
   type BbmodelLoadOptions,
 } from '../../src/index';
@@ -367,6 +368,30 @@ describe('hostile content is inert', () => {
     const picked = new Map([['skin.png', new TextEncoder().encode('not a png at all, really not')]]);
     const error = failure(json(model({ textures: [{ name: 'skin.png' }] })), { textureFiles: picked });
     expect(error).toMatchObject({ code: 'BAD_TEXTURE', path: '$.textures[0]' });
+  });
+
+  it('100 000 Hytale collections over 1 000 cubes load within 2 s with capped warnings', () => {
+    // A collection lookup per cube (Collection.all.find + contains) would be 10^8 checks; the loader stays linear.
+    const cubes = Array.from({ length: 1000 }, (_, i) => cube({ uuid: `c${i}` }));
+    const collections = Array.from({ length: 100_000 }, (_, i) =>
+      i % 10 === 0 ? null : { name: `k${i}`, uuid: `k${i}`, children: [`x${i}`], texture: 't-0' },
+    );
+    const text = json(
+      model({
+        meta: { format_version: '4.5', model_format: 'hytale_prop' },
+        textures: [{ name: 't', uuid: 't-0', source: pngDataUri(16, 16) }],
+        elements: cubes,
+        outliner: [{ name: 'g', uuid: 'g0', children: cubes.map((c) => c.uuid) }],
+        collections,
+      }),
+    );
+    const start = performance.now();
+    const { scene, warnings } = loadBbmodel(text);
+    expect(performance.now() - start).toBeLessThan(2000);
+    expect(warnings).toHaveLength(MAX_BBMODEL_WARNINGS);
+    expect(warnings.every((w) => w.code === 'UNSUPPORTED_VALUE')).toBe(true);
+    expect(scene.meshes).toHaveLength(1000);
+    expect(scene.meshes.every((m) => m.groups.length === 1 && m.groups[0]?.material === 0)).toBe(true);
   });
 
   it('keeps at most 100 warnings', () => {

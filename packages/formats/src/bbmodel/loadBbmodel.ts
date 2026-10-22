@@ -6,6 +6,7 @@ import type { BbmodelLoadResult } from './BbmodelLoadResult';
 import { bbmodelMaterials, layeredStack } from './bbmodelMaterials';
 import { BbmodelWarningList } from './BbmodelWarning';
 import { buildHierarchy, type ElementPlacement, type GroupTexture } from './buildHierarchy';
+import { collectionElementTextures, readCollections } from './collectionTextures';
 import type { ConverterContext, PreparedElement } from './ElementConverter';
 import { ELEMENT_CONVERTERS } from './elementConverters';
 import { formatVersionBefore } from './formatVersionBefore';
@@ -26,6 +27,7 @@ import { formatDoubleSided, isDoubleSided } from './RenderSides';
 import {
   defaultTexture,
   formatBoxUvFloatSize,
+  formatCollectionTextures,
   formatPerGroupTexture,
   formatPerTextureUvSize,
   formatSingleTextureDefault,
@@ -60,9 +62,6 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
     ? readOptionalString(meta, 'model_format', '$.meta', limits.maxStringChars, '')
     : '';
   const modelFormat = effectiveModelFormat(meta, declaredFormat);
-  // Blockbench makes one collection per entry of an array and ignores anything else, so only the length matters.
-  const collections = field(root, 'collections');
-  const hasCollections = Array.isArray(collections) && collections.length > 0;
 
   const elementsValue = field(root, 'elements');
   const elements =
@@ -94,7 +93,11 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
   const boxUv = readOptionalBoolean(meta, 'box_uv', '$.meta', false);
 
   const textureIds = textureIdIndex(textureEntries);
-  const textureRule = formatTextureRule(modelFormat, hasCollections);
+  // Only the Hytale plugin gives collections a meaning for textures; elsewhere the field is not read.
+  const collections = formatCollectionTextures(modelFormat)
+    ? readCollections(root, textureIds, limits, warnings)
+    : undefined;
+  const textureRule = formatTextureRule(modelFormat, collections?.present ?? false);
   const stack = layeredStack(textureEntries, modelFormat);
   const context: ConverterContext = {
     textureUvSizes: textureEntries.map((entry) => ({ width: entry.uvWidth, height: entry.uvHeight })),
@@ -118,7 +121,23 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
     warnings,
   };
   const nodeTextures = hierarchy.groupTextures.map((texture) => groupTextureIndex(texture, textureIds, warnings));
-  const placed = prepareElements(elementObjects, hierarchy.placements, nodeTextures, context, limits, warnings);
+  const elementTextures = collections
+    ? collectionElementTextures(
+        collections,
+        hierarchy.nodes,
+        hierarchy.placements,
+        elementObjects,
+        context.defaultTexture ?? -1,
+      )
+    : [];
+  const placed = prepareElements(
+    elementObjects,
+    hierarchy.placements,
+    { nodeTextures, elementTextures },
+    context,
+    limits,
+    warnings,
+  );
   const animations = parseAnimations(root, hierarchy.nodes, { formatVersion, modelFormat }, limits, warnings);
 
   // Every limit has passed; only now are texture bytes decoded and geometry buffers allocated.
@@ -206,11 +225,20 @@ function elementIds(elements: readonly JsonObject[], limits: BbmodelLimits): Map
   return ids;
 }
 
+/**
+ * Texture overrides: `nodeTextures` by hierarchy node (optifine group textures), `elementTextures` by element index
+ * (Hytale collection textures, cubes only: the plugin replaces `CubeFace.getTexture` alone). They never co-occur.
+ */
+interface TextureOverrides {
+  readonly nodeTextures: readonly (number | undefined)[];
+  readonly elementTextures: readonly (number | undefined)[];
+}
+
 /** Validates every placed element and counts its triangles and vertices against the limits; allocates no geometry. */
 function prepareElements(
   elements: readonly JsonObject[],
   placements: readonly ElementPlacement[],
-  nodeTextures: readonly (number | undefined)[],
+  { nodeTextures, elementTextures }: TextureOverrides,
   context: ConverterContext,
   limits: BbmodelLimits,
   warnings: BbmodelWarningList,
@@ -228,7 +256,8 @@ function prepareElements(
       warnings.add('UNSUPPORTED_ELEMENT', path, `type ${quoteValue(type)} is not supported yet`);
       continue;
     }
-    const groupTexture = node >= 0 ? nodeTextures[node] : undefined;
+    const groupTexture =
+      (type === 'cube' ? elementTextures[index] : undefined) ?? (node >= 0 ? nodeTextures[node] : undefined);
     const prepared = converter.prepare(
       element,
       path,

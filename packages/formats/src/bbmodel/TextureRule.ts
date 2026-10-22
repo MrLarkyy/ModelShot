@@ -43,7 +43,8 @@ const BOX_UV_FLOAT_SIZE_FORMATS: ReadonlySet<string> = new Set(['modded_entity',
 
 /**
  * The format's texture rule; `hasCollections` is whether the file has a non-empty `collections` array, which turns
- * Hytale's `single_texture` off (its `single_texture_default` stays).
+ * Hytale's `single_texture` off (its `single_texture_default` stays). Hytale cubes then follow their collections
+ * instead (`formatCollectionTextures`), so with collections the rule decides only Hytale mesh faces.
  */
 export function formatTextureRule(modelFormat: string, hasCollections = false): TextureRule {
   if (SINGLE_TEXTURE_FORMATS.has(modelFormat)) return 'single';
@@ -71,6 +72,15 @@ export function formatPerTextureUvSize(modelFormat: string): boolean {
 /** `Format.per_group_texture`: a group's `texture` (uuid) wins over its elements' faces. */
 export function formatPerGroupTexture(modelFormat: string): boolean {
   return PER_GROUP_TEXTURE_FORMATS.has(modelFormat);
+}
+
+/**
+ * Whether the format's cube faces follow the file's `collections` (`readCollections`): the Hytale plugin replaces
+ * `CubeFace.getTexture` (hytale_plugin.js:1283-1302) so a cube in a collection shows that collection's texture and any
+ * other cube the default texture, on every non-null face. Mesh faces keep `Face.getTexture`.
+ */
+export function formatCollectionTextures(modelFormat: string): boolean {
+  return COLLECTION_SINGLE_TEXTURE_FORMATS.has(modelFormat);
 }
 
 /** `Format.box_uv_float_size`: box-UV cube sizes are not floored to whole pixels. */
