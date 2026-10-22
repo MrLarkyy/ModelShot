@@ -1,7 +1,7 @@
 import type { Vec3 } from '@modelshot/scene';
 import { BbmodelError } from './BbmodelError';
 import type { ConverterContext } from './ElementConverter';
-import { faceDoubleSided, readFaceTexture } from './FaceTexture';
+import { faceMaterial, readFaceTexture } from './FaceTexture';
 import { childPath, field, type JsonObject } from '../json/JsonObject';
 import {
   readArray,
@@ -23,8 +23,10 @@ export interface MeshFaceSpec {
   readonly positions: readonly Vec3[];
   /** UV of each position, in uv units of `uvWidth` × `uvHeight`. */
   readonly uvs: readonly (readonly [number, number])[];
-  /** Texture index, −1 for none. */
+  /** Material index, −1 for none. */
   readonly material: number;
+  /** Texture whose frame count divides v; absent: `material`. */
+  readonly frameTexture?: number;
   readonly doubleSided: boolean;
   readonly uvWidth: number;
   readonly uvHeight: number;
@@ -164,7 +166,7 @@ function readFace(
     return ref;
   });
   // A mesh face with `texture: null` is still drawn, untextured (Blockbench's mesh updateFaces); a cube drops it.
-  const material = readFaceTexture(face, path, context) ?? -1;
+  const { material, texture, doubleSided } = faceMaterial(readFaceTexture(face, path, context), context);
   if (keys.length < 3) return undefined;
   const uvPath = childPath(path, 'uv');
   const uvObject = readObject(field(face, 'uv'), uvPath);
@@ -172,13 +174,14 @@ function readFace(
     const [u = 0, v = 0] = readNumbers(field(uvObject, key), childPath(uvPath, key), 2);
     return [u, v];
   });
-  const uvSize = material >= 0 ? context.textureUvSizes[material] : context.resolution;
+  const uvSize = texture >= 0 ? context.textureUvSizes[texture] : context.resolution;
   return {
     keys,
     positions: keys.map((key) => vertices.get(key) ?? ZERO),
     uvs,
     material,
-    doubleSided: faceDoubleSided(material, context),
+    frameTexture: texture,
+    doubleSided,
     uvWidth: uvSize?.width ?? context.resolution.width,
     uvHeight: uvSize?.height ?? context.resolution.height,
   };

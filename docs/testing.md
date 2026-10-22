@@ -99,6 +99,12 @@ image code uses no clock or random source (lint rule; timing lives in `fixtures/
   frame time 0.15 s, order [0, 2, 1, 3] and interpolate), by `texelExact.test.ts` (strip faces scaled back by uv height
   × count give the authored corners exactly) and by `textureFrames.test.ts` (count formula, timing, order, hostile
   fields). No render golden: renderers sample the same document UVs, which put frame 0 inside the image.
+- Texture render modes (MS-29) are pinned by the data goldens `render-modes.json` (a `free` cube with one face per
+  `render_mode`: default, emissive, additive, layered as default, an unknown string and a number, both warned) and
+  `layered.json` (a `bedrock` cube and mesh, four textures, three layered and one of those hidden: every face on the
+  appended composite with `layers` [0, 1, 3]), and by `formatRules.test.ts` (each mode, the layer rules per format,
+  hostile values, Blockbench's default texture per format). `nested-groups.json` changed with them: its `bedrock`
+  blank faces now show the default texture. No render golden: no renderer reads the new fields yet (MS-32).
 - A per-golden tolerance override (`threshold`, `maxDiffRatio`, `maxMeanDelta`, each range-checked) needs a non-empty `reason` in the spec, and GPU-variance evidence (the CI diff
   artefact) in the commit.
 

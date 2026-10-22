@@ -35,6 +35,13 @@ export interface Hierarchy {
   readonly rootNodes: readonly number[];
   /** Outliner order, then elements the outliner does not reference, in file order. */
   readonly placements: readonly ElementPlacement[];
+  /** Each node's group `texture` (a texture uuid) with `HierarchyOptions.readGroupTextures`; empty otherwise. */
+  readonly groupTextures: readonly (GroupTexture | undefined)[];
+}
+
+export interface GroupTexture {
+  readonly uuid: string;
+  readonly path: string;
 }
 
 interface Pending {
@@ -48,6 +55,8 @@ interface Pending {
 export interface HierarchyOptions {
   /** Negate every group's z rotation (files before format 3.2, as Blockbench imports them). */
   readonly invertGroupZ?: boolean;
+  /** Read each group's `texture` (formats with `per_group_texture`). */
+  readonly readGroupTextures?: boolean;
 }
 
 interface GroupData {
@@ -76,6 +85,7 @@ export function buildHierarchy(
   const nodes: HierarchyNode[] = [];
   const rootNodes: number[] = [];
   const placements: ElementPlacement[] = [];
+  const groupTextures: (GroupTexture | undefined)[] = [];
   const placedElements = new Set<number>();
   const seenGroups = new Set<string>();
   const stack: Pending[] = [];
@@ -133,6 +143,7 @@ export function buildHierarchy(
       rotation: groupRotation(readOptionalVec3(group.data, 'rotation', group.path, ZERO), options),
       visible: readOptionalBoolean(group.data, 'visibility', group.path, true),
     });
+    if (options.readGroupTextures) groupTextures.push(readGroupTexture(group, limits, warnings));
     if (parent < 0) rootNodes.push(index);
     else nodes[parent]?.children.push(index);
     const children = field(entry, 'children');
@@ -144,7 +155,23 @@ export function buildHierarchy(
   for (let element = 0; element < elementCount; element++) {
     if (!placedElements.has(element)) placements.push({ element, node: -1 });
   }
-  return { nodes, rootNodes, placements };
+  return { nodes, rootNodes, placements, groupTextures };
+}
+
+/** Unset when absent or empty; a non-string or over-long value warns and is ignored, as the field was before. */
+function readGroupTexture(
+  group: GroupData,
+  limits: BbmodelLimits,
+  warnings: BbmodelWarningList,
+): GroupTexture | undefined {
+  const value = field(group.data, 'texture');
+  if (value === undefined || value === '' || value === false) return undefined;
+  const path = childPath(group.path, 'texture');
+  if (typeof value !== 'string' || value.length > limits.maxStringChars) {
+    warnings.add('UNSUPPORTED_VALUE', path, `expected a texture uuid, got ${quoteValue(value)}; ignored`);
+    return undefined;
+  }
+  return { uuid: value, path };
 }
 
 function groupRotation(rotation: Vec3, options: HierarchyOptions): Vec3 {

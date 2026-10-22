@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { loadBbmodel, type BbmodelLimits } from '../../src/index';
-import { cube, mesh, meshFace, model } from './fixtures';
+import { cube, mesh, meshFace, model, pngDataUri } from './fixtures';
 
 const json = (value: unknown): string => JSON.stringify(value);
 const meta = (modelFormat: string, extra: Record<string, unknown> = {}) => ({
@@ -33,6 +33,40 @@ describe('per-texture UV size (Blockbench per_texture_uv_size)', () => {
       expect(scene.textures[0]).toMatchObject({ uvWidth: 64, uvHeight: 32 });
     },
   );
+
+  it.each(['image', 'optifine_entity', 'optifine_part'])('applies uv_width/uv_height in %s too', (format) => {
+    const { scene } = loadBbmodel(json(model({ meta: meta(format), textures })));
+    expect(scene.textures[0]).toMatchObject({ uvWidth: 32, uvHeight: 64 });
+  });
+
+  it.each(['image', 'optifine_entity'])(
+    '%s: a bad uv size warns and uses the resolution (read since MS-29)',
+    (format) => {
+      const bad = [{ name: 't', uv_width: 0, uv_height: 'x' }];
+      const { scene, warnings } = loadBbmodel(
+        json(model({ meta: meta(format), textures: bad, resolution: { width: 64, height: 32 } })),
+      );
+      expect(scene.textures[0]).toMatchObject({ uvWidth: 64, uvHeight: 32 });
+      expect(warnings.filter((w) => w.code === 'UNSUPPORTED_VALUE').map((w) => w.path)).toEqual([
+        '$.textures[0].uv_width',
+        '$.textures[0].uv_height',
+      ]);
+    },
+  );
+
+  it('optifine: face UVs use the UV size of the texture shown (group texture), not the stored one', () => {
+    const list = [
+      { name: 'a', uuid: 't-a', uv_width: 16, uv_height: 16 },
+      { name: 'b', uuid: 't-b', uv_width: 64, uv_height: 32 },
+    ];
+    const north = { uv: [0, 0, 16, 16], texture: 0 };
+    const outliner = [{ name: 'g', uuid: 'g0', texture: 't-b', children: ['c0'] }];
+    const text = json(
+      model({ meta: meta('optifine_entity'), textures: list, elements: [cube({ faces: { north } })], outliner }),
+    );
+    expect(northRect(text, 64, 32)).toEqual([0, 0, 16, 16]);
+    expect(loadBbmodel(text).scene.meshes[0]?.groups[0]?.material).toBe(1);
+  });
 
   it('uses the project resolution when the format is missing', () => {
     const { scene } = loadBbmodel(json(model({ meta: { format_version: '4.5' }, textures })));
@@ -301,5 +335,306 @@ describe('format version gates of Blockbench project import (js/formats/bbmodel.
   it('leaves `shade: false` alone in a project without box UV (a cube may still opt into box UV)', () => {
     const own = { box_uv: true, shade: false };
     expect(uvs(boxCube('4.4', own, false))).toEqual(uvs(boxCube('4.5', { box_uv: true })));
+  });
+});
+
+describe('texture render_mode (Blockbench texture shader)', () => {
+  const modeModel = (modelFormat: string, renderMode: unknown) =>
+    json(
+      model({
+        meta: meta(modelFormat),
+        textures: [renderMode === undefined ? { name: 't' } : { name: 't', render_mode: renderMode }],
+      }),
+    );
+  const load = (modelFormat: string, renderMode: unknown) => {
+    const { scene, warnings } = loadBbmodel(modeModel(modelFormat, renderMode));
+    return { materials: scene.materials, warnings: warnings.filter((w) => w.code === 'UNSUPPORTED_VALUE') };
+  };
+  const DEFAULT = { name: 't', texture: 0, alphaMode: 'blend', alphaCutoff: 0.01 };
+
+  it.each<[string, unknown, Record<string, unknown>]>([
+    ['default', 'default', DEFAULT],
+    [
+      'emissive: kept texels opaque, alpha splits reflected and emitted light',
+      'emissive',
+      { ...DEFAULT, alphaMode: 'mask', alphaEmission: true },
+    ],
+    ['additive', 'additive', { ...DEFAULT, blending: 'additive' }],
+  ])('%s', (_name, renderMode, material) => {
+    expect(load('free', renderMode)).toEqual({ materials: [material], warnings: [] });
+  });
+
+  it('absent adds no key (a file without render modes loads as before)', () => {
+    expect(load('free', undefined).materials.map((m) => Object.keys(m))).toEqual([
+      ['name', 'texture', 'alphaMode', 'alphaCutoff'],
+    ]);
+  });
+
+  it.each(['free', 'java_block', 'unknown-format'])('layered draws as default in %s', (format) => {
+    const textures = [{ name: 't' }, { name: 'u', render_mode: 'layered' }];
+    const element = cube({ faces: { up: { uv: [0, 0, 1, 1], texture: 0 }, down: { uv: [0, 0, 1, 1], texture: 1 } } });
+    const { scene } = loadBbmodel(json(model({ meta: meta(format), textures, elements: [element] })));
+    expect(scene.materials).toEqual([DEFAULT, { ...DEFAULT, name: 'u', texture: 1 }]);
+    expect(scene.meshes[0]?.groups.map((g) => g.material)).toEqual([0, 1]);
+  });
+
+  it.each<[string, unknown]>([
+    ['an unknown string', 'glow'],
+    ['a number', 3],
+    ['null', null],
+    ['an object', { mode: 'emissive' }],
+    ['a 10 000-character string', 'e'.repeat(10_000)],
+  ])('%s warns once and counts as default', (_name, renderMode) => {
+    const { materials, warnings } = load('free', renderMode);
+    expect(materials).toEqual([DEFAULT]);
+    expect(warnings.map((w) => w.path)).toEqual(['$.textures[0].render_mode']);
+    expect(warnings[0]?.message.length).toBeLessThan(200);
+    expect(warnings[0]?.message).not.toMatch(/e{33}/);
+  });
+});
+
+describe('layered textures (Blockbench Canvas.getLayeredMaterial)', () => {
+  const LAYERED_FORMATS = [
+    'bedrock',
+    'bedrock_old',
+    'modded_entity',
+    'skin',
+    'image',
+    'bedrock_block',
+    'optifine_entity',
+    'optifine_part',
+  ];
+  const texture = (name: string, extra: Record<string, unknown> = {}) => ({ name, ...extra });
+  const elements = [
+    cube({
+      faces: {
+        north: { uv: [0, 0, 1, 1], texture: 0 },
+        south: { uv: [0, 0, 1, 1], texture: 1 },
+        up: { uv: [0, 0, 1, 1] },
+        down: { uv: [0, 0, 1, 1], texture: null },
+      },
+    }),
+    mesh({
+      uuid: 'm0',
+      faces: { f: meshFace(['a', 'b', 'c'], { texture: 0 }), g: meshFace(['a', 'c', 'd'], { texture: null }) },
+    }),
+  ];
+  const load = (modelFormat: string, textures: unknown[]) =>
+    loadBbmodel(json(model({ meta: meta(modelFormat), textures, elements, outliner: ['c0', 'm0'] })));
+  const two = [texture('base', { render_sides: 'front' }), texture('top', { render_mode: 'layered' })];
+
+  it.each(LAYERED_FORMATS)('%s: every drawn face uses one appended composite, sided as the format', (format) => {
+    const { scene } = load(format, two);
+    expect(scene.materials).toHaveLength(3);
+    expect(scene.materials[2]).toEqual({
+      name: 'layered',
+      texture: 0,
+      alphaMode: 'blend',
+      alphaCutoff: 0.05,
+      layers: [0, 1],
+    });
+    // The cube's null face stays dropped (3 faces); the mesh's null face is drawn, with the composite too.
+    expect(scene.meshes.map((m) => m.groups)).toEqual([
+      [{ material: 2, start: 0, count: 18, doubleSided: true }],
+      [{ material: 2, start: 0, count: 6, doubleSided: true }],
+    ]);
+  });
+
+  it.each(['free', 'java_block'])('%s: no composite, faces keep their textures', (format) => {
+    const { scene } = load(format, two);
+    expect(scene.materials).toHaveLength(2);
+    expect(scene.meshes[0]?.groups.map((g) => g.material)).toEqual([-1, 0, 1]);
+  });
+
+  it('needs two or more textures', () => {
+    const textures = [texture('only', { render_mode: 'layered' })];
+    const { scene } = loadBbmodel(json(model({ meta: meta('bedrock'), textures })));
+    expect(scene.materials).toEqual([{ name: 'only', texture: 0, alphaMode: 'blend', alphaCutoff: 0.01 }]);
+    expect(scene.meshes[0]?.groups.map((g) => g.material)).toEqual([0]);
+  });
+
+  it('needs a layered texture', () => {
+    expect(load('bedrock', [texture('a'), texture('b', { render_mode: 'emissive' })]).scene.materials).toHaveLength(2);
+  });
+
+  it('stacks the last three visible textures, bottom first; a hidden one is skipped', () => {
+    const textures = ['a', 'b', 'c', 'd', 'e'].map((name) => texture(name, { render_mode: 'layered' }));
+    expect(load('bedrock', textures).scene.materials[5]?.layers).toEqual([2, 3, 4]);
+    textures[3] = texture('d', { render_mode: 'layered', visible: false });
+    expect(load('bedrock', textures).scene.materials[5]?.layers).toEqual([1, 2, 4]);
+  });
+
+  it('no visible texture: no composite, and no default texture', () => {
+    const hidden = { visible: false };
+    const textures = [texture('a', hidden), texture('b', { render_mode: 'layered', ...hidden })];
+    const { scene } = load('bedrock', textures);
+    expect(scene.materials).toHaveLength(2);
+    expect(scene.meshes[0]?.groups.map((g) => g.material)).toEqual([-1]);
+  });
+
+  it('a non-boolean visible warns and counts as visible', () => {
+    const textures = [texture('a'), texture('b', { render_mode: 'layered', visible: 'no' })];
+    const { scene, warnings } = load('bedrock', textures);
+    expect(scene.materials[2]?.layers).toEqual([0, 1]);
+    expect(warnings.filter((w) => w.code === 'UNSUPPORTED_VALUE').map((w) => w.path)).toEqual([
+      '$.textures[1].visible',
+    ]);
+  });
+
+  it('material i still shows texture i', () => {
+    const textures = ['a', 'b', 'c', 'd'].map((name) => texture(name, { render_mode: 'layered' }));
+    const { scene } = load('bedrock', textures);
+    expect(scene.materials).toHaveLength(5);
+    scene.textures.forEach((_, i) => expect(scene.materials[i]?.texture).toBe(i));
+  });
+
+  it('a face keeps the frame division of the texture it shows', () => {
+    // The default texture is the last visible one (the 4-frame strip); with the strip hidden, the plain first texture.
+    const strip = { name: 'strip', render_mode: 'layered', source: pngDataUri(16, 64) };
+    const plain = { name: 'plain', source: pngDataUri(16, 16) };
+    const face = { uv: [0, 0, 16, 16], texture: 0 };
+    const rect = (textures: unknown[]) => {
+      const text = json(model({ meta: meta('bedrock'), textures, elements: [cube({ faces: { north: face } })] }));
+      return [...(loadBbmodel(text).scene.meshes[0]?.uvRects.slice(0, 4) ?? [])];
+    };
+    expect(rect([plain, strip])).toEqual([0, 0, 1, 0.25]);
+    expect(rect([plain, { ...strip, visible: false }])).toEqual([0, 0, 1, 1]);
+  });
+});
+
+describe('default texture (Blockbench Face.getTexture, Texture.getDefault)', () => {
+  const faces = {
+    north: { uv: [0, 0, 16, 16], texture: 1 },
+    south: { uv: [0, 0, 16, 16] },
+    up: { uv: [0, 0, 16, 16], texture: false },
+    down: { uv: [0, 0, 16, 16], texture: null },
+  };
+  const textures = (fields: Record<string, unknown>[] = [{}, {}]) =>
+    fields.map((extra, i) => ({ name: `t${i}`, uuid: `t-${i}`, ...extra }));
+  const load = (modelFormat: string, list = textures(), outliner: unknown[] = ['c0']) => {
+    const text = json(model({ meta: meta(modelFormat), textures: list, elements: [cube({ faces })], outliner }));
+    const { scene, warnings } = loadBbmodel(text);
+    return { groups: scene.meshes.map((m) => m.groups.map((g) => [g.material, g.count / 6])), warnings };
+  };
+  const grouped = (texture: unknown) => [{ name: 'g', uuid: 'g0', texture, children: ['c0'] }];
+
+  it.each(['bedrock', 'bedrock_old', 'modded_entity', 'skin', 'image'])(
+    '%s: every non-null face shows the first texture',
+    (format) => {
+      expect(load(format).groups).toEqual([[[0, 3]]]);
+    },
+  );
+
+  it('bedrock_block: blank faces show the default texture, indexed faces their own', () => {
+    expect(load('bedrock_block').groups).toEqual([
+      [
+        [0, 2],
+        [1, 1],
+      ],
+    ]);
+    expect(load('bedrock_block', textures([{}, { use_as_default: true }])).groups).toEqual([[[1, 3]]]);
+  });
+
+  it.each(['optifine_entity', 'optifine_part'])(
+    '%s: every face shows the default texture, unless its group sets one',
+    (format) => {
+      expect(load(format).groups).toEqual([[[0, 3]]]);
+      expect(load(format, textures([{}, { use_as_default: true }])).groups).toEqual([[[1, 3]]]);
+      expect(load(format, textures(), grouped('t-1')).groups).toEqual([[[1, 3]]]);
+    },
+  );
+
+  it('optifine: a group texture naming no texture warns and leaves its faces untextured', () => {
+    const { groups, warnings } = load('optifine_entity', textures(), grouped('nope'));
+    expect(groups).toEqual([[[-1, 3]]]);
+    expect(warnings.map((w) => [w.code, w.path])).toContainEqual(['UNKNOWN_REFERENCE', '$.outliner[0].texture']);
+  });
+
+  it('optifine: a non-string group texture warns and is ignored', () => {
+    const { groups, warnings } = load('optifine_entity', textures(), grouped(7));
+    expect(groups).toEqual([[[0, 3]]]);
+    expect(warnings.map((w) => [w.code, w.path])).toContainEqual(['UNSUPPORTED_VALUE', '$.outliner[0].texture']);
+  });
+
+  it('a group texture is ignored outside per-group formats', () => {
+    expect(load('bedrock', textures(), grouped('t-1')).groups).toEqual([[[0, 3]]]);
+    expect(load('free', textures(), grouped(7)).warnings).toEqual(load('free').warnings);
+  });
+
+  it.each(['free', 'java_block'])('%s: faces keep what they store', (format) => {
+    expect(load(format).groups).toEqual([
+      [
+        [-1, 2],
+        [1, 1],
+      ],
+    ]);
+  });
+
+  it('without textures, faces stay untextured', () => {
+    const blank = { uv: [0, 0, 16, 16] };
+    const text = json(model({ meta: meta('bedrock'), elements: [cube({ faces: { north: blank, up: blank } })] }));
+    expect(loadBbmodel(text).scene.meshes[0]?.groups.map((g) => g.material)).toEqual([-1]);
+  });
+
+  it('a mesh face with texture null draws with the default texture in single formats, untextured elsewhere', () => {
+    const element = mesh({
+      faces: { f: meshFace(['a', 'b', 'c'], { texture: null }), g: meshFace(['a', 'c', 'd'], { texture: 1 }) },
+    });
+    const materials = (format: string) => {
+      const text = json(model({ meta: meta(format), textures: textures(), elements: [element] }));
+      return loadBbmodel(text).scene.meshes[0]?.groups.map((g) => [g.material, g.count / 3]);
+    };
+    expect(materials('bedrock')).toEqual([[0, 2]]);
+    expect(materials('bedrock_block')).toEqual([
+      [-1, 1],
+      [1, 1],
+    ]);
+    expect(materials('free')).toEqual([
+      [-1, 1],
+      [1, 1],
+    ]);
+  });
+
+  it('a mesh face with texture null keeps project-resolution UVs and no frame division in single formats', () => {
+    const list = [{ name: 'strip', source: pngDataUri(16, 64) }];
+    const face = meshFace(['a', 'b', 'c'], { texture: null, uv: { a: [0, 0], b: [16, 0], c: [16, 16] } });
+    const text = json(model({ meta: meta('bedrock'), textures: list, elements: [mesh({ faces: { f: face } })] }));
+    const sceneMesh = loadBbmodel(text).scene.meshes[0];
+    expect(sceneMesh?.groups[0]?.material).toBe(0);
+    expect([...(sceneMesh?.uvRects.slice(0, 4) ?? [])]).toEqual([0, 0, 1, 1]);
+  });
+
+  it('optifine: a mesh face with texture null shows its group texture', () => {
+    const element = mesh({ faces: { f: meshFace(['a', 'b', 'c'], { texture: null }) } });
+    const outliner = [{ name: 'g', uuid: 'g0', texture: 't-1', children: ['c0'] }];
+    const text = json(model({ meta: meta('optifine_entity'), textures: textures(), elements: [element], outliner }));
+    expect(loadBbmodel(text).scene.meshes[0]?.groups.map((g) => g.material)).toEqual([1]);
+  });
+
+  it('a non-boolean use_as_default warns and counts as false', () => {
+    const { groups, warnings } = load('bedrock_block', textures([{}, { use_as_default: 'yes' }]));
+    expect(groups).toEqual([
+      [
+        [0, 2],
+        [1, 1],
+      ],
+    ]);
+    expect(warnings.filter((w) => w.code === 'UNSUPPORTED_VALUE').map((w) => w.path)).toEqual([
+      '$.textures[1].use_as_default',
+    ]);
+  });
+
+  it('use_as_default is ignored in single_texture formats', () => {
+    expect(load('bedrock', textures([{}, { use_as_default: true }])).groups).toEqual([[[0, 3]]]);
+  });
+
+  it('frames follow the default texture', () => {
+    const list = [
+      { name: 'strip', source: pngDataUri(16, 64) },
+      { name: 'still', source: pngDataUri(16, 16) },
+    ];
+    const north = { uv: [0, 0, 16, 16], texture: 1 };
+    const text = json(model({ meta: meta('bedrock'), textures: list, elements: [cube({ faces: { north } })] }));
+    expect([...(loadBbmodel(text).scene.meshes[0]?.uvRects.slice(0, 4) ?? [])]).toEqual([0, 0, 1, 0.25]);
   });
 });

@@ -137,6 +137,28 @@ describe('hand-checked transforms', () => {
     // loose sits at the root, untouched.
     expect(hasVertex(worldVertices(scene, 4), [11, 1, 11])).toBe(true);
     expect(warnings.map((w) => w.code)).toEqual(['UNKNOWN_REFERENCE']);
+    // bedrock is a single-texture format: the blank up and down faces of hips show the default texture too.
+    expect(scene.meshes[0]?.groups).toEqual([{ material: 0, start: 0, count: 36, doubleSided: true }]);
+  });
+
+  it('layered: the cube and the mesh draw only with the composite of the visible layers', () => {
+    const { scene, warnings } = load('layered');
+    expect(warnings).toEqual([]);
+    expect(scene.materials.at(-1)).toMatchObject({ name: 'layered', texture: 0, layers: [0, 1, 3] });
+    expect(scene.meshes.map((m) => m.groups.map((g) => g.material))).toEqual([[4], [4]]);
+  });
+
+  it('render-modes: each mode maps to its material fields, the unknown ones warn', () => {
+    const { scene, warnings } = load('render-modes');
+    expect(scene.materials.map((m) => [m.alphaMode, m.alphaEmission, m.blending])).toEqual([
+      ['blend', undefined, undefined],
+      ['mask', true, undefined],
+      ['blend', undefined, 'additive'],
+      ['blend', undefined, undefined],
+      ['blend', undefined, undefined],
+      ['blend', undefined, undefined],
+    ]);
+    expect(warnings.map((w) => w.path)).toEqual(['$.textures[4].render_mode', '$.textures[5].render_mode']);
   });
 
   it('format5-groups: group data comes from the top-level groups array', () => {
