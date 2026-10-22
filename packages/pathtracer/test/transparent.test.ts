@@ -43,4 +43,14 @@ describe('PathTracer transparent requests', () => {
     tracer.dispose();
     expect(tracer.readImage()).toBeNull();
   });
+
+  it('reports the context lost from the moment it is, before its event', () => {
+    let lost = false;
+    const lossy = { ...canvas, getContext: () => ({ isContextLost: () => lost }) } as unknown as HTMLCanvasElement;
+    const tracer = PathTracer.create(lossy);
+    expect(tracer.contextLost).toBe(false);
+    lost = true;
+    expect(tracer.contextLost).toBe(true);
+    expect(tracer.readImage()).toBeNull();
+  });
 });

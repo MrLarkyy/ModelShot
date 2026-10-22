@@ -118,10 +118,10 @@ describe('path tracer shaders', () => {
 
   it('sums coverage into a third target only for a transparent request, the opaque paths written as before', () => {
     const trace = pathTracerProgramSource('trace').fragment;
-    expect(trace).toContain('layout(location = 2) out float outCoverage;');
+    expect(trace).toContain('layout(location = 2) out vec2 outCoverage;');
     expect(trace).toContain('uniform bool u_transparent;');
     expect(trace).toContain(
-      'outCoverage = u_transparent ? texelFetch(u_previousCoverage, pixel, 0).r + coverage : 0.0;',
+      'outCoverage = u_transparent ? texelFetch(u_previousCoverage, pixel, 0).rg + vec2(coverage, coverage * coverage) : vec2(0.0);',
     );
     // Opaque: the catcher still shades the backdrop, an escaped camera ray still shows it, the sum is unchanged.
     expect(trace).toContain('if (!u_transparent) return backdropHere() * shade;');
@@ -144,7 +144,23 @@ describe('path tracer shaders', () => {
     expect(present).toContain('outColor = vec4(alpha > 0.0 ? agxToneMap(premultiplied / alpha) : vec3(0.0), alpha);');
     const resolve = pathTracerProgramSource('resolve').fragment;
     expect(resolve).toContain('outColor = vec4(total / area, u_transparent ? coverage / area : 1.0);');
-    expect(resolve).toContain('if (u_transparent) coverage += texelFetch(u_coverage, p, 0).r / u_samples;');
+    expect(resolve).toContain(
+      'coverage += u_coverageFiltered ? texelFetch(u_filteredCoverage, p, 0).r : texelFetch(u_coverage, p, 0).r / u_samples;',
+    );
+  });
+
+  it('denoises coverage with the radiance weights and measures its noise, the opaque arithmetic unchanged', () => {
+    const denoise = pathTracerProgramSource('denoise').fragment;
+    const weighted = denoise.indexOf('w *= wNormal * wAlbedo * wLuminance * wDepth;');
+    const coverage = denoise.indexOf('if (u_transparent) coverage += w * coverageAt(q);');
+    expect(coverage).toBeGreaterThan(weighted);
+    expect(denoise).toContain('outFiltered = vec4(filtered / weights, variance / (weights * weights));');
+    expect(denoise).toContain('layout(location = 1) out float outCoverage;');
+    const noise = pathTracerProgramSource('noise').fragment;
+    expect(noise).toContain(
+      'worst = max(worst, sqrt(max(variance, 0.0) / (area * area)) / max(mean / area, MEAN_FLOOR));',
+    );
+    expect(noise).toContain('coverageVariance += varianceOfMean(coverage.r, coverage.g, u_samples);');
   });
 
   it('takes the guide through stratified points with the alpha rule and keys of the trace, more at partial texels', () => {

@@ -28,10 +28,10 @@ describe('AccumulationTargets', () => {
     }
   });
 
-  it('gives a transparent request an R32F coverage sum at attachment 2 of each target', () => {
+  it('gives a transparent request an RG32F coverage sum at attachment 2 of each target', () => {
     const { gl, calls } = stubGl();
     const targets = new AccumulationTargets(gl, 8, 4, false, true);
-    expect(textureFormats(calls)).toEqual([gl.RGBA32F, gl.R32F, gl.RGBA32F, gl.R32F]);
+    expect(textureFormats(calls)).toEqual([gl.RGBA32F, gl.RG32F, gl.RGBA32F, gl.RG32F]);
     expect(targets.sum.coverage).not.toBeNull();
     expect(targets.next.coverage).not.toBe(targets.sum.coverage);
     // Without moments draw buffer 1 is NONE, as WebGL2 wants draw buffer i to be attachment i or nothing.
@@ -46,7 +46,7 @@ describe('AccumulationTargets', () => {
   it('keeps moments at attachment 1 beside the coverage', () => {
     const { gl, calls } = stubGl();
     new AccumulationTargets(gl, 8, 4, true, true);
-    expect(textureFormats(calls)).toEqual([gl.RGBA32F, gl.R32F, gl.R32F, gl.RGBA32F, gl.R32F, gl.R32F]);
+    expect(textureFormats(calls)).toEqual([gl.RGBA32F, gl.R32F, gl.RG32F, gl.RGBA32F, gl.R32F, gl.RG32F]);
     expect(drawBuffers(calls)[0]).toEqual([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2]);
   });
 
@@ -69,10 +69,10 @@ describe('AccumulationTargets', () => {
         property === 'checkFramebufferStatus' ? () => 0 : (Reflect.get(target, property, receiver) as unknown),
     });
     expect(() => new AccumulationTargets(incomplete, 8, 4, false, true)).toThrow(
-      'RGBA32F + R32F coverage accumulation targets are not renderable here',
+      'RGBA32F + RG32F coverage accumulation targets are not renderable here',
     );
     expect(() => new AccumulationTargets(incomplete, 8, 4, true, true)).toThrow(
-      'RGBA32F + R32F moment and coverage accumulation targets are not renderable here',
+      'RGBA32F + R32F moment and RG32F coverage accumulation targets are not renderable here',
     );
     expect(() => new AccumulationTargets(incomplete, 8, 4, true)).toThrow(
       'RGBA32F + R32F accumulation targets are not renderable here',

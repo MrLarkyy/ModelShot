@@ -4,7 +4,7 @@ interface Target {
   readonly texture: WebGLTexture;
   /** R32F sum of the samples' squared luminance at COLOR_ATTACHMENT1; `null` without moments. */
   readonly moments: WebGLTexture | null;
-  /** R32F sum of the samples' coverage at COLOR_ATTACHMENT2; `null` unless transparent. */
+  /** RG32F sums of the samples' coverage and squared coverage at COLOR_ATTACHMENT2; `null` unless transparent. */
   readonly coverage: WebGLTexture | null;
   readonly framebuffer: WebGLFramebuffer;
 }
@@ -14,8 +14,8 @@ interface Target {
  * writes sum + sample into the other, then they swap. No blending (which would need EXT_float_blend), and exact float
  * adds in sample order, so the result depends only on the samples, never on how they were batched. With `moments`
  * each also holds the running sum of squared luminance (R32F, the same way), from which the noise estimate and the
- * denoiser take each pixel's variance. With `transparent` each holds the running sum of coverage too (R32F): the
- * radiance sum's alpha already counts capped traversals.
+ * denoiser take each pixel's variance. With `transparent` each holds the running sums of coverage and of its square
+ * too (RG32F, the square for the noise estimate): the radiance sum's alpha already counts capped traversals.
  */
 export class AccumulationTargets {
   private readonly targets: [Target, Target];
@@ -103,7 +103,7 @@ export class AccumulationTargets {
     const gl = this.gl;
     const texture = this.createTexture(gl.RGBA32F);
     const moments = this.moments ? this.createTexture(gl.R32F) : null;
-    const coverage = this.transparent ? this.createTexture(gl.R32F) : null;
+    const coverage = this.transparent ? this.createTexture(gl.RG32F) : null;
     const framebuffer = gl.createFramebuffer();
     gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
@@ -123,7 +123,7 @@ export class AccumulationTargets {
       throw new PathTracerError(
         'FLOAT_TARGETS_UNAVAILABLE',
         coverage
-          ? `RGBA32F + R32F ${moments ? 'moment and ' : ''}coverage accumulation targets are not renderable here`
+          ? `RGBA32F + ${moments ? 'R32F moment and ' : ''}RG32F coverage accumulation targets are not renderable here`
           : moments
             ? 'RGBA32F + R32F accumulation targets are not renderable here'
             : 'RGBA32F accumulation targets are not renderable here',

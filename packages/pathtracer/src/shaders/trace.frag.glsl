@@ -20,7 +20,8 @@ uniform highp sampler2D u_previous;
 // Denoise or a noise threshold: the same for the sum of the samples' squared luminance, in a second target.
 uniform bool u_moments;
 uniform highp sampler2D u_previousMoments;
-// A transparent request: the same for each sample's coverage, in a third target, and no backdrop in the radiance.
+// A transparent request: the same for each sample's coverage and its square, in a third target, and no backdrop in the
+// radiance.
 uniform bool u_transparent;
 uniform highp sampler2D u_previousCoverage;
 uniform uint u_seed;
@@ -29,7 +30,7 @@ uniform int u_maxBounces;
 
 layout(location = 0) out vec4 outSum;
 layout(location = 1) out float outMoments;
-layout(location = 2) out float outCoverage;
+layout(location = 2) out vec2 outCoverage;
 
 const int MAX_BOUNCES = 16;
 const int ROULETTE_FROM = 3;
@@ -139,5 +140,5 @@ void main() {
   } else {
     outMoments = 0.0;
   }
-  outCoverage = u_transparent ? texelFetch(u_previousCoverage, pixel, 0).r + coverage : 0.0;
+  outCoverage = u_transparent ? texelFetch(u_previousCoverage, pixel, 0).rg + vec2(coverage, coverage * coverage) : vec2(0.0);
 }

@@ -18,9 +18,16 @@ uniform highp sampler2D u_normal;
 uniform bool u_first;
 uniform float u_samples;
 uniform int u_step;
+// A transparent request: the mean coverage is filtered alongside, with the radiance's weights; the first pass reads
+// the accumulation's coverage sum, the others the previous pass's output.
+uniform bool u_transparent;
+uniform highp sampler2D u_coverageSum;
+uniform highp sampler2D u_coverageSource;
 
 // rgb: the filtered demodulated radiance; a: the variance of its luminance.
-out vec4 outFiltered;
+layout(location = 0) out vec4 outFiltered;
+// The filtered mean coverage (transparent requests).
+layout(location = 1) out float outCoverage;
 
 // The 5-tap B3 spline, by distance from the centre.
 const float KERNEL[3] = float[3](0.375, 0.25, 0.0625);
@@ -58,6 +65,10 @@ vec3 normalAt(ivec2 p) {
   vec3 n = texelFetch(u_normal, p, 0).xyz;
   float length2 = dot(n, n);
   return length2 > 1.0e-6 ? n * inversesqrt(length2) : vec3(0.0);
+}
+
+float coverageAt(ivec2 p) {
+  return u_first ? texelFetch(u_coverageSum, p, 0).r / u_samples : texelFetch(u_coverageSource, p, 0).r;
 }
 
 bool inside(ivec2 p, ivec2 size) {
@@ -109,6 +120,7 @@ void main() {
   vec3 filtered = vec3(0.0);
   float weights = 0.0;
   float variance = 0.0;
+  float coverage = 0.0;
   for (int dy = -2; dy <= 2; dy++) {
     for (int dx = -2; dx <= 2; dx++) {
       ivec2 q = p + ivec2(dx, dy) * u_step;
@@ -133,7 +145,9 @@ void main() {
       filtered += w * c.rgb;
       weights += w;
       variance += w * w * max(c.a, 0.0);
+      if (u_transparent) coverage += w * coverageAt(q);
     }
   }
   outFiltered = vec4(filtered / weights, variance / (weights * weights));
+  outCoverage = u_transparent ? coverage / weights : 0.0;
 }

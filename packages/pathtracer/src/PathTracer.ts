@@ -117,7 +117,7 @@ interface LoadedScene {
   readonly plan: TextureLayerPlan;
   readonly images: readonly (ImageBitmap | RawImage)[];
   readonly bitmaps: readonly (ImageBitmap | null)[];
-  /** Bounds of the visible geometry (`sceneBounds`), where the catcher goes; `null` when it has none. */
+  /** Where the catcher goes: `SetSceneOptions.catcherBounds`, else the visible geometry's (`sceneBounds`). */
   readonly bounds: SceneBounds | null;
   /** `SetSceneOptions.shadowCatcher`. */
   readonly catcherOn: boolean;
@@ -139,6 +139,27 @@ interface Gpu {
 
 function positiveInt(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+}
+
+/** `SetSceneOptions.catcherBounds` with finite `min ≤ max`, as a plain copy; anything else throws a `RangeError`. */
+function checkCatcherBounds(value: unknown): SceneBounds {
+  const fields = typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+  const corner = (name: 'min' | 'max'): [number, number, number] => {
+    const v = fields[name];
+    if (!Array.isArray(v) || v.length !== 3 || !v.every((x) => typeof x === 'number' && Number.isFinite(x))) {
+      throw new RangeError(`catcherBounds.${name} must be 3 finite numbers`);
+    }
+    return [v[0] as number, v[1] as number, v[2] as number];
+  };
+  const min = corner('min');
+  const max = corner('max');
+  if (min.some((m, k) => m > (max[k] as number))) throw new RangeError('catcherBounds needs min ≤ max on each axis');
+  return {
+    min,
+    max,
+    center: [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2],
+    radius: Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2,
+  };
 }
 
 function checkInteger(label: string, value: unknown, min: number, max: number): number {
@@ -233,8 +254,9 @@ export class PathTracer {
     return this.gpu?.capabilities ?? null;
   }
 
+  /** The context is lost: from the moment it is, before its event too. */
   get contextLost(): boolean {
-    return this.lost;
+    return this.lost || this.gl.isContextLost();
   }
 
   get width(): number {
@@ -320,7 +342,7 @@ export class PathTracer {
     const flat = flattenScene(doc, this.options.maxTriangles ?? DEFAULT_MAX_TRIANGLES, this.sharpEdgeOptions());
     const bvh = buildBvh(flat.positions, flat.count);
     const geometry = packGeometry(flat, bvh, capabilities.maxTextureSize);
-    const bounds = sceneBounds(doc);
+    const bounds = options.catcherBounds === undefined ? sceneBounds(doc) : checkCatcherBounds(options.catcherBounds);
     const catcherOn = options.shadowCatcher !== false;
     // Only a scene that passed every limit supersedes a pending one.
     const generation = ++this.generation;
@@ -573,13 +595,13 @@ export class PathTracer {
     gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, width, height);
     gl.bindTexture(gl.TEXTURE_2D, null);
     const framebuffer = gl.createFramebuffer();
-    const pixels = new Uint8Array(width * height * 4);
+    const data = new Uint8ClampedArray(width * height * 4);
     try {
       gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
       this.present(gpu, framebuffer);
       gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-      gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, data);
     } finally {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.deleteFramebuffer(framebuffer);
@@ -587,9 +609,14 @@ export class PathTracer {
     }
     // A context lost during the read leaves zeros, which must not pass for a transparent image.
     if (gl.isContextLost()) return null;
-    const data = new Uint8ClampedArray(pixels.length);
+    // Rows come bottom to top: swapped in place, one row of scratch.
     const row = width * 4;
-    for (let y = 0; y < height; y++) data.set(pixels.subarray(y * row, (y + 1) * row), (height - 1 - y) * row);
+    const scratch = new Uint8ClampedArray(row);
+    for (let top = 0, bottom = height - 1; top < bottom; top++, bottom--) {
+      scratch.set(data.subarray(top * row, (top + 1) * row));
+      data.copyWithin(top * row, bottom * row, (bottom + 1) * row);
+      data.set(scratch, bottom * row);
+    }
     return { width, height, data };
   }
 
@@ -733,6 +760,7 @@ export class PathTracer {
       denoise,
       resolve: scale > 1 || denoise,
       noise: moments,
+      transparent,
     };
     if (!layout.resolve && !layout.noise) {
       gpu.resolve?.dispose();
@@ -877,13 +905,18 @@ export class PathTracer {
     gl.bindTexture(gl.TEXTURE_2D, targets.sum.texture);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, targets.sum.moments);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, targets.sum.coverage);
     gl.uniform1i(uniform('u_sum'), 0);
     gl.uniform1i(uniform('u_moments'), 1);
+    gl.uniform1i(uniform('u_coverage'), 2);
+    gl.uniform1i(uniform('u_transparent'), targets.transparent ? 1 : 0);
     gl.uniform1f(uniform('u_samples'), this.done);
     gl.uniform1i(uniform('u_scale'), targets.width / this.canvas.width);
     gl.uniform2i(uniform('u_outputSize'), this.canvas.width, this.canvas.height);
     gl.bindVertexArray(gpu.vao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    this.unbindTextures(3);
     const blocks = extra.readNoise();
     // A lost context reads zeros, which would pass any threshold.
     if (gl.isContextLost()) return;
@@ -902,6 +935,7 @@ export class PathTracer {
     if (!resolved) return;
     gl.bindVertexArray(gpu.vao);
     let source = targets.sum.texture;
+    let filteredCoverage: WebGLTexture | null = null;
     const denoised = extra.guide !== null && extra.filtered !== null;
     if (extra.guide && extra.filtered) {
       const { program, uniform } = gpu.programs.get('denoise');
@@ -912,6 +946,7 @@ export class PathTracer {
         ['u_moments', targets.sum.moments],
         ['u_albedo', extra.guide.albedo],
         ['u_normal', extra.guide.normal],
+        ['u_coverageSum', targets.sum.coverage],
       ];
       inputs.forEach(([name, texture], unit) => {
         gl.activeTexture(gl.TEXTURE0 + unit);
@@ -919,20 +954,26 @@ export class PathTracer {
         gl.uniform1i(uniform(name), unit);
       });
       const sourceUnit = inputs.length;
+      const coverageSourceUnit = sourceUnit + 1;
       gl.uniform1i(uniform('u_source'), sourceUnit);
+      gl.uniform1i(uniform('u_coverageSource'), coverageSourceUnit);
+      gl.uniform1i(uniform('u_transparent'), targets.transparent ? 1 : 0);
       gl.uniform1f(uniform('u_samples'), this.done);
       for (let i = 0; i < DENOISE_ITERATIONS; i++) {
         const output = extra.filtered[i % 2] as (typeof extra.filtered)[0];
         // Never the texture being written: the first pass reads the accumulation instead.
         gl.activeTexture(gl.TEXTURE0 + sourceUnit);
         gl.bindTexture(gl.TEXTURE_2D, i === 0 ? null : (extra.filtered[(i + 1) % 2]?.texture ?? null));
+        gl.activeTexture(gl.TEXTURE0 + coverageSourceUnit);
+        gl.bindTexture(gl.TEXTURE_2D, i === 0 ? null : (extra.filtered[(i + 1) % 2]?.coverage ?? null));
         gl.uniform1i(uniform('u_first'), i === 0 ? 1 : 0);
         gl.uniform1i(uniform('u_step'), 1 << i);
         gl.bindFramebuffer(gl.FRAMEBUFFER, output.framebuffer);
         this.drawTiles(tiles);
         source = output.texture;
+        filteredCoverage = output.coverage;
       }
-      this.unbindTextures(sourceUnit + 1);
+      this.unbindTextures(coverageSourceUnit + 1);
     }
     const { program, uniform } = gpu.programs.get('resolve');
     gl.useProgram(program);
@@ -944,15 +985,19 @@ export class PathTracer {
     gl.bindTexture(gl.TEXTURE_2D, extra.guide?.albedo ?? null);
     gl.activeTexture(gl.TEXTURE2);
     gl.bindTexture(gl.TEXTURE_2D, targets.sum.coverage);
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, filteredCoverage);
     gl.uniform1i(uniform('u_source'), 0);
     gl.uniform1i(uniform('u_albedo'), 1);
     gl.uniform1i(uniform('u_coverage'), 2);
+    gl.uniform1i(uniform('u_filteredCoverage'), 3);
+    gl.uniform1i(uniform('u_coverageFiltered'), filteredCoverage ? 1 : 0);
     gl.uniform1i(uniform('u_transparent'), targets.transparent ? 1 : 0);
     gl.uniform1i(uniform('u_denoised'), denoised ? 1 : 0);
     gl.uniform1f(uniform('u_samples'), this.done);
     gl.uniform1i(uniform('u_scale'), targets.width / this.canvas.width);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    this.unbindTextures(3);
+    this.unbindTextures(4);
   }
 
   /**

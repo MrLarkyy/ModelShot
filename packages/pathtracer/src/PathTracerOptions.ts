@@ -1,4 +1,5 @@
 import type { EdgeLook, LookPreset } from '@modelshot/looks';
+import type { SceneBounds } from '@modelshot/scene';
 import type { PathTracerWarning } from './PathTracerWarning';
 
 export interface PathTracerOptions {
@@ -45,6 +46,13 @@ export interface SetSceneOptions {
    * `true`, as in the baked preview.
    */
   readonly shadowCatcher?: boolean;
+  /**
+   * Where the catcher goes instead of under this document's own bounds: its height is `min[1]`, its rectangle covers
+   * the box and the box's shadow. An animation export passes the union of every pose, so the floor stays put while a
+   * pose jumps or crouches. `min` and `max` must be finite with `min ≤ max` on each axis, else a `RangeError` naming
+   * `catcherBounds`.
+   */
+  readonly catcherBounds?: SceneBounds;
 }
 
 export interface SetSceneResult {
@@ -92,5 +100,5 @@ export interface RenderedImage {
   readonly width: number;
   readonly height: number;
   /** `width × height × 4` bytes, RGBA. */
-  readonly data: Uint8ClampedArray;
+  readonly data: Uint8ClampedArray<ArrayBuffer>;
 }
