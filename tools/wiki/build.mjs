@@ -14,7 +14,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_DOCS = path.join(here, '..', '..', 'docs');
 export const DEFAULT_REPO_URL = 'https://github.com/MrLarkyy/ModelShot';
 
-const FENCE = /^s*(`{3,}|~{3,})/;
+const FENCE = /^\s*(`{3,}|~{3,})/;
 
 /**
  * Calls `visit(line, inFence, index)` for every line; a fence opener, its body and its closer are all in a fence.
