@@ -1,0 +1,41 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "packages/app"
+    },
+    {
+      "path": "packages/brand"
+    },
+    {
+      "path": "packages/embed"
+    },
+    {
+      "path": "packages/export"
+    },
+    {
+      "path": "packages/formats"
+    },
+    {
+      "path": "packages/looks"
+    },
+    {
+      "path": "packages/pathtracer"
+    },
+    {
+      "path": "packages/renderer-rt"
+    },
+    {
+      "path": "packages/scene"
+    },
+    {
+      "path": "packages/site"
+    },
+    {
+      "path": "tools/harness"
+    },
+    {
+      "path": "tsconfig.config.json"
+    }
+  ]
+}

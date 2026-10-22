@@ -25,7 +25,8 @@ pnpm test
 
 `pnpm browsers` installs the pinned headless Chromium used by the browser tests once; see [docs/testing.md](docs/testing.md).
 
-Also: `pnpm typecheck`, `pnpm lint`, `pnpm format:check` (`pnpm format` fixes formatting).
+Also: `pnpm typecheck` (`tsc -b` over the root `tsconfig.json`, which references every package, `tools/harness` and
+`tsconfig.config.json` for the root config files; a new package adds its reference there), `pnpm lint`, `pnpm format:check` (`pnpm format` fixes formatting).
 
 Packages (`packages/*`): `formats`, `scene`, `renderer-rt`, `pathtracer`, `looks`, `export`, `app`, `embed`, `brand`
 (design tokens, fonts, logo) and `site` (the landing page). Test tooling lives in `tools/harness`.
