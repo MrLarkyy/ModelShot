@@ -45,4 +45,3 @@ export function estimateRemainingMs(estimate: RemainingEstimate): number | null 
   }
   return (elapsedMs / samplesDone) * Math.max(0, stop - samplesDone);
 }
-

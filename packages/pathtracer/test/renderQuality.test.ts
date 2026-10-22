@@ -30,9 +30,10 @@ describe('checkRenderQuality', () => {
 
   it('throws a RangeError naming the field for any other value', () => {
     const bad: [RenderQualityFields, string][] = [
-      ...[0, 5, 2.5, -1, Number.NaN, Infinity, '2'].map(
-        (supersample): [RenderQualityFields, string] => [{ supersample } as RenderQualityFields, 'supersample'],
-      ),
+      ...[0, 5, 2.5, -1, Number.NaN, Infinity, '2'].map((supersample): [RenderQualityFields, string] => [
+        { supersample } as RenderQualityFields,
+        'supersample',
+      ]),
       ...[1, 0, 'yes', null].map((denoise): [RenderQualityFields, string] => [
         { denoise } as unknown as RenderQualityFields,
         'denoise',

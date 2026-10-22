@@ -7,10 +7,10 @@ export interface TracerProgram {
   readonly uniform: (name: string) => WebGLUniformLocation | null;
 }
 
-export interface TracerPrograms {
-  readonly trace: TracerProgram;
-  readonly present: TracerProgram;
-}
+/** The render's programs: the trace and present of every render, the quality path's guide, denoise, resolve, noise. */
+const RENDER_PROGRAMS = ['trace', 'present', 'guide', 'denoise', 'resolve', 'noise'] as const;
+
+export type TracerPrograms = Readonly<Record<(typeof RENDER_PROGRAMS)[number], TracerProgram>>;
 
 function compile(gl: WebGL2RenderingContext, type: number, source: string, label: string): WebGLShader {
   const shader = gl.createShader(type);
@@ -55,18 +55,18 @@ export function linkTracerProgram(gl: WebGL2RenderingContext, name: PathTracerPr
   return { program, uniform };
 }
 
-/** Compiles and links both programs; a failure throws `PathTracerError` with the driver's info log. */
+/** Compiles and links every render program; a failure deletes those linked and throws `PathTracerError`. */
 export function createTracerPrograms(gl: WebGL2RenderingContext): TracerPrograms {
-  const trace = linkTracerProgram(gl, 'trace');
+  const linked: Partial<Record<(typeof RENDER_PROGRAMS)[number], TracerProgram>> = {};
   try {
-    return { trace, present: linkTracerProgram(gl, 'present') };
+    for (const name of RENDER_PROGRAMS) linked[name] = linkTracerProgram(gl, name);
   } catch (error) {
-    gl.deleteProgram(trace.program);
+    for (const program of Object.values(linked)) gl.deleteProgram(program.program);
     throw error;
   }
+  return linked as TracerPrograms;
 }
 
 export function disposeTracerPrograms(gl: WebGL2RenderingContext, programs: TracerPrograms): void {
-  gl.deleteProgram(programs.trace.program);
-  gl.deleteProgram(programs.present.program);
+  for (const name of RENDER_PROGRAMS) gl.deleteProgram(programs[name].program);
 }

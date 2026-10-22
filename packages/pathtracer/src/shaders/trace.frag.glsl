@@ -12,42 +12,23 @@ precision highp sampler2DArray;
 #include "backdrop"
 #include "primaryRay"
 #include "bvhTraverse"
+#include "cameraCatcher"
+#include "luminanceMoments"
 
 // The running sum of earlier samples; this pass writes it plus one new sample (AccumulationTargets).
 uniform highp sampler2D u_previous;
+// Denoise or a noise threshold: the same for the sum of the samples' squared luminance, in a second target.
+uniform bool u_moments;
+uniform highp sampler2D u_previousMoments;
 uniform uint u_seed;
 uniform uint u_sample;
 uniform int u_maxBounces;
-// Shadow catcher (shadowCatcherPlane.ts of the realtime renderer): a plane at height u_catcherY over the rectangle
-// u_catcherRect = [minX, minZ, maxX, maxZ], seen only by camera rays from above.
-uniform bool u_catcherOn;
-uniform float u_catcherY;
-uniform vec4 u_catcherRect;
 
-out vec4 outSum;
+layout(location = 0) out vec4 outSum;
+layout(location = 1) out float outMoments;
 
 const int MAX_BOUNCES = 16;
 const int ROULETTE_FROM = 3;
-// Random dimensions: 0-1 the pixel jitter; then per path vertex (offsets from its first dimension):
-//   +0, +1  bounce direction         +2  Russian roulette        +3  acceptance of partial texels
-//   +4, +5  key light cone direction
-// A camera ray that meets the shadow catcher ends its path at vertex 0, so the catcher reuses vertex 0's offsets:
-// +0, +1 its fill direction, +4, +5 its key ray, and +2 (roulette, unused there) the acceptance of partial texels by
-// its fill ray. That one must not be +3: the camera ray drew +3 for the same triangles, so a fill ray through a partial
-// texel the camera looked through would always pass it.
-const uint FIRST_VERTEX_DIMENSION = 2u;
-const uint DIMENSIONS_PER_VERTEX = 6u;
-
-// Where a camera ray meets the catcher in front of everything else, or false.
-bool catcherHit(vec3 origin, vec3 direction, float tMin, float tMax, bool modelHit, float modelT, out vec3 point) {
-  point = vec3(0.0);
-  if (!u_catcherOn || direction.y >= 0.0) return false;
-  float t = (u_catcherY - origin.y) / direction.y;
-  if (t < tMin || t > tMax || (modelHit && t >= modelT)) return false;
-  point = origin + direction * t;
-  return point.x >= u_catcherRect.x && point.x <= u_catcherRect.z && point.z >= u_catcherRect.y &&
-    point.z <= u_catcherRect.w;
-}
 
 // The catcher point's backdrop: one key ray in the cone and one cosine-weighted fill ray (escaped: the environment),
 // shaded by catcherShade, which is affine in both, so the mean over samples is the shade of the preview's baked means.
@@ -134,4 +115,10 @@ void main() {
   if (any(isnan(radiance)) || any(isinf(radiance))) radiance = vec3(0.0);
   // rgb: the radiance sum; a: the traversals stopped by the node cap so far (present reads rgb only).
   outSum = vec4(sum.rgb + radiance, sum.a + float(cappedTraversals));
+  if (u_moments) {
+    float luminance = radianceLuminance(radiance);
+    outMoments = texelFetch(u_previousMoments, pixel, 0).r + luminance * luminance;
+  } else {
+    outMoments = 0.0;
+  }
 }

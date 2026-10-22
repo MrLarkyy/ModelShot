@@ -35,7 +35,10 @@ export function checkRenderQuality(fields: RenderQualityFields): RenderQuality {
   if (typeof denoise !== 'boolean') throw new RangeError(`denoise must be a boolean, got ${String(denoise)}`);
   if (
     noiseThreshold !== undefined &&
-    (typeof noiseThreshold !== 'number' || !Number.isFinite(noiseThreshold) || noiseThreshold <= 0 || noiseThreshold > 1)
+    (typeof noiseThreshold !== 'number' ||
+      !Number.isFinite(noiseThreshold) ||
+      noiseThreshold <= 0 ||
+      noiseThreshold > 1)
   ) {
     throw new RangeError(`noiseThreshold must be a finite number in (0, 1], got ${String(noiseThreshold)}`);
   }

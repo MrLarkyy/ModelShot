@@ -7,9 +7,10 @@ import {
   TRIANGLE_POSITION_TEXELS,
 } from '../src/packSceneData';
 import { pathTracerProgramSource } from '../src/pathTracerShaders';
+import { NOISE_BLOCK } from '../src/resolveTargets';
 
 describe('path tracer shaders', () => {
-  for (const name of ['trace', 'present', 'bake'] as const) {
+  for (const name of ['trace', 'present', 'bake', 'guide', 'denoise', 'resolve', 'noise'] as const) {
     it(`${name} links from static chunks with #version first and no include left`, () => {
       const { vertex, fragment } = pathTracerProgramSource(name);
       for (const source of [vertex, fragment]) {
@@ -56,7 +57,7 @@ describe('path tracer shaders', () => {
   });
 
   it('has no clock or time input', () => {
-    for (const name of ['trace', 'bake'] as const) {
+    for (const name of ['trace', 'bake', 'guide', 'denoise', 'resolve', 'noise'] as const) {
       expect(pathTracerProgramSource(name).fragment).not.toMatch(/u_time|u_clock|u_frameTime/);
     }
   });
@@ -96,5 +97,50 @@ describe('path tracer shaders', () => {
     const trace = pathTracerProgramSource('trace').fragment;
     expect(trace).toContain('vec3 aboveSurface(vec3 d, vec3 side)');
     expect(trace).toMatch(/vec3 next = aboveSurface\(\s*cosineDirection\(s\.normal/);
+  });
+
+  it('defines the shadow catcher once, in the chunk the trace and the guide share', () => {
+    for (const name of ['trace', 'guide'] as const) {
+      const source = pathTracerProgramSource(name).fragment;
+      expect(source.match(/bool catcherHit\(/g), name).toHaveLength(1);
+      expect(source.match(/const uint FIRST_VERTEX_DIMENSION = 2u;/g), name).toHaveLength(1);
+    }
+  });
+
+  it('sums squared luminance into the second target only when asked', () => {
+    const trace = pathTracerProgramSource('trace').fragment;
+    expect(trace).toContain('layout(location = 0) out vec4 outSum;');
+    expect(trace).toContain('layout(location = 1) out float outMoments;');
+    expect(trace).toMatch(/if \(u_moments\) \{\s*float luminance = radianceLuminance\(radiance\);/);
+    // The radiance sum is written exactly as without moments.
+    expect(trace).toContain('outSum = vec4(sum.rgb + radiance, sum.a + float(cappedTraversals));');
+  });
+
+  it('replays the camera rays of the first samples in the guide: same keys, jitter and alpha dimension', () => {
+    const guide = pathTracerProgramSource('guide').fragment;
+    expect(guide).toContain('uint key = sampleHash(u_seed, i, uvec2(pixel));');
+    expect(guide).toContain(
+      'primaryRay(vec2(pixel) + vec2(unitRandom(key, 0u, 0u), unitRandom(key, 1u, 0u)), origin, direction);',
+    );
+    expect(guide).toContain(
+      'closestHit(origin, direction, tMin, tMax, depthScale, -1, key, FIRST_VERTEX_DIMENSION + 3u, hit)',
+    );
+    const trace = pathTracerProgramSource('trace').fragment;
+    expect(trace).toContain(
+      'primaryRay(pixel + vec2(unitRandom(key, 0u, 0u), unitRandom(key, 1u, 0u)), origin, direction);',
+    );
+    expect(trace).toContain('uint dimension = FIRST_VERTEX_DIMENSION + uint(pathVertex) * DIMENSIONS_PER_VERTEX;');
+    expect(trace).toContain('closestHit(origin, direction, tMin, tMax, depthScale, skip, key, dimension + 3u, hit)');
+  });
+
+  it('filters demodulated radiance and multiplies the same floored albedo back', () => {
+    const denoise = pathTracerProgramSource('denoise').fragment;
+    expect(denoise).toContain('sum / u_samples / texelFetch(u_albedo, p, 0).rgb');
+    expect(pathTracerProgramSource('resolve').fragment).toContain('c * texelFetch(u_albedo, p, 0).rgb');
+    expect(pathTracerProgramSource('guide').fragment).toContain('max(albedo / rays, vec3(ALBEDO_FLOOR))');
+  });
+
+  it('measures noise in the blocks the CPU sizes the noise target by', () => {
+    expect(pathTracerProgramSource('noise').fragment).toContain(`const int NOISE_BLOCK = ${NOISE_BLOCK};`);
   });
 });
