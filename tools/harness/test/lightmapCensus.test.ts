@@ -29,6 +29,8 @@ const CENSUS: Readonly<Record<string, { world: readonly string[]; key?: string }
   edges: { world: ['wedge', 'plane', 'sphere'] },
   'outline-hull': { world: [], key: '4b2c48876d06f4e3' },
   'gltf-contact': { world: ['ground', 'box'] },
+  // MS-39: the ground and the roof (no normals) are world-charted, the rest per texel.
+  'gltf-nodes-y030': { world: ['ground', 'roof'] },
   // MS-39: the star and the floor are world-charted, the box and wedge per texel.
   'obj-shapes-y030': { world: ['floor', 'star'] },
 };

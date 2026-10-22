@@ -191,7 +191,7 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
   scene `obj-shapes` is `fixtures/obj/shapes.obj` with its `.mtl` and PNG through `loadObj` (quads, a concave star
   from negative indices, faces without `vn` or `vt`, a `map_Kd` cut-out, `Kd` only, `d 0.5`). Both are static
   imports, CC0, `LICENSE` next to them. The path-tracer fixture has goldens of both (`pt-gltf-nodes-y030.s1.n128`,
-  `pt-obj-shapes-y030.s1.n128`, MS-39); `obj-shapes-y030` is also a preview-vs-render pair, `gltf-nodes-y030` is not yet.
+  `pt-obj-shapes-y030.s1.n128`, MS-39); both are also preview-vs-render pairs.
 - Shimmer: between yaw 30° and 30.25°, the share of pixels changing by more than 64 levels must be at most half of
   the same share with nearest sampling (`aa=0`), in the `far` and `closeup` framings.
 - Order independence: reversing the mesh order gives a byte-identical image on the float path and on the fallback,
@@ -378,27 +378,27 @@ emission on the showcase's brick material. A golden spec names its view in `vari
 put in the URL, not in the file name); so are its quality fields (`supersample`, `denoise`), so the name of such a
 golden says them (`-x2-denoised`).
 
-| golden                                 | view                                                  | checks                                          |
-| -------------------------------------- | ----------------------------------------------------- | ----------------------------------------------- |
-| `pt-turntable-y030.s1.n64`             | showcase, perspective 35°                             | golden; determinism; bleeding; pair             |
-| `pt-iso.s1.n64`                        | showcase, orthographic isometric                      | golden; pair                                    |
-| `pt-closeup.s1.n64`                    | showcase, half the fit distance (texels ~28 px)       | golden                                          |
-| `pt-alpha-plane.s1.n128`               | alpha-plane.bbmodel, model-view camera                | golden; shadow probes; back side; pair          |
-| `pt-alpha-ramp-blend.s1.n128`          | the 16 x 16 alpha ramp (blend, cutoff 0.01)           | golden; stochastic transparency                 |
-| `pt-render-order.s1.n16`               | render-order.bbmodel, model-view camera               | golden; render-order probes                     |
-| `pt-emissive.s1.n64`                   | showcase, bricks emitting (4, 2.2, 0.8)               | golden; the post beside the bricks brightens    |
-| `pt-player-hold-34.s1.n64`             | MS-20 player, hold preset, cube in the hand           | golden; pair with `rt-player-hold-34`           |
-| `pt-cutout-checker.s1.n128`            | generated cut-out checker and box, `checker`          | golden; checker shadow probes; pair             |
-| `pt-edges.s1.n128`                     | generated `edges` scene (MS-15)                       | golden; rounded-edge probes; pair               |
-| `pt-preset-marketplace.s1.n64`         | `player-hold-34` under Marketplace (MS-19)            | golden; tile/batch determinism; pair            |
-| `pt-preset-rim.s1.n64`                 | `player-hold-34` under Rim (MS-19)                    | golden; pair                                    |
-| `pt-outline-hull.s1.n64`               | outline-hull.bbmodel, board in an inverted hull       | golden; board and rim probes; pair (MS-50)      |
-| `pt-closeup-reference.s1.n2048`        | `closeup`, 2048 samples, no denoiser (MS-18)          | rendered on golden update only; AC1, AC2, drift |
-| `pt-closeup-denoised.s1.n64`           | `closeup`, `denoise` (MS-18)                          | golden; AC1; AC2                                |
-| `pt-turntable-y030-x2-denoised.s1.n16` | `turntable-y030`, `supersample=2`, `denoise` (MS-18)  | golden; determinism; bleeding; pair             |
-| `pt-gltf-contact.s1.n128`              | contact-shadow.gltf, `contact`, no catcher            | golden; contact probes; pair (MS-41)            |
-| `pt-gltf-nodes-y030.s1.n128`           | scene-nodes.gltf, perspective 35°, pitch 20°, yaw 30° | golden; sentinel bleeding (MS-39)               |
-| `pt-obj-shapes-y030.s1.n128`           | shapes.obj, same view                                 | golden; pair (MS-39)                            |
+| golden                                 | view                                                  | checks                                           |
+| -------------------------------------- | ----------------------------------------------------- | ------------------------------------------------ |
+| `pt-turntable-y030.s1.n64`             | showcase, perspective 35°                             | golden; determinism; bleeding; pair              |
+| `pt-iso.s1.n64`                        | showcase, orthographic isometric                      | golden; pair                                     |
+| `pt-closeup.s1.n64`                    | showcase, half the fit distance (texels ~28 px)       | golden                                           |
+| `pt-alpha-plane.s1.n128`               | alpha-plane.bbmodel, model-view camera                | golden; shadow probes; back side; pair           |
+| `pt-alpha-ramp-blend.s1.n128`          | the 16 x 16 alpha ramp (blend, cutoff 0.01)           | golden; stochastic transparency                  |
+| `pt-render-order.s1.n16`               | render-order.bbmodel, model-view camera               | golden; render-order probes                      |
+| `pt-emissive.s1.n64`                   | showcase, bricks emitting (4, 2.2, 0.8)               | golden; the post beside the bricks brightens     |
+| `pt-player-hold-34.s1.n64`             | MS-20 player, hold preset, cube in the hand           | golden; pair with `rt-player-hold-34`            |
+| `pt-cutout-checker.s1.n128`            | generated cut-out checker and box, `checker`          | golden; checker shadow probes; pair              |
+| `pt-edges.s1.n128`                     | generated `edges` scene (MS-15)                       | golden; rounded-edge probes; pair                |
+| `pt-preset-marketplace.s1.n64`         | `player-hold-34` under Marketplace (MS-19)            | golden; tile/batch determinism; pair             |
+| `pt-preset-rim.s1.n64`                 | `player-hold-34` under Rim (MS-19)                    | golden; pair                                     |
+| `pt-outline-hull.s1.n64`               | outline-hull.bbmodel, board in an inverted hull       | golden; board and rim probes; pair (MS-50)       |
+| `pt-closeup-reference.s1.n2048`        | `closeup`, 2048 samples, no denoiser (MS-18)          | rendered on golden update only; AC1, AC2, drift  |
+| `pt-closeup-denoised.s1.n64`           | `closeup`, `denoise` (MS-18)                          | golden; AC1; AC2                                 |
+| `pt-turntable-y030-x2-denoised.s1.n16` | `turntable-y030`, `supersample=2`, `denoise` (MS-18)  | golden; determinism; bleeding; pair              |
+| `pt-gltf-contact.s1.n128`              | contact-shadow.gltf, `contact`, no catcher            | golden; contact probes; pair (MS-41)             |
+| `pt-gltf-nodes-y030.s1.n128`           | scene-nodes.gltf, perspective 35°, pitch 20°, yaw 30° | golden; sentinel bleeding; catcher; pair (MS-39) |
+| `pt-obj-shapes-y030.s1.n128`           | shapes.obj, same view                                 | golden; pair (MS-39)                             |
 
 All eight earlier `pt-*` goldens were regenerated in MS-16 on purpose (same seeds, samples and size): the key became
 a 0.04 rad cone, the shadow catcher appeared under every model, and the random dimensions per path vertex grew from
@@ -458,20 +458,21 @@ has interreflection and noise. Logged as `[pt pair] <view>: ...`, values in `tes
 Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with rounded edges and the mirrored bounce
 (MS-16's values in brackets; every limit stayed, none widened, `edges` is new at measured x 1.25):
 
-| view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta                       | limit: `maxDiffRatio`, `maxMeanDelta` |
-| -------------------------- | ----------------------------------- | --------------------------------------------------------- | ------------------------------------- |
-| `turntable-y030`           | 0 (1 604)                           | 201, 0.00307, 0.772 (185, 0.00282, 0.762)                 | 0.00353, 0.953                        |
-| `iso`                      | 0 (1 543)                           | 366, 0.00558, 0.959 (335, 0.00511, 0.942)                 | 0.00639, 1.18                         |
-| `alpha-plane`              | 0 (689)                             | 682, 0.01041, 1.567 (MS-41; before 2 083, 0.03178, 2.187) | 0.013, 1.96 (MS-41; was 0.0398, 2.48) |
-| `player-hold-34`           | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295)             | 0.0232, 1.62                          |
-| `cutout-checker`           | 0 (3 307)                           | 293, 0.00447, 0.731 (275, 0.00420, 0.726)                 | 0.00525, 0.908                        |
-| `edges`                    | 0 (1 979)                           | 43, 0.00066, 0.397                                        | 0.00082, 0.496                        |
-| `preset-marketplace`       | 0 (1 322)                           | 1 269, 0.01936, 1.237                                     | 0.0223, 1.43                          |
-| `preset-rim`               | 0 (1 322)                           | 1 407, 0.02147, 1.109                                     | 0.0241, 1.13                          |
-| `preset-marketplace-yaw30` | 0 (1 304)                           | 1 387, 0.02116, 1.281                                     | 0.0265, 1.52                          |
-| `outline-hull`             | 0 (1 456)                           | 1 076, 0.01642, 0.912 (MS-50, new)                        | 0.0205, 1.14                          |
-| `gltf-contact`             | 0 (618)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)            | 0.133, 7.03                           |
-| `obj-shapes-y030`          | 0 (1 835)                           | 484, 0.00739, 1.289 (MS-39, new)                          | 0.00924, 1.61                         |
+| view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta                       | limit: `maxDiffRatio`, `maxMeanDelta`    |
+| -------------------------- | ----------------------------------- | --------------------------------------------------------- | ---------------------------------------- |
+| `turntable-y030`           | 0 (1 604)                           | 201, 0.00307, 0.772 (185, 0.00282, 0.762)                 | 0.00353, 0.953                           |
+| `iso`                      | 0 (1 543)                           | 366, 0.00558, 0.959 (335, 0.00511, 0.942)                 | 0.00639, 1.18                            |
+| `alpha-plane`              | 0 (689)                             | 682, 0.01041, 1.567 (MS-41; before 2 083, 0.03178, 2.187) | 0.013, 1.96 (MS-41; was 0.0398, 2.48)    |
+| `player-hold-34`           | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295)             | 0.0232, 1.62                             |
+| `cutout-checker`           | 0 (3 307)                           | 293, 0.00447, 0.731 (275, 0.00420, 0.726)                 | 0.00525, 0.908                           |
+| `edges`                    | 0 (1 979)                           | 43, 0.00066, 0.397                                        | 0.00082, 0.496                           |
+| `preset-marketplace`       | 0 (1 322)                           | 1 269, 0.01936, 1.237                                     | 0.0223, 1.43                             |
+| `preset-rim`               | 0 (1 322)                           | 1 407, 0.02147, 1.109                                     | 0.0241, 1.13                             |
+| `preset-marketplace-yaw30` | 0 (1 304)                           | 1 387, 0.02116, 1.281                                     | 0.0265, 1.52                             |
+| `outline-hull`             | 0 (1 456)                           | 174, 0.00266, 0.438 (MS-50 1 076, 0.01642, 0.912)         | 0.00333, 0.548 (MS-39; was 0.0205, 1.14) |
+| `gltf-contact`             | 0 (618)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)            | 0.133, 7.03                              |
+| `obj-shapes-y030`          | 0 (1 835)                           | 463, 0.00706, 0.558 (MS-39, new)                          | 0.00883, 0.698                           |
+| `gltf-nodes-y030`          | 0 (2 210)                           | 435, 0.00664, 1.008 (MS-39, new)                          | 0.0083, 1.26                             |
 
 MS-41 (world-density charts) measured the views it changes: `alpha-plane` 682 px, 0.01041, 1.567 (its ground is
 world-charted and shows the render's shadows; before 2 083, 0.03178, 2.187), so its limit is tightened to measured x
@@ -481,10 +482,16 @@ limit 0.133, 7.03. Its ground agrees; the box's sides do not: the render lights 
 ground and the bake has no interreflection (box top, lit alike: 207, 176, 162 in both; west side low 85 baked, 132
 unbaked, 150 rendered). Same albedo in both, so no material difference.
 
-MS-39: `obj-shapes-y030` (128 samples, catcher on) is new at measured x 1.25. `gltf-nodes-y030` frames with 0
-mismatches off 2 210 silhouette px but measures 2 931 px, 0.04472, 2.305 radiance, and has no limit yet: 3 045 of the
-3 383 pixels differing by more than 25 levels lie in the lower third (the world-charted ground and roof, and the
-cubes' texel edges), and the unshadowed ground reads 157 rendered against 188 baked (190 unbaked). Open defect.
+MS-39: `obj-shapes-y030` and `gltf-nodes-y030` (128 samples, catcher on) are new at measured x 1.25. The first
+measurement of `gltf-nodes-y030` was 2 931 px, 0.04472, 2.305, the ground 157 rendered against 188 baked: its ground
+lies in the catcher's plane, and the path tracer let the catcher win against a model hit by comparing distances, per
+sample, on float rounding. A camera ray with a model hit now never sees the catcher (path-tracer.md, Lighting), as the
+preview draws it first; the test 'a model surface at the catcher height hides the catcher' compares ground patches
+with the catcher on and off byte for byte. That moved three goldens on purpose, each with a model surface in the
+catcher's plane: `pt-gltf-nodes-y030` and `pt-obj-shapes-y030` (the ground and the floor, new in this task) and
+`pt-outline-hull` (the shell's bottom edge, 1 403 px of 65 536, mean delta 0.493); the other pt goldens did not
+change. `outline-hull`'s pair fell to 0.00266, 0.438, so its limit is tightened to measured x 1.25. `obj-shapes-y030`
+was 0.00739, 1.289 with the old rule.
 
 MS-19 measured the table again with the backdrop mask by rows: every earlier view kept its numbers and limits. The two
 look-preset pairs (`preset-marketplace`, `preset-rim`: the held-cube player baked under its look) are new at measured

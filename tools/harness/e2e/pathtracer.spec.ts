@@ -697,6 +697,34 @@ test.describe('transparency, shadows and sides (scene format rules)', () => {
     expect(count).toBe(0);
   });
 
+  test('a model surface at the catcher height hides the catcher', async ({ page }) => {
+    // gltf-nodes' ground lies in the catcher's plane: a camera ray there must always take the ground. Patches of it clear
+    // of the other meshes (the glass plane shows the catcher past the ground's edge through its rejected texels).
+    const query = 'variant=gltf-nodes-y030&seed=1&samples=128';
+    const without = (await render(page, `${query}&catcher=0`)).image;
+    const withCatcher = (await render(page, query)).image;
+    const backdrop = backdropRowOf('studio');
+    const points: [number, number][] = [-1.2, -0.6, 0.6, 1.2].map((x) => [x, 1.25] as [number, number]);
+    for (const z of [-0.8, 0, 0.8]) points.push([-1.25, z], [1.25, z]);
+    let checked = 0;
+    let changed = 0;
+    for (const [x, z] of points) {
+      const [cx, cy] = await page.evaluate(([px, pz]) => window.__msFixture!.pt!.project(px!, 0, pz!), [x, z]);
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          const [px, py] = [Math.round(cx) + dx, Math.round(cy) + dy];
+          const model = pixel(without, px, py).some((v, c) => Math.abs(v - backdrop(py, without.height)[c]!) > 2);
+          if (!model) continue;
+          checked++;
+          if (pixel(without, px, py).some((v, c) => v !== pixel(withCatcher, px, py)[c])) changed++;
+        }
+      }
+    }
+    console.log(`[pt probe] catcher over the ground: ${changed} of ${checked} ground pixels differ / max 0`);
+    expect(checked, 'ground pixels checked').toBeGreaterThan(100);
+    expect(changed, 'ground pixels the catcher changed').toBe(0);
+  });
+
   test('an emissive material lights the post beside it', async ({ page }) => {
     const plain = await render(page, 'variant=turntable-y030&seed=1&samples=64');
     const glowing = await render(page, 'variant=emissive&seed=1&samples=64');
@@ -719,6 +747,7 @@ const PAIR_SAMPLES: Readonly<Record<string, number>> = {
   'cutout-checker': 128,
   edges: 128,
   'gltf-contact': 128,
+  'gltf-nodes-y030': 128,
   'obj-shapes-y030': 128,
 };
 
