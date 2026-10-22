@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_OBJ_LIMITS, loadObj, type ObjLimits } from '../../src/index';
 import { encodeSolidPng } from '../../src/png/encodeSolidPng';
 import { expectObjError, lines, QUAD } from './fixtures';
+import { expectCpuBelow } from '../support/expectCpuBelow';
 
 const triangles = (count: number) => lines('v 0 0 0', 'v 1 0 0', 'v 0 1 0', ...Array<string>(count).fill('f 1 2 3'));
 const limited = (limits: Partial<ObjLimits>) => ({ limits });
@@ -91,7 +92,7 @@ describe('OBJ limits: N loads, N + 1 fails', () => {
     }
   });
 
-  it('a model at the default triangle limit loads in under 5 s', () => {
+  it('a model at the default triangle limit loads within 5 s of CPU', () => {
     const out: string[] = [];
     const side = 317; // 317 x 316 quads ~ 200 000 triangles
     for (let z = 0; z <= side; z++) for (let x = 0; x <= side; x++) out.push(`v ${x} 0 ${z}`);
@@ -103,9 +104,8 @@ describe('OBJ limits: N loads, N + 1 fails', () => {
       const a = z * (side + 1) + x + 1;
       out.push(`f ${a}//1 ${a + side + 1}//1 ${a + side + 2}//1 ${a + 1}//1`);
     }
-    const start = performance.now();
-    const { scene } = loadObj(out.join('\n'));
-    expect(performance.now() - start).toBeLessThan(5000);
+    const text = out.join('\n');
+    const { scene } = expectCpuBelow(5000, () => loadObj(text));
     expect(scene.meshes[0]!.indices).toHaveLength(DEFAULT_OBJ_LIMITS.maxTriangles * 3);
   });
 
@@ -115,9 +115,8 @@ describe('OBJ limits: N loads, N + 1 fails', () => {
     points.push('v 62 0 0', 'v 62 -1 0');
     const face = `f ${Array.from({ length: 64 }, (_, i) => i + 1).join(' ')}`;
     const faces = Math.floor(DEFAULT_OBJ_LIMITS.maxTriangles / 62);
-    const start = performance.now();
-    const { scene } = loadObj(lines(...points, ...Array<string>(faces).fill(face)));
-    expect(performance.now() - start).toBeLessThan(15000);
+    const text = lines(...points, ...Array<string>(faces).fill(face));
+    const { scene } = expectCpuBelow(15000, () => loadObj(text));
     expect(scene.meshes[0]!.indices).toHaveLength(faces * 62 * 3);
   });
 });

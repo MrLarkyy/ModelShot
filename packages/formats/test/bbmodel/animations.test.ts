@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { animateScene } from '@modelshot/scene';
 import { BbmodelError, MAX_BBMODEL_WARNINGS, loadBbmodel, type BbmodelLoadOptions } from '../../src/index';
 import { cube, fixture, model } from './fixtures';
+import { expectCpuBelow } from '../support/expectCpuBelow';
 
 const ARM = '0b0d1e5a-0000-4000-8000-00000000a001';
 const LEG = '0b0d1e5a-0000-4000-8000-00000000a002';
@@ -290,10 +291,8 @@ describe('bbmodel animations', () => {
     for (let i = 0; i <= groups; i++) animators[`empty${i}`] = {};
     const animations = Array.from({ length: 5 }, () => animation(animators));
     const text = JSON.stringify(model({ meta: { format_version: '5.0' }, elements: [cube()], outliner, animations }));
-    const start = performance.now();
-    const { scene, warnings } = loadBbmodel(text);
-    // Generous for slow machines: one name scan per animator took over 10 s here.
-    expect(performance.now() - start).toBeLessThan(3000);
+    // One name scan per animator took over 10 s here.
+    const { scene, warnings } = expectCpuBelow(3000, () => loadBbmodel(text));
     expect(warnings).toEqual([]);
     expect(scene.animations?.map((a) => a.channels.length)).toEqual([groups, groups, groups, groups, groups]);
     expect(scene.animations?.[4]?.channels.at(-1)).toMatchObject({
@@ -318,8 +317,6 @@ describe('bbmodel animations', () => {
       '"keyframes":[]',
       `"keyframes":${keyframes}`,
     );
-    const start = performance.now();
-    expect(failure(text).code).toBe('TOO_MANY_KEYFRAMES');
-    expect(performance.now() - start).toBeLessThan(2000);
+    expect(expectCpuBelow(2000, () => failure(text)).code).toBe('TOO_MANY_KEYFRAMES');
   });
 });

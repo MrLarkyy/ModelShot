@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BbmodelError, DEFAULT_BBMODEL_LIMITS, loadBbmodel } from '../../src/index';
 import { cube, mesh, meshFace, model } from './fixtures';
+import { expectCpuBelow } from '../support/expectCpuBelow';
 
 function manyCubes(count: number): string {
   const elements = Array.from({ length: count }, (_, i) =>
@@ -21,11 +22,9 @@ function combMesh(faces: number): string {
 }
 
 describe('bounded loading', () => {
-  it('a model at the default element limit loads in under 5 s', () => {
+  it('a model at the default element limit loads within 5 s of CPU', () => {
     const text = manyCubes(DEFAULT_BBMODEL_LIMITS.maxElements);
-    const start = performance.now();
-    const { scene } = loadBbmodel(text);
-    expect(performance.now() - start).toBeLessThan(5000);
+    const { scene } = expectCpuBelow(5000, () => loadBbmodel(text));
     expect(scene.meshes).toHaveLength(DEFAULT_BBMODEL_LIMITS.maxElements);
   });
 
@@ -35,12 +34,10 @@ describe('bounded loading', () => {
     expect(() => loadBbmodel(text, { limits: { maxTriangles: 119 } })).toThrow(BbmodelError);
   });
 
-  it('concave 16-gons up to the default triangle limit load in under 5 s', () => {
+  it('concave 16-gons up to the default triangle limit load within 5 s of CPU', () => {
     const faces = Math.floor(DEFAULT_BBMODEL_LIMITS.maxTriangles / 14);
     const text = combMesh(faces);
-    const start = performance.now();
-    const { scene } = loadBbmodel(text);
-    expect(performance.now() - start).toBeLessThan(5000);
+    const { scene } = expectCpuBelow(5000, () => loadBbmodel(text));
     expect(scene.meshes[0]?.indices).toHaveLength(faces * 14 * 3);
     expect(() => loadBbmodel(combMesh(faces + 1))).toThrow(
       expect.objectContaining({ code: 'TOO_MANY_TRIANGLES' }) as Error,

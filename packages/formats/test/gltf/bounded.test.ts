@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_GLTF_LIMITS, loadGltf, type GltfErrorCode, type GltfLimits } from '../../src/index';
 import { expectGltfError, json } from './expectGltfError';
 import { base64, gltfDoc, TRIANGLE, type Json } from './gltfBuilder';
+import { expectCpuBelow } from '../support/expectCpuBelow';
 
 const many = <T>(count: number, make: (i: number) => T): T[] => Array.from({ length: count }, (_, i) => make(i));
 
@@ -149,7 +150,7 @@ describe('glTF limits: N loads, N + 1 fails before allocation', () => {
     expect(() => loadGltf(json(gltfDoc()), { limits: { maxNodes: Infinity } })).not.toThrow();
   });
 
-  it('a model at the default triangle and vertex limits loads in under 5 s', () => {
+  it('a model at the default triangle and vertex limits loads within 5 s of CPU', () => {
     const quads = DEFAULT_GLTF_LIMITS.maxTriangles / 2;
     const positions = new Float32Array(quads * 12);
     const normals = new Float32Array(quads * 12);
@@ -184,9 +185,7 @@ describe('glTF limits: N loads, N + 1 fails before allocation', () => {
       buffers: [{ byteLength: bytes.byteLength, uri: `data:application/octet-stream;base64,${base64(bytes)}` }],
     };
     const text = json(doc);
-    const start = performance.now();
-    const { scene } = loadGltf(text);
-    expect(performance.now() - start).toBeLessThan(5000);
+    const { scene } = expectCpuBelow(5000, () => loadGltf(text));
     expect(scene.meshes[0]!.indices).toHaveLength(DEFAULT_GLTF_LIMITS.maxTriangles * 3);
     expect(scene.meshes[0]!.positions).toHaveLength(DEFAULT_GLTF_LIMITS.maxVertices * 3);
   });
