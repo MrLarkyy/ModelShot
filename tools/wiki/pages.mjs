@@ -57,6 +57,12 @@ export const groups = [
         description: 'API, determinism, alpha, sides and order on every ray, lighting',
       },
       {
+        file: 'look-presets.md',
+        page: 'Look-presets',
+        title: 'Look presets',
+        description: 'the shared look parameters both renderers read',
+      },
+      {
         file: 'camera.md',
         page: 'Camera',
         title: 'Camera',
