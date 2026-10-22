@@ -107,7 +107,9 @@ scale (played as the smallest positive scale).
   `auto`, and its untextured faces, draw single-sided in every format; `double` stays double-sided. This deviates on
   purpose from Blockbench, which sides `auto` by its Render Sides setting: with the default setting it draws them
   double-sided outside `java_block`, so the hull's outer side covers what it encloses; with the setting on Outside it
-  draws the rim, as ModelShot does. An even number leaves an
+  draws the rim, as ModelShot does. Those single-sided faces are also `SceneMeshGroup.cameraOnly`: Blockbench has no
+  global illumination, so a hull is only a rim the camera sees; in the path tracer and the light bake it neither
+  shadows nor occludes what it encloses. An even number leaves an
   outward box, each face's texture on the opposite side turned 180°. The normal is each face's geometric front;
   Blockbench keeps the fixed normal of the face's key, which disagrees with the winding where exactly one other axis
   is reversed, so ModelShot lights those faces as their winding says. The 0.001 Blockbench adds to a flat axis is not
@@ -465,7 +467,8 @@ Reload affected models; scene documents need no migration.
 MS-50 reads reversed cube axes as Blockbench draws them, a behaviour change for files that loaded before: a cube
 with from > to on an axis, a negative stretch or a negative inflate larger than half a side used to load as an
 outward box (or, for the inflate, collapsed flat) and now loads mirrored on that axis, an inverted hull when an odd
-number of axes is reversed, whose `auto`-sided and untextured faces are single-sided (Conversion). Every other cube loads exactly as before; no file that loaded before fails.
+number of axes is reversed, whose `auto`-sided and untextured faces are single-sided and its single-sided faces
+`cameraOnly` (Conversion). Every other cube loads exactly as before; no file that loaded before fails.
 Reload affected models; scene documents need no migration.
 
 ## Local-first

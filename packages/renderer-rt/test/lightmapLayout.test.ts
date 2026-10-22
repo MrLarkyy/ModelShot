@@ -134,4 +134,13 @@ describe('lightmapLayout', () => {
     const topology = withMeshes([faceQuad(2, 3), faceQuad(8, 8, { indices: new Uint32Array([0, 1, 2, 2, 3, 0]) })]);
     expect(lightmapLayout(topology).layoutKey).not.toBe(key);
   });
+
+  it('changes its key when a group becomes camera-only, so a bake that shaded it is not reused', () => {
+    const groups = (cameraOnly?: boolean) => [
+      { material: 0, start: 0, count: 6, ...(cameraOnly === undefined ? {} : { cameraOnly }) },
+    ];
+    const key = lightmapLayout(withMeshes([faceQuad(2, 3, { groups: groups() })])).layoutKey;
+    expect(lightmapLayout(withMeshes([faceQuad(2, 3, { groups: groups(false) })])).layoutKey).toBe(key);
+    expect(lightmapLayout(withMeshes([faceQuad(2, 3, { groups: groups(true) })])).layoutKey).not.toBe(key);
+  });
 });

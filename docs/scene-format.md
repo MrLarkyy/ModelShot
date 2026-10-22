@@ -82,7 +82,7 @@ cofactor matrix, i.e. the inverse transpose up to a positive factor) and normali
 Also `name`, `sourceId`, `node` (owning node, −1 for the model root with an identity world matrix), `visible` and
 `renderOrder`.
 
-A group `{ material, start, count, doubleSided? }` is a run of `count` indices from `start` drawn with one material
+A group `{ material, start, count, doubleSided?, cameraOnly? }` is a run of `count` indices from `start` drawn with one material
 (−1: none, the renderer's default) and one sidedness:
 
 - `doubleSided` absent or `false` (glTF's meaning): the face has only its front (counter-clockwise) side, for
@@ -92,6 +92,10 @@ A group `{ material, start, count, doubleSided? }` is a run of `count` indices f
   - ambient-occlusion and path-tracing rays: only a hit on the front counts.
 - `doubleSided: true`: both sides, for every ray. The back shows the same texels, mirrored as seen from behind (the
   UVs are the front's), and the normal is flipped toward the viewer or ray before shading.
+- `cameraOnly: true`: only camera rays (the preview's raster, a path's first ray) see the faces, with the sidedness
+  above; every other ray ignores them: path bounces, shadow rays, fill and ambient occlusion, the shadow catcher and
+  the light bake. Absent or `false`: an ordinary face. The bbmodel loader sets it on the single-sided faces of an
+  inverted cube, an outline hull ([bbmodel.md](bbmodel.md), Conversion).
 
 `renderOrder` is an integer in ±1024 (`MAX_ABS_RENDER_ORDER`), absent: 0. Among the surfaces a ray meets, the one
 with the smallest key is shown:
@@ -351,6 +355,9 @@ Added within version 1 (MS-29), each optional: `SceneMaterial.blending` (absent:
 `resolveMaterialRenderMode` (type `MaterialRenderMode`) and `MAX_MATERIAL_LAYERS`. A consumer that ignores them draws
 what the document meant before; the bbmodel loader leaves the keys out where a texture has no render mode, so those
 documents are unchanged; no migration.
+Added within version 1 (MS-50), optional: `SceneMeshGroup.cameraOnly` (absent: `false`). A consumer that ignores it
+lets the faces shadow and occlude as ordinary faces, which only darkens what an outline hull encloses; loaders leave
+the key out everywhere else, so those documents are unchanged; no migration.
 
 ## Loaders
 

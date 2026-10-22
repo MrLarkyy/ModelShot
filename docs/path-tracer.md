@@ -107,7 +107,7 @@ The rules of [scene-format.md](scene-format.md), realised per ray type:
 
 The light bake (Light baker below) traces its key rays as shadow rays and its fill rays as bounce rays, with the same
 functions (`shadowTransmittance`, `closestHit`, `surfaceAt` in one shared GLSL source), so preview and render share
-one set of ray rules.
+one set of ray rules. A camera-only face (`SceneMeshGroup.cameraOnly`) counts for camera rays alone; every other ray, bake rays included, skips it.
 
 - The texel is the nearest one of the hit's UV, clamped to the face's texel rectangle (`faceTexelRange`, the
   preview's chunk), read with `texelFetch`: no filtering, no mipmaps, nothing from a neighbouring atlas region.

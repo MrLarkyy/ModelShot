@@ -64,9 +64,18 @@ export function cubeToMesh(cube: CubeSpec, node: number, textureFrameCounts: rea
     const base = f * 4;
     indices.set([base, base + 3, base + 2, base, base + 2, base + 1], f * 6);
     const last = groups[groups.length - 1];
-    if (last && last.material === face.material && last.doubleSided === face.doubleSided) {
+    const cameraOnly = face.cameraOnly === true;
+    if (
+      last &&
+      last.material === face.material &&
+      last.doubleSided === face.doubleSided &&
+      (last.cameraOnly === true) === cameraOnly
+    ) {
       groups[groups.length - 1] = { ...last, count: last.count + 6 };
-    } else groups.push({ material: face.material, start: f * 6, count: 6, doubleSided: face.doubleSided });
+    } else {
+      const group = { material: face.material, start: f * 6, count: 6, doubleSided: face.doubleSided };
+      groups.push(cameraOnly ? { ...group, cameraOnly } : group);
+    }
   });
 
   return {

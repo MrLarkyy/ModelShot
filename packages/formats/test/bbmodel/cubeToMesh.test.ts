@@ -1,6 +1,7 @@
 import { mat4NodeLocal, mat4TransformPoint, sharpEdges } from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
 import { cubeToMesh } from '../../src/bbmodel/cubeToMesh';
+import { compareGroupKey } from '../../src/bbmodel/GroupKey';
 import { cubeTriangleCount, readCube } from '../../src/bbmodel/CubeSpec';
 import type { ConverterContext } from '../../src/bbmodel/ElementConverter';
 import { BbmodelError, loadBbmodel } from '../../src/index';
@@ -385,7 +386,7 @@ describe('cubeToMesh: reversed axes (Blockbench setShape)', () => {
     const element = swapped([0, 1, 2]);
     expect(meshOf(element).groups).toEqual([{ material: 0, start: 0, count: 36, doubleSided: true }]);
     expect(cubeToMesh(readCube(element, '$', single), -1).groups).toEqual([
-      { material: 0, start: 0, count: 36, doubleSided: false },
+      { material: 0, start: 0, count: 36, doubleSided: false, cameraOnly: true },
     ]);
   });
 
@@ -479,5 +480,39 @@ describe('cubeToMesh: sidedness of an inverted cube (outline hull)', () => {
         [2, false],
       ]);
     }
+  });
+});
+
+describe('cubeToMesh: camera-only faces of an inverted cube', () => {
+  const textures = [
+    { name: 'auto', render_sides: 'auto' },
+    { name: 'double', render_sides: 'double' },
+    { name: 'front', render_sides: 'front' },
+  ];
+  const groupsOf = (axes: readonly number[], texture: number) => {
+    const text = JSON.stringify(
+      model({ textures, elements: [swapped(axes, { faces: allFaces(textured([0, 0, 1, 1], { texture })) })] }),
+    );
+    return loadBbmodel(text).scene.meshes[0]?.groups;
+  };
+
+  it('single-sided faces of an inverted cube are camera-only, auto and front alike', () => {
+    for (const axes of [[0], [0, 1, 2]]) {
+      expect(groupsOf(axes, 0)).toEqual([{ material: 0, start: 0, count: 36, doubleSided: false, cameraOnly: true }]);
+      expect(groupsOf(axes, 2)).toEqual([{ material: 2, start: 0, count: 36, doubleSided: false, cameraOnly: true }]);
+    }
+  });
+
+  it('an explicit double, an even reversed count and a plain cube are ordinary faces', () => {
+    expect(groupsOf([0, 1, 2], 1)).toEqual([{ material: 1, start: 0, count: 36, doubleSided: true }]);
+    expect(groupsOf([0, 1], 0)).toEqual([{ material: 0, start: 0, count: 36, doubleSided: true }]);
+    expect(groupsOf([0, 1], 2)).toEqual([{ material: 2, start: 0, count: 36, doubleSided: false }]);
+    expect(groupsOf([], 2)).toEqual([{ material: 2, start: 0, count: 36, doubleSided: false }]);
+  });
+
+  it('a camera-only face groups apart from an ordinary one of the same material and sidedness', () => {
+    expect(
+      compareGroupKey({ material: 0, doubleSided: false }, { material: 0, doubleSided: false, cameraOnly: true }),
+    ).toBeLessThan(0);
   });
 });

@@ -74,7 +74,8 @@ export function packGeometry(flat: FlatScene, bvh: Bvh, maxTextureSize: number):
     }
     const order = flat.renderOrders[t] ?? 0;
     p[pos + 3] = (flat.materials[t] ?? -1) + 1;
-    p[pos + 7] = flat.doubleSided[t] ?? 0;
+    // Double-sided 1, camera-only 2 (bvhTraverse.glsl): a scene without camera-only faces packs as before.
+    p[pos + 7] = (flat.doubleSided[t] ?? 0) + 2 * (flat.cameraOnly[t] ?? 0);
     p[pos + 11] = order;
     maxRenderOrder = Math.max(maxRenderOrder, order);
 

@@ -31,6 +31,8 @@ export interface CubeFaceSpec {
   readonly uvHeight: number;
   /** Shows its back: the texture's render sides, except on a zero-thickness axis (see `readCube`). */
   readonly doubleSided: boolean;
+  /** `SceneMeshGroup.cameraOnly`: a single-sided face of an inverted cube (see `readCube`); absent: false. */
+  readonly cameraOnly?: boolean;
 }
 
 /** A validated cube: inflated box, rotation, and only the faces that produce triangles. */
@@ -64,7 +66,9 @@ const NORMAL_AXIS: Readonly<Record<FaceDirection, 0 | 1 | 2>> = {
  * An inverted cube (an odd number of reversed axes, see `inflatedBox`) draws its faces whose texture's `render_sides` is
  * `auto` single-sided in every format, so it shows as the rim of an outline hull; explicit `double` stays double-sided.
  * Blockbench sides `auto` by its Render Sides setting, double-sided by default outside `java_block`, where such a
- * hull's outer side would cover what it encloses; outline hulls are made to be seen with back faces culled.
+ * hull's outer side would cover what it encloses; outline hulls are made to be seen with back faces culled. Every
+ * single-sided face of an inverted cube is `cameraOnly`: Blockbench has no global illumination, so the hull is only a
+ * rim the camera sees and must not shadow or occlude what it encloses; a double-sided one stays an ordinary box.
  *
  * A face lying in the plane of a zero-thickness axis whose opposite face is drawn too stays single-sided whatever its
  * texture says: the two are coincident, face opposite ways and have their own UVs, so each side shows exactly one of
@@ -94,7 +98,9 @@ export function readCube(element: JsonObject, path: string, context: ConverterCo
   const drawn = specs.map((face) => {
     const flatPair = paired && flatFaces.includes(face);
     const hullAuto = inverted && (context.textureSidesAuto[face.material] ?? true);
-    return face.doubleSided && (flatPair || hullAuto) ? { ...face, doubleSided: false } : face;
+    const doubleSided = face.doubleSided && !flatPair && !hullAuto;
+    if (inverted && !doubleSided) return { ...face, doubleSided, cameraOnly: true };
+    return doubleSided === face.doubleSided ? face : { ...face, doubleSided };
   });
   return {
     name: readOptionalString(element, 'name', path, context.maxStringChars, 'cube'),

@@ -82,7 +82,7 @@ vec3 tracePath(uint key, vec2 pixel) {
   for (int pathVertex = 0; pathVertex <= MAX_BOUNCES; pathVertex++) {
     uint dimension = FIRST_VERTEX_DIMENSION + uint(pathVertex) * DIMENSIONS_PER_VERTEX;
     Hit hit;
-    bool found = closestHit(origin, direction, tMin, tMax, depthScale, skip, key, dimension + 3u, hit);
+    bool found = closestHit(origin, direction, tMin, tMax, depthScale, skip, key, dimension + 3u, hit, pathVertex == 0);
     if (pathVertex == 0) {
       vec3 point;
       if (catcherHit(origin, direction, tMin, tMax, found, hit.t, point)) return shadeCatcher(key, dimension, point);
