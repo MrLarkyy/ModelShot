@@ -359,9 +359,13 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return posedPlayer(playerScene('classic', 'classic'), 'wave');
     case 'outline-hull':
       return load(outlineHullSource);
-    case 'outline-hull-board':
-      // Framed as outline-hull: the hull is symmetric about the board, so the board centre stays in the same pixel.
-      return hideMeshes(load(outlineHullSource), 'shell');
+    case 'outline-hull-board': {
+      // The shell keeps its vertices, so the camera fits the same bounds as outline-hull, but draws no triangle.
+      const doc = load(outlineHullSource);
+      const drop = (mesh: SceneMesh) =>
+        mesh.name === 'shell' ? { ...mesh, indices: new Uint32Array(0), groups: [] } : mesh;
+      return { ...doc, meshes: doc.meshes.map(drop) };
+    }
   }
 }
 

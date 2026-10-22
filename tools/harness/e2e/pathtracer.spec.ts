@@ -336,6 +336,8 @@ const PT_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions>> = {
   'player-hold-34': { threshold: 0.1, maxDiffRatio: 0.0232, maxMeanDelta: 1.62 },
   'cutout-checker': { threshold: 0.1, maxDiffRatio: 0.00525, maxMeanDelta: 0.908 },
   edges: { threshold: 0.1, maxDiffRatio: 0.00082, maxMeanDelta: 0.496 },
+  // MS-50: measured ratio 0.01642, mean delta 0.912 (the rim's antialiased silhouette against the traced box filter).
+  'outline-hull': { threshold: 0.1, maxDiffRatio: 0.0205, maxMeanDelta: 1.14 },
 };
 
 const PAIR_SAMPLES: Readonly<Record<string, number>> = { 'alpha-plane': 128, 'cutout-checker': 128, edges: 128 };

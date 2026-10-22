@@ -285,6 +285,14 @@ For a manual run on real hardware open `rt.html?scene=bench&size=512&fps=1`: it 
 median frame work (draw until the GPU finished) and display interval over the last 120 frames, with the renderer
 string.
 
+**Outline hull** (MS-50, `test.describe('outline hull')`): `fixtures/models/outline-hull.bbmodel` (self-made, CC0), a
+board inside a Blockbench cube with from > to on every axis (an inverted hull, `auto`-sided texture, so single-sided
+and `cameraOnly`); variant `outline-hull` (yaw 30°, pitch 30°). Golden `rt-outline-hull`, default tolerance. Probes
+(`src/outlineHullProbe.ts`) against `scene=outline-hull-board` (the shell keeps its vertices, so the same framing, but
+draws nothing): the board-centre luminance (3 x 3) within 2 levels of the board alone (measured equal), and over 200
+pixels the hull darkens to below 50 (the rim; measured 2 385); the same unbaked and baked (`bake=16`, measured equal,
+rim 2 289).
+
 ## Path-tracer goldens
 
 Fix the seed, the sample count, the resolution and the camera. The accumulation stops after exactly N samples, never
@@ -309,6 +317,7 @@ put in the URL, not in the file name).
 | `pt-player-hold-34.s1.n64`    | MS-20 player, hold preset, cube in the hand     | golden; pair with `rt-player-hold-34`        |
 | `pt-cutout-checker.s1.n128`   | generated cut-out checker and box, `checker`    | golden; checker shadow probes; pair          |
 | `pt-edges.s1.n128`            | generated `edges` scene (MS-15)                 | golden; rounded-edge probes; pair            |
+| `pt-outline-hull.s1.n64`      | outline-hull.bbmodel, board in an inverted hull | golden; board and rim probes; pair (MS-50)   |
 
 All eight earlier `pt-*` goldens were regenerated in MS-16 on purpose (same seeds, samples and size): the key became
 a 0.04 rad cone, the shadow catcher appeared under every model, and the random dimensions per path vertex grew from
@@ -374,6 +383,7 @@ Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with r
 | `player-hold-34` | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295) | 0.0232, 1.62                          |
 | `cutout-checker` | 0 (3 307)                           | 293, 0.00447, 0.731 (275, 0.00420, 0.726)     | 0.00525, 0.908                        |
 | `edges`          | 0 (1 979)                           | 43, 0.00066, 0.397                            | 0.00082, 0.496                        |
+| `outline-hull`   | 0 (1 456)                           | 1 076, 0.01642, 0.912 (MS-50, new)            | 0.0205, 1.14                          |
 
 alpha-plane's large ground is an untextured box, baked per vertex, so its preview shows no ground shadow (world-density
 charts for untextured meshes are not in MS-16); the catcher under it darkens its mean delta a little.
