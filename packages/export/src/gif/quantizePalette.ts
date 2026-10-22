@@ -161,6 +161,8 @@ export function quantizePalette(image: RenderedImage): PalettedFrame {
   }
   const exact = exactPalette(data, indices, palette);
   if (exact !== null) return { palette, indices, colours: exact, transparent };
+  // The exact pass gave up at its 256th colour: none of its entries may outlive it past the histogram's colours.
+  palette.fill(0);
   const counts = new Uint32Array(BINS);
   const sums = new Float64Array(BINS * 3);
   for (let i = 0; i < data.length; i += 4) {

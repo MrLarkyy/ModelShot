@@ -56,6 +56,19 @@ describe('GIF encoding', () => {
     expect(maxError(GRADIENT, rgba)).toBeLessThanOrEqual(GRADIENT_TOLERANCE);
   });
 
+  it('leaves no entry of the abandoned exact pass in the palette of a low-contrast frame', () => {
+    // 320 distinct colours within 8 levels per channel (96..103 is one 5-bit bin): more than 255 colours, one bin.
+    const frame = quantizePalette(
+      imageOf(20, 16, (x, y) => {
+        const i = x + 20 * y;
+        return [96 + (i % 8), 96 + ((i >> 3) % 8), 96 + (i >> 6), 255];
+      }),
+    );
+    expect(frame.colours).toBeLessThanOrEqual(8);
+    expect(Array.from(frame.palette.subarray(frame.colours * 3)).every((v) => v === 0)).toBe(true);
+    expect(Math.max(...frame.indices)).toBe(frame.colours - 1);
+  });
+
   it('makes alpha under 128 the transparent index and keeps it out of the palette', () => {
     const image = imageOf(4, 1, (x) => [255, 0, 0, [0, 127, 128, 255][x] as number]);
     const frame = quantizePalette(image);
