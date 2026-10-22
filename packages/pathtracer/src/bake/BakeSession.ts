@@ -1,4 +1,4 @@
-import { uploadLookUniforms, type LookPreset } from '@modelshot/looks';
+import { LOOK_VIEW_NONE, uploadLookUniforms, type LookPreset } from '@modelshot/looks';
 import type { RawImage, ShadowCatcherPlane } from '@modelshot/renderer-rt';
 import { AccumulationTargets } from '../accumulationTargets';
 import { disposeGpuScene, uploadData, uploadGpuScene, type GpuScene } from '../gpuScene';
@@ -150,8 +150,8 @@ export class BakeSession {
     gl.uniform1f(uniform('u_backSideOrder'), 0);
     // Lightmap texels are coarser than the rounded band: the bake lights the unrounded surface.
     gl.uniform1f(uniform('u_edgeWidth'), 0);
-    // No backdrop in a bake: the frame height is unused.
-    uploadLookUniforms(gl, uniform, scene.look, 1);
+    // No backdrop and no rim in a bake: the frame height and the camera are unused.
+    uploadLookUniforms(gl, uniform, scene.look, 1, LOOK_VIEW_NONE);
     gl.uniform1ui(uniform('u_seed'), seed);
     gl.uniform1ui(uniform('u_sample'), sample);
     const catcher = scene.catcher;

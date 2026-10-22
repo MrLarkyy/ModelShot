@@ -8,11 +8,17 @@ uniform vec3 u_lookGround;
 uniform vec3 u_lookKeyDirection;
 uniform vec3 u_lookKeyColor;
 uniform float u_lookKeyCosRadius;
-// Fill and rim: unshadowed directional accents, in every renderer.
+// The fill: an unshadowed directional accent (preview and the path tracer's camera hit, never the bake).
 uniform vec3 u_lookFillDirection;
 uniform vec3 u_lookFillColor;
+// The rim: a grazing accent whose direction the upload turns from view into world space every frame (preview and the
+// path tracer's camera hit, never the bake).
 uniform vec3 u_lookRimDirection;
 uniform vec3 u_lookRimColor;
+uniform float u_lookRimExponent;
+uniform float u_lookRimAlbedoShare;
+// Perspective: the eye position, w 1; orthographic: the unit vector toward the viewer, w 0.
+uniform vec4 u_lookEye;
 // Share of the light a fully shadowed shadow-catcher point loses (shadowCatcher).
 uniform float u_lookCatcherStrength;
 
@@ -30,7 +36,22 @@ vec3 environmentRadiance(vec3 d) {
   return mix(u_lookGround, u_lookSky, d.y * 0.75 + 0.5);
 }
 
-// The fill and rim accents on a diffuse surface with unit normal n, as a multiple of its albedo; no shadow anywhere.
-vec3 accentLight(vec3 n) {
-  return u_lookFillColor * max(dot(n, u_lookFillDirection), 0.0) + u_lookRimColor * max(dot(n, u_lookRimDirection), 0.0);
+// The fill accent on a diffuse surface with unit normal n, as a multiple of its albedo; no shadow.
+vec3 fillLight(vec3 n) {
+  return u_lookFillColor * max(dot(n, u_lookFillDirection), 0.0);
+}
+
+// Unit vector from the world point p toward the eye.
+vec3 towardEye(vec3 p) {
+  return u_lookEye.w > 0.0 ? normalize(u_lookEye.xyz - p) : u_lookEye.xyz;
+}
+
+// The rim as radiance (not a multiple of the albedo, so it can stay white on a saturated texel): strongest where the
+// unit normal n grazes the view (v unit toward the eye), exactly 0 where it faces the eye; no shadow. pow is never
+// called at 0, so a black rim adds exactly 0.
+vec3 rimLight(vec3 n, vec3 v, vec3 albedo) {
+  float grazing = 1.0 - clamp(dot(n, v), 0.0, 1.0);
+  float facing = max(dot(n, u_lookRimDirection), 0.0);
+  float rim = grazing > 0.0 && facing > 0.0 ? pow(grazing, u_lookRimExponent) * facing : 0.0;
+  return u_lookRimColor * (rim * mix(vec3(1.0), albedo, u_lookRimAlbedoShare));
 }

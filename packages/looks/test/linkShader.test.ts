@@ -62,7 +62,7 @@ describe('linkShader', () => {
     expect(out).toContain('ivec4 faceTexelRange(vec4 uvRect, vec2 size)');
     expect(out).toContain('vec3 hemisphereFill(vec3 n)');
     expect(out).toContain('vec3 environmentRadiance(vec3 d)');
-    expect(out).toContain('vec3 accentLight(vec3 n)');
+    expect(out).toContain('vec3 rimLight(vec3 n, vec3 v, vec3 albedo)');
     expect(out).toContain('vec3 backdropAt(float yNorm)');
     expect(out.indexOf('#version')).toBe(0);
     expect(out).not.toMatch(/#\s*include/);

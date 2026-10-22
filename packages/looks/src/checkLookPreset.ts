@@ -6,6 +6,7 @@ import {
   type Direction,
   type LookDirectionalLight,
   type LookPreset,
+  type LookRimLight,
 } from './LookPreset';
 import { LookPresetError, type LookPresetErrorCode } from './LookPresetError';
 
@@ -81,6 +82,16 @@ function literal<T extends string | number>(value: unknown, path: string, expect
 function directional(value: unknown, path: string): LookDirectionalLight {
   const f = fields(value, path, ['direction', 'color']);
   return { direction: direction(f.direction, child(path, 'direction')), color: color(f.color, child(path, 'color')) };
+}
+
+function rimLight(value: unknown, path: string): LookRimLight {
+  const f = fields(value, path, ['direction', 'color', 'exponent', 'albedoShare']);
+  return {
+    direction: direction(f.direction, child(path, 'direction')),
+    color: color(f.color, child(path, 'color')),
+    exponent: ranged(f.exponent, child(path, 'exponent'), 1, 16),
+    albedoShare: ranged(f.albedoShare, child(path, 'albedoShare'), 0, 1),
+  };
 }
 
 function edges(value: unknown, path: string): EdgeLook {
@@ -175,7 +186,7 @@ export function checkLookPreset(value: unknown): LookPreset {
     version: LOOK_FORMAT_VERSION,
     id: root.id,
     name,
-    lights: { key, fill: directional(lights.fill, 'lights.fill'), rim: directional(lights.rim, 'lights.rim') },
+    lights: { key, fill: directional(lights.fill, 'lights.fill'), rim: rimLight(lights.rim, 'lights.rim') },
     environment: { kind, sky, ground },
     backdrop: { top: color(backdrop.top, 'backdrop.top'), bottom: color(backdrop.bottom, 'backdrop.bottom') },
     catcher: { strength: ranged(catcher.strength, 'catcher.strength', 0, 1) },

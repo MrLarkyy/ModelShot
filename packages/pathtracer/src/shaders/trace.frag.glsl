@@ -66,8 +66,9 @@ vec3 shadeCatcher(uint key, uint dimension, vec3 point) {
 
 // One path: the camera ray through a jittered point of the pixel (a box filter: texel edges come out area-averaged),
 // then Lambert bounces. At every hit: emission and the key light through a shadow ray in its cone; at the camera hit also
-// the unshadowed fill and rim accents (no ray, so no random dimension of their own); on escape the environment
-// (lightRig), whose cosine integral is the preview's fill. A camera ray that escapes shows the backdrop at its pixel, or the shadow catcher.
+// the unshadowed fill and rim accents, the rim seen back along the camera ray (no ray, so no random dimension of their
+// own); on escape the environment (lightRig), whose cosine integral is the preview's fill. A camera ray that escapes
+// shows the backdrop at its pixel, or the shadow catcher.
 vec3 tracePath(uint key, vec2 pixel) {
   vec3 origin;
   vec3 direction;
@@ -103,7 +104,7 @@ vec3 tracePath(uint key, vec2 pixel) {
     }
     // Only where the camera sees the surface: unshadowed, it would light faces the rig hides and bounce out of them; the
     // preview has no accent bounce either.
-    if (pathVertex == 0) radiance += s.albedo * accentLight(s.normal);
+    if (pathVertex == 0) radiance += s.albedo * fillLight(s.normal) + rimLight(s.normal, -direction, s.albedo);
     if (pathVertex >= u_maxBounces) break;
     vec3 next = aboveSurface(
       cosineDirection(s.normal, unitRandom(key, dimension, 0u), unitRandom(key, dimension + 1u, 0u)), s.side);

@@ -1,6 +1,7 @@
 import {
   BACK_SIDE_RENDER_ORDER,
   RENDER_ORDER_TIE_DISTANCE,
+  cameraBasis,
   cameraProjection,
   cameraView,
   mat4Multiply,
@@ -11,14 +12,17 @@ import {
 } from '@modelshot/scene';
 import {
   DEFAULT_LOOK,
+  LOOK_VIEW_NONE,
   MAX_EDGE_WIDTH,
   checkBackground,
   checkEdgeLook,
   checkLookPreset,
   lightingKey,
+  lookView,
   uploadLookUniforms,
   type EdgeLook,
   type LookPreset,
+  type LookView,
 } from '@modelshot/looks';
 import type { BakedLighting } from './BakedLighting';
 import { checkLighting } from './checkLighting';
@@ -152,6 +156,8 @@ interface FrameView {
   /** Camera position and near distance: whether a closed opaque batch's back sides can show (`backSidesVisible`). */
   readonly eye: readonly [number, number, number];
   readonly near: number;
+  /** The camera as the look's rim follows it. */
+  readonly lookView: LookView;
   readonly mode: DepthKeyMode;
   /** Viewport of every mesh pass (the float targets and the fallback both draw at the canvas size). */
   readonly viewport: readonly [number, number];
@@ -204,7 +210,10 @@ export class RealtimeRenderer {
   ) {
     const look = checkLookPreset(options.look ?? DEFAULT_LOOK);
     const background = options.background ? checkBackground(options.background) : undefined;
-    this.lookPreset = background ? { ...look, backdrop: { top: background, bottom: background } } : look;
+    // Checked again so the look getter hands out a frozen preset in this case too.
+    this.lookPreset = background
+      ? checkLookPreset({ ...look, backdrop: { top: background, bottom: background } })
+      : look;
     this.edges = checkEdgeLook(options.edges, look.edges);
     canvas.addEventListener('webglcontextlost', this.handleContextLost);
     canvas.addEventListener('webglcontextrestored', this.handleContextRestored);
@@ -482,6 +491,11 @@ export class RealtimeRenderer {
       far: camera.far,
       eye: camera.position,
       near: camera.near,
+      lookView: lookView({
+        ...cameraBasis(camera),
+        position: camera.position,
+        orthographic: camera.projection.kind === 'orthographic',
+      }),
       mode,
       viewport: [width, height],
     };
@@ -754,7 +768,7 @@ export class RealtimeRenderer {
     if (!pass) return;
     const gl = this.gl;
     gl.useProgram(pass.program);
-    this.uploadLook(pass.look, frame.viewport[1]);
+    this.uploadLook(pass.look, frame.viewport[1], frame.lookView);
     gl.uniformMatrix4fv(pass.view, false, frame.view);
     gl.uniformMatrix4fv(pass.viewProjection, false, frame.viewProjection);
     gl.uniformMatrix4fv(pass.inverseProjection, false, frame.inverseProjection);
@@ -834,7 +848,7 @@ export class RealtimeRenderer {
     const gl = this.gl;
     const { program, uniforms, look } = gpu.programs.catcher;
     gl.useProgram(program);
-    this.uploadLook(look, frame.viewport[1]);
+    this.uploadLook(look, frame.viewport[1], frame.lookView);
     gl.disable(gl.DEPTH_TEST);
     gl.depthMask(false);
     gl.enable(gl.CULL_FACE);
@@ -854,9 +868,12 @@ export class RealtimeRenderer {
     gl.depthMask(true);
   }
 
-  /** The look's uniforms of the program in use; the backdrop spans `frameHeight` pixels. */
-  private uploadLook(locations: LookLocations, frameHeight: number): void {
-    uploadLookUniforms(this.gl, (name) => locations[name], this.lookPreset, frameHeight);
+  /**
+   * The look's uniforms of the program in use; the backdrop spans `frameHeight` pixels, the rim follows `view` (the
+   * backdrop and present programs have no rim: `LOOK_VIEW_NONE`).
+   */
+  private uploadLook(locations: LookLocations, frameHeight: number, view: LookView): void {
+    uploadLookUniforms(this.gl, (name) => locations[name], this.lookPreset, frameHeight, view);
   }
 
   /** The look's backdrop over the whole viewport, scene-linear (float path) or tone-mapped (no-float path). */
@@ -866,7 +883,7 @@ export class RealtimeRenderer {
     const gl = this.gl;
     gl.disable(gl.DEPTH_TEST);
     gl.useProgram(backdrop.program);
-    this.uploadLook(backdrop.look, height);
+    this.uploadLook(backdrop.look, height, LOOK_VIEW_NONE);
     gl.uniform1i(backdrop.uniforms['u_toneMap'] ?? null, toneMap ? 1 : 0);
     gl.bindVertexArray(gpu.fullscreenVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -947,7 +964,7 @@ export class RealtimeRenderer {
     gl.disable(gl.DEPTH_TEST);
     gl.depthMask(true);
     gl.useProgram(present.program);
-    this.uploadLook(present.look, height);
+    this.uploadLook(present.look, height, LOOK_VIEW_NONE);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, targets.hdr);
     gl.uniform1i(present.uniforms['u_hdr'] ?? null, 0);

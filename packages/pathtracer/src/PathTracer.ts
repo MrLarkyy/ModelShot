@@ -26,6 +26,8 @@ import {
   checkBackground,
   checkEdgeLook,
   checkLookPreset,
+  LOOK_VIEW_NONE,
+  lookView,
   uploadLookUniforms,
   type EdgeLook,
   type LookPreset,
@@ -150,7 +152,10 @@ export class PathTracer {
   ) {
     const look = checkLookPreset(options.look ?? DEFAULT_LOOK);
     const background = options.background ? checkBackground(options.background) : undefined;
-    this.lookPreset = background ? { ...look, backdrop: { top: background, bottom: background } } : look;
+    // Checked again so the look getter hands out a frozen preset in this case too.
+    this.lookPreset = background
+      ? checkLookPreset({ ...look, backdrop: { top: background, bottom: background } })
+      : look;
     this.maxBounces = checkInteger('maxBounces', options.maxBounces ?? DEFAULT_MAX_BOUNCES, 1, MAX_BOUNCES);
     this.tileSize = checkInteger('tileSize', options.tileSize ?? DEFAULT_TILE_SIZE, 16, 4096);
     this.edges = checkEdgeLook(options.edges, look.edges);
@@ -560,7 +565,7 @@ export class PathTracer {
     gl.uniform2f(uniform('u_viewportSize'), this.canvas.width, this.canvas.height);
     gl.uniform1ui(uniform('u_seed'), seed);
     gl.uniform1i(uniform('u_maxBounces'), this.maxBounces);
-    uploadLookUniforms(gl, uniform, this.lookPreset, this.canvas.height);
+    uploadLookUniforms(gl, uniform, this.lookPreset, this.canvas.height, lookView(camera));
     gl.uniform1f(uniform('u_edgeWidth'), this.edges.width);
     const catcher = this.loaded?.catcher ?? null;
     gl.uniform1i(uniform('u_catcherOn'), catcher ? 1 : 0);
@@ -592,7 +597,8 @@ export class PathTracer {
     gl.bindTexture(gl.TEXTURE_2D, gpu.targets?.sum.texture ?? null);
     gl.uniform1i(uniform('u_sum'), 0);
     gl.uniform1f(uniform('u_samples'), gpu.targets ? this.done : 0);
-    uploadLookUniforms(gl, uniform, this.lookPreset, this.canvas.height);
+    // Backdrop and tone mapping only: no rim, so no camera.
+    uploadLookUniforms(gl, uniform, this.lookPreset, this.canvas.height, LOOK_VIEW_NONE);
     gl.bindVertexArray(gpu.vao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);

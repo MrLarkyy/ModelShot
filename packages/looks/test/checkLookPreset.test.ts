@@ -65,6 +65,8 @@ describe('checkLookPreset', () => {
   const edges: [string, number, number][] = [
     ['lights.key.color[0]', 0, 16],
     ['lights.fill.color[2]', 0, 16],
+    ['lights.rim.exponent', 1, 16],
+    ['lights.rim.albedoShare', 0, 1],
     ['backdrop.top[1]', 0, 16],
     ['lights.key.angularRadius', 0, 0.1],
     ['catcher.strength', 0, 1],
@@ -86,6 +88,14 @@ describe('checkLookPreset', () => {
     });
   }
 
+  it('rim exponent 1..16 and albedo share 0..1: a hundredth beyond fails', () => {
+    expectError(edit('lights.rim.exponent', 0.99), 'RANGE', 'lights.rim.exponent');
+    expectError(edit('lights.rim.exponent', 16.01), 'RANGE', 'lights.rim.exponent');
+    expectError(edit('lights.rim.albedoShare', -0.01), 'RANGE', 'lights.rim.albedoShare');
+    expectError(edit('lights.rim.albedoShare', 1.01), 'RANGE', 'lights.rim.albedoShare');
+    expectError(edit('lights.rim.exponent', '3'), 'TYPE', 'lights.rim.exponent');
+  });
+
   it('rejects NaN, Infinity and numbers as strings', () => {
     expectError(edit('catcher.strength', NaN), 'TYPE', 'catcher.strength');
     expectError(edit('toneMapping.exposure', Infinity), 'TYPE', 'toneMapping.exposure');
@@ -99,6 +109,9 @@ describe('checkLookPreset', () => {
     expectError(edit('edges.roundness', 1), 'UNKNOWN_KEY', 'edges.roundness');
     expectError(JSON.parse('{"__proto__": {"x": 1}}'), 'UNKNOWN_KEY', '__proto__');
     expectError(edit('lights.rim'), 'MISSING', 'lights.rim');
+    expectError(edit('lights.rim.exponent'), 'MISSING', 'lights.rim.exponent');
+    expectError(edit('lights.rim.albedoShare'), 'MISSING', 'lights.rim.albedoShare');
+    expectError(edit('lights.fill.exponent', 2), 'UNKNOWN_KEY', 'lights.fill.exponent');
     expectError(edit('edges.sharpAngleDeg'), 'MISSING', 'edges.sharpAngleDeg');
     expectError(edit('backdrop.top', [1, 1]), 'TYPE', 'backdrop.top');
     expectError(edit('lights', []), 'TYPE', 'lights');

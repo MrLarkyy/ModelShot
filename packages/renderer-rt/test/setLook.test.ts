@@ -77,6 +77,10 @@ describe('RealtimeRenderer look', () => {
   it('hands out a background at the limit as a look checkLookPreset accepts (render and bake take it back)', () => {
     const renderer = RealtimeRenderer.create(fake.canvas, { background: [MAX_LOOK_COLOR, 0, 0] });
     expect(checkLookPreset(renderer.look)).toEqual(renderer.look);
+    // Frozen like any checked look, down to the backdrop colours the option built.
+    expect(Object.isFrozen(renderer.look)).toBe(true);
+    expect(Object.isFrozen(renderer.look.backdrop)).toBe(true);
+    expect(Object.isFrozen(renderer.look.backdrop.top)).toBe(true);
   });
 
   it('a background out of range or not finite throws a RangeError and builds nothing', () => {

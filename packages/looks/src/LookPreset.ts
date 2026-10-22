@@ -7,7 +7,7 @@ export const LOOK_FORMAT = 'modelshot-look';
 /** The look preset format this build reads and writes; a breaking change of the format raises it. */
 export const LOOK_FORMAT_VERSION = 1;
 
-/** World-space unit vector (toward a light, or up). */
+/** Unit vector (toward a light, or up), in world space unless its field says otherwise. */
 export type Direction = readonly [number, number, number];
 
 /** A directional light without shadows: `color × max(n · direction, 0)` on a diffuse surface of unit albedo. */
@@ -24,12 +24,31 @@ export interface LookKeyLight extends LookDirectionalLight {
   readonly angularRadius: number;
 }
 
+/**
+ * The rim: a view-relative accent at grazing angles that draws a line along the silhouettes, added as radiance:
+ * `color × (1 − clamp(n · v, 0, 1))^exponent × max(n · l, 0) × mix(1, albedo, albedoShare)`, v the unit vector toward
+ * the eye and l `direction` turned from view into world space every frame. Camera-facing surfaces get none.
+ */
+export interface LookRimLight {
+  /** Unit vector toward the light in view space: x right, y up, z toward the camera (−z points into the screen). */
+  readonly direction: Direction;
+  /** Scene-linear colour, 0..16 per channel. */
+  readonly color: Rgb;
+  /** 1..16: the higher, the closer to the silhouette the rim stays. */
+  readonly exponent: number;
+  /** 0..1: 0 the rim has its own colour on any texel (a white line on a red texel), 1 it is tinted like diffuse light. */
+  readonly albedoShare: number;
+}
+
 export interface LookLights {
   readonly key: LookKeyLight;
-  /** An unshadowed accent, in the preview, the path tracer and the light bake alike. */
+  /**
+   * A world-space diffuse accent, unshadowed: in the preview and at the path tracer's camera hit only, never in the
+   * light bake.
+   */
   readonly fill: LookDirectionalLight;
-  /** An unshadowed accent from behind the model, lighting its silhouettes. */
-  readonly rim: LookDirectionalLight;
+  /** A view-relative grazing accent, unshadowed: in the preview and at the path tracer's camera hit only, never baked. */
+  readonly rim: LookRimLight;
 }
 
 /**

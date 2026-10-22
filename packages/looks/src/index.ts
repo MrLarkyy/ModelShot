@@ -7,7 +7,7 @@ export { MAX_LOOK_COLOR, checkLookPreset } from './checkLookPreset';
 export { EDGE_LOOK_V0, MAX_EDGE_WIDTH, checkEdgeLook, type EdgeLook } from './EdgeLook';
 export { checkBackground } from './checkBackground';
 export { edgeRamp, roundedNormal } from './edgeRounding';
-export { LIGHT_RIG_V0, unoccludedRadiance, type LightRig } from './lightRig';
+export { LIGHT_RIG_V0, rimLight, rimWorldDirection, unoccludedRadiance, type LightRig } from './lightRig';
 export { lightingKey } from './lightingKey';
 export { linkShader, type ShaderChunks } from './linkShader';
 export {
@@ -22,8 +22,10 @@ export {
   type LookKeyLight,
   type LookLights,
   type LookPreset,
+  type LookRimLight,
   type LookToneMapping,
 } from './LookPreset';
+export { LOOK_VIEW_NONE, lookView, towardEye, type LookView } from './LookView';
 export { LookPresetError, type LookPresetErrorCode } from './LookPresetError';
 export { DEFAULT_LOOK, LOOK_PRESETS } from './lookPresets';
 export { lookShaderChunks } from './lookShaderChunks';
