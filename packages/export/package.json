@@ -13,5 +13,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelshot/pathtracer": "workspace:*",
+    "@modelshot/scene": "workspace:*"
   }
 }

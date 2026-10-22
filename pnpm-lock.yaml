@@ -226,7 +226,14 @@ importers:
 
   packages/embed: {}
 
-  packages/export: {}
+  packages/export:
+    dependencies:
+      '@modelshot/pathtracer':
+        specifier: workspace:*
+        version: link:../pathtracer
+      '@modelshot/scene':
+        specifier: workspace:*
+        version: link:../scene
 
   packages/formats:
     dependencies:
@@ -287,6 +294,9 @@ importers:
 
   tools/harness:
     dependencies:
+      '@modelshot/export':
+        specifier: workspace:*
+        version: link:../../packages/export
       '@modelshot/formats':
         specifier: workspace:*
         version: link:../../packages/formats
@@ -321,6 +331,8 @@ importers:
       vite:
         specifier: ^8.3.4
         version: 8.3.4(@types/node@22.20.5)
+
+  tools/wiki: {}
 
 packages:
 
