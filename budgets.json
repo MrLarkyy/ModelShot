@@ -12,7 +12,8 @@
   },
   "timeToSamplesMs": {
     "progressive-256-n64": { "max": 300 },
-    "pt-bench-128-n256": { "max": 52000 }
+    "pt-bench-128-n256": { "max": 52000 },
+    "pt-bench-128-n64-x2-denoised": { "max": 73000 }
   },
   "bundleGzipBytes": {
     "app": { "max": 4500 },

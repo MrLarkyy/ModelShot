@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   backdropMask,
+  blockMeans,
+  edgeMask,
+  edgeSharpness,
+  farFrom,
   hueMatch,
+  imageError,
   modelBox,
   sentinelPixels,
   silhouetteMismatches,
@@ -105,5 +110,69 @@ describe('silhouette pixels', () => {
         249,
       ),
     ).toBe(1);
+  });
+});
+
+describe('denoiser metrics', () => {
+  // 4-pixel texels of two greys: a pixel-art checker.
+  const checker = (x: number, y: number) =>
+    (Math.floor(x / 4) + Math.floor(y / 4)) % 2 ? [200, 200, 200] : [60, 60, 60];
+  const sharp = image(16, 16, checker);
+  // A 3-tap box blur across the texel boundaries.
+  const blurred = image(16, 16, (x, y) => {
+    const sum = [0, 0, 0];
+    for (let d = -1; d <= 1; d++) checker(Math.min(15, Math.max(0, x + d)), y).forEach((v, c) => (sum[c]! += v / 3));
+    return sum.map(Math.round);
+  });
+
+  it('measures RGB error in levels, over a mask when given', () => {
+    expect(imageError(sharp, sharp)).toEqual({ rmse: 0, mae: 0, pixels: 256 });
+    const brighter = image(16, 16, (x, y) => checker(x, y).map((v) => v + 3));
+    expect(imageError(brighter, sharp).rmse).toBeCloseTo(3, 9);
+    expect(imageError(brighter, sharp).mae).toBeCloseTo(3, 9);
+    const one = image(16, 16, (x, y) => (x === 0 && y === 0 ? [72, 60, 60] : checker(x, y)));
+    const mask = new Uint8Array(256);
+    mask[0] = 1;
+    expect(imageError(one, sharp, mask)).toEqual({ rmse: Math.sqrt(144 / 3), mae: 4, pixels: 1 });
+    expect(() =>
+      imageError(
+        image(8, 8, () => null),
+        sharp,
+      ),
+    ).toThrow(/sizes differ/);
+  });
+
+  it('marks both sides of every texel boundary and nothing inside a texel', () => {
+    const mask = edgeMask(sharp, 24);
+    // Columns 3, 4, 7, 8, 11, 12 and the same rows: all but the 10 x 10 pixels in neither.
+    expect(mask.reduce((s, v) => s + v, 0)).toBe(256 - 10 * 10);
+    expect(mask[5 * 16 + 5]).toBe(0);
+    expect(mask[3 * 16 + 5]).toBe(1);
+    expect(edgeMask(sharp, 141).reduce((s, v) => s + v, 0)).toBe(0);
+    const far = farFrom(mask, 16, 16, 1);
+    // More than 1 pixel from those: columns and rows 0, 1, 14, 15.
+    expect(far.reduce((s, v) => s + v, 0)).toBe(16);
+    expect(far[0]).toBe(1);
+    expect(far[2]).toBe(0);
+    expect(farFrom(new Uint8Array(256), 16, 16, 2).every((v) => v === 1)).toBe(true);
+  });
+
+  it('is 1 for identical edges and under 1 for blurred ones; uncorrelated noise does not raise it', () => {
+    const mask = edgeMask(sharp, 24);
+    expect(edgeSharpness(sharp, sharp, mask)).toBe(1);
+    const blur = edgeSharpness(blurred, sharp, mask);
+    expect(blur).toBeLessThan(0.9);
+    expect(blur).toBeGreaterThan(0.2);
+    // A fixed +-5 level pattern, unrelated to the checker.
+    const noisy = image(16, 16, (x, y) => checker(x, y).map((v) => v + (((x * 7 + y * 13) % 3) - 1) * 5));
+    expect(Math.abs(edgeSharpness(noisy, sharp, mask) - 1)).toBeLessThan(0.05);
+  });
+
+  it('averages blocks into a coarse image', () => {
+    const means = blockMeans(sharp, 4);
+    expect(means).toHaveLength(16);
+    expect(means[0]).toEqual([60, 60, 60]);
+    expect(means[1]).toEqual([200, 200, 200]);
+    expect(blockMeans(sharp, 16)[0]).toEqual([130, 130, 130]);
   });
 });

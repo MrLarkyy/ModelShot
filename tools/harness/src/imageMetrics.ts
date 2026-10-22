@@ -172,3 +172,126 @@ export function whiteCount(pixels: readonly (readonly number[])[], level: number
   for (const [r = 0, g = 0, b = 0] of pixels) if (Math.min(r, g, b) > level) count++;
   return count;
 }
+
+function sameSize(a: Image, b: Image): void {
+  if (a.width !== b.width || a.height !== b.height) {
+    throw new Error(`image sizes differ: ${a.width}x${a.height} and ${b.width}x${b.height}`);
+  }
+}
+
+/**
+ * RGB error of `image` against `reference` in 8-bit display levels over the pixels `mask` sets (every pixel without
+ * one): root mean square and mean absolute, per channel.
+ */
+export function imageError(
+  image: Image,
+  reference: Image,
+  mask?: Uint8Array,
+): { rmse: number; mae: number; pixels: number } {
+  sameSize(image, reference);
+  let squares = 0;
+  let absolute = 0;
+  let pixels = 0;
+  for (let p = 0; p < image.width * image.height; p++) {
+    if (mask && !mask[p]) continue;
+    pixels++;
+    for (let c = 0; c < 3; c++) {
+      const d = (image.data[p * 4 + c] ?? 0) - (reference.data[p * 4 + c] ?? 0);
+      squares += d * d;
+      absolute += Math.abs(d);
+    }
+  }
+  const values = Math.max(1, pixels * 3);
+  return { rmse: Math.sqrt(squares / values), mae: absolute / values, pixels };
+}
+
+const lumaAt = (image: Image, x: number, y: number): number => luminance(pixel(image, x, y));
+
+/**
+ * The pixels on either side of a step of at least `levels` in luma between horizontal or vertical neighbours of
+ * `image`: texel boundaries, silhouettes and hard shadow edges of a converged render.
+ */
+export function edgeMask(image: Image, levels: number): Uint8Array {
+  const { width, height } = image;
+  const mask = new Uint8Array(width * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const here = lumaAt(image, x, y);
+      if (x + 1 < width && Math.abs(lumaAt(image, x + 1, y) - here) >= levels) {
+        mask[y * width + x] = 1;
+        mask[y * width + x + 1] = 1;
+      }
+      if (y + 1 < height && Math.abs(lumaAt(image, x, y + 1) - here) >= levels) {
+        mask[y * width + x] = 1;
+        mask[(y + 1) * width + x] = 1;
+      }
+    }
+  }
+  return mask;
+}
+
+/** The pixels more than `distance` pixels (in x or y) from every pixel `mask` sets. */
+export function farFrom(mask: Uint8Array, width: number, height: number, distance: number): Uint8Array {
+  const far = new Uint8Array(width * height).fill(1);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!mask[y * width + x]) continue;
+      for (let dy = -distance; dy <= distance; dy++) {
+        for (let dx = -distance; dx <= distance; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx >= 0 && ny >= 0 && nx < width && ny < height) far[ny * width + nx] = 0;
+        }
+      }
+    }
+  }
+  return far;
+}
+
+/**
+ * How much of the reference's edge contrast `image` keeps where `mask` is set: the projection Σ g·r / Σ r·r of the luma
+ * steps g of `image` onto those r of `reference`, to the right and downward neighbour of each pixel. 1 for the
+ * reference itself, under 1 when edges are blurred or softened; noise uncorrelated with the edges averages out.
+ */
+export function edgeSharpness(image: Image, reference: Image, mask: Uint8Array): number {
+  sameSize(image, reference);
+  const { width, height } = image;
+  let projected = 0;
+  let energy = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!mask[y * width + x]) continue;
+      const g0 = lumaAt(image, x, y);
+      const r0 = lumaAt(reference, x, y);
+      for (const [nx, ny] of [
+        [x + 1, y],
+        [x, y + 1],
+      ] as const) {
+        if (nx >= width || ny >= height) continue;
+        const r = lumaAt(reference, nx, ny) - r0;
+        projected += (lumaAt(image, nx, ny) - g0) * r;
+        energy += r * r;
+      }
+    }
+  }
+  return energy > 0 ? projected / energy : 1;
+}
+
+/** Mean RGB of each `block` × `block` block, row-major (the edge blocks clipped): a coarse image of `image`. */
+export function blockMeans(image: Image, block: number): number[][] {
+  const means: number[][] = [];
+  for (let by = 0; by < image.height; by += block) {
+    for (let bx = 0; bx < image.width; bx += block) {
+      const sum = [0, 0, 0];
+      let count = 0;
+      for (let y = by; y < Math.min(by + block, image.height); y++) {
+        for (let x = bx; x < Math.min(bx + block, image.width); x++) {
+          pixel(image, x, y).forEach((v, c) => (sum[c] = (sum[c] ?? 0) + v));
+          count++;
+        }
+      }
+      means.push(sum.map((v) => v / count));
+    }
+  }
+  return means;
+}
