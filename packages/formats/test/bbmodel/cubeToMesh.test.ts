@@ -1,5 +1,7 @@
+import { mat4NodeLocal, mat4TransformPoint, sharpEdges } from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
 import { cubeToMesh } from '../../src/bbmodel/cubeToMesh';
+import { compareGroupKey } from '../../src/bbmodel/GroupKey';
 import { cubeTriangleCount, readCube } from '../../src/bbmodel/CubeSpec';
 import type { ConverterContext } from '../../src/bbmodel/ElementConverter';
 import { BbmodelError, loadBbmodel } from '../../src/index';
@@ -13,6 +15,7 @@ const context: ConverterContext = {
   boxUv: false,
   boxUvFloatSize: false,
   textureDoubleSided: [true],
+  textureSidesAuto: [false],
   untexturedDoubleSided: true,
   maxStringChars: 1024,
   maxVertices: 400_000,
@@ -32,6 +35,74 @@ function positions(mesh: { positions: Float32Array }): number[][] {
 
 function containsPoint(points: number[][], point: number[]): boolean {
   return points.some((p) => p.every((x, k) => Math.abs(x - (point[k] ?? NaN)) < 1e-6));
+}
+
+type Vec = [number, number, number];
+
+const vertexAt = (mesh: { positions: Float32Array }, i: number): Vec => [
+  mesh.positions[i * 3] ?? NaN,
+  mesh.positions[i * 3 + 1] ?? NaN,
+  mesh.positions[i * 3 + 2] ?? NaN,
+];
+
+const dot = (a: readonly number[], b: readonly number[]) => a.reduce((sum, x, k) => sum + x * (b[k] ?? 0), 0);
+
+/** Per triangle: its geometric front (cross product of its winding), stored normal and centroid. */
+function triangles(mesh: { positions: Float32Array; normals: Float32Array; indices: Uint32Array }) {
+  const out: { geometric: Vec; stored: Vec; centroid: Vec }[] = [];
+  for (let t = 0; t < mesh.indices.length; t += 3) {
+    const [a = 0, b = 0, c = 0] = mesh.indices.slice(t, t + 3);
+    const [pa, pb, pc] = [vertexAt(mesh, a), vertexAt(mesh, b), vertexAt(mesh, c)];
+    const ab = pb.map((x, k) => x - (pa[k] ?? 0));
+    const ac = pc.map((x, k) => x - (pa[k] ?? 0));
+    const [x1 = 0, y1 = 0, z1 = 0] = ab;
+    const [x2 = 0, y2 = 0, z2 = 0] = ac;
+    out.push({
+      geometric: [y1 * z2 - z1 * y2, z1 * x2 - x1 * z2, x1 * y2 - y1 * x2],
+      stored: [mesh.normals[a * 3] ?? NaN, mesh.normals[a * 3 + 1] ?? NaN, mesh.normals[a * 3 + 2] ?? NaN],
+      centroid: [0, 1, 2].map((k) => ((pa[k] ?? 0) + (pb[k] ?? 0) + (pc[k] ?? 0)) / 3) as Vec,
+    });
+  }
+  return out;
+}
+
+/** Every triangle's front points away from (outward) or to (inward) the box centre, its stored normal along it. */
+function expectWinding(
+  mesh: { positions: Float32Array; normals: Float32Array; indices: Uint32Array },
+  side: 'outward' | 'inward',
+) {
+  const count = mesh.positions.length / 3;
+  const centre = [0, 1, 2].map((k) => {
+    let sum = 0;
+    for (let i = 0; i < count; i++) sum += mesh.positions[i * 3 + k] ?? 0;
+    return sum / count;
+  });
+  for (const { geometric, stored, centroid } of triangles(mesh)) {
+    const away = dot(
+      geometric,
+      centroid.map((x, k) => x - (centre[k] ?? 0)),
+    );
+    expect(side === 'outward' ? away : -away).toBeGreaterThan(0);
+    const length = Math.hypot(...geometric);
+    stored.forEach((x, k) => expect(x).toBeCloseTo((geometric[k] ?? 0) / length, 6));
+  }
+}
+
+const FACE_ORDER = ['north', 'east', 'south', 'west', 'up', 'down'] as const;
+
+/** Distinct y of the face's four vertices; faces are stored in Blockbench order when they share a group. */
+function faceYs(mesh: { positions: Float32Array }, face: (typeof FACE_ORDER)[number]): number[] {
+  const f = FACE_ORDER.indexOf(face);
+  return [...new Set([0, 1, 2, 3].map((c) => vertexAt(mesh, f * 4 + c)[1]))];
+}
+
+/** The four corners of a face (Blockbench order, one group) as [x, y, z, u, v]. */
+function faceVertices(mesh: { positions: Float32Array; uvs: Float32Array }, face: (typeof FACE_ORDER)[number]) {
+  const f = FACE_ORDER.indexOf(face);
+  return [0, 1, 2, 3].map((c) => {
+    const v = f * 4 + c;
+    return [...vertexAt(mesh, v), (mesh.uvs[v * 2] ?? NaN) * 16, (mesh.uvs[v * 2 + 1] ?? NaN) * 16].map((x) => x || 0);
+  });
 }
 
 const textured = (uv: number[], extra: Record<string, unknown> = {}) => ({ uv, texture: 0, ...extra });
@@ -80,18 +151,22 @@ describe('cubeToMesh', () => {
     expect(grown.uvRects).toEqual(plain.uvRects);
   });
 
-  it('negative inflate shrinks, and collapses an axis to its centre instead of inverting it', () => {
+  it('negative inflate shrinks; below −half a side it inverts the axis, as Blockbench does', () => {
     const shrunk = meshOf(
       cube({ from: [0, 0, 0], to: [4, 4, 4], inflate: -0.25, faces: allFaces(textured([0, 0, 1, 1])) }),
     );
     expect(containsPoint(positions(shrunk), [0.25, 0.25, 0.25])).toBe(true);
     expect(containsPoint(positions(shrunk), [3.75, 3.75, 3.75])).toBe(true);
-    const collapsed = meshOf(
-      cube({ from: [0, 0, 0], to: [4, 0.25, 4], inflate: -0.5, faces: allFaces(textured([0, 0, 1, 1])) }),
-    );
-    expect(collapsed.indices).toHaveLength(2 * 6);
-    for (const value of collapsed.positions) expect(Number.isFinite(value)).toBe(true);
-    expect(positions(collapsed).every(([, y]) => y === 0.125)).toBe(true);
+    // y: half 0.125, extent (0.125 − 0.5) = −0.375 about 0.125, so y runs −0.25..0.5, reversed.
+    const element = cube({ from: [0, 0, 0], to: [4, 0.25, 4], inflate: -0.5, faces: allFaces(textured([0, 0, 1, 1])) });
+    expect(readCube(element, '$', context).reversed).toEqual([false, true, false]);
+    const inverted = meshOf(element);
+    expect(inverted.indices).toHaveLength(6 * 6);
+    expect(containsPoint(positions(inverted), [0.5, -0.25, 0.5])).toBe(true);
+    expect(containsPoint(positions(inverted), [3.5, 0.5, 3.5])).toBe(true);
+    expectWinding(inverted, 'inward');
+    // The up face lies at the bottom.
+    expect(faceYs(inverted, 'up')).toEqual([-0.25]);
   });
 
   it('a flat cube keeps only its two large faces', () => {
@@ -201,5 +276,277 @@ describe('cubeToMesh', () => {
         expect(outward.reduce((sum, x, k) => sum + x * (stored[k] ?? 0), 0)).toBeGreaterThan(0);
       }
     }
+  });
+});
+
+/** A different uv per face, two of them turned: a mirrored or moved texture shows in the corner UVs. */
+const DISTINCT_FACES = {
+  north: textured([0, 0, 4, 2]),
+  east: textured([4, 0, 8, 3], { rotation: 90 }),
+  south: textured([8, 0, 12, 2]),
+  west: textured([12, 0, 16, 3]),
+  up: textured([0, 4, 4, 7], { rotation: 180 }),
+  down: textured([4, 4, 8, 7]),
+};
+const FROM = [0, 0, 0];
+const TO = [4, 2, 3];
+
+/** The cube FROM..TO with from and to swapped on `axes`. */
+function swapped(axes: readonly number[], extra: Record<string, unknown> = {}) {
+  const from = FROM.map((x, k) => (axes.includes(k) ? (TO[k] ?? 0) : x));
+  const to = TO.map((x, k) => (axes.includes(k) ? (FROM[k] ?? 0) : x));
+  return cube({ from, to, faces: DISTINCT_FACES, ...extra });
+}
+
+describe('cubeToMesh: reversed axes (Blockbench setShape)', () => {
+  const plain = meshOf(swapped([]));
+  const reversedSets = [[0], [1], [2], [0, 1], [0, 2], [1, 2], [0, 1, 2]];
+
+  it.each(reversedSets.map((axes) => [axes.join(' ')]))(
+    'from > to on axes %s mirrors every face about the centre, keeping its UVs',
+    (names) => {
+      const axes = names.split(' ').map(Number);
+      expect(readCube(swapped(axes), '$', context).reversed).toEqual([0, 1, 2].map((k) => axes.includes(k)));
+      const mesh = meshOf(swapped(axes));
+      expect(mesh.indices).toEqual(plain.indices);
+      expect(mesh.uvs).toEqual(plain.uvs);
+      expect(mesh.uvRects).toEqual(plain.uvRects);
+      for (let v = 0; v < plain.positions.length / 3; v++) {
+        const mirrored = vertexAt(plain, v).map((x, k) => (axes.includes(k) ? (TO[k] ?? 0) - x : x));
+        expect(vertexAt(mesh, v)).toEqual(mirrored);
+      }
+      expectWinding(mesh, axes.length % 2 === 1 ? 'inward' : 'outward');
+    },
+  );
+
+  it('from > to on all axes is an inverted hull over the same corners', () => {
+    const mesh = meshOf(swapped([0, 1, 2]));
+    const sorted = (points: number[][]) => points.map((p) => p.join(',')).sort();
+    expect(sorted(positions(mesh))).toEqual(sorted(positions(plain)));
+    expectWinding(mesh, 'inward');
+    // Each face sits where its opposite does on the plain cube, its normal (the geometric front) pointing inside.
+    expect(faceVertices(mesh, 'east').every(([x]) => x === 0)).toBe(true);
+    expect([...mesh.normals.slice(4 * 3, 4 * 3 + 3)]).toEqual([1, 0, 0]);
+  });
+
+  it('one reversed axis: the east face lies at min x facing inward, the faces across x show their uv mirrored', () => {
+    const mesh = meshOf(swapped([0]));
+    const plainEast = faceVertices(plain, 'east');
+    expect(faceVertices(mesh, 'east')).toEqual(plainEast.map(([, y, z, u, v]) => [0, y, z, u, v]));
+    // North: the corner that carried (u1, v1) at x = 4 now carries it at x = 0.
+    expect(faceVertices(plain, 'north')[0]).toEqual([4, 2, 0, 0, 0]);
+    expect(faceVertices(mesh, 'north')[0]).toEqual([0, 2, 0, 0, 0]);
+    expectWinding(mesh, 'inward');
+  });
+
+  it('two reversed axes stay outward: the east texture shows on the west side, turned 180 degrees', () => {
+    const mesh = meshOf(swapped([0, 1]));
+    const east = faceVertices(mesh, 'east');
+    expect(east.every(([x]) => x === 0)).toBe(true);
+    expect([...mesh.normals.slice(4 * 3, 4 * 3 + 3)].map((x) => x || 0)).toEqual([-1, 0, 0]);
+    // Each corner moved to the opposite corner of the y-z rectangle: a half turn of the image.
+    faceVertices(plain, 'east').forEach(([, y = 0, z = 0, u, v], c) => expect(east[c]).toEqual([0, 2 - y, z, u, v]));
+    expectWinding(mesh, 'outward');
+  });
+
+  it('mirrors in cube space, before the rotation about the origin', () => {
+    const extra = { origin: [1, 2, 3], rotation: [22.5, 45, -30] };
+    const turned = meshOf(swapped([0, 2], extra));
+    const flat = meshOf(swapped([0, 2]));
+    const rotation = mat4NodeLocal([0, 0, 0], [1, 2, 3], [22.5, 45, -30]);
+    for (let v = 0; v < flat.positions.length / 3; v++) {
+      mat4TransformPoint(rotation, vertexAt(flat, v)).forEach((x, k) =>
+        expect(vertexAt(turned, v)[k]).toBeCloseTo(x, 5),
+      );
+    }
+    expectWinding(turned, 'outward');
+  });
+
+  it('positive inflate shrinks a reversed axis and turns it back past zero', () => {
+    // x: half −2; inflate 1 leaves −1 (reversed, 1..3), inflate 3 leaves +1 (not reversed, 1..3).
+    const at = (inflate: number) =>
+      readCube(cube({ from: [4, 0, 0], to: [0, 4, 4], inflate, faces: {} }), '$', context);
+    expect(at(1)).toMatchObject({ min: [1, -1, -1], max: [3, 5, 5], reversed: [true, false, false] });
+    expect(at(3)).toMatchObject({ min: [1, -3, -3], max: [3, 7, 7], reversed: [false, false, false] });
+    // Exactly cancelled: zero thickness, not reversed.
+    expect(at(2)).toMatchObject({ min: [2, -2, -2], max: [2, 6, 6], reversed: [false, false, false] });
+  });
+
+  it('a negative stretch inverts its axis and scales its magnitude', () => {
+    const spec = readCube(cube({ from: [0, 0, 0], to: [4, 4, 4], stretch: [-2, 1, 1], faces: {} }), '$', context);
+    expect(spec).toMatchObject({ min: [-2, 0, 0], max: [6, 4, 4], reversed: [true, false, false] });
+    const stretched = (stretch: number[]) =>
+      meshOf(cube({ from: [0, 0, 0], to: [4, 4, 4], stretch, faces: DISTINCT_FACES }));
+    expectWinding(stretched([1, -1, 1]), 'inward');
+    expectWinding(stretched([-1, -1, 1]), 'outward');
+  });
+
+  it('render_sides keeps its sidedness on a reversed cube', () => {
+    const single = { ...context, textureDoubleSided: [false] };
+    const element = swapped([0, 1, 2]);
+    expect(meshOf(element).groups).toEqual([{ material: 0, start: 0, count: 36, doubleSided: true }]);
+    expect(cubeToMesh(readCube(element, '$', single), -1).groups).toEqual([
+      { material: 0, start: 0, count: 36, doubleSided: false, cameraOnly: true },
+    ]);
+  });
+
+  it('the largest coordinates the reader accepts give finite positions', () => {
+    const element = cube({
+      from: [1e7, 1e7, 1e7],
+      to: [-1e7, -1e7, -1e7],
+      inflate: -1e7,
+      stretch: [1e7, -1e7, 1e7],
+      faces: allFaces(textured([0, 0, 1, 1])),
+    });
+    expect(readCube(element, '$', context).reversed).toEqual([true, false, true]);
+    for (const value of meshOf(element).positions) expect(Number.isFinite(value)).toBe(true);
+  });
+
+  it('box_uv on a reversed cube lays faces out from the signed, floored size, as Blockbench updateUV does', () => {
+    // Signed sizes (floor(−4.5), −6, −2) = (−5, −6, −2) at offset (16, 16), Blockbench's face_list with these values.
+    const faces = Object.fromEntries(FACE_ORDER.map((direction) => [direction, { texture: 0 }]));
+    const element = cube({ from: [4.5, 6, 2], to: [0, 0, 0], faces, box_uv: true, uv_offset: [16, 16] });
+    const uvs = Object.fromEntries(readCube(element, '$', context).faces.map((face) => [face.direction, face.uv]));
+    expect(uvs).toEqual({
+      east: [16, 14, 14, 8],
+      west: [9, 14, 7, 8],
+      up: [9, 14, 14, 16],
+      down: [4, 16, 9, 14],
+      south: [7, 14, 2, 8],
+      north: [14, 14, 9, 8],
+    });
+  });
+
+  it('the edges of an inverted hull are creases, those of the plain cube convex', () => {
+    const options = { sharpAngleDeg: 30, reach: 0.5 };
+    const angles = (mesh: Parameters<typeof sharpEdges>[0]) => [
+      ...new Set([...sharpEdges(mesh, options).angles].filter((a) => a !== 0).map((a) => Math.round(a * 1e4) / 1e4)),
+    ];
+    const quarter = Math.round((Math.PI / 2) * 1e4) / 1e4;
+    expect(sharpEdges(meshOf(swapped([0, 1, 2])), options).edgeCount).toBe(12);
+    expect(angles(meshOf(swapped([0, 1, 2])))).toEqual([-quarter]);
+    expect(angles(meshOf(swapped([1])))).toEqual([-quarter]);
+    expect(angles(meshOf(swapped([0, 2])))).toEqual([quarter]);
+    expect(angles(plain)).toEqual([quarter]);
+  });
+});
+
+describe('cubeToMesh: sidedness of an inverted cube (outline hull)', () => {
+  const textures = [
+    { name: 'auto', render_sides: 'auto' },
+    { name: 'double', render_sides: 'double' },
+    { name: 'front', render_sides: 'front' },
+  ];
+  /** Groups of a cube FROM..TO swapped on `axes`, its faces on textures 0 (north, south), 1 (east, west), 2 (up), blank (down). */
+  const groupsOf = (axes: readonly number[], modelFormat = 'free') => {
+    const faces = {
+      north: textured([0, 0, 1, 1]),
+      south: textured([0, 0, 1, 1]),
+      east: textured([0, 0, 1, 1], { texture: 1 }),
+      west: textured([0, 0, 1, 1], { texture: 1 }),
+      up: textured([0, 0, 1, 1], { texture: 2 }),
+      down: { uv: [0, 0, 1, 1] },
+    };
+    const meta = { format_version: '4.5', model_format: modelFormat, box_uv: false };
+    const text = JSON.stringify(model({ meta, textures, elements: [swapped(axes, { faces })] }));
+    return loadBbmodel(text).scene.meshes[0]?.groups.map(({ material, doubleSided }) => [material, doubleSided]);
+  };
+
+  it('an odd count draws auto and untextured faces single-sided whatever the format; double stays double', () => {
+    for (const axes of [[0], [0, 1, 2]]) {
+      for (const format of ['free', 'java_block']) {
+        expect(groupsOf(axes, format)).toEqual([
+          [-1, false],
+          [0, false],
+          [1, true],
+          [2, false],
+        ]);
+      }
+    }
+  });
+
+  it('an even count and a plain cube keep the format rule for auto', () => {
+    for (const axes of [[], [0, 2]]) {
+      expect(groupsOf(axes)).toEqual([
+        [-1, true],
+        [0, true],
+        [1, true],
+        [2, false],
+      ]);
+      expect(groupsOf(axes, 'java_block')).toEqual([
+        [-1, false],
+        [0, false],
+        [1, true],
+        [2, false],
+      ]);
+    }
+  });
+});
+
+describe('cubeToMesh: camera-only faces of an inverted cube', () => {
+  const textures = [
+    { name: 'auto', render_sides: 'auto' },
+    { name: 'double', render_sides: 'double' },
+    { name: 'front', render_sides: 'front' },
+  ];
+  const groupsOf = (axes: readonly number[], texture: number) => {
+    const text = JSON.stringify(
+      model({ textures, elements: [swapped(axes, { faces: allFaces(textured([0, 0, 1, 1], { texture })) })] }),
+    );
+    return loadBbmodel(text).scene.meshes[0]?.groups;
+  };
+
+  it('single-sided faces of an inverted cube are camera-only, auto and front alike', () => {
+    for (const axes of [[0], [0, 1, 2]]) {
+      expect(groupsOf(axes, 0)).toEqual([{ material: 0, start: 0, count: 36, doubleSided: false, cameraOnly: true }]);
+      expect(groupsOf(axes, 2)).toEqual([{ material: 2, start: 0, count: 36, doubleSided: false, cameraOnly: true }]);
+    }
+  });
+
+  it('an explicit double, an even reversed count and a plain cube are ordinary faces', () => {
+    expect(groupsOf([0, 1, 2], 1)).toEqual([{ material: 1, start: 0, count: 36, doubleSided: true }]);
+    expect(groupsOf([0, 1], 0)).toEqual([{ material: 0, start: 0, count: 36, doubleSided: true }]);
+    expect(groupsOf([0, 1], 2)).toEqual([{ material: 2, start: 0, count: 36, doubleSided: false }]);
+    expect(groupsOf([], 2)).toEqual([{ material: 2, start: 0, count: 36, doubleSided: false }]);
+  });
+
+  it('a camera-only face groups apart from an ordinary one of the same material and sidedness', () => {
+    expect(
+      compareGroupKey({ material: 0, doubleSided: false }, { material: 0, doubleSided: false, cameraOnly: true }),
+    ).toBeLessThan(0);
+  });
+});
+
+describe('cubeToMesh: a mirrored pane is not an outline hull', () => {
+  const textures = [{ name: 'auto', render_sides: 'auto' }];
+  const groupsOf = (element: Record<string, unknown>, modelFormat: string) => {
+    const meta = { format_version: '4.5', model_format: modelFormat, box_uv: false };
+    const text = JSON.stringify(model({ meta, textures, elements: [element] }));
+    return loadBbmodel(text).scene.meshes[0]?.groups;
+  };
+  const face = textured([0, 0, 1, 1]);
+
+  it('a lone pane reversed in its plane keeps its texture sidedness, no camera-only', () => {
+    const pane = cube({ from: [4, 0, 0], to: [0, 0, 4], faces: { up: face } });
+    expect(readCube(pane, '$', context).reversed).toEqual([true, false, false]);
+    for (const format of ['free', 'bedrock']) {
+      expect(groupsOf(pane, format)).toEqual([{ material: 0, start: 0, count: 6, doubleSided: true }]);
+    }
+  });
+
+  it('a paired pane reversed in its plane stays single-sided by the flat-pair rule, no camera-only', () => {
+    const pane = cube({ from: [4, 0, 0], to: [0, 0, 4], faces: { up: face, down: face } });
+    expect(groupsOf(pane, 'free')).toEqual([{ material: 0, start: 0, count: 12, doubleSided: false }]);
+  });
+
+  it('a pane given thickness by a negative inflate, or a box flattened by one, is not a hull', () => {
+    // y: (0 − 0.1) reversed, 0.2 thick; authored flat.
+    const thick = cube({ from: [0, 0, 0], to: [4, 0, 4], inflate: -0.1, faces: allFaces(face) });
+    expect(readCube(thick, '$', context).reversed).toEqual([false, true, false]);
+    expect(groupsOf(thick, 'free')).toEqual([{ material: 0, start: 0, count: 36, doubleSided: true }]);
+    // x reversed; y: (0.5 − 0.5) = 0, flattened.
+    const flattened = cube({ from: [4, 0, 0], to: [0, 1, 4], inflate: -0.5, faces: allFaces(face) });
+    expect(readCube(flattened, '$', context).reversed).toEqual([true, false, false]);
+    expect(groupsOf(flattened, 'free')).toEqual([{ material: 0, start: 0, count: 12, doubleSided: false }]);
   });
 });

@@ -86,7 +86,7 @@ describe('buildShader', () => {
 });
 
 describe('parseModelViewVariant', () => {
-  it('knows the eight variants', () => {
+  it('knows the twelve variants', () => {
     expect(parseModelViewVariant('?variant=alpha-plane-raster')).toEqual({ model: 'alpha-plane', mode: 'raster' });
     expect(parseModelViewVariant('?variant=alpha-plane-raycast')).toEqual({ model: 'alpha-plane', mode: 'raycast' });
     expect(parseModelViewVariant('?variant=mesh-shapes-raster')).toEqual({ model: 'mesh-shapes', mode: 'raster' });
@@ -95,6 +95,16 @@ describe('parseModelViewVariant', () => {
     expect(parseModelViewVariant('?variant=render-order-raycast')).toEqual({ model: 'render-order', mode: 'raycast' });
     expect(parseModelViewVariant('?variant=gltf-nodes-raster')).toEqual({ model: 'gltf-nodes', mode: 'raster' });
     expect(parseModelViewVariant('?variant=gltf-nodes-raycast')).toEqual({ model: 'gltf-nodes', mode: 'raycast' });
+    expect(parseModelViewVariant('?variant=player-raster')).toEqual({ model: 'player', mode: 'raster' });
+    expect(parseModelViewVariant('?variant=player-raycast')).toEqual({ model: 'player', mode: 'raycast' });
+    expect(parseModelViewVariant('?variant=alpha-plane-camera-only-raster')).toEqual({
+      model: 'alpha-plane-camera-only',
+      mode: 'raster',
+    });
+    expect(parseModelViewVariant('?variant=alpha-plane-camera-only-raycast')).toEqual({
+      model: 'alpha-plane-camera-only',
+      mode: 'raycast',
+    });
   });
 
   it.each(['?variant=constructor', '?variant=__proto__', '?variant=toString', '?variant=', '', '?model=alpha-plane'])(
@@ -153,6 +163,18 @@ describe('sceneTriangles', () => {
     ]);
     // Slot 0 is untextured (the ground), slot 1 the cutout texture.
     expect(new Set(triangles.materials)).toEqual(new Set([0, 1]));
+  });
+
+  it('camera-only groups form their own runs and are flagged per triangle', () => {
+    const { scene } = loadBbmodel(alphaPlane);
+    const mesh = scene.meshes[0];
+    if (!mesh) throw new Error('no mesh');
+    const groups = mesh.groups.map((g, i) => (i === 0 ? { ...g, cameraOnly: true } : g));
+    const marked = { ...scene, meshes: [{ ...mesh, groups }, ...scene.meshes.slice(1)] };
+    const triangles = sceneTriangles(marked);
+    expect(triangles.cameraOnly.reduce((a, b) => a + b, 0)).toBe((mesh.groups[0]?.count ?? 0) / 3);
+    expect(triangles.runs.some((r) => r.cameraOnly)).toBe(true);
+    expect(triangles.runs.every((r) => r.cameraOnly === (triangles.cameraOnly[r.first] === 1))).toBe(true);
   });
 
   it('a hidden parent hides the meshes of its child nodes', () => {

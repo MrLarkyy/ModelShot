@@ -104,6 +104,7 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
     resolution,
     textureIds,
     textureDoubleSided: textureEntries.map((entry) => isDoubleSided(entry.renderSides, formatDefaultSides)),
+    textureSidesAuto: textureEntries.map((entry) => entry.renderSides === 'auto'),
     untexturedDoubleSided: formatDefaultSides,
     textureRule,
     perGroupTexture,

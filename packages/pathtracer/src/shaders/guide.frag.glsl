@@ -72,7 +72,9 @@ void main() {
     float tMin = u_near / depthScale;
     float tMax = u_far / depthScale;
     Hit hit;
-    bool found = closestHit(origin, direction, tMin, tMax, depthScale, -1, key, FIRST_VERTEX_DIMENSION + 3u, hit);
+    // A camera ray: it sees camera-only faces (outline hulls) as the trace's primary ray does.
+    bool found =
+      closestHit(origin, direction, tMin, tMax, depthScale, -1, key, FIRST_VERTEX_DIMENSION + 3u, hit, true);
     vec3 onCatcher;
     float z = -1.0;
     bool partialHit = false;

@@ -121,13 +121,15 @@ describe('path tracer shaders', () => {
     expect(guide).toContain('uint key = sampleHash(u_seed, i, uvec2(pixel));');
     expect(guide).toContain('vec2 point = fract(vec2(vanDerCorput(i), sobol(i)) + rotation);');
     expect(guide).toContain(
-      'closestHit(origin, direction, tMin, tMax, depthScale, -1, key, FIRST_VERTEX_DIMENSION + 3u, hit)',
+      'closestHit(origin, direction, tMin, tMax, depthScale, -1, key, FIRST_VERTEX_DIMENSION + 3u, hit, true)',
     );
     expect(guide).toContain('if (i + 1u == rays && partial) rays = max(rays, u_partialGuideRays);');
-    // The trace's camera ray accepts partial texels in the same dimension.
+    // Both are camera rays (outline hulls' camera-only faces count) accepting partial texels in the same dimension.
     const trace = pathTracerProgramSource('trace').fragment;
     expect(trace).toContain('uint dimension = FIRST_VERTEX_DIMENSION + uint(pathVertex) * DIMENSIONS_PER_VERTEX;');
-    expect(trace).toContain('closestHit(origin, direction, tMin, tMax, depthScale, skip, key, dimension + 3u, hit)');
+    expect(trace).toContain(
+      'closestHit(origin, direction, tMin, tMax, depthScale, skip, key, dimension + 3u, hit, pathVertex == 0)',
+    );
   });
 
   it('stops the filter at albedo, normal, depth and luminance edges; the first pass reads the accumulation', () => {

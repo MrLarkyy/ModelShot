@@ -128,7 +128,8 @@ context restore; the failure comes before any target is made or cleared.
    the variance of its mean. Exact float adds in sample order, as the radiance sum.
 3. **Guides** (denoise), once per request on its first step (`guide.frag`, in tiles an eighth of `tileSize` across, at least 16, as a pixel may trace 1024 rays): the mean albedo
    (floored at 0.01), shading normal and view depth of 64 camera rays per pixel through the points of a
-   (0,2)-sequence (Van der Corput by Sobol', rotated per pixel), into two RGBA16F targets. Each ray accepts partial
+   (0,2)-sequence (Van der Corput by Sobol', rotated per pixel), into two RGBA16F targets. They are camera rays, so they
+   see camera-only faces (outline hulls) as the trace's primary rays do. Each ray accepts partial
    texels with the trace's rule and the key of sample i, so a cut-out texel is never seen; a pixel whose rays met a
    partial texel goes on to 1024 rays, so its alpha mix converges too. The guide is the converged coverage of the
    pixel's texels, not the coverage the request's samples happened to draw: what the samples got wrong at a texel
@@ -194,7 +195,7 @@ The rules of [scene-format.md](scene-format.md), realised per ray type:
 
 The light bake (Light baker below) traces its key rays as shadow rays and its fill rays as bounce rays, with the same
 functions (`shadowTransmittance`, `closestHit`, `surfaceAt` in one shared GLSL source), so preview and render share
-one set of ray rules.
+one set of ray rules. A camera-only face (`SceneMeshGroup.cameraOnly`) counts for camera rays alone; every other ray, bake rays included, skips it.
 
 - The texel is the nearest one of the hit's UV, clamped to the face's texel rectangle (`faceTexelRange`, the
   preview's chunk), read with `texelFetch`: no filtering, no mipmaps, nothing from a neighbouring atlas region.

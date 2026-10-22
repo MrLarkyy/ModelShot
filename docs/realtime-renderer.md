@@ -261,7 +261,7 @@ every frame is a full layout and decode that supersedes the previous one, and th
 - `setScene` validates the document first (`validateScene`): buffer lengths (3 / 3 / 2 / 4 floats per vertex),
   indices below the vertex count, groups on whole triangles inside the index buffer, material, texture, node and mesh
   indices in range or −1, finite node `pivot`, `rotation`, `translation` and `restRotation` (a NaN would drop the
-  node's subtree from the image and the bounds without a word), `renderOrder` an integer in ±1024 and `doubleSided` a boolean (both optional; material
+  node's subtree from the image and the bounds without a word), `renderOrder` an integer in ±1024, `doubleSided` and `cameraOnly` booleans (all optional; material
   `alphaMode` / `alphaCutoff` are not checked, `resolveMaterialAlpha` turns any value into a valid rule). A failure
   rejects with `RendererError` `INVALID_SCENE` naming the path, e.g. `meshes[0].indices[5]`.
 - Textures are checked from the PNG header in their bytes (signature and IHDR) before decoding, never from the size

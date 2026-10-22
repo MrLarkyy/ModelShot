@@ -11,7 +11,7 @@ import {
 
 /**
  * Every visible triangle of a scene in world space, unindexed, ordered by render order, then single- before
- * double-sided, so each run draws with one cull mode and later runs win depth ties.
+ * double-sided, then ordinary before camera-only, so each run draws with one cull mode and later runs win depth ties.
  */
 export interface SceneTriangles {
   readonly count: number;
@@ -26,10 +26,12 @@ export interface SceneTriangles {
   /** Draw-material slot per triangle: 0 untextured, `m + 1` for scene material `m`. */
   readonly materials: Int32Array;
   readonly doubleSided: Uint8Array;
+  /** 1 for a triangle only camera rays see (no shadow). */
+  readonly cameraOnly: Uint8Array;
   readonly renderOrders: Int32Array;
   /** Index into `scene.meshes` per triangle. */
   readonly meshes: Int32Array;
-  /** Consecutive triangles sharing render order and sidedness. */
+  /** Consecutive triangles sharing render order, sidedness and camera-only. */
   readonly runs: readonly TriangleRun[];
 }
 
@@ -37,6 +39,7 @@ export interface TriangleRun {
   readonly first: number;
   readonly count: number;
   readonly doubleSided: boolean;
+  readonly cameraOnly: boolean;
   readonly renderOrder: number;
 }
 
@@ -45,6 +48,7 @@ interface Source {
   triangle: number;
   material: number;
   doubleSided: boolean;
+  cameraOnly: boolean;
   renderOrder: number;
 }
 
@@ -61,12 +65,18 @@ export function sceneTriangles(scene: SceneDocument): SceneTriangles {
           triangle: t,
           material: group.material + 1,
           doubleSided: group.doubleSided ?? false,
+          cameraOnly: group.cameraOnly ?? false,
           renderOrder: mesh.renderOrder ?? 0,
         });
       }
     }
   });
-  sources.sort((a, b) => a.renderOrder - b.renderOrder || Number(a.doubleSided) - Number(b.doubleSided));
+  sources.sort(
+    (a, b) =>
+      a.renderOrder - b.renderOrder ||
+      Number(a.doubleSided) - Number(b.doubleSided) ||
+      Number(a.cameraOnly) - Number(b.cameraOnly),
+  );
 
   const count = sources.length;
   const out = {
@@ -77,6 +87,7 @@ export function sceneTriangles(scene: SceneDocument): SceneTriangles {
     rects: new Float32Array(count * 4),
     materials: new Int32Array(count),
     doubleSided: new Uint8Array(count),
+    cameraOnly: new Uint8Array(count),
     renderOrders: new Int32Array(count),
     meshes: new Int32Array(count),
   };
@@ -109,12 +120,25 @@ export function sceneTriangles(scene: SceneDocument): SceneTriangles {
     }
     out.materials[i] = source.material;
     out.doubleSided[i] = source.doubleSided ? 1 : 0;
+    out.cameraOnly[i] = source.cameraOnly ? 1 : 0;
     out.renderOrders[i] = source.renderOrder;
     out.meshes[i] = source.mesh;
     const last = runs[runs.length - 1];
-    if (last && last.doubleSided === source.doubleSided && last.renderOrder === source.renderOrder) {
+    if (
+      last &&
+      last.doubleSided === source.doubleSided &&
+      last.cameraOnly === source.cameraOnly &&
+      last.renderOrder === source.renderOrder
+    ) {
       runs[runs.length - 1] = { ...last, count: last.count + 1 };
-    } else runs.push({ first: i, count: 1, doubleSided: source.doubleSided, renderOrder: source.renderOrder });
+    } else
+      runs.push({
+        first: i,
+        count: 1,
+        doubleSided: source.doubleSided,
+        cameraOnly: source.cameraOnly,
+        renderOrder: source.renderOrder,
+      });
   });
   return { ...out, runs };
 }

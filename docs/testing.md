@@ -286,6 +286,14 @@ For a manual run on real hardware open `rt.html?scene=bench&size=512&fps=1`: it 
 median frame work (draw until the GPU finished) and display interval over the last 120 frames, with the renderer
 string.
 
+**Outline hull** (MS-50, `test.describe('outline hull')`): `fixtures/models/outline-hull.bbmodel` (self-made, CC0), a
+board inside a Blockbench cube with from > to on every axis (an inverted hull, `auto`-sided texture, so single-sided
+and `cameraOnly`); variant `outline-hull` (yaw 30°, pitch 30°). Golden `rt-outline-hull`, default tolerance. Probes
+(`src/outlineHullProbe.ts`) against `scene=outline-hull-board` (the shell keeps its vertices, so the same framing, but
+draws nothing): the board-centre luminance (3 x 3) within 2 levels of the board alone (measured equal), and over 200
+pixels the hull darkens to below 50 (the rim; measured 2 385); the same unbaked and baked (`bake=16`, measured equal,
+rim 2 289).
+
 ## Path-tracer goldens
 
 Fix the seed, the sample count, the resolution and the camera. The accumulation stops after exactly N samples, never
@@ -314,6 +322,7 @@ golden says them (`-x2-denoised`).
 | `pt-edges.s1.n128`                     | generated `edges` scene (MS-15)                      | golden; rounded-edge probes; pair               |
 | `pt-preset-marketplace.s1.n64`         | `player-hold-34` under Marketplace (MS-19)           | golden; tile/batch determinism; pair            |
 | `pt-preset-rim.s1.n64`                 | `player-hold-34` under Rim (MS-19)                   | golden; pair                                    |
+| `pt-outline-hull.s1.n64`               | outline-hull.bbmodel, board in an inverted hull      | golden; board and rim probes; pair (MS-50)      |
 | `pt-closeup-reference.s1.n2048`        | `closeup`, 2048 samples, no denoiser (MS-18)         | rendered on golden update only; AC1, AC2, drift |
 | `pt-closeup-denoised.s1.n64`           | `closeup`, `denoise` (MS-18)                         | golden; AC1; AC2                                |
 | `pt-turntable-y030-x2-denoised.s1.n16` | `turntable-y030`, `supersample=2`, `denoise` (MS-18) | golden; determinism; bleeding; pair             |
@@ -387,6 +396,7 @@ Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with r
 | `preset-marketplace`       | 0 (1 322)                           | 1 269, 0.01936, 1.237                         | 0.0223, 1.43                          |
 | `preset-rim`               | 0 (1 322)                           | 1 407, 0.02147, 1.109                         | 0.0241, 1.13                          |
 | `preset-marketplace-yaw30` | 0 (1 304)                           | 1 387, 0.02116, 1.281                         | 0.0265, 1.52                          |
+| `outline-hull`             | 0 (1 456)                           | 1 076, 0.01642, 0.912 (MS-50, new)            | 0.0205, 1.14                          |
 
 MS-19 measured the table again with the backdrop mask by rows: every earlier view kept its numbers and limits. The two
 look-preset pairs (`preset-marketplace`, `preset-rim`: the held-cube player baked under its look) are new at measured
@@ -537,7 +547,7 @@ light and look (`fixtures/src/modelViewCamera.ts`), in two independent ways that
 shading include:
 
 - `raster`: an orthographic depth-only pass from the light (DEPTH_COMPONENT24, 1024², alpha-tested, slope polygon
-  offset, back faces of single-sided runs culled as seen from the light), then the camera pass with the same culling,
+  offset, back faces of single-sided runs culled as seen from the light, camera-only runs skipped), then the camera pass with the same culling,
   alpha discard, a `gl_FrontFacing` normal flip and a hard shadow-map lookup, into its own RGBA8 +
   DEPTH_COMPONENT24 target (blitted to the canvas; the default depth buffer may have only 16 bits). Its fragment depth
   is the scene format's render-order key (view depth − (order + back) × TIE, back = −1/16 for a back face) over
@@ -549,7 +559,7 @@ shading include:
 - `raycast`: per pixel centre, a camera ray to the nearest triangle whose texel passes the alpha test
   (single-sided triangles only from the front; the smallest render-order key wins, the same key), shaded with the barycentric vertex normal, then one shadow ray toward the light that an
   alpha-passing
-  triangle blocks (a single-sided one only if its front faces the light). Triangles and their vertex normals live in
+  triangle blocks (a single-sided one only if its front faces the light; a camera-only one never). Triangles and their vertex normals live in
   an RGBA32F data texture (at most 256, checked against `MAX_TEXTURE_SIZE`).
 
 Textures are decoded with `createImageBitmap(…, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' })`,
@@ -562,18 +572,20 @@ shaders share with TypeScript (`MAX_MATERIALS`, `MODE_*`, `RENDER_ORDER_TIE`, `S
 `fixtures/src/modelShaderDefines.ts`, so it has one source; a model with more materials or textures than the tables
 hold fails with a clear error.
 
-| variant                | golden                     | checks                                                                                           |
-| ---------------------- | -------------------------- | ------------------------------------------------------------------------------------------------ |
-| `alpha-plane-raster`   | `alpha-plane-raster.png`   | golden; probes; pair                                                                             |
-| `alpha-plane-raycast`  | `alpha-plane-raycast.png`  | golden; probes; pair; byte-identical re-render                                                   |
-| `mesh-shapes-raster`   | `mesh-shapes-raster.png`   | golden (triangle, out-of-order quad, n-gons, null-texture face, rotated mesh, smooth arch); pair |
-| `mesh-shapes-raycast`  | `mesh-shapes-raycast.png`  | golden; pair                                                                                     |
-| `render-order-raster`  | `render-order-raster.png`  | golden; render-order probes; pair                                                                |
-| `render-order-raycast` | `render-order-raycast.png` | golden; render-order probes; pair                                                                |
-| `gltf-nodes-raster`    | `gltf-nodes-raster.png`    | golden (glTF hierarchy, baked transforms, factor textures); `MASK` probes; pair                  |
-| `gltf-nodes-raycast`   | `gltf-nodes-raycast.png`   | golden; `MASK` probes; pair                                                                      |
-| `player-raster`        | `player-raster.png`        | golden; skin probes; pair                                                                        |
-| `player-raycast`       | `player-raycast.png`       | golden; skin probes; pair                                                                        |
+| variant                           | golden                     | checks                                                                                           |
+| --------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------ |
+| `alpha-plane-raster`              | `alpha-plane-raster.png`   | golden; probes; pair                                                                             |
+| `alpha-plane-raycast`             | `alpha-plane-raycast.png`  | golden; probes; pair; byte-identical re-render                                                   |
+| `mesh-shapes-raster`              | `mesh-shapes-raster.png`   | golden (triangle, out-of-order quad, n-gons, null-texture face, rotated mesh, smooth arch); pair |
+| `mesh-shapes-raycast`             | `mesh-shapes-raycast.png`  | golden; pair                                                                                     |
+| `render-order-raster`             | `render-order-raster.png`  | golden; render-order probes; pair                                                                |
+| `render-order-raycast`            | `render-order-raycast.png` | golden; render-order probes; pair                                                                |
+| `gltf-nodes-raster`               | `gltf-nodes-raster.png`    | golden (glTF hierarchy, baked transforms, factor textures); `MASK` probes; pair                  |
+| `gltf-nodes-raycast`              | `gltf-nodes-raycast.png`   | golden; `MASK` probes; pair                                                                      |
+| `player-raster`                   | `player-raster.png`        | golden; skin probes; pair                                                                        |
+| `player-raycast`                  | `player-raycast.png`       | golden; skin probes; pair                                                                        |
+| `alpha-plane-camera-only-raster`  | none                       | probes: the camera-only cutout plane is seen but its shadow is absent                            |
+| `alpha-plane-camera-only-raycast` | none                       | probes: the camera-only cutout plane is seen but its shadow is absent                            |
 
 The page publishes `probes`: pixels of chosen texels of the cutout plane (and of their shadows on the ground,
 following the light ray) and of the plane seen from behind, with the texel colour. `modelView.spec.ts` checks that the

@@ -29,6 +29,8 @@ export interface FlatScene {
   readonly materials: Int32Array;
   /** Per triangle: 1 for a double-sided face. */
   readonly doubleSided: Uint8Array;
+  /** Per triangle: 1 for a face only camera rays see (`SceneMeshGroup.cameraOnly`). */
+  readonly cameraOnly: Uint8Array;
   /** Per triangle: the mesh's `renderOrder` (absent: 0). */
   readonly renderOrders: Float32Array;
   /** 2 per triangle: the index of its mesh in `SceneDocument.meshes` and of its first index in that mesh's `indices`. */
@@ -108,6 +110,7 @@ export function flattenScene(
   const uvRects = new Float32Array(total * 4);
   const materials = new Int32Array(total);
   const doubleSided = new Uint8Array(total);
+  const cameraOnly = new Uint8Array(total);
   const renderOrders = new Float32Array(total);
   const sources = new Uint32Array(total * 2);
   let count = 0;
@@ -178,6 +181,7 @@ export function flattenScene(
         for (let r = 0; r < 4; r++) uvRects[count * 4 + r] = mesh.uvRects[rectVertex * 4 + r] ?? 0;
         materials[count] = group.material;
         doubleSided[count] = group.doubleSided === true ? 1 : 0;
+        cameraOnly[count] = group.cameraOnly === true ? 1 : 0;
         renderOrders[count] = order;
         sources[count * 2] = m;
         sources[count * 2 + 1] = i;
@@ -195,6 +199,7 @@ export function flattenScene(
     uvRects: uvRects.subarray(0, count * 4),
     materials: materials.subarray(0, count),
     doubleSided: doubleSided.subarray(0, count),
+    cameraOnly: cameraOnly.subarray(0, count),
     renderOrders: renderOrders.subarray(0, count),
     sources: flatSources,
     ...flatEdges(doc, flatSources, edges),

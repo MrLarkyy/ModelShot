@@ -1,7 +1,7 @@
 #version 300 es
 
 // Nine RGBA32F texels per triangle (one row each): p0 + material, p1 + double-sided, p2 + render order,
-// uv0 + uv1, uv2, face UV rectangle, n0, n1, n2 (vertex normals).
+// uv0 + uv1, uv2 + camera-only, face UV rectangle, n0, n1, n2 (vertex normals).
 uniform sampler2D u_triangles;
 uniform int u_triangleCount;
 uniform vec3 u_background;
@@ -66,9 +66,10 @@ bool opaqueAt(int triangle, vec2 bary) {
 }
 
 // A shadow ray counts as travelling from the light: a single-sided triangle blocks it only if its front faces the
-// light, i.e. this ray (toward the light) meets its back.
+// light, i.e. this ray (toward the light) meets its back. Camera-only triangles never block it.
 bool shadowed(vec3 origin) {
   for (int i = 0; i < u_triangleCount; i++) {
+    if (fetchRow(i, 4).z > 0.5) continue;
     float t;
     vec2 bary;
     int side = singleSided(i) ? SIDE_BACK : SIDE_ANY;
