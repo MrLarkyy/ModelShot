@@ -89,4 +89,25 @@ describe('goldenSpec', () => {
       /variant/,
     );
   });
+
+  it('puts the render quality in the URL after the sample count and range-checks it', () => {
+    const plain: PathTracedGoldenSpec = {
+      kind: 'pathtraced',
+      fixture: 'pt',
+      name: 'pt-turntable-y030-x2-denoised',
+      variant: 'turntable-y030',
+      seed: 1,
+      samples: 16,
+    };
+    const spec: PathTracedGoldenSpec = { ...plain, supersample: 2, denoise: true };
+    expect(fixtureUrl(spec)).toBe('/pt.html?variant=turntable-y030&seed=1&samples=16&supersample=2&denoise=1');
+    expect(fixtureUrl({ ...plain, denoise: false })).toBe(
+      '/pt.html?variant=turntable-y030&seed=1&samples=16&denoise=0',
+    );
+    expect(goldenFileName(spec)).toBe('pt-turntable-y030-x2-denoised.s1.n16.png');
+    for (const supersample of [0, 5, 1.5, Number.NaN]) {
+      expect(() => fixtureUrl({ ...spec, supersample }), `supersample ${supersample}`).toThrow(/supersample/);
+    }
+    expect(() => fixtureUrl({ ...spec, denoise: 1 as unknown as boolean })).toThrow(/denoise/);
+  });
 });

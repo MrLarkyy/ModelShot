@@ -21,6 +21,9 @@ export interface PathTracedGoldenSpec {
   variant?: string;
   seed: number;
   samples: number;
+  /** `RenderRequest` quality: in the URL only, so the name must tell such a golden apart (e.g. `-x2-denoised`). */
+  supersample?: number;
+  denoise?: boolean;
   tolerance?: GoldenTolerance;
 }
 
@@ -28,6 +31,7 @@ export type GoldenSpec = RasterGoldenSpec | PathTracedGoldenSpec;
 
 export const MAX_SEED = 2 ** 32 - 1;
 export const MAX_SAMPLES = 4096;
+export const MAX_SUPERSAMPLE = 4;
 
 const NAME = /^[a-z0-9][a-z0-9-]*$/;
 const VARIANT = /^[a-z0-9][a-z0-9-]*$/;
@@ -53,6 +57,10 @@ export function validateSpec(spec: GoldenSpec): void {
   if (spec.kind === 'pathtraced') {
     checkInteger('seed', spec.seed, 0, MAX_SEED);
     checkInteger('samples', spec.samples, 1, MAX_SAMPLES);
+    if (spec.supersample !== undefined) checkInteger('supersample', spec.supersample, 1, MAX_SUPERSAMPLE);
+    if (spec.denoise !== undefined && typeof spec.denoise !== 'boolean') {
+      throw new Error(`denoise must be a boolean, got ${String(spec.denoise)}`);
+    }
   }
   const tolerance = spec.tolerance;
   if (tolerance) {
@@ -75,6 +83,8 @@ export function fixtureUrl(spec: GoldenSpec): string {
   if (spec.kind === 'pathtraced') {
     params.set('seed', String(spec.seed));
     params.set('samples', String(spec.samples));
+    if (spec.supersample !== undefined) params.set('supersample', String(spec.supersample));
+    if (spec.denoise !== undefined) params.set('denoise', spec.denoise ? '1' : '0');
   }
   const query = params.toString();
   return `/${spec.fixture}.html${query ? `?${query}` : ''}`;

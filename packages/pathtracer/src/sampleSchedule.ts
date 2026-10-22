@@ -24,6 +24,20 @@ export function sampleTiles(width: number, height: number, tileSize: number): Ti
   return tiles;
 }
 
+/** Sample counts after which the quality path measures noise and resolves: 1, 2, 4, 8, 16, then every 16. */
+export const CHECKPOINT_INTERVAL = 16;
+
+export function isCheckpoint(samples: number): boolean {
+  return samples === 1 || samples === 2 || samples === 4 || samples === 8 || samples % CHECKPOINT_INTERVAL === 0;
+}
+
+/** The first checkpoint at or after `samples` (≥ 1). */
+export function nextCheckpoint(samples: number): number {
+  if (samples <= 1) return 1;
+  if (samples <= 8) return 2 ** Math.ceil(Math.log2(samples));
+  return Math.ceil(samples / CHECKPOINT_INTERVAL) * CHECKPOINT_INTERVAL;
+}
+
 /** Samples the next `step` draws: never past `target`, at most `maxSamples` (Infinity: the rest; NaN: none). */
 export function samplesToDraw(done: number, target: number, maxSamples: number): number {
   const wanted =
