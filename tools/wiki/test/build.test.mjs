@@ -16,6 +16,9 @@ describe('slugify', () => {
     expect(slugify('The `render()` call')).toBe('the-render-call');
     expect(slugify('Snake_case and *bold* and _em_')).toBe('snake_case-and-bold-and-em');
     expect(slugify('A [link](x.md) here')).toBe('a-link-here');
+    expect(slugify('`__proto__` keys')).toBe('__proto__-keys');
+    expect(slugify('`Map<K, V>` type')).toBe('mapk-v-type');
+    expect(slugify('A &amp; B')).toBe('a--b');
     expect(slugify('Größe & Maß')).toBe('größe--maß');
   });
 
@@ -49,6 +52,19 @@ describe('convert', () => {
     const { text, problems } = run(md);
     expect(text).toBe(md);
     expect(problems).toEqual([]);
+  });
+
+  test('leaves a fence indented inside a list item untouched', () => {
+    const md = '- item\n\n      ```md\n      [a](nope.md)\n      ```\n';
+    const { text, problems } = run(md);
+    expect(text).toBe(md);
+    expect(problems).toEqual([]);
+  });
+
+  test('an image becomes a raw link so it renders', () => {
+    expect(run('![i](../README.md) [l](../README.md)', { repoRoot: root }).text).toBe(
+      `![i](${REPO}/raw/main/README.md) [l](${REPO}/blob/main/README.md)`,
+    );
   });
 
   test('reports a missing page, anchor and repository path with file and line', () => {

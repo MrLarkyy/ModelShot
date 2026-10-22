@@ -14,7 +14,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_DOCS = path.join(here, '..', '..', 'docs');
 export const DEFAULT_REPO_URL = 'https://github.com/MrLarkyy/ModelShot';
 
-const FENCE = /^ {0,3}(`{3,}|~{3,})/;
+const FENCE = /^s*(`{3,}|~{3,})/;
 
 /**
  * Calls `visit(line, inFence, index)` for every line; a fence opener, its body and its closer are all in a fence.
@@ -40,12 +40,23 @@ function eachLine(markdown, visit) {
  * @param {string} heading
  */
 export function slugify(heading) {
+  const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
   return heading
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/<[^>]+>/g, '')
-    .replace(/`/g, '')
-    .replace(/(^|[^\p{L}\p{N}_])_+([^_]+)_+(?=$|[^\p{L}\p{N}_])/gu, '$1$2')
-    .replace(/\*/g, '')
+    .split(/(`+[^`]*`+)/)
+    .map((part, i) => {
+      if (i % 2 === 1) return part.replace(/^`+|`+$/g, '');
+      return part
+        .replace(/<[^>]+>/g, '')
+        .replace(/&(#\d+|#x[\da-f]+|[a-z]+);/gi, (m, e) => {
+          if (e[0] !== '#') return ENTITIES[e.toLowerCase()] ?? m;
+          const code = e[1].toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+          return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : m;
+        })
+        .replace(/(^|[^\p{L}\p{N}_])_+([^_]+)_+(?=$|[^\p{L}\p{N}_])/gu, '$1$2')
+        .replace(/\*/g, '');
+    })
+    .join('')
     .toLowerCase()
     .replace(/[^\p{L}\p{N} _-]/gu, '')
     .replace(/ /g, '-');
@@ -88,8 +99,9 @@ export function convert(file, markdown, table, repoUrl, ctx = {}) {
   /**
    * @param {string} target
    * @param {number} index
+   * @param {boolean} [image]
    */
-  const rewrite = (target, index) => {
+  const rewrite = (target, index, image = false) => {
     const where = `docs/${file}:${index + 1}`;
     if (/^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith('//')) return target;
     const hash = target.indexOf('#');
@@ -121,7 +133,7 @@ export function convert(file, markdown, table, repoUrl, ctx = {}) {
       isDir = fs.statSync(abs).isDirectory();
     }
     const clean = resolved.replace(/\/$/, '');
-    return `${repoUrl}/${isDir ? 'tree' : 'blob'}/main/${clean}${frag ? `#${frag}` : ''}`;
+    return `${repoUrl}/${isDir ? 'tree' : image ? 'raw' : 'blob'}/main/${clean}${frag ? `#${frag}` : ''}`;
   };
 
   /** @type {string[]} */
@@ -135,7 +147,10 @@ export function convert(file, markdown, table, repoUrl, ctx = {}) {
     const done = parts.map((part, i) => {
       if (i % 2 === 1) return part;
       return part
-        .replace(/(\]\()(<?)([^)\s>]+)(>?)/g, (_m, a, b, t, c) => `${a}${b}${rewrite(t, index)}${c}`)
+        .replace(
+          /(!?)(\[[^\]]*\]\()(<?)([^)\s>]+)(>?)/g,
+          (_m, bang, a, b, t, c) => `${bang}${a}${b}${rewrite(t, index, bang === '!')}${c}`,
+        )
         .replace(/^(\s{0,3}\[[^\]]+\]:\s*)(\S+)/, (_m, a, t) => `${a}${rewrite(t, index)}`);
     });
     out.push(done.join(''));
