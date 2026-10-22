@@ -4,6 +4,7 @@ import { OrbitController } from '@modelshot/renderer-rt';
 import { sceneBounds, type SceneCamera, type SceneDocument, type SceneMesh } from '@modelshot/scene';
 import alphaPlaneSource from '../../../../packages/formats/test/fixtures/bbmodel/alpha-plane.bbmodel?raw';
 import renderOrderSource from '../../../../packages/formats/test/fixtures/bbmodel/render-order.bbmodel?raw';
+import contactShadowSource from '../../../../packages/formats/test/fixtures/gltf/contact-shadow.gltf?raw';
 import sceneNodesSource from '../../../../packages/formats/test/fixtures/gltf/scene-nodes.gltf?raw';
 import shapesMtlSource from '../../../../packages/formats/test/fixtures/obj/shapes.mtl?raw';
 import shapesObjSource from '../../../../packages/formats/test/fixtures/obj/shapes.obj?raw';
@@ -17,6 +18,7 @@ import { cutoutChecker } from './cutoutChecker';
 import { edgesBbmodel, edgesHostileScene, edgesLoadScene, edgesScene, edgesWeldScene } from './edgesScene';
 import { MODEL_VIEW_LOOK, type Point3 } from './modelViewCamera';
 import { holdingCube, playerScene, posedPlayer } from './playerScenes';
+import { worldLoadScene } from './worldLoadScene';
 
 /**
  * Named scenes and camera presets of the realtime fixture. The path-tracer fixture renders the same scenes and
@@ -73,6 +75,8 @@ export const RT_SCENE_NAMES = [
   'edges-weld',
   'outline-hull',
   'outline-hull-board',
+  'gltf-contact',
+  'world-200k',
 ] as const;
 export type RtSceneName = (typeof RT_SCENE_NAMES)[number];
 
@@ -129,7 +133,8 @@ export type RtLook =
   | 'cube-inside'
   | 'ramp'
   | 'flat-shadow'
-  | 'checker';
+  | 'checker'
+  | 'contact';
 
 /** Fixed cameras: the model-view fixture's (same image positions as its probes) and two views of a horizontal pair. */
 const LOOKS: Readonly<Record<RtLook, { eye: Point3; target: Point3; near: number; far: number }>> = {
@@ -157,6 +162,8 @@ const LOOKS: Readonly<Record<RtLook, { eye: Point3; target: Point3; near: number
   'flat-shadow': { eye: [10, 40, -30], target: [10, 0, 6], near: 5, far: 120 },
   // The cut-out checker from behind its left half, above: no texel hides the ground its shadows fall on.
   checker: { eye: [-15.5, 25.4, -3], target: [-2, 2, -2.25], near: 5, far: 120 },
+  // The contact-shadow glTF from the shadow side: the key light (from +x +z) casts the box's shadow toward the camera.
+  contact: { eye: [-70, 62, -78], target: [-4, 0, -14], near: 20, far: 260 },
 };
 
 export const DEFAULT_RT_VIEW: RtView = {
@@ -230,6 +237,10 @@ export const RT_VARIANTS: Readonly<Record<string, Partial<RtView>>> = {
     bake: 64,
     fallback: true,
   },
+  // MS-41: an image-less glTF ground and smooth box, baked at world-density charts; paired with pt-gltf-contact. The
+  // ground is the scene's lowest surface, so no shadow catcher (it would lie in the ground's plane).
+  'gltf-contact': { scene: 'gltf-contact', look: 'contact', catcher: false },
+  'bake-gltf-contact': { scene: 'gltf-contact', look: 'contact', catcher: false, bake: 64 },
   // MS-50: a board inside an inverted-hull outline (a Blockbench cube with from > to), seen from above its side.
   'outline-hull': { scene: 'outline-hull', yawDeg: 30, pitchDeg: 30 },
 };
@@ -387,6 +398,10 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return posedPlayer(playerScene('classic', 'classic'), 'wave');
     case 'outline-hull':
       return load(outlineHullSource);
+    case 'gltf-contact':
+      return loadGltf(contactShadowSource).scene;
+    case 'world-200k':
+      return worldLoadScene(load(showcaseSource));
     case 'outline-hull-board': {
       // The shell keeps its vertices, so the camera fits the same bounds as outline-hull, but draws no triangle.
       const doc = load(outlineHullSource);

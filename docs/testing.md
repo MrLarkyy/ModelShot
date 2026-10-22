@@ -23,8 +23,9 @@ limits work is written in this order:
    for L leaves pins that the tree is binary). Structure says nothing about cost, so the two BVH builds also carry a
    thread CPU bound (200 ms coincident, 400 ms chain; idle 16 and 31 ms), which pins the build cost.
 2. Where the cost of a hostile input itself is the claim, `expectCpuBelow(maxMs, work)`
-   (`packages/formats/test/support/expectCpuBelow.ts`, copies in `packages/scene/test/` and `packages/export/test/`
-   because those packages cannot import formats tests; each copy has its own self-test). It runs `work` synchronously, reads `process.threadCpuUsage()` (Node 22.19 or later) around it, and asserts
+   (`packages/formats/test/support/expectCpuBelow.ts`, copies in `packages/scene/test/`, `packages/renderer-rt/test/` and
+   `packages/export/test/` because those packages cannot import formats tests; each copy has its own
+   self-test). It runs `work` synchronously, reads `process.threadCpuUsage()` (Node 22.19 or later) around it, and asserts
    the CPU time of the current thread: blocked or descheduled time is not counted, a promise-returning callback throws.
    Build the fixture outside `work`; the clock ticks in steps of about 15.6 ms on Windows, so bounds under 50 ms are
    only for work that measures 0 ms. A bound keeps its old number, now in CPU milliseconds; one is never widened to
@@ -271,6 +272,21 @@ opaque texels 1 unit each, bottom row 1 unit above the catcher, facing the key, 
 textures generated in code, `look=checker` from behind the plane), `rt-bake-alpha-plane` (model-view camera) and
 `rt-bake-turntable-y030`.
 
+World-density charts (MS-41): `rt-bake-gltf-contact` (new, catcher off: the ground is the scene's lowest surface) bakes
+`packages/formats/test/fixtures/gltf/contact-shadow.gltf` (generated, CC0 by the directory's LICENSE: an 8 x 8 ground
+of two triangles and a smooth 2 x 2 x 2 box of 8 shared vertices on it, base colours only), seen from the shadow side
+(`look=contact`); its pair is `pt-gltf-contact.s1.n128`. `rt-bake-alpha-plane` was regenerated on purpose: its
+untextured ground box is world-charted now and shows the plane's shadows the render has (it had none per vertex). The
+chart census (`test/lightmapCensus.test.ts`, unit) lists the world-charted meshes of every baked view: the variants
+that bake and the views the pair tests bake (`alpha-plane`'s ground, `gltf-contact`'s ground and box, and `edges`'
+untextured wedge, plane and smooth sphere; none in the others), and pins the layout keys of the views without one to
+their origin/main values, so no baked golden or pair changes by a chart mode unnoticed. The probe test projects two ground points of the contact scene: 4 units out from the box in
+its cast shadow and 48 units further in the open. Measured (SwiftShader): baked contact 144.5 levels of luminance
+against 207 unbaked (0.70; per vertex the ground had only its four corner texels, all far from the box, so 1.0), the
+open point 206.8 against 207; the path-traced golden 152.9 against its open 206.9 (0.74). Limits: contact at most 0.8
+of unbaked (0.1 above the measured shadow for the noise of 64-sample texels, well below the 1.0 without one), open
+within 3 %, the render's contact at most 0.8 of its open point, preview and render contact within 10 % of each other.
+
 - Pixel-shaped shadows (probes of `ptProbes.ts` projected along the key from the document, as for the path tracer):
   hole and opaque texel shadows on the catcher 48.8 levels apart with a 0.99 px step, on the box top 54.0 levels with
   1.47 px (at least 40, at most 2; float path and fallback alike). The box top first sat 6.3 units below its
@@ -380,6 +396,7 @@ golden says them (`-x2-denoised`).
 | `pt-closeup-reference.s1.n2048`        | `closeup`, 2048 samples, no denoiser (MS-18)         | rendered on golden update only; AC1, AC2, drift |
 | `pt-closeup-denoised.s1.n64`           | `closeup`, `denoise` (MS-18)                         | golden; AC1; AC2                                |
 | `pt-turntable-y030-x2-denoised.s1.n16` | `turntable-y030`, `supersample=2`, `denoise` (MS-18) | golden; determinism; bleeding; pair             |
+| `pt-gltf-contact.s1.n128`              | contact-shadow.gltf, `contact`, no catcher           | golden; contact probes; pair (MS-41)            |
 
 All eight earlier `pt-*` goldens were regenerated in MS-16 on purpose (same seeds, samples and size): the key became
 a 0.04 rad cone, the shadow catcher appeared under every model, and the random dimensions per path vertex grew from
@@ -439,18 +456,27 @@ has interreflection and noise. Logged as `[pt pair] <view>: ...`, values in `tes
 Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with rounded edges and the mirrored bounce
 (MS-16's values in brackets; every limit stayed, none widened, `edges` is new at measured x 1.25):
 
-| view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta           | limit: `maxDiffRatio`, `maxMeanDelta` |
-| -------------------------- | ----------------------------------- | --------------------------------------------- | ------------------------------------- |
-| `turntable-y030`           | 0 (1 604)                           | 201, 0.00307, 0.772 (185, 0.00282, 0.762)     | 0.00353, 0.953                        |
-| `iso`                      | 0 (1 543)                           | 366, 0.00558, 0.959 (335, 0.00511, 0.942)     | 0.00639, 1.18                         |
-| `alpha-plane`              | 0 (689)                             | 2 083, 0.03178, 2.187 (2 083, 0.03178, 2.189) | 0.0398, 2.48 (2.187 x 1.25 is above)  |
-| `player-hold-34`           | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295) | 0.0232, 1.62                          |
-| `cutout-checker`           | 0 (3 307)                           | 293, 0.00447, 0.731 (275, 0.00420, 0.726)     | 0.00525, 0.908                        |
-| `edges`                    | 0 (1 979)                           | 43, 0.00066, 0.397                            | 0.00082, 0.496                        |
-| `preset-marketplace`       | 0 (1 322)                           | 1 269, 0.01936, 1.237                         | 0.0223, 1.43                          |
-| `preset-rim`               | 0 (1 322)                           | 1 407, 0.02147, 1.109                         | 0.0241, 1.13                          |
-| `preset-marketplace-yaw30` | 0 (1 304)                           | 1 387, 0.02116, 1.281                         | 0.0265, 1.52                          |
-| `outline-hull`             | 0 (1 456)                           | 1 076, 0.01642, 0.912 (MS-50, new)            | 0.0205, 1.14                          |
+| view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta                       | limit: `maxDiffRatio`, `maxMeanDelta` |
+| -------------------------- | ----------------------------------- | --------------------------------------------------------- | ------------------------------------- |
+| `turntable-y030`           | 0 (1 604)                           | 201, 0.00307, 0.772 (185, 0.00282, 0.762)                 | 0.00353, 0.953                        |
+| `iso`                      | 0 (1 543)                           | 366, 0.00558, 0.959 (335, 0.00511, 0.942)                 | 0.00639, 1.18                         |
+| `alpha-plane`              | 0 (689)                             | 682, 0.01041, 1.567 (MS-41; before 2 083, 0.03178, 2.187) | 0.013, 1.96 (MS-41; was 0.0398, 2.48) |
+| `player-hold-34`           | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295)             | 0.0232, 1.62                          |
+| `cutout-checker`           | 0 (3 307)                           | 293, 0.00447, 0.731 (275, 0.00420, 0.726)                 | 0.00525, 0.908                        |
+| `edges`                    | 0 (1 979)                           | 43, 0.00066, 0.397                                        | 0.00082, 0.496                        |
+| `preset-marketplace`       | 0 (1 322)                           | 1 269, 0.01936, 1.237                                     | 0.0223, 1.43                          |
+| `preset-rim`               | 0 (1 322)                           | 1 407, 0.02147, 1.109                                     | 0.0241, 1.13                          |
+| `preset-marketplace-yaw30` | 0 (1 304)                           | 1 387, 0.02116, 1.281                                     | 0.0265, 1.52                          |
+| `outline-hull`             | 0 (1 456)                           | 1 076, 0.01642, 0.912 (MS-50, new)                        | 0.0205, 1.14                          |
+| `gltf-contact`             | 0 (618)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)            | 0.133, 7.03                           |
+
+MS-41 (world-density charts) measured the views it changes: `alpha-plane` 682 px, 0.01041, 1.567 (its ground is
+world-charted and shows the render's shadows; before 2 083, 0.03178, 2.187), so its limit is tightened to measured x
+1.25, 0.013 and 1.96; `edges` 40, 0.00061, 0.390 (its untextured meshes are world-charted; the limit stays). New
+`gltf-contact` (catcher off on both sides, `PAIR_WITHOUT_CATCHER`, as its render has none): 6 987 px, 0.10661, 5.627,
+limit 0.133, 7.03. Its ground agrees; the box's sides do not: the render lights them with the bounce of the bright
+ground and the bake has no interreflection (box top, lit alike: 207, 176, 162 in both; west side low 85 baked, 132
+unbaked, 150 rendered). Same albedo in both, so no material difference.
 
 MS-19 measured the table again with the backdrop mask by rows: every earlier view kept its numbers and limits. The two
 look-preset pairs (`preset-marketplace`, `preset-rim`: the held-cube player baked under its look) are new at measured
@@ -942,6 +968,16 @@ probing that matching used before (about two minutes at this size; `sharpEdges` 
 vertices). Matching sorts now: 752 ms local SwiftShader for the whole load (`sharpEdges` alone 0.15 s for 400 000
 vertices), max 3500 ms as for the other load budgets. The same run: `edges-200k` 1158 ms, `edges-hostile` 1194 ms,
 `large-order` 896 ms.
+
+`frameTimeMs.rt-load-first-frame-200k-world` (MS-41): the same load of `world-200k` (`fixtures/src/worldLoadScene.ts`),
+49 untextured meshes of 4096 triangles each (200 704, every mesh just at the world-chart gate): 42 smooth height fields
+with no two triangles coplanar, so every triangle is its own world chart and every mesh is drawn de-indexed per corner,
+and 7 edge fans, 4096 triangles on one edge (small book pages, so the first frame draws no deep overdraw). Round 1's
+chart search walked every triangle of a shared edge: quadratic on a fan (230 ms per such mesh, 11.3 s for 49 in one
+`setScene`, again in the bake worker); it now joins only across an edge of exactly two triangles, pinned in
+`worldCharts.test.ts` (49 fans: about 0.5 s in Node; the bound is thread CPU time via `expectCpuBelow`, 3000 ms). Local SwiftShader 1335, 1433 and 1448 ms
+(`large-order` 1572 ms and `edges-200k` 1700 ms in the same run; round 1, height fields only: 1111-1224 ms; the layout
+alone 0.6-0.9 s in Node); max 3500 ms as for the other load budgets.
 
 Memory of detection at the loaders' vertex limit (MS-15 round 4): `sharpEdges` of the `edges-weld` mesh (400 000
 vertices, 200 000 triangles, input 11.4 MB) in Node 22 with `--expose-gc`, a fresh Vitest worker, collected before:

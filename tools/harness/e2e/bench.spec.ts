@@ -68,6 +68,10 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
   // And the matching of positions and edges where every coordinate is a multiple of 2^20 (a hash's worst case).
   await openFixture(page, '/rt.html?scene=empty&size=512');
   const edgesWeldMs = await timeScene('edges-weld');
+  // World-density lightmap charts (MS-41): 49 untextured meshes of 4096 triangles, none coplanar, unwrapped and drawn
+  // de-indexed per corner.
+  await openFixture(page, '/rt.html?scene=empty&size=512');
+  const worldLoadMs = await timeScene('world-200k');
 
   await openFixture(page, '/progressive.html?seed=7&samples=64');
   const runs = await page.evaluate(() => {
@@ -184,6 +188,7 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
       'rt-load-first-frame-200k-edges': edgesLoadMs,
       'rt-load-first-frame-edges-hostile': edgesHostileMs,
       'rt-load-first-frame-edges-weld': edgesWeldMs,
+      'rt-load-first-frame-200k-world': worldLoadMs,
       'pt-load-200k': ptLoadMs,
     },
     timeToSamplesMs: {

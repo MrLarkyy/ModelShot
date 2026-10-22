@@ -63,6 +63,7 @@ const ATTRIBUTES = [
   { location: 8, size: 4, key: 'lightmap' },
   { location: 9, size: 4, key: 'edgeDistances' },
   { location: 10, size: 4, key: 'edgeAngles' },
+  { location: 11, size: 4, key: 'lightmapChart' },
 ] as const satisfies readonly { location: number; size: number; key: keyof SceneBatch }[];
 
 const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
@@ -73,7 +74,8 @@ const IDENTITY_3 = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
  * `alphaLevels[t]` holds the alpha bytes present in texture `t` (`readTextureAlpha`); a batch whose texture has a byte
  * that its alpha rule makes partial is also drawn by the transparency pass. `closedOpaque[m]` marks mesh `m` closed and
  * opaque on every face (`closedOpaqueMeshes`); `lightmap[m]` its per-vertex lightmap data (`LightmapLayout.vertexData`);
- * `edges[m]` its sharp-edge attributes (`sceneSharpEdges`).
+ * `edges[m]` its sharp-edge attributes (`sceneSharpEdges`); `corners[m]` its world chart data
+ * (`LightmapLayout.cornerData`).
  */
 export function uploadScene(
   gl: WebGL2RenderingContext,
@@ -82,21 +84,25 @@ export function uploadScene(
   closedOpaque: readonly boolean[] = [],
   lightmap: readonly (Float32Array | null)[] = [],
   edges: readonly (SharpEdgeAttributes | null)[] = [],
+  corners: readonly (Float32Array | null)[] = [],
 ): GpuScene {
   const world = worldMatrices(doc.nodes);
   const vaos: WebGLVertexArrayObject[] = [];
   const buffers: WebGLBuffer[] = [];
   const opaque: DrawItem[] = [];
   const partial: DrawItem[] = [];
-  for (const batch of batchScene(doc, closedOpaque, lightmap, edges)) {
+  for (const batch of batchScene(doc, closedOpaque, lightmap, edges, corners)) {
     const vao = gl.createVertexArray();
     vaos.push(vao);
     gl.bindVertexArray(vao);
     for (const { location, size, key } of ATTRIBUTES) {
+      const data = batch[key];
+      // Left disabled: a constant no vertex of the batch reads (lightmapChart without world charts).
+      if (!data) continue;
       const buffer = gl.createBuffer();
       buffers.push(buffer);
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-      gl.bufferData(gl.ARRAY_BUFFER, batch[key], gl.STATIC_DRAW);
+      gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
       gl.enableVertexAttribArray(location);
       gl.vertexAttribPointer(location, size, gl.FLOAT, false, 0, 0);
     }
@@ -238,7 +244,8 @@ export function uploadExactGeometry(gl: WebGL2RenderingContext, scene: GpuScene)
   for (const { batch } of scene.opaque) {
     if (vaos.has(batch)) continue;
     const n = batch.indices.length;
-    const arrays: Record<(typeof ATTRIBUTES)[number]['key'], Float32Array> = {
+    const chart = batch.lightmapChart;
+    const arrays: Record<(typeof ATTRIBUTES)[number]['key'], Float32Array | null> = {
       positions: new Float32Array(n * 3),
       normals: new Float32Array(n * 3),
       uvs: new Float32Array(n * 2),
@@ -246,23 +253,21 @@ export function uploadExactGeometry(gl: WebGL2RenderingContext, scene: GpuScene)
       lightmap: new Float32Array(n * 4),
       edgeDistances: new Float32Array(n * 4),
       edgeAngles: new Float32Array(n * 4),
+      lightmapChart: chart ? new Float32Array(n * 4) : null,
     };
-    const corners = CORNER_LOCATIONS.map(() => new Float32Array(n * 3));
-    const { indices, positions, normals, uvs, uvRects, lightmap, edgeDistances, edgeAngles } = batch;
-    // Plain index loops: this runs once per scene on up to the loader's 200 000 triangles.
-    for (let i = 0; i < n; i++) {
-      const v = indices[i] ?? 0;
-      for (let k = 0; k < 3; k++) {
-        arrays.positions[i * 3 + k] = positions[v * 3 + k] ?? 0;
-        arrays.normals[i * 3 + k] = normals[v * 3 + k] ?? 0;
+    // Every vertex attribute of the batch, de-indexed: `size` floats per vertex, read at the index's vertex.
+    for (const { size, key } of ATTRIBUTES) {
+      const from = batch[key];
+      const to = arrays[key];
+      if (!from || !to) continue;
+      // Plain index loops: this runs once per scene on up to the loader's 200 000 triangles.
+      for (let i = 0; i < n; i++) {
+        const v = batch.indices[i] ?? 0;
+        for (let k = 0; k < size; k++) to[i * size + k] = from[v * size + k] ?? 0;
       }
-      arrays.uvs[i * 2] = uvs[v * 2] ?? 0;
-      arrays.uvs[i * 2 + 1] = uvs[v * 2 + 1] ?? 0;
-      for (let k = 0; k < 4; k++) arrays.uvRects[i * 4 + k] = uvRects[v * 4 + k] ?? 0;
-      for (let k = 0; k < 4; k++) arrays.lightmap[i * 4 + k] = lightmap[v * 4 + k] ?? 0;
-      for (let k = 0; k < 4; k++) arrays.edgeDistances[i * 4 + k] = edgeDistances[v * 4 + k] ?? 0;
-      for (let k = 0; k < 4; k++) arrays.edgeAngles[i * 4 + k] = edgeAngles[v * 4 + k] ?? 0;
     }
+    const corners = CORNER_LOCATIONS.map(() => new Float32Array(n * 3));
+    const { indices, positions } = batch;
     for (let t = 0; t < n; t += 3) {
       for (let c = 0; c < 3; c++) {
         const corner = corners[c];
@@ -283,7 +288,10 @@ export function uploadExactGeometry(gl: WebGL2RenderingContext, scene: GpuScene)
       gl.enableVertexAttribArray(location);
       gl.vertexAttribPointer(location, size, gl.FLOAT, false, 0, 0);
     };
-    for (const { location, size, key } of ATTRIBUTES) attribute(location, size, arrays[key]);
+    for (const { location, size, key } of ATTRIBUTES) {
+      const data = arrays[key];
+      if (data) attribute(location, size, data);
+    }
     CORNER_LOCATIONS.forEach((location, c) => attribute(location, 3, corners[c] ?? new Float32Array(0)));
     const triangleFlags = sharedEdgeFlags(positions, indices);
     const vertexFlags = new Float32Array(n);
