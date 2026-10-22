@@ -28,11 +28,11 @@ any level. Colours are scene-linear Rec.709 triples, directions world-space trip
 | `format`                                  | `"modelshot-look"`                                                                        |
 | `version`                                 | `1`                                                                                       |
 | `id`                                      | `[a-z0-9-]{1,32}`                                                                         |
-| `name`                                    | 1..64 characters, no control characters                                                   |
-| `lights.key.direction`                    | non-zero; normalised; at least 5° above the horizon (y ≥ sin 5°)                          |
+| `name`                                    | 1..64 code points, well-formed (no lone surrogate), no control characters (C0, DEL, C1)   |
+| `lights.key.direction`                    | components -1000..1000; non-zero; normalised; at least 5° above the horizon (y ≥ sin 5°)  |
 | `lights.key.color`                        | 0..16 per channel                                                                         |
 | `lights.key.angularRadius`                | 0..0.1 radians: the disc that softens shadows                                             |
-| `lights.fill.direction`, `.rim.direction` | non-zero; normalised                                                                      |
+| `lights.fill.direction`, `.rim.direction` | components -1000..1000; non-zero; normalised                                              |
 | `lights.fill.color`, `.rim.color`         | 0..16 per channel                                                                         |
 | `environment.kind`                        | `"dome"`                                                                                  |
 | `environment.sky`, `environment.ground`   | 0..16 per channel; each channel at least a fifth of the other's                           |
@@ -91,8 +91,8 @@ field fills it in. Removing a field, changing a range, a meaning or a default is
 - **Key**: a directional disc light; it is the one that casts shadows (the path tracer's shadow rays, the light bake's
   visibility, the shadow catcher, whose plane extends along the key).
 - **Fill and rim**: directional accents, `color × max(n · direction, 0)`, **without shadows in every renderer**: the
-  preview adds them to baked and unbaked shading alike, the path tracer adds them at every path vertex without a ray
-  (no random dimension, so seeds and the sample table are unchanged), the bake ignores them (they apply at draw time).
+  preview adds them to baked and unbaked shading alike, the path tracer adds them at the camera hit only, without a ray
+  (as the preview has no accent bounce; no random dimension, so seeds and the sample table are unchanged), the bake ignores them (they apply at draw time).
   The shadow catcher does not see them.
 - **Backdrop**: a gradient in screen space, `bottom + (top − bottom) × y` with y = `gl_FragCoord.y / frame height`
   (0 at the bottom edge, 1 at the top; the full frame, never a path-tracer tile), drawn behind the model on both
@@ -119,11 +119,11 @@ grading share baked light.
 
 ## Presets
 
-| preset      | key                                | accents                                    | dome, backdrop                             | grade                                     |
-| ----------- | ---------------------------------- | ------------------------------------------ | ------------------------------------------ | ----------------------------------------- |
-| Studio      | v0: above, front right, warm white | none (black)                               | v0 grey dome, flat grey (0.14, 0.15, 0.17) | neutral                                   |
-| Marketplace | front, above, warm                 | cool rim from behind, above; dim blue fill | blue dome; navy gradient, lighter low      | exposure +0.3, power 1.1, saturation 1.35 |
-| Rim         | weak, front                        | strong white rim from behind, above        | low dome; dark grey gradient               | power 1.25                                |
+| preset      | key                                 | accents                                    | dome, backdrop                             | grade                                  |
+| ----------- | ----------------------------------- | ------------------------------------------ | ------------------------------------------ | -------------------------------------- |
+| Studio      | v0: above, behind right, warm white | none (black)                               | v0 grey dome, flat grey (0.14, 0.15, 0.17) | neutral                                |
+| Marketplace | front, above, warm                  | cool rim from behind, above; dim blue fill | dim blue dome; navy gradient, lighter low  | exposure 0, power 1.1, saturation 1.15 |
+| Rim         | weak, front                         | strong white rim from behind, above        | low dome; dark grey gradient               | power 1.25                             |
 
 Studio is the v0 look number for number (`LIGHT_RIG_V0`, `EDGE_LOOK_V0`; tested), so every golden from before look
 presets holds unregenerated. Every preset rounds edges at 30°, so switching presets never detects sharp edges again.

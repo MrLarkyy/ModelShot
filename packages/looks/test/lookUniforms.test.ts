@@ -36,7 +36,8 @@ describe('uploadLookUniforms', () => {
 
   it('uploads every value of the look, the frame height and the grade switch', () => {
     const { gl, calls } = fakeGl();
-    const look = LOOK_PRESETS['marketplace'] ?? DEFAULT_LOOK;
+    const base = LOOK_PRESETS['marketplace'] ?? DEFAULT_LOOK;
+    const look = { ...base, toneMapping: { ...base.toneMapping, exposure: 0.3 } };
     uploadLookUniforms(gl, everywhere, look, 512);
     const value = (name: string) => calls.find(([, n]) => n === name)?.[2];
     expect(calls).toHaveLength(LOOK_UNIFORM_NAMES.length);

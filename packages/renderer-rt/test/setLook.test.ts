@@ -66,6 +66,22 @@ describe('RealtimeRenderer look', () => {
     expect(renderer.look.lights).toEqual(preset('marketplace').lights);
   });
 
+  it('a background out of range or not finite throws a RangeError and builds nothing', () => {
+    for (const background of [
+      [NaN, 0, 0],
+      [0, Infinity, 0],
+      [0, 0, -0.1],
+      [0, 0, 16.5],
+      [0, 0],
+      [1, 1, 1, 1],
+    ]) {
+      const canvas = fakeWebGl().canvas;
+      expect(() => RealtimeRenderer.create(canvas, { background: background as [number, number, number] })).toThrow(
+        RangeError,
+      );
+    }
+  });
+
   it('an invalid look throws LookPresetError naming the field and changes nothing', () => {
     const renderer = RealtimeRenderer.create(fake.canvas);
     const bad = { ...preset('rim'), catcher: { strength: 2 } };
@@ -78,7 +94,8 @@ describe('RealtimeRenderer look', () => {
   it('uploads the look once per program per frame', () => {
     const renderer = RealtimeRenderer.create(fake.canvas);
     renderer.setCamera(camera);
-    renderer.setLook(preset('marketplace'));
+    const marketplace = preset('marketplace');
+    renderer.setLook({ ...marketplace, toneMapping: { ...marketplace.toneMapping, exposure: 0.3 } });
     const programsBefore = fake.count('useProgram');
     const heightsBefore = fake.calls('uniform1f').filter(([l]) => (l as { name: string }).name === 'u_lookFrameHeight');
     renderer.render();

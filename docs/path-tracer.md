@@ -23,7 +23,7 @@ requestAnimationFrame(frame);
 
 - `PathTracer.create(canvas, options)`: creates the WebGL2 context. Options: `look` (a look preset, default
   `DEFAULT_LOOK`, the preview's; [look-presets.md](look-presets.md)), `background` (scene-linear, a flat backdrop over the
-  initial look's), `maxBounces` (1..16, default 4), `maxTriangles` (default 200 000, the loaders'
+  initial look's; three finite channels in 0..16, else a `RangeError`), `maxBounces` (1..16, default 4), `maxTriangles` (default 200 000, the loaders'
   limit), `maxTextureSide` (default 4096, capped by `MAX_TEXTURE_SIZE`), `maxTexturePixelsTotal` (default 64 Mi),
   `tileSize` (16..4096, default 256), `maxPixels`, `preserveDrawingBuffer`, `edges` (`Partial<EdgeLook>`, the
   preview's rounded edges over the initial look's; out of range a `RangeError` naming `edges.width` or
@@ -143,14 +143,15 @@ dome and two unshadowed accents ([look-presets.md](look-presets.md#lighting-mode
   shadows that keep the texel's shape near their caster (penumbra ≈ 2 · 0.04 · distance to the occluder). The radius
   is the largest measured that keeps alpha-plane's shadow edge within 2 px with margin: 0.04 gives 0.99 px, 0.045
   sits at the limit (1.98 px) and 0.05 is over it (2.96 px).
-- Fill: rays that escape the scene after a bounce see `environmentRadiance(d) = mix(GROUND, SKY, ½ + ¾ d.y)`
+- Fill: rays that escape the scene after a bounce see `environmentRadiance(d) = mix(ground, sky, ½ + ¾ d.y)` (`environment.ground` and `.sky` of the look)
   (never negative: the look checker keeps each dome channel within five times the other; Studio's lowest channel
   straight down is 0.0875). The cosine-weighted mean of d.y over the
-  hemisphere around n is ⅔ n.y, so an unoccluded Lambert surface receives exactly `mix(GROUND, SKY, ½ + ½ n.y)`: the
+  hemisphere around n is ⅔ n.y, so an unoccluded Lambert surface receives exactly `mix(ground, sky, ½ + ½ n.y)`: the
   preview's `hemisphereFill(n)`. An unoccluded convex surface therefore converges to the preview's value; only
   shadows and interreflection differ (tested in `looks` numerically and by the pair test).
-- Fill and rim accents: `color × max(n · direction, 0)` added at every path vertex (`accentLight`) without a ray, as
-  the preview adds them without shadow; no random dimension is added, so the sample table and seeds are unchanged.
+- Fill and rim accents: `color × max(n · direction, 0)` added at the camera hit only (`accentLight`) without a ray, as
+  the preview adds them without shadow and has no accent bounce: unshadowed at every vertex they would light faces the
+  rig hides and bounce out of them. No random dimension is added, so the sample table and seeds are unchanged.
 - Camera rays that escape show the look's backdrop at their pixel (`backdropHere()`: screen y over the full frame
   height, never the tile's), the preview's gradient; before the first sample `present` shows it too.
 - Shadow catcher (`shadowCatcherPlane` of the realtime renderer): a camera ray that meets the plane from above,

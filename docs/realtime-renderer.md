@@ -73,7 +73,8 @@ if (lighting) renderer.setLighting(lighting);
 - **Values.** RGBA16F (`BakedLighting`): rgb the fill as a multiple of the unoccluded fill `hemisphereFill(n)`, a the
   key's visibility. Texels of no chart and vertices of no triangle hold 1, so an anti-aliasing tap outside a face, or
   a degenerate triangle, never darkens. `shadeBaked` (`shading.glsl`) is `albedo × (hemisphereFill(n) × rgb +
-KEY_COLOR × max(n·KEY, 0) × a)`; value 1 gives the unbaked expression exactly.
+u_lookKeyColor × max(n·u_lookKeyDirection, 0) × a + accentLight(n))`: the accents cast no shadow and stay whole; value
+  1 gives the unbaked expression exactly.
 - **Sampling.** Texel charts are read with the albedo's own seam taps (`seamTaps` of `texelSample.glsl`): the same
   2 × 2 texels and weights, clamped to the chart, so light and albedo change at the same pixels and the bake adds no
   shimmer of its own. Vertex charts are fetched in `mesh.vert.glsl` and interpolated; the back pass reads the back
@@ -85,7 +86,7 @@ KEY_COLOR × max(n·KEY, 0) × a)`; value 1 gives the unbaked expression exactly
   the renderer keeps only what it reads of a layout (`LightmapLayoutSummary`: sizes, downscale, per-vertex data,
   finest texel, key), not its charts. `setLighting`
   refuses (returns `false`, changes nothing) lighting whose layout key, size or data length does not match the current
-  layout, or whose catcher is malformed (`checkLighting`).
+  layout, whose `lightingKey` is not the current look's, or whose catcher is malformed (`checkLighting`).
 - **Upload in bands.** `setLighting` uploads nothing itself: each `render()` (or `advanceLighting()`, which uploads
   without drawing and returns `true` while more remains) writes the next `UPLOAD_FRAME_BYTES` (1 MiB) in
   texSubImage2D bands of at most `UPLOAD_BAND_BYTES` (256 KiB) into back textures, and frames draw the previous complete
@@ -178,7 +179,7 @@ The rules are the scene format's ([scene-format.md](scene-format.md): `SceneMate
 
 Lights, environment, backdrop, catcher strength, edges and tone mapping come from a look preset
 ([look-presets.md](look-presets.md)): option `look` (default `DEFAULT_LOOK`, Studio, the v0 look), `setLook(look)` and
-the `look` getter. The options `background` (a flat backdrop) and `edges` override the initial look's; `setLook`
+the `look` getter. The options `background` (a flat backdrop, three finite channels in 0..16, else a `RangeError`) and `edges` override the initial look's; `setLook`
 replaces both with the new look's (`setEdges` still changes the edges alone). An invalid look throws
 `LookPresetError` naming the field and changes nothing. A look of another `lightingKey` drops the baked light (see
 Baked lighting); a new sharp angle detects edges again as `setEdges` does.

@@ -370,12 +370,13 @@ Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with r
 | `player-hold-34`     | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295) | 0.0232, 1.62                          |
 | `cutout-checker`     | 0 (3 307)                           | 293, 0.00447, 0.731 (275, 0.00420, 0.726)     | 0.00525, 0.908                        |
 | `edges`              | 0 (1 979)                           | 43, 0.00066, 0.397                            | 0.00082, 0.496                        |
-| `preset-marketplace` | 0 (1 322)                           | 1 713, 0.02614, 1.414                         | 0.0327, 1.77                          |
-| `preset-rim`         | 0 (1 322)                           | 2 753, 0.04201, 1.893                         | 0.0525, 2.37                          |
+| `preset-marketplace` | 0 (1 322)                           | 1 164, 0.01776, 1.058                         | 0.0222, 1.32                          |
+| `preset-rim`         | 0 (1 322)                           | 1 259, 0.01921, 0.902                         | 0.0241, 1.13                          |
 
 MS-19 measured the table again with the backdrop mask by rows: every earlier view kept its numbers and limits. The two
 look-preset pairs (`preset-marketplace`, `preset-rim`: the held-cube player baked under its look) are new at measured
-x 1.25; they are measured again when the preset numbers are tuned against the references.
+x 1.25, measured again after the preset numbers were tuned against the references and the path tracer's
+accents moved to the camera hit (round 2).
 
 alpha-plane's large ground is an untextured box, baked per vertex, so its preview shows no ground shadow (world-density
 charts for untextured meshes are not in MS-16); the catcher under it darkens its mean delta a little.
