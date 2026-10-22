@@ -136,8 +136,10 @@ directory, so two worktrees can test at once; a server already on that port is n
 never produces or checks a golden. Every spec uses the shared `test` from `src/harnessTest.ts`, which fails any request off the fixture origin on any page,
 and every `openFixture` asserts SwiftShader. `openFixture` waits 20 s for `__msFixture` (the module sets it as it
 evaluates). On a timeout it prints the page's failed requests, responses >= 400, console errors and page errors under
-`[fixture reload]`. If the page threw (a page error), it fails at once; otherwise it reloads once, and a second timeout
-fails with that list. A page once loaded without running its module (pt-gltf-contact in a full `pathtracer.spec.ts`
+`[fixture reload]`. If the page threw (a page error), it fails at once; otherwise it reloads once. A second boot timeout
+fails with that list only in a test whose timeout leaves room for it (45 s or more, such as the 120 s path-tracer
+describes); under the 30 s default the test timeout ends the second wait first, and the `[fixture reload]` line is the
+trace. A page once loaded without running its module (pt-gltf-contact in a full `pathtracer.spec.ts`
 run); the cause is unknown, so the reload is a guard and the printed list is the trace to find it. Fixture image code uses no clock or random source (lint rule; timing lives in `fixtures/src/bench.ts` only).
 
 ## Goldens
