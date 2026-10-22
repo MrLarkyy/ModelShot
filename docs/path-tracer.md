@@ -28,7 +28,7 @@ requestAnimationFrame(frame);
   `tileSize` (16..4096, default 256), `maxPixels`, `preserveDrawingBuffer`, `edges` (`Partial<EdgeLook>`, the
   preview's rounded edges over the initial look's; out of range a `RangeError` naming `edges.width` or
   `edges.sharpAngleDeg`).
-- `setScene(doc, { emission, shadowCatcher })`: validates, checks the material count, flattens, builds the BVH and packs the data
+- `setScene(doc, { emission, shadowCatcher, catcherBounds })`: validates, checks the material count, flattens, builds the BVH and packs the data
   (synchronously, before its first `await`), then decodes the textures, lays them out and swaps the scene in. Resolves
   `{ applied, warnings, triangles }`. A call that fails keeps the current scene and closes whatever it decoded.
   Superseding: a later call that passes the synchronous checks, or `dispose()`, supersedes a pending one, which
@@ -53,6 +53,7 @@ requestAnimationFrame(frame);
   without a camera, when complete, converged, cancelled, while the context is lost or after `dispose()`. The first
   step of a request that needs a quality program links it (Render quality), so a shader failure there throws
   `PathTracerError` `SHADER_COMPILE` / `SHADER_LINK` from `step`.
+- `contextLost`: true from the moment the context is lost (`isContextLost()`, before its event too) until a restore.
 - `samplesDone`, `targetSamples`, `running` (false once complete, converged or cancelled); `cancel()` stops the
   request and keeps the image shown: the mean of the samples done, or with `supersample` or `denoise` the image
   resolved at the end of the latest step that crossed a checkpoint (Render quality), which may hold fewer samples.
@@ -78,7 +79,9 @@ Emission is a per-material linear RGB input (`SetSceneOptions.emission`, indexed
 non-finite channels count as 0). The scene format has no emission field yet; MS-32 maps one here.
 `SetSceneOptions.shadowCatcher` (default `true`) puts the shadow catcher under the model (see Lighting); its plane is
 computed from the scene's bounds and the look's key when the scene is swapped in (again on `setLook`) and kept through a
-context loss.
+context loss. `SetSceneOptions.catcherBounds` (a `SceneBounds`, finite `min ≤ max`, else a `RangeError` naming it)
+replaces the scene's bounds for the catcher alone: an animation export passes the union of all its poses, so the
+floor does not ride with a jump.
 
 ## Pipeline
 
@@ -111,9 +114,9 @@ context loss.
    driver watchdog) reads the running sum from one RGBA32F target and writes sum + sample into the other; then they
    swap. A present pass divides by the sample count and applies AgX. The quality path (Render quality) traces at the
    supersampled size, adds a second output to the trace, and at checkpoints runs the noise, denoise and resolve
-   passes; present then shows the resolved image. A transparent request adds a third output, the coverage sum (an R32F
-   target beside each RGBA32F one, at draw buffer 2; buffer 1 is `NONE` without moments), allocated only for such a
-   request and freed with the accumulation.
+   passes; present then shows the resolved image. A transparent request adds a third output, the sums of coverage and
+   of its square (an RG32F target beside each RGBA32F one, at draw buffer 2; buffer 1 is `NONE` without moments),
+   allocated only for such a request and freed with the accumulation.
 
 ### Transparent renders
 
@@ -124,12 +127,22 @@ that escapes adds 0 and coverage 0; one that meets the model adds its radiance a
 shadow catcher adds 0 and coverage 1 − shade (unclamped per sample, so the mean stays affine), a black shadow-only
 layer. Over the backdrop, radiance + backdrop × (1 − coverage) is exactly the opaque request's mean in linear light.
 Coverage reuses the camera ray's outcome and draws no random number of its own. Resolve takes the box mean of the
-coverage (never denoised: the filtered alpha would bleed across the silhouette); the denoised radiance is unchanged,
-as the guide's albedo of escaped and catcher rays is the backdrop, so their 0 stays 0. The canvas composites in linear
+coverage. Denoised, the coverage is filtered with the radiance's edge-stopping weights (normal, albedo, depth,
+luminance) and one more stop, a coverage step beyond the pixel's own coverage noise (from the squared sum), so the
+noisy catcher shadow is smoothed while solid texels and silhouettes keep their alpha; the denoised radiance of escaped
+and catcher rays stays 0 (the guide's albedo there is the backdrop). The noise estimate of a transparent request takes
+the worse of the luminance's and the coverage's relative standard error, so a threshold does not stop a render whose
+colour converged while its alpha is still noisy. The canvas composites in linear
 light (it shows what the opaque request shows); `readImage()` unpremultiplies, tone-maps and writes the coverage
 clamped to 0..1 as alpha. Composited over the tone-mapped backdrop the readback differs from the opaque image only
 where alpha is partial (silhouettes, the catcher's shadow): tone mapping comes before the mix instead of after it
-(measured in docs/testing.md, Export goldens). A request without the field runs none of this.
+(measured in docs/testing.md, Export goldens). Denoised, the transparent canvas differs from the opaque one where the
+filter saw different radiance (silhouettes, the shadow's edge; 14 levels without and 35 with the catcher measured).
+The lit catcher leaves a haze: one fill sample can light the catcher above 1, so a sample's coverage 1 − shade is
+negative as often as positive there and only the mean is near 0; the readback clamps the mean to 0..1, so a lit
+catcher's noise shows as a dark alpha haze of a few levels (about 1 160 pixels of alpha 1 to 15 in the 64 × 64,
+16-sample export golden), falling as 1/√n with the sample count; the canvas, composited unclamped, has none. A request
+without the field runs none of this.
 
 ## Render quality
 

@@ -551,14 +551,16 @@ took, so a decoded file is compared with the very frames that were encoded.
 
 - Goldens: `export-still-transparent.s1.n16.png` (the alpha-plane scene without its ground and back plane under the
   model-view camera, transparent, shadow catcher on, as PNG) and `export-turntable-f0..f3.s1.n16.png` (the frames of a
-  transparent 4-frame turntable of the showcase from the `turntable-y030` camera, as APNG), read by `expectGolden` with
-  threshold 0 like the path-tracer goldens; the fixture hands the decoded file's pixels to `readRGBA`. Nothing compares
+  transparent 4-frame turntable of the showcase from the `turntable-y030` camera, as APNG) and
+  `export-animation-f0..f3.s1.n16.png` (the showcase bobbing 3 units up and down over 1 s, 4 frames at 4 fps, as
+  APNG: the model rises, its floor and shadow stay), read by `expectGolden` with threshold 0 like the path-tracer
+  goldens; the fixture hands the decoded file's pixels to `readRGBA`. Nothing compares
   bytes against a committed PNG.
 - Still: the PNG decodes (the formats package's `decodePngRgba`) to exactly the bytes of `readImage()`; alpha is 255 at
   the opaque texel probe, 0 at the cut-out texel probe and at the corners where camera rays escape (catcher off); with
   the catcher on, its shadow under the opaque texel is black with alpha 1 − shade (188 measured).
 - Per format, the decoded frames against the rendered ones: APNG through `decodePngRgba` of each frame rebuilt as a
-  PNG, exact; GIF (ImageDecoder) within the palette bound of export.md (18; 7 measured), alpha 255 exactly where the
+  PNG, exact; GIF (ImageDecoder) within the palette bound of export.md (18; 10 measured), alpha 255 exactly where the
   render's is at least 128 and 0 elsewhere; WebP (ImageDecoder) within 2 (1 measured where alpha is partial); WebM and
   MP4 by a demux of our own containers in the page and `VideoDecoder`, mean error per channel within 5 (VP9 4.0 and
   H.264 2.4 measured, max 80 at edges), each with `ALPHA_DROPPED`. The Chromium of the harness encodes H.264; where a
@@ -566,6 +568,21 @@ took, so a decoded file is compared with the very frames that were encoded.
   logs each format's size, decoder and time (`[export] ...`; about 0.6-2.4 s for 4 frames locally).
 - Fallback: with the probe stubbed in the page to refuse `webm` (VideoEncoder.isConfigSupported) or `webp`
   (convertToBlob), the clip comes back as APNG with one `FORMAT_FALLBACK` warning naming both, and decodes exactly.
+- Independent readers: WebM and MP4 played by a `<video>` element (MP4 where `canPlayType` accepts its codec): 64 x 64,
+  duration 0.5 s (4 frames at 8 fps), the frame seeked to at 2.5 / 8 s within the video mean bound of frame 2 (2.4 and
+  1.8 measured); the APNG through the browser's ImageDecoder: 4 frames of 125 000 µs, opaque pixels exact.
+- Animation: one `setScene` per pose, every one with the same `catcherBounds` (the union of the poses: floor y 0, top
+  23 with the bob); decoded frames exactly `readImage()`.
+- Transparent quality paths: stills plain, with `supersample: 2` and with `denoise`, catcher off and on: PNG = readImage,
+  alpha 255 / 0 / 0 at the opaque texel, the cut-out texel and the corner, no warning; the canvas of the transparent
+  request against the opaque canvas (`preserveDrawingBuffer`), every pixel: within 1 plain and supersampled (0
+  measured: the canvas composites in linear light, which pins coverage = 1 − shade per sample), within 44 denoised (14
+  without, 35 with the catcher measured). The readback composite of the supersampled and denoised stills against the
+  opaque ones: solid pixels within 18 without the catcher (0 and 14 measured), every pixel within 79 with it (36 and 63
+  measured).
+- Context loss: after a finished render `readImage()` is an image; right after `WEBGL_lose_context.loseContext()`, before
+  the event, and after it, `null`; after a restore, an export whose context goes at sample 2 of frame 1 rejects with
+  `CONTEXT_LOST`.
 - Determinism: frame 0 of two runs is the same bytes; frames 0 and 1 differ.
 - Cancel: aborting at sample 3 of frame 1 rejects with `CANCELLED`, the tracer has 3 samples and is not running, and a
   further `step` draws nothing.
@@ -578,9 +595,13 @@ took, so a decoded file is compared with the very frames that were encoded.
 Vitest covers the rest without a GPU (`packages/export/test`): every option out of type or range, the limits, frame
 planning, the render loop against a fake renderer (progress, cancel, context loss), PNG and APNG against an independent
 decoder (bitwise CRC, the platform's inflate, all filters), GIF against a textbook LZW decoder, the WebP, WebM and MP4
-structure parsed back, the fallback chains, the video path with a stubbed WebCodecs encoder, a scan of the sources for
-network calls, and `bundleSize.test.ts`: the entry chunk and its static imports at most 6 970 gzip bytes (5 576
-measured, times 1.25) with no encoder in them. That bound lives in the test until `budgets.json` takes it (MS-41).
+structure parsed back, codec levels by size and rate (720p60, 1080p60), the fallback chains, the video path with a
+stubbed WebCodecs encoder, one catcher for every pose of an animation and the `SUPERSAMPLE_LOWERED` warning against a
+fake renderer, the path tracer's `catcherBounds` (`catcherBounds.test.ts`), a scan of the sources for network calls,
+`gif.test.ts`'s cost bound: the palette and LZW of a 4096 x 4096 frame of 2^24 distinct colours within 3 000 ms (330 to
+440 ms measured locally; the sort-based median cut it replaced took 36.7 s), and `bundleSize.test.ts`: the entry chunk
+and its static imports at most 7 299 gzip bytes (5 839 measured, times 1.25) with no encoder in them. Those bounds live
+in the tests until `budgets.json` takes them (MS-41).
 
 ## Model-view fixture
 

@@ -39,14 +39,18 @@ for (const warning of clip.warnings) console.info(warning.message);
   ratio 1), replaces its scene, camera and request, and leaves them so; give it a tracer of its own. Its look and edges
   are the caller's (`setLook`, `setEdges` before the export).
 - `checkExportOptions(doc, options)`: the checks the exports run first (below), returning the options with their
-  defaults and the frame count. `planFrames(doc, checked)`: the frames (pose, camera, time) a clip renders.
+  defaults and the frame count. `planFrames(doc, checked, signal?)`: resolves `{ frames, catcherBounds }`, each frame
+  its camera and playback time; `framePose(doc, checked, time)`: an animation frame's pose.
 - `selectFormat(requested, availability)`, `FORMAT_FALLBACKS`, `FORMAT_NAMES`: the fallback rule, pure.
 - The limit constants (`MAX_EXPORT_SIDE` and the others below), `ExportError` and the option, result, progress and
-  warning types.
+  warning types. Warnings: `FORMAT_FALLBACK` and `ALPHA_DROPPED` (Formats, below) and `SUPERSAMPLE_LOWERED`: the path
+  tracer traces a `supersample` only where the traced image fits the GPU and `MAX_SUPERSAMPLED_PIXELS` (2^22 pixels:
+  a 1024 × 1024 export traces at 2, a 4096 × 4096 one at 1), lowering it otherwise, and the export says so, naming
+  the scale used.
 
 Encoders are loaded with dynamic `import()` when an export needs one, so the entry the app imports holds the
 options, planning and render loop only (`bundleSize.test.ts`: gzip of the entry and its static imports, the workspace
-packages external, at most 6 970 bytes, measured 5 576).
+packages external, at most 7 299 bytes, measured 5 839).
 
 ## Options
 
@@ -94,11 +98,15 @@ An animation renders playback times `i / fps` as `animationFrameTimes` of the sc
 ([scene-format.md](scene-format.md)) for `seconds`: a `loop` clip has `max(1, round(seconds × fps))` frames (the frame
 equal to frame 0 left out, so it loops seamlessly), `hold` and `once` `floor(seconds × fps) + 1` (ending on the frame
 at `seconds`). Each pose is computed from the rest pose by `animateScene`, so frame i is what a seek to that time
-shows. With `fit` one camera serves every frame: it
-frames the union of the bounds of all planned poses at the camera's angles and projection, so the view never jumps
-and no pose leaves the frame (framing each pose would move the camera every frame; framing the rest pose crops a
-model that walks out of it). With `camera` the camera is used as given. Each pose is a `setScene` of its own: the path
-tracer has no pose-only update yet, so a frame pays a scene upload (texture decode, BVH) besides its samples.
+shows. Before rendering, one pass over the poses measures them (each pose is built, measured and dropped; the pass
+yields to the event loop between poses and stops on abort, so no clip keeps a document per frame): the union of their
+bounds is where the shadow catcher stays for every frame (`SetSceneOptions.catcherBounds`), at the lowest point any
+pose reaches, so a model that jumps leaves its floor as it does in the preview's playback, instead of the floor riding
+with it. With `fit` one camera serves every frame: it frames the same union at the camera's angles and projection, so
+the view never jumps and no pose leaves the frame (framing each pose would move the camera every frame; framing the
+rest pose crops a model that walks out of it). With `camera` the camera is used as given. Each pose is built again
+right before its `setScene`: the path tracer has no pose-only update yet, so a frame pays a scene upload (texture
+decode, BVH) besides its samples.
 
 Every frame renders with the same seed, so the noise pattern stands still instead of shimmering from frame to frame.
 Frames render with a fixed sample count (no noise threshold), so a clip is the same bytes on every run of a browser.
@@ -111,17 +119,22 @@ Frames render with a fixed sample count (no noise threshold), so a clip is the s
 | `apng` | ours: acTL loops forever, fcTL per frame (whole canvas, no dispose, blend SOURCE), IDAT then fdAT              | straight, exact                 | 1 / fps exactly                        |
 | `gif`  | ours: GIF89a, NETSCAPE2.0 loop, a local palette per frame, LZW                                                 | binary: alpha < 128 transparent | centiseconds without drift, at least 2 |
 | `webp` | the browser's (OffscreenCanvas `convertToBlob`, quality 1), muxed by us: VP8X, ANIM, ANMF per frame (no blend) | as the browser keeps it         | milliseconds without drift             |
-| `webm` | WebCodecs `VideoEncoder` (VP9 at the smallest level that holds the frame, the next one, VP8), muxed by us      | none                            | a key frame every second               |
-| `mp4`  | WebCodecs `VideoEncoder` (H.264 High, Main or Constrained Baseline at the smallest level), muxed by us         | none                            | a key frame every second               |
+| `webm` | WebCodecs `VideoEncoder` (VP9 at the smallest level for size and rate, the next one, VP8), muxed by us         | none                            | a key frame every second               |
+| `mp4`  | WebCodecs `VideoEncoder` (H.264 High, Main or Constrained Baseline at the smallest level for size and rate)    | none                            | a key frame every second               |
 
 PNG and APNG decode to exactly the bytes of `PathTracer.readImage()` (Vitest with an independent decoder, and in the
 browser, docs/testing.md). Nothing is resampled or dithered anywhere: the output is the render's size.
 
-GIF: each frame gets a median-cut palette of at most 255 colours over its opaque pixels; a frame of 255 colours or
-fewer (flat pixel art) keeps every colour exactly, else boxes split at the pixel-weighted median along their widest
-channel and each pixel takes its box's mean, with no dithering (dither would turn flat texels into noise). The
-measured error on a 64 × 64 two-axis gradient (4 096 colours) is at most 14 levels per channel (tests allow 18); a
-64 × 64 render of the showcase decodes within 7. Delays: frame i lasts round((i + 1) · 100 / fps) − round(i · 100 / fps)
+GIF: each frame gets a palette of at most 255 colours over its opaque pixels; a frame of 255 colours or fewer (flat
+pixel art) keeps every colour exactly, else median cut over a histogram of 5-bit bins per channel: boxes of bins
+split at the pixel-weighted median along their widest channel and each pixel takes the mean of the pixels in its box,
+with no dithering (dither would turn flat texels into noise). The cost is one pass over the pixels plus cuts over
+32 768 bins, and LZW looks codes up in a typed table: a 4096 × 4096 frame of distinct colours takes about 0.4 s
+(the test allows 3 s), and the encoder yields to the page between the palette and the compression. The measured
+error on a 64 × 64 two-axis gradient (4 096 colours) is at most 14 levels per channel (tests allow 18); a 64 × 64
+render of the showcase decodes within 10. GIF has no partial alpha: a pixel of alpha under 128 is transparent, at or
+over it opaque. A transparent clip's soft catcher shadow (black, alpha 1 − shade) therefore turns solid black where
+1 − shade ≥ 128/255 and disappears elsewhere; use APNG or WebP to keep it soft. Delays: frame i lasts round((i + 1) · 100 / fps) − round(i · 100 / fps)
 centiseconds, so 30 fps alternates 3, 4, 3, and never less than 2 (browsers play a shorter delay as 10): above 50 fps a
 GIF plays at 50. Every frame is disposed to the transparent background before the next.
 
@@ -129,9 +142,13 @@ Animated WebP: Chromium encodes quality 1 lossless; the canvas the frame goes th
 alpha is partial a colour can move by a level (1 measured). Durations in milliseconds without drift, as for GIF.
 
 Video is opaque: WebCodecs alpha encoding is not dependable across browsers, so a transparent request for `webm` or
-`mp4` renders opaque, over the backdrop, with an `ALPHA_DROPPED` warning. The codec is probed with
-`VideoEncoder.isConfigSupported` at the clip's size and rate; bitrate about 0.25 bit per pixel and frame (0.25 Mbit/s
-to 40 Mbit/s). Frames must come out in order (no B-frame reordering); else `ENCODER_FAILED`.
+`mp4` renders opaque, over the backdrop, with an `ALPHA_DROPPED` warning. Video is lossy too: 4:2:0 chroma and the
+codec's blocks move colours at texel edges by tens of levels (60 to 80 measured at 64 × 64, a mean of 2 to 4); APNG
+and WebP keep pixel art exact. The level is the smallest whose picture size and rate hold the clip (H.264 MaxFS and
+MaxMBPS, VP9 picture size and luma sample rate: 1280 × 720 at 60 fps is H.264 3.2 and VP9 4.0, 1920 × 1080 at 60
+fps H.264 4.2 and VP9 4.1), probed with `VideoEncoder.isConfigSupported` at the clip's size and rate; bitrate about
+0.25 bit per pixel and frame (0.25 Mbit/s to 40 Mbit/s). Frames must come out in order (no B-frame reordering); else
+`ENCODER_FAILED`.
 
 ### Fallback
 
