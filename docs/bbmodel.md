@@ -285,8 +285,8 @@ format, quad order and split, normal sign, `render_sides`, `render_order` and th
     `null` included, as an empty collection with an `UNSUPPORTED_VALUE` warning. The Hytale plugin also replaces
     `CubeFace.getTexture` (hytale_plugin.js:1283-1302): a `null` face has none; else the first collection that
     `contains` the cube (`Collection.contains`, collections.ts:182-195: its `scope` is non-zero and equals the cube's
-    saved `scope`, both read by `Merge.number`, util.js:401-413, so a numeric string such as `"2"` counts as 2, or `children` lists the cube's uuid or an ancestor group's uuid) gives its `texture` (none when unset
-    or unknown), and a cube no collection contains gets `Texture.getDefault()`. Mesh faces keep `Face.getTexture`, and
+    saved `scope` (both read by `Merge.number`, util.js:401-413, so a numeric string such as `"2"` counts as 2), or
+    `children` lists the cube's uuid or an ancestor group's uuid) gives its `texture` (none when unset or unknown), and a cube no collection contains gets `Texture.getDefault()`. Mesh faces keep `Face.getTexture`, and
     with collections present the cube controller draws each face with the texture `getTexture` returns, its UVs by
     that texture's UV size (cube.js:1272-1290, 1355-1368); the layer composite still comes first. BAMO's
     `bamo_model`, Free Rotation's `free_rotation`, Java Block Sequencer's `java_block_sequence`, Cosmic Reach's
@@ -381,9 +381,9 @@ and for a `visible` or `use_as_default` that is no boolean (`true` and `false` a
 `UNKNOWN_REFERENCE` (the group's faces are untextured); in `hytale_character` and `hytale_prop` a `collections`
 entry that is no object warns `UNSUPPORTED_VALUE` at `$.collections[i]` (counted as an empty collection; Blockbench
 cannot open a file with a `null` entry), as do a `children` that is no array at `$.collections[i].children`
-(ignored), a `scope` Blockbench's `Merge.number` cannot read (no number and no string `parseFloat` reads, such as
-`"x"`, `""`, `true` or an array; `null` is skipped silently) at `$.collections[i].scope` or, on a cube, at
-`$.elements[i].scope` (ignored) and a `texture` that is no string at
+(ignored), a `scope` that is no number and no string `parseFloat` reads (`"x"`, `""`, `true`), or any array or
+object (Blockbench would turn an array such as `[2]` into 2; ModelShot ignores it with a warning), at
+`$.collections[i].scope` or, on a cube, at `$.elements[i].scope` (ignored; `null` is skipped silently) and a `texture` that is no string at
 `$.collections[i].texture` (the collection's cubes are untextured), while a `texture` naming no texture warns
 `UNKNOWN_REFERENCE` there (untextured too); a child that is no uuid string is skipped silently, and other formats do
 not read `collections`; in `image`, `optifine_entity` and `optifine_part` a
