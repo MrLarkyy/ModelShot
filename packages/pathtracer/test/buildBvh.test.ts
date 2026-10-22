@@ -60,13 +60,23 @@ function checkInvariants(bvh: Bvh, positions: Float32Array, count: number): Leaf
   const missing = Array.from(seen).findIndex((v) => v !== 1);
   expect(missing, 'first triangle not held exactly once').toBe(-1);
   expect(Math.max(...leaves.map((l) => l.depth))).toBe(bvh.depth);
+  expect(bvh.nodeCount, 'a binary tree of L leaves has 2L - 1 nodes').toBe(2 * leaves.length - 1);
   return leaves;
 }
 
-/** Triangle visits of a build: each triangle is touched once per level down to its leaf. */
-function buildWork(leaves: Leaf[]): number {
-  return leaves.reduce((sum, leaf) => sum + leaf.count * (leaf.depth + 1), 0);
+// The pathtracer package has no Node types; only the thread CPU clock is used here.
+declare const process: { threadCpuUsage(): { user: number; system: number } };
+
+/** Thread CPU milliseconds of a synchronous build: unlike wall time, a busy machine does not count. */
+function buildCpu<T>(build: () => T): { value: T; ms: number } {
+  const before = process.threadCpuUsage();
+  const value = build();
+  const after = process.threadCpuUsage();
+  return { value, ms: (after.user - before.user + after.system - before.system) / 1000 };
 }
+
+const CPU_COINCIDENT_MS = 200;
+const CPU_CHAIN_MS = 400;
 
 describe('buildBvh', () => {
   it('holds every triangle once, children inside their parent, leaves of at most 4', () => {
@@ -95,13 +105,11 @@ describe('buildBvh', () => {
   it('stays within depth 31 with leaves of at most 4 for 10 000 coincident triangles', () => {
     const one = [0, 0, 0, 1, 0, 0, 0, 1, 0];
     const positions = new Float32Array(Array.from({ length: 10_000 }, () => one).flat());
-    const bvh = buildBvh(positions, 10_000);
-    const leaves = checkInvariants(bvh, positions, 10_000);
-    // Equal boxes force median splits by index: a balanced tree, not a quadratic peel.
+    const { value: bvh, ms } = buildCpu(() => buildBvh(positions, 10_000));
+    checkInvariants(bvh, positions, 10_000);
+    // Equal boxes force median splits by index: the depth of a balanced tree, not a quadratic peel.
     expect(bvh.depth).toBe(Math.ceil(Math.log2(Math.ceil(10_000 / MAX_LEAF_TRIANGLES))));
-    // A binary tree of that depth has at most 2^(depth + 1) - 1 nodes; halving 10 000 gives leaves of 2 or 3.
-    expect(bvh.nodeCount).toBeLessThanOrEqual(2 ** (bvh.depth + 1) - 1);
-    expect(buildWork(leaves)).toBeLessThanOrEqual(10_000 * (MAX_BVH_DEPTH + 1));
+    expect(ms, 'build CPU ms').toBeLessThan(CPU_COINCIDENT_MS);
   });
 
   it('stays within depth 31 for a 4096-triangle chain that SAH alone would split one at a time', () => {
@@ -113,10 +121,10 @@ describe('buildBvh', () => {
         return [x, 0, 0, x + 1e-3 * x, 0, 0, x, 1e-3 * x, 0];
       }).flat(),
     );
-    const bvh = buildBvh(positions, 4096);
-    const leaves = checkInvariants(bvh, positions, 4096);
+    const { value: bvh, ms } = buildCpu(() => buildBvh(positions, 4096));
+    checkInvariants(bvh, positions, 4096);
     expect(bvh.depth).toBe(MAX_BVH_DEPTH);
-    expect(buildWork(leaves)).toBeLessThanOrEqual(4096 * (MAX_BVH_DEPTH + 1));
+    expect(ms, 'build CPU ms').toBeLessThan(CPU_CHAIN_MS);
   });
 
   it('builds nothing for no triangles and a single leaf for a few', () => {

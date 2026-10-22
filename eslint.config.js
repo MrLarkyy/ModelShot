@@ -43,14 +43,24 @@ export default defineConfig(
     },
   },
   {
-    files: ['packages/*/test/**/*.ts', 'packages/*/src/**/*.test.ts'],
+    files: [
+      'packages/*/test/**/*.ts',
+      'packages/*/src/**/*.test.ts',
+      'tools/harness/test/**/*.test.ts',
+      'tools/wiki/test/**/*.test.mjs',
+    ],
     rules: {
       'no-restricted-properties': [
         'error',
-        ...['performance.now', 'Date.now'].map((name) => {
-          const [object, property] = name.split('.');
-          return { object, property, message: 'Unit tests bound work or CPU time, never wall time (docs/testing.md).' };
-        }),
+        ...[
+          ['performance', 'now'],
+          ['Date', 'now'],
+          ['process', 'hrtime'],
+        ].map(([object, property]) => ({
+          object,
+          property,
+          message: 'Unit tests bound work or CPU time, never wall time (docs/testing.md).',
+        })),
       ],
     },
   },

@@ -12,21 +12,24 @@ to an exact version in `tools/harness/package.json`, which pins the Chromium rev
 
 ## Time-bounded unit tests
 
-No Vitest test reads the wall clock (`performance.now`, `Date.now`; ESLint refuses both in `packages/*/test` and `*.test.ts`).
+No Vitest test reads the wall clock (`performance.now`, `Date.now`; ESLint refuses both, and `process.hrtime`, in `packages/*/test`, `*.test.ts`, `tools/harness/test` and `tools/wiki/test`).
 Wall time also counts the time the OS does not run the thread, so a test that passes on an idle machine failed under load
 (MS-42: three loader tests and the 10 000 coincident-triangle BVH build timed out beside about 30 busy cores). A test that
 limits work is written in this order:
 
 1. A deterministic work check: output sizes, an early refusal with the right error code, a spy proving a stage never ran
-   (`cubeToMesh` not called for a 100 000-deep outliner, `decodePrimitive` once for 1000 instances), BVH structure (exact
-   depth, node count, and a work sum of triangle count times leaf depth at most `n × (MAX_BVH_DEPTH + 1)`).
+   (`cubeToMesh` not called for a 100 000-deep outliner, `decodePrimitive` once for 1000 instances), BVH structure (the
+   exact depth of 10 000 coincident triangles pins the shape, a balanced tree from the median split by index; 2L − 1 nodes
+   for L leaves pins that the tree is binary). Structure says nothing about cost, so the two BVH builds also carry a
+   thread CPU bound (200 ms coincident, 400 ms chain; idle 16 and 31 ms), which pins the build cost.
 2. Where the cost of a hostile input itself is the claim, `expectCpuBelow(maxMs, work)`
    (`packages/formats/test/support/expectCpuBelow.ts`, a copy in `packages/scene/test/` because scene cannot import formats
    tests). It runs `work` synchronously, reads `process.threadCpuUsage()` (Node 22.19 or later) around it, and asserts
    the CPU time of the current thread: blocked or descheduled time is not counted, a promise-returning callback throws.
    Build the fixture outside `work`; the clock ticks in steps of about 15.6 ms on Windows, so bounds under 50 ms are
    only for work that measures 0 ms. A bound keeps its old number, now in CPU milliseconds; one is never widened to
-   make a test pass.
+   make a test pass. Thread CPU excludes the time V8 garbage-collection helper threads spend, so it bounds the test
+   thread's own work, not the whole process.
 3. Each package project has `testTimeout: 60_000` (`vitest.config.ts`), a hang backstop only, never a budget.
 
 A real time budget (frame time, bake time) belongs to the bench ([Budgets](#budgets)), measured on a machine that runs
@@ -53,6 +56,8 @@ CPU ms per converted test, the maximum of 3 runs on an idle machine (Windows, No
 | scene/animateScene: 10 000 nodes, 3 frames                                                                                   |          47 |          600 |
 | gltf/bakeMesh: 300 000 addressed vertices                                                                                    |          31 |         2000 |
 | obj/hostile: 20 MB line                                                                                                      |          15 |         2000 |
+| pathtracer/buildBvh: 4096-triangle chain                                                                                     |          31 |          400 |
+| pathtracer/buildBvh: 10 000 coincident triangles                                                                             |          16 |          200 |
 | bbmodel/hostile: the most textures all layered, loadSkin zlib bomb, bbmodel/textureFrames (three tests, bounds 50, 50, 1000) |           0 | 1000 or less |
 
 ## CI
