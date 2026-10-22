@@ -1,0 +1,111 @@
+{
+  "meta": {
+    "format_version": "4.5",
+    "model_format": "java_block",
+    "box_uv": false
+  },
+  "name": "frame-strip",
+  "resolution": {
+    "width": 16,
+    "height": 16
+  },
+  "elements": [
+    {
+      "name": "block",
+      "from": [
+        0,
+        0,
+        0
+      ],
+      "to": [
+        16,
+        16,
+        16
+      ],
+      "origin": [
+        8,
+        8,
+        8
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            8,
+            8
+          ],
+          "texture": 0,
+          "rotation": 90
+        },
+        "south": {
+          "uv": [
+            16,
+            0,
+            0,
+            16
+          ],
+          "texture": 0
+        },
+        "west": {
+          "uv": [
+            4,
+            12,
+            12,
+            4
+          ],
+          "texture": 0
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 1
+        },
+        "down": {
+          "uv": [
+            4,
+            4,
+            12,
+            12
+          ],
+          "texture": 1,
+          "rotation": 180
+        }
+      },
+      "type": "cube",
+      "uuid": "c-block"
+    }
+  ],
+  "outliner": [
+    "c-block"
+  ],
+  "textures": [
+    {
+      "name": "strip.png",
+      "uuid": "t-strip",
+      "frame_time": 3,
+      "frame_order_type": "custom",
+      "frame_order": "0 2 1:5 3",
+      "frame_interpolate": true,
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAABACAIAAACcH2DBAAAAOUlEQVR42mO4o6FBEmIY1TCqYRhr0NhiQxIa1TCqYVhrcLtDEhrVMKphOGt4dkmDJDSqYVTDMNYAAMREbkw3x6MFAAAAAElFTkSuQmCC"
+    },
+    {
+      "name": "still.png",
+      "uuid": "t-still",
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAIElEQVR42mM4gQSikAAucYZBqIEYRcjig1HDaDwMCg0AQhazEB50C88AAAAASUVORK5CYII="
+    }
+  ]
+}

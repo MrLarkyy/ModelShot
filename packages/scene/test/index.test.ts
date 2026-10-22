@@ -15,6 +15,23 @@ describe('@modelshot/scene', () => {
     expect(scene.MAX_ABS_RENDER_ORDER).toBe(1024);
   });
 
+  it('exports the texture frame default, one Minecraft tick', () => {
+    expect(scene.DEFAULT_TEXTURE_FRAME_TIME).toBe(0.05);
+    const frames: scene.SceneTextureFrames = { count: 4 };
+    const texture: scene.SceneTexture = {
+      name: 'strip',
+      mimeType: 'image/png',
+      bytes: null,
+      width: 16,
+      height: 64,
+      uvWidth: 16,
+      uvHeight: 16,
+      missing: false,
+      frames,
+    };
+    expect(texture.frames?.frameTime ?? scene.DEFAULT_TEXTURE_FRAME_TIME).toBe(0.05);
+  });
+
   it('accepts every loader format as a scene source', () => {
     const sources: scene.SceneSource[] = [
       { format: 'bbmodel', formatVersion: '4.10', modelFormat: 'free' },

@@ -3,3 +3,6 @@ dedicated to the public domain under CC0-1.0.
 
 To the extent possible under law, the ModelShot authors have waived all copyright and related or neighboring rights
 to these files. See https://creativecommons.org/publicdomain/zero/1.0/
+
+frame-strip.bbmodel (MS-27) is ours too: its two embedded PNGs (a 16×64 strip of four flat colours and a 16×16
+checker) were generated for this test, CC0-1.0 like the rest.

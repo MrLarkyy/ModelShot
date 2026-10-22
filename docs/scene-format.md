@@ -142,14 +142,25 @@ texel stops every ray. A `partial` texel is drawn order-independently (never by 
 
 ### `SceneTexture`
 
-`{ name, mimeType: 'image/png', bytes, width, height, uvWidth, uvHeight, missing }`
+`{ name, mimeType: 'image/png', bytes, width, height, uvWidth, uvHeight, missing, frames? }`
 
 `bytes` is the encoded PNG as the file had it; model loaders only check its header, and `loadSkin` decodes a legacy
 skin's pixels once to set `legacyHatOpaque` ([player.md](player.md#legacy-hat)). `width` × `height` is the pixel size
 from the PNG header. UVs were normalised by `uvWidth` × `uvHeight`, the model's texture space; one UV unit therefore
-covers `width / uvWidth` pixels (a 32×32 image on a 16×16 UV space has 2×2 pixels per unit). A texture the model
+covers `width / uvWidth` pixels (a 32×32 image on a 16×16 UV space has 2×2 pixels per unit). On a strip (`frames`
+below) v was normalised by `uvHeight` × `frames.count` instead, so the UVs fall in frame 0. A texture the model
 references but whose image was neither embedded nor supplied has `missing: true`, `bytes: null` and size 0; renderers
 show a placeholder.
+
+`frames` (`SceneTextureFrames`, optional) marks the image as a vertical strip of frames, frame 0 at the top; absent,
+it is a still. `count` is an integer from 2 to `height` (each frame at least one pixel tall); a frame is `width` ×
+`height / count` pixels, fractional when the source rounded the count (a 16×40 image on a 16×16 UV space has 3 frames
+of 13.33 px). `frameTime` is the seconds each played frame shows, finite and above 0 (absent:
+`DEFAULT_TEXTURE_FRAME_TIME`, 0.05 s, one Minecraft tick); `order` the frame indices in play order, integers in
+[0, `count`), non-empty (absent: 0 … count − 1 looping); `interpolate` cross-fades into the next played frame (absent:
+false). Loaders store `count` only; the frame size follows from `width`/`height`. UVs of every face using the texture
+are already normalised into frame 0, v in [0, 1/`count`] of the whole image; frame k is the same UV plus k/`count` in
+v, so a consumer that ignores `frames` draws frame 0, the still.
 
 ## Poses
 
@@ -315,6 +326,10 @@ and `SceneDocument.playback` (absent: no frame applied); `mat4NodeLocal` takes a
 ignores `animations` draws the rest pose, which a document meant before; one that draws node matrices must map normals
 with `mat4NormalMatrix` once `scale` can be present (both renderers do). Loaders leave `animations` out when the file
 has none, so such documents are unchanged; no migration.
+Added within version 1 (MS-27), optional: `SceneTexture.frames` (absent: a still image), with the type
+`SceneTextureFrames` and the export `DEFAULT_TEXTURE_FRAME_TIME`. UVs map into frame 0, so a consumer that ignores
+`frames` draws the still frame as the source's own preview does; loaders leave the key out for every other texture,
+so those documents are unchanged; no migration.
 
 ## Loaders
 

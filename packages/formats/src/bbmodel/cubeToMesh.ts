@@ -16,8 +16,10 @@ const NO_TRANSLATION = [0, 0, 0] as const;
  * Four vertices and two triangles per face, the cube's rotation about its origin baked in. Faces are ordered by
  * material, then single- before double-sided, so each such pair is one group. Corners are top-left, top-right, bottom-right, bottom-left seen from
  * outside; the triangles (TL, BL, BR) and (TL, BR, TR) are therefore counter-clockwise from outside whatever the UVs.
+ * A face on a texture of `textureFrameCounts[material]` frames (absent: 1) maps into frame 0: v is divided by the count
+ * after normalising, Blockbench's `updateUV` order.
  */
-export function cubeToMesh(cube: CubeSpec, node: number): SceneMesh {
+export function cubeToMesh(cube: CubeSpec, node: number, textureFrameCounts: readonly number[] = []): SceneMesh {
   const faces = [...cube.faces].sort(compareGroupKey);
   const vertexCount = faces.length * 4;
   const positions = new Float32Array(vertexCount * 3);
@@ -33,13 +35,19 @@ export function cubeToMesh(cube: CubeSpec, node: number): SceneMesh {
     const corners = faceCornerPositions(face.direction, cube.min, cube.max);
     const cornerUvs = faceCornerUvs(face.uv, face.rotation);
     const [uMin, vMin, uMax, vMax] = faceUvRect(face.uv);
-    const rect = [uMin / face.uvWidth, vMin / face.uvHeight, uMax / face.uvWidth, vMax / face.uvHeight];
+    const frames = textureFrameCounts[face.material] ?? 1;
+    const rect = [
+      uMin / face.uvWidth,
+      vMin / face.uvHeight / frames,
+      uMax / face.uvWidth,
+      vMax / face.uvHeight / frames,
+    ];
     corners.forEach((corner, c) => {
       const vertex = f * 4 + c;
       positions.set(mat4TransformPoint(rotation, corner), vertex * 3);
       normals.set(normal, vertex * 3);
       const [u = 0, v = 0] = cornerUvs[c] ?? [];
-      uvs.set([u / face.uvWidth, v / face.uvHeight], vertex * 2);
+      uvs.set([u / face.uvWidth, v / face.uvHeight / frames], vertex * 2);
       uvRects.set(rect, vertex * 4);
     });
     const base = f * 4;

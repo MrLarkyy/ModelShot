@@ -16,8 +16,10 @@ const NO_TRANSLATION = [0, 0, 0] as const;
  * Triangles of a Blockbench mesh: every face gets its own vertices, placed at `origin + v` rotated about `origin` (as
  * a cube's), and faces are grouped by material and sidedness. Flat shading gives each vertex its face's normal; smooth
  * shading the vertex key's normal (see `smoothNormals`). Faces that triangulate to nothing (zero area) are left out.
+ * A face on a texture of `textureFrameCounts[material]` frames (absent: 1) maps into frame 0, v divided by the count
+ * after normalising, as Blockbench's mesh `updateUV` does.
  */
-export function meshElementToMesh(mesh: MeshSpec, node: number): SceneMesh {
+export function meshElementToMesh(mesh: MeshSpec, node: number, textureFrameCounts: readonly number[] = []): SceneMesh {
   const transform = mat4NodeLocal(NO_TRANSLATION, mesh.origin, mesh.rotation);
   const faces = mesh.faces
     .map((face) => ({ face, triangulation: triangulateFace(face.positions) }))
@@ -39,11 +41,12 @@ export function meshElementToMesh(mesh: MeshSpec, node: number): SceneMesh {
     const faceNormal = mat4TransformDirection(transform, triangulation.normal);
     const us = face.uvs.map(([u]) => u);
     const vs = face.uvs.map(([, v]) => v);
+    const frames = textureFrameCounts[face.material] ?? 1;
     const rect = [
       Math.min(...us) / face.uvWidth,
-      Math.min(...vs) / face.uvHeight,
+      Math.min(...vs) / face.uvHeight / frames,
       Math.max(...us) / face.uvWidth,
-      Math.max(...vs) / face.uvHeight,
+      Math.max(...vs) / face.uvHeight / frames,
     ];
     face.positions.forEach((p, k) => {
       const vertex = base + k;
@@ -52,7 +55,7 @@ export function meshElementToMesh(mesh: MeshSpec, node: number): SceneMesh {
       const keyNormal = smooth?.get(face.keys[k] ?? '');
       normals.set(keyNormal ? mat4TransformDirection(transform, keyNormal) : faceNormal, vertex * 3);
       const [u = 0, v = 0] = face.uvs[k] ?? [];
-      uvs.set([u / face.uvWidth, v / face.uvHeight], vertex * 2);
+      uvs.set([u / face.uvWidth, v / face.uvHeight / frames], vertex * 2);
       uvRects.set(rect, vertex * 4);
     });
     indices.set(

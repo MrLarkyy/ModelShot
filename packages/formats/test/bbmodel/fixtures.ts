@@ -22,6 +22,7 @@ export const FIXTURE_NAMES = [
   'render-order',
   'animated',
   'animated-unsupported',
+  'frame-strip',
 ] as const;
 
 export type FixtureName = (typeof FIXTURE_NAMES)[number];

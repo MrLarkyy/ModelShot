@@ -1,0 +1,104 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "format": "bbmodel",
+    "formatVersion": "4.5",
+    "modelFormat": "java_block"
+  },
+  "rootNodes": [],
+  "nodes": [],
+  "meshes": [
+    {
+      "name": "block",
+      "sourceId": "c-block",
+      "node": -1,
+      "visible": true,
+      "renderOrder": 0,
+      "groups": [
+        {
+          "material": 0,
+          "start": 0,
+          "count": 24,
+          "doubleSided": false
+        },
+        {
+          "material": 1,
+          "start": 24,
+          "count": 12,
+          "doubleSided": false
+        }
+      ],
+      "indices": [0, 3, 2, 0, 2, 1, 4, 7, 6, 4, 6, 5, 8, 11, 10, 8, 10, 9, 12, 15, 14, 12, 14, 13, 16, 19, 18, 16, 18, 17, 20, 23, 22, 20, 22, 21],
+      "vertexColumns": "x y z nx ny nz u v uMin vMin uMax vMax (uv in texture uv units; untextured: normalised)",
+      "vertices": [
+        [16, 16, 0, 0, 0, -1, 0, 0, 0, 0, 16, 4],
+        [0, 16, 0, 0, 0, -1, 16, 0, 0, 0, 16, 4],
+        [0, 0, 0, 0, 0, -1, 16, 4, 0, 0, 16, 4],
+        [16, 0, 0, 0, 0, -1, 0, 4, 0, 0, 16, 4],
+        [16, 16, 16, 1, 0, 0, 0, 2, 0, 0, 8, 2],
+        [16, 16, 0, 1, 0, 0, 0, 0, 0, 0, 8, 2],
+        [16, 0, 0, 1, 0, 0, 8, 0, 0, 0, 8, 2],
+        [16, 0, 16, 1, 0, 0, 8, 2, 0, 0, 8, 2],
+        [0, 16, 16, 0, 0, 1, 16, 0, 0, 0, 16, 4],
+        [16, 16, 16, 0, 0, 1, 0, 0, 0, 0, 16, 4],
+        [16, 0, 16, 0, 0, 1, 0, 4, 0, 0, 16, 4],
+        [0, 0, 16, 0, 0, 1, 16, 4, 0, 0, 16, 4],
+        [0, 16, 0, -1, 0, 0, 4, 3, 4, 1, 12, 3],
+        [0, 16, 16, -1, 0, 0, 12, 3, 4, 1, 12, 3],
+        [0, 0, 16, -1, 0, 0, 12, 1, 4, 1, 12, 3],
+        [0, 0, 0, -1, 0, 0, 4, 1, 4, 1, 12, 3],
+        [0, 16, 0, 0, 1, 0, 0, 0, 0, 0, 16, 16],
+        [16, 16, 0, 0, 1, 0, 16, 0, 0, 0, 16, 16],
+        [16, 16, 16, 0, 1, 0, 16, 16, 0, 0, 16, 16],
+        [0, 16, 16, 0, 1, 0, 0, 16, 0, 0, 16, 16],
+        [0, 0, 16, 0, -1, 0, 12, 12, 4, 4, 12, 12],
+        [16, 0, 16, 0, -1, 0, 4, 12, 4, 4, 12, 12],
+        [16, 0, 0, 0, -1, 0, 4, 4, 4, 4, 12, 12],
+        [0, 0, 0, 0, -1, 0, 12, 4, 4, 4, 12, 12]
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "strip.png",
+      "texture": 0,
+      "alphaMode": "blend",
+      "alphaCutoff": 0.01
+    },
+    {
+      "name": "still.png",
+      "texture": 1,
+      "alphaMode": "blend",
+      "alphaCutoff": 0.01
+    }
+  ],
+  "textures": [
+    {
+      "name": "strip.png",
+      "mimeType": "image/png",
+      "width": 16,
+      "height": 64,
+      "uvWidth": 16,
+      "uvHeight": 16,
+      "missing": false,
+      "byteLength": 114,
+      "frames": {
+        "count": 4,
+        "frameTime": 0.15,
+        "order": [0, 2, 1, 3],
+        "interpolate": true
+      }
+    },
+    {
+      "name": "still.png",
+      "mimeType": "image/png",
+      "width": 16,
+      "height": 16,
+      "uvWidth": 16,
+      "uvHeight": 16,
+      "missing": false,
+      "byteLength": 89
+    }
+  ],
+  "warnings": []
+}
