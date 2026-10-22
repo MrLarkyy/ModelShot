@@ -51,12 +51,17 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
   multi-file ruleset, which is Blockbench runtime state not saved in the file, so bedrock models use the project
   resolution.
 - **Frame-strip (animated) textures** (MS-27): in the formats where Blockbench animates textures (`free`,
-  `java_block`, `bedrock`, `bedrock_block`, `bedrock_old`) an image whose aspect ratio differs from its UV space's is
+  `java_block`, `bedrock`, `bedrock_block`, `bedrock_old`, `image`, and the plugin formats `geckolib_model` (GeckoLib),
+  `animated_entity_model` (Animation Utils, legacy GeckoLib), `azure_model` (AzureLib), `bamo_model` (BAMO),
+  `free_rotation`, `java_block_sequence` (Java Block Sequencer) and `cosmic_reach_entity_model` (Cosmic Reach Model
+  Editor)) an image whose aspect ratio differs from its UV space's is
   a vertical strip of frames, counted as Blockbench does (Blockbench conventions 14). Faces on it show frame 0, as the
   Blockbench still preview does, and the texture carries [`SceneTexture.frames`](scene-format.md#scenetexture): the
-  count, the frame time in seconds (`java_block`: `frame_time` ticks; the others: `fps`), the play order from
+  count, the frame time in seconds (`java_block`, `geckolib_model`, `free_rotation`, `java_block_sequence`: `frame_time` ticks; the others: `fps`), the play order from
   `frame_order_type` (`loop`, `backwards`, `back_and_forth`, `custom` with `frame_order`) and `frame_interpolate`. In
-  any other format the strip is one image and the fields are ignored. Nothing plays the frames yet.
+  any other format the strip is one image and the fields are ignored: `modded_entity`, `optifine_entity`,
+  `optifine_part`, `skin`, `eme_entity`, `figura`, the Hytale and Cosmic Reach model formats, and a plugin format whose
+  plugin ModelShot does not know (Blockbench opens that as `free` only with the plugin missing; here it stays a still). Nothing plays the frames yet.
 - **Animations** (`animations`): every animation becomes a [`SceneAnimation`](scene-format.md#animations) with its
   `name`, `loop` (`once`, `hold`, `loop`) and `length`. Bone animators play their `rotation`, `position` and `scale`
   keyframes with `linear`, `catmullrom` and `step` interpolation, pre/post data points and numeric data points (a
