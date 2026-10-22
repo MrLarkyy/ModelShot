@@ -25,6 +25,7 @@ export const FIXTURE_NAMES = [
   'frame-strip',
   'render-modes',
   'layered',
+  'reversed-outline',
 ] as const;
 
 export type FixtureName = (typeof FIXTURE_NAMES)[number];

@@ -191,6 +191,35 @@ describe('hand-checked transforms', () => {
     ]);
   });
 
+  it('reversed-outline: odd reversed counts are inverted hulls, auto-sided ones single-sided; the even one is a box', () => {
+    const { scene, warnings } = load('reversed-outline');
+    expect(warnings).toEqual([]);
+    // Signed volume from the winding: positive for an outward box, negative for an inverted hull.
+    const volume = (mesh: (typeof scene.meshes)[number]) => {
+      let sum = 0;
+      for (let t = 0; t < mesh.indices.length; t += 3) {
+        const [a, b, c] = [0, 1, 2].map((k) => {
+          const v = mesh.indices[t + k] ?? 0;
+          return [0, 1, 2].map((j) => mesh.positions[v * 3 + j] ?? 0);
+        });
+        const [ax = 0, ay = 0, az = 0] = a ?? [];
+        const [bx = 0, by = 0, bz = 0] = b ?? [];
+        const [cx = 0, cy = 0, cz = 0] = c ?? [];
+        sum += (ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx)) / 6;
+      }
+      return Math.round(sum * 1000) / 1000;
+    };
+    expect(scene.meshes.map((m) => [m.name, volume(m), m.groups.map((g) => g.doubleSided)])).toEqual([
+      ['board', 256, [true]],
+      ['shell', -371.176, [false]],
+      ['shell-b', -8, [false]],
+      ['shell-c', 8, [true]],
+      ['shell-d', -8, [true]],
+      ['shell-e', -8, [false]],
+      ['shell-f', -0.5, [false]],
+    ]);
+  });
+
   it('alpha-plane: the cutout plane turns −50° about X around its origin (−8, 9, 0)', () => {
     const { scene } = load('alpha-plane');
     expect(scene.meshes[1]?.name).toBe('cutout-plane');
