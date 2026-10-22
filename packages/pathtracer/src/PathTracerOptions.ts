@@ -7,7 +7,10 @@ export interface PathTracerOptions {
    * mapping. Default `DEFAULT_LOOK` (Studio). Checked like `setLook`.
    */
   readonly look?: LookPreset;
-  /** Scene-linear colour of camera rays that leave the scene: overrides the initial look's backdrop, flat. */
+  /**
+   * Scene-linear colour of camera rays that leave the scene: overrides the initial look's backdrop, flat. A channel
+   * not finite or outside 0..16 throws a `RangeError`.
+   */
   readonly background?: readonly [number, number, number];
   /** Indirect bounces after the camera hit, 1..16. Default 4; Russian roulette from bounce 3. */
   readonly maxBounces?: number;

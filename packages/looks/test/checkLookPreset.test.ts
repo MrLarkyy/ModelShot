@@ -121,6 +121,10 @@ describe('checkLookPreset', () => {
     expectError(edit('name', ''), 'VALUE', 'name');
     expectError(edit('name', 'x'.repeat(65)), 'VALUE', 'name');
     expectError(edit('name', 'a\nb'), 'VALUE', 'name');
+    expectError(edit('name', 'a\u0085b'), 'VALUE', 'name');
+    expectError(edit('name', 'a\ud800b'), 'VALUE', 'name');
+    expect(checkLookPreset(edit('name', '\u{1F600}'.repeat(64))).name).toHaveLength(128);
+    expectError(edit('name', '\u{1F600}'.repeat(65)), 'VALUE', 'name');
     expectError(edit('name', 3), 'TYPE', 'name');
   });
 

@@ -12,6 +12,7 @@ import {
 import {
   DEFAULT_LOOK,
   MAX_EDGE_WIDTH,
+  checkBackground,
   checkEdgeLook,
   checkLookPreset,
   lightingKey,
@@ -66,7 +67,10 @@ export interface RendererOptions {
    * (`PathTracerOptions.look`). Default `DEFAULT_LOOK` (Studio). Checked like `setLook`.
    */
   readonly look?: LookPreset;
-  /** Scene-linear backdrop colour behind the model: overrides the initial look's backdrop with this flat colour. */
+  /**
+   * Scene-linear backdrop colour behind the model: overrides the initial look's backdrop with this flat colour. A
+   * channel not finite or outside 0..16 throws a `RangeError`.
+   */
   readonly background?: readonly [number, number, number];
   /** Largest texture side accepted (further capped by MAX_TEXTURE_SIZE). Default 4096. */
   readonly maxTextureSide?: number;
@@ -199,7 +203,7 @@ export class RealtimeRenderer {
     private readonly options: RendererOptions,
   ) {
     const look = checkLookPreset(options.look ?? DEFAULT_LOOK);
-    const background = options.background;
+    const background = options.background ? checkBackground(options.background) : undefined;
     this.lookPreset = background ? { ...look, backdrop: { top: background, bottom: background } } : look;
     this.edges = checkEdgeLook(options.edges, look.edges);
     canvas.addEventListener('webglcontextlost', this.handleContextLost);

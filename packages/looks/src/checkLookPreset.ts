@@ -15,8 +15,8 @@ const MIN_KEY_Y = Math.sin((5 * Math.PI) / 180);
 /** A direction this close to unit length is kept as written, so hand-written unit vectors stay bit-exact. */
 const UNIT_TOLERANCE = 1e-4;
 const ID = /^[a-z0-9-]{1,32}$/;
-// eslint-disable-next-line no-control-regex -- the rule is exactly that names hold no control characters
-const CONTROL = /[\u0000-\u001f\u007f]/;
+/** Control characters (C0, DEL, C1) and lone surrogates (what `String.prototype.isWellFormed` would reject; es2023 lib). */
+const FORBIDDEN_IN_NAME = /[\p{Cc}\p{Cs}]/u;
 
 function fail(code: LookPresetErrorCode, path: string, message: string): never {
   throw new LookPresetError(code, message, path);
@@ -136,8 +136,9 @@ export function checkLookPreset(value: unknown): LookPreset {
   if (typeof root.id !== 'string' || !ID.test(root.id)) fail('VALUE', 'id', 'must match [a-z0-9-]{1,32}');
   const name = root.name;
   if (typeof name !== 'string') fail('TYPE', 'name', 'must be a string');
-  if (name.length < 1 || name.length > 64 || CONTROL.test(name)) {
-    fail('VALUE', 'name', 'must be 1..64 characters without control characters');
+  const nameLength = [...name].length;
+  if (nameLength < 1 || nameLength > 64 || FORBIDDEN_IN_NAME.test(name)) {
+    fail('VALUE', 'name', 'must be 1..64 well-formed characters without control characters');
   }
 
   const lights = fields(root.lights, 'lights', ['key', 'fill', 'rim']);

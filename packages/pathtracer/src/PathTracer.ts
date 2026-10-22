@@ -23,6 +23,7 @@ import {
 import {
   DEFAULT_LOOK,
   MAX_EDGE_WIDTH,
+  checkBackground,
   checkEdgeLook,
   checkLookPreset,
   uploadLookUniforms,
@@ -148,7 +149,7 @@ export class PathTracer {
     private readonly options: PathTracerOptions,
   ) {
     const look = checkLookPreset(options.look ?? DEFAULT_LOOK);
-    const background = options.background;
+    const background = options.background ? checkBackground(options.background) : undefined;
     this.lookPreset = background ? { ...look, backdrop: { top: background, bottom: background } } : look;
     this.maxBounces = checkInteger('maxBounces', options.maxBounces ?? DEFAULT_MAX_BOUNCES, 1, MAX_BOUNCES);
     this.tileSize = checkInteger('tileSize', options.tileSize ?? DEFAULT_TILE_SIZE, 16, 4096);

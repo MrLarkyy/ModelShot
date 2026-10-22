@@ -5,6 +5,7 @@ export { backdropColor } from './backdropColor';
 export { catcherShade } from './catcherShade';
 export { checkLookPreset } from './checkLookPreset';
 export { EDGE_LOOK_V0, MAX_EDGE_WIDTH, checkEdgeLook, type EdgeLook } from './EdgeLook';
+export { checkBackground } from './checkBackground';
 export { edgeRamp, roundedNormal } from './edgeRounding';
 export { LIGHT_RIG_V0, unoccludedRadiance, type LightRig } from './lightRig';
 export { lightingKey } from './lightingKey';
