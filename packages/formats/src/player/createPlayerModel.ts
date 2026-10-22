@@ -52,6 +52,7 @@ export function createPlayerModel(skin: SkinLoadResult, options: PlayerModelOpti
         visible: !part.outer || showOuterLayer,
         min: inflated(part.min, -part.inflate),
         max: inflated(part.max, part.inflate),
+        reversed: [false, false, false],
         origin: [0, 0, 0],
         rotation: [0, 0, 0],
         renderOrder: part.renderOrder,

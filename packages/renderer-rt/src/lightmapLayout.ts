@@ -361,7 +361,8 @@ function hashDocument(hash: LayoutHash, doc: SceneDocument, visible: readonly bo
     hash.array(mesh.indices);
     for (const group of mesh.groups) {
       for (const value of [group.material, group.start, group.count]) hash.number(value);
-      hash.word(group.doubleSided === true ? 1 : 0);
+      // Camera-only faces neither shadow nor occlude in the bake; 0 and 1 hash as before the flag existed.
+      hash.word((group.doubleSided === true ? 1 : 0) + (group.cameraOnly === true ? 2 : 0));
     }
   });
   for (const material of doc.materials) hash.number(material.texture);

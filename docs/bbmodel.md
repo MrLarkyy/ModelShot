@@ -17,7 +17,7 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
 ## Supported
 
 - Format versions 3.x, 4.x and 5.x (`meta.format_version`); any project format (`free`, `bedrock`, `java_block`, …). A file whose `meta.model_format` is absent, empty, `null`, `false` or `0` is read as Blockbench does: `java_block`, or `bedrock_old` when `meta.bone_rig` is truthy; its scene `source.modelFormat` stays `unknown`.
-- **Cubes**: `from`/`to` (either order), `origin` (pivot), `rotation` (any angles), `inflate` (also negative),
+- **Cubes**: `from`/`to` (from > to on an axis reverses it, see Conversion), `origin` (pivot), `rotation` (any angles), `inflate` (also negative),
   `stretch`, per-face `uv` with `rotation` (0, 90, 180, 270) and mirroring (u1 > u2 or v1 > v2), per-face `texture`
   (index or texture uuid), `visibility`, `render_order`.
 - **Meshes** (`type: "mesh"`): `vertices` (key → position relative to `origin`), `faces` (key → `vertices` list,
@@ -27,7 +27,8 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
 - **Planes**: Blockbench has no plane element; a plane is a mesh quad (the plane primitive) or a cube flat on one
   axis. Both load as above.
 - **Render sides** (texture `render_sides`: `auto`, `front`, `double`) set `SceneMeshGroup.doubleSided` of every face
-  with that texture; untextured faces follow the format.
+  with that texture; untextured faces follow the format, except on an outline hull (an inverted cube with volume on
+  every axis; Conversion, cube box).
 - **Per-texel alpha**: every texture material is `alphaMode: "blend"` with `alphaCutoff: 0.01`, as Blockbench draws
   textures (see the [scene format](scene-format.md#scenematerial) for what each pass does with a texel), except an
   `emissive` texture's (`mask`, 0.01); a layer composite is `blend` with `alphaCutoff: 0.05` (below).
@@ -36,7 +37,8 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
   `layers` (Conversion); an unknown value warns and loads as `default`. In the single-texture formats a face shows
   the format's default texture, as Blockbench draws it (Conversion, Blockbench conventions 15).
 - **Box UV** (`meta.box_uv` or the cube's `box_uv`): faces without a `uv` get Blockbench's box layout from
-  `uv_offset`, the cube size and `mirror_uv`. The size is `to − from` of the plain cube (inflate and stretch ignored),
+  `uv_offset`, the cube size and `mirror_uv`. The size is `to − from` of the plain cube (signed, so negative on a
+  reversed axis, as Blockbench lays it out; inflate and stretch ignored),
   floored as `floor(to − from + 1e-7)`, except in `modded_entity` and the Hytale plugin formats `hytale_character` and
   `hytale_prop`, where Blockbench keeps fractional box-UV sizes (`Format.box_uv_float_size`). In a
   box-UV project (`meta.box_uv`) before format 4.5 a cube's `shade: false` means mirrored UV, as Blockbench reads it.
@@ -96,10 +98,24 @@ scale (played as the smallest positive scale).
 - Group nodes keep `pivot` and `rotation`; meshes are placed by the node's world matrix (see the scene format).
 - Order: nodes and meshes follow the outliner (depth first); elements the outliner does not reference follow at the
   root in file order. An outliner entry for an unknown uuid is skipped with an `UNKNOWN_REFERENCE` warning.
-- Cube box: per axis `centre ∓ (half + inflate) · stretch`, as Blockbench. A negative inflate larger than half a side
-  collapses that axis to its centre. A negative stretch counts as its magnitude: Blockbench swaps that axis (the east
-  face and its texture end up mirrored on the −X side); ModelShot does not mirror the cube that way. Stretch and
-  inflate change geometry only, never UVs.
+- Cube box: per axis the signed extent e = ((to − from) / 2 + inflate) · stretch about the centre (from + to) / 2,
+  the box running from centre − e to centre + e, as Blockbench (`adjustFromAndToForInflateAndStretch`, `setShape`).
+  An axis with e < 0 is reversed: from > to, a negative stretch, or a negative inflate larger than half a side (a
+  positive inflate shrinks a reversed axis and, past zero, turns it back; e = 0 is a flat axis, not reversed). On a
+  reversed axis every face is mirrored about the box centre and keeps its uv, so the east face of a cube reversed in
+  x lies on the −X side. An odd number of reversed axes turns every face inward: an inverted hull, which shows only
+  from inside or as a rim around what it encloses (the outline technique). Its faces whose texture has `render_sides`
+  `auto`, and its untextured faces, draw single-sided in every format; `double` stays double-sided. This deviates on
+  purpose from Blockbench, which sides `auto` by its Render Sides setting: with the default setting it draws them
+  double-sided outside `java_block`, so the hull's outer side covers what it encloses; with the setting on Outside it
+  draws the rim, as ModelShot does. Those single-sided faces are also `SceneMeshGroup.cameraOnly`: Blockbench has no
+  global illumination, so a hull is only a rim the camera sees; in the path tracer and the light bake it neither
+  shadows nor occludes what it encloses. Only a cube with volume on every axis, as authored and after inflate, is such
+  a hull: a pane (flat as authored, or flattened by inflate) mirrored in its plane keeps its texture's sidedness. An even number leaves an
+  outward box, each face's texture on the opposite side turned 180°. The normal is each face's geometric front;
+  Blockbench keeps the fixed normal of the face's key, which disagrees with the winding where exactly one other axis
+  is reversed, so ModelShot lights those faces as their winding says. The 0.001 Blockbench adds to a flat axis is not
+  applied (faces below). Stretch and inflate change geometry only, never UVs.
 - Faces: `texture: null` removes the face (no triangles, its other fields are not read, it does not count towards
   `maxTriangles`); no `texture` key or `texture: false` is a blank face drawn untextured (material −1, UVs normalised
   by the project resolution) unless the format's default texture applies (below); a number is a texture index and a
@@ -448,6 +464,13 @@ default texture on blank faces only; they also honour `use_as_default`, composit
 `free_rotation`, `java_block_sequence`, `cosmic_reach_model`, `eme_entity` and every other format load exactly as
 before. A bad `uv_width`/`uv_height` in the newly read formats and a malformed Hytale `collections` entry only
 warn, so no file that loaded before fails.
+Reload affected models; scene documents need no migration.
+
+MS-50 reads reversed cube axes as Blockbench draws them, a behaviour change for files that loaded before: a cube
+with from > to on an axis, a negative stretch or a negative inflate larger than half a side used to load as an
+outward box (or, for the inflate, collapsed flat) and now loads mirrored on that axis, inverted when an odd number of
+axes is reversed. On an outline hull (an inverted cube with volume on every axis) `auto`-sided and untextured faces
+are single-sided and its single-sided faces `cameraOnly` (Conversion). Every other cube loads exactly as before; no file that loaded before fails.
 Reload affected models; scene documents need no migration.
 
 ## Local-first

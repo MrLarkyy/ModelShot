@@ -115,6 +115,17 @@ describe('validateScene', () => {
     expect(() => validateScene(withMesh(() => ({ renderOrder: -1024 })))).not.toThrow();
   });
 
+  it('rejects a cameraOnly that is not a boolean; accepts true, false and absent', () => {
+    const groups = (cameraOnly: unknown) => [{ material: 0, start: 0, count: 6, cameraOnly: cameraOnly as boolean }];
+    expectInvalid(
+      withMesh(() => ({ groups: groups('yes') })),
+      'meshes[0].groups[0].cameraOnly',
+    );
+    expect(() => validateScene(withMesh(() => ({ groups: groups(true) })))).not.toThrow();
+    expect(() => validateScene(withMesh(() => ({ groups: groups(false) })))).not.toThrow();
+    expect(() => validateScene(withMesh(() => ({ groups: groups(undefined) })))).not.toThrow();
+  });
+
   it('rejects a doubleSided that is not a boolean', () => {
     const groups = [{ material: 0, start: 0, count: 6, doubleSided: 'yes' as unknown as boolean }];
     expectInvalid(

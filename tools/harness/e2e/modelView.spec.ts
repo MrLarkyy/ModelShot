@@ -23,8 +23,8 @@ const playerRaycast = variant('player-raycast');
 
 /**
  * Raster (shadow map, rasterised edges, interpolated UVs) and raycast (exact rays) renders of the same model differ
- * where a pixel centre sits within a rounding error of a silhouette, a texel boundary or a shadow edge. Each limit is the measured
- * difference on SwiftShader (docs/testing.md) with headroom for that count only. Never widened to make a pair pass: a
+ * where a pixel centre sits within a rounding error of a silhouette, a texel boundary or a shadow edge. Each limit is the
+ * measured difference on SwiftShader (docs/testing.md) with headroom for that count only. Never widened to make a pair pass: a
  * real difference (a cutout texel shown or casting a shadow in one path only, a lost tie) changes hundreds of pixels.
  */
 const MODEL_VIEW_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions & { reason: string }>> = {
@@ -149,6 +149,20 @@ test.describe('model-view fixture', () => {
       const flatDark = pixel(png, at('flat-shadow-of-opaque-texel'));
       expect(luminance(flatLit), 'light through a flat-cube hole lights the ground').toBeGreaterThan(120);
       expect(luminance(flatDark), 'an opaque flat-cube texel shadows it').toBeLessThan(0.6 * luminance(flatLit));
+    });
+  }
+
+  for (const spec of [variant('alpha-plane-camera-only-raster'), variant('alpha-plane-camera-only-raycast')]) {
+    test(`${spec.name}: a camera-only plane is seen but casts no shadow`, async ({ page }) => {
+      const { png, probes } = await render(page, spec);
+      const at = (name: string) => probes.find((p) => p.name === name);
+      const [r, g, b] = pixel(png, at('opaque-texel'));
+      expect(r, 'the camera still sees the plane').toBeGreaterThan(2 * Math.max(g, b));
+      const lit = luminance(pixel(png, at('shadow-of-transparent-texel')));
+      expect(lit, 'the ground is lit').toBeGreaterThan(120);
+      expect(luminance(pixel(png, at('shadow-of-opaque-texel'))), 'behind an opaque texel too').toBeGreaterThan(
+        0.95 * lit,
+      );
     });
   }
 

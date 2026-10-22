@@ -62,12 +62,11 @@ function validateMesh(mesh: SceneMesh, path: string, doc: SceneDocument): void {
   mesh.groups.forEach((group, g) => {
     const groupPath = `${path}.groups[${g}]`;
     checkIndex(group.material, doc.materials.length, `${groupPath}.material`, true);
-    const doubleSided: unknown = group.doubleSided;
-    if (doubleSided !== undefined && typeof doubleSided !== 'boolean') {
-      fail(
-        `${groupPath}.doubleSided`,
-        `expected true or false, got ${typeof doubleSided === 'string' ? doubleSided : typeof doubleSided}`,
-      );
+    for (const flag of ['doubleSided', 'cameraOnly'] as const) {
+      const value: unknown = group[flag];
+      if (value !== undefined && typeof value !== 'boolean') {
+        fail(`${groupPath}.${flag}`, `expected true or false, got ${typeof value === 'string' ? value : typeof value}`);
+      }
     }
     const { start, count } = group;
     const ok = Number.isInteger(start) && Number.isInteger(count) && start >= 0 && count >= 0;
@@ -81,7 +80,7 @@ function validateMesh(mesh: SceneMesh, path: string, doc: SceneDocument): void {
  * Checks every cross reference, buffer length and node transform (finite `pivot`, `rotation`, `translation` and
  * `restRotation`; `scale` finite and positive, so no matrix mirrors or collapses) the renderer relies on, so a malformed document fails with a
  * `RendererError` `INVALID_SCENE` naming the path instead of reading out of bounds on the GPU; also `renderOrder`
- * (an integer in ±1024, the range the exact depth key maps into depth, `exactDepthRange`) and `doubleSided` (a boolean). Material
+ * (an integer in ±1024, the range the exact depth key maps into depth, `exactDepthRange`), `doubleSided` and `cameraOnly` (booleans). Material
  * `alphaMode` / `alphaCutoff` are not checked: `resolveMaterialAlpha` turns any value into a valid rule.
  *
  * `validated`, a document this function accepted before: when `doc` shares its meshes, materials and textures arrays

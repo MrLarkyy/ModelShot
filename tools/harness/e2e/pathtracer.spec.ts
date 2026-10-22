@@ -25,6 +25,7 @@ import {
   type Image,
 } from '../src/imageMetrics';
 import { shadowStep } from '../src/shadowStep';
+import { OUTLINE_HULL_BOARD_LEVELS, outlineHullProbe } from '../src/outlineHullProbe';
 import { differenceMask, maskedPng } from '../src/edgeProbes';
 
 /**
@@ -365,6 +366,8 @@ const PT_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions>> = {
   'preset-rim': { threshold: 0.1, maxDiffRatio: 0.0241, maxMeanDelta: 1.13 },
   // The app's default yaw: the rim follows the camera to the screen-left silhouettes.
   'preset-marketplace-yaw30': { threshold: 0.1, maxDiffRatio: 0.0265, maxMeanDelta: 1.52 },
+  // MS-50: measured ratio 0.01642, mean delta 0.912 (the rim's antialiased silhouette against the traced box filter).
+  'outline-hull': { threshold: 0.1, maxDiffRatio: 0.0205, maxMeanDelta: 1.14 },
 };
 
 const PAIR_SAMPLES: Readonly<Record<string, number>> = { 'alpha-plane': 128, 'cutout-checker': 128, edges: 128 };
@@ -767,5 +770,28 @@ test.describe('lifetime', () => {
     expect(counts.loaded.gl).toBeGreaterThan(0);
     expect(counts.loaded.bitmaps).toBe(2);
     expect({ gl: counts.gl, bitmaps: counts.bitmaps, step: counts.step }).toEqual({ gl: 0, bitmaps: 0, step: 0 });
+  });
+});
+
+/**
+ * MS-50: a board inside an inverted-hull outline (a Blockbench cube with from > to on every axis, its texture `auto`
+ * sided): the board keeps its brightness and the hull shows only as a dark rim; paired with rt-outline-hull.
+ */
+test.describe('outline hull', () => {
+  test.describe.configure({ timeout: 120_000 });
+  const golden = pt('outline-hull', 'outline-hull', 64);
+
+  test(`${golden.name} matches its golden`, async ({ page }, testInfo) => {
+    await expectGolden(page, testInfo, golden);
+    expect(await page.evaluate(() => window.__msFixture?.pt?.capped())).toEqual({ traversals: 0, pixels: 0 });
+  });
+
+  test('the board keeps its brightness inside the hull, a dark rim shows around it', async ({ page }) => {
+    const withHull = await render(page, 'variant=outline-hull&seed=1&samples=64');
+    const alone = await render(page, 'variant=outline-hull&scene=outline-hull-board&seed=1&samples=64');
+    const probe = outlineHullProbe(withHull.image, alone.image);
+    console.log(`[pt probe] outline hull: ${JSON.stringify(probe)}`);
+    expect(Math.abs(probe.boardWithHull - probe.boardAlone)).toBeLessThanOrEqual(OUTLINE_HULL_BOARD_LEVELS);
+    expect(probe.rimPixels).toBeGreaterThan(200);
   });
 });

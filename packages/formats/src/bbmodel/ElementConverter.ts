@@ -12,6 +12,11 @@ export interface ConverterContext {
   readonly textureIds: ReadonlyMap<string, number>;
   /** Whether faces with each texture show their back (texture `render_sides` resolved for the model format). */
   readonly textureDoubleSided: readonly boolean[];
+  /**
+   * Whether each texture's `render_sides` is `auto` (sided by the model format); a material past the textures (a layer
+   * composite) and untextured faces count as `auto`. An inverted cube draws those faces single-sided (`readCube`).
+   */
+  readonly textureSidesAuto: readonly boolean[];
   /** Whether untextured faces show their back (the model format's rule). */
   readonly untexturedDoubleSided: boolean;
   /** The model format's face texture rule (Blockbench `Face.getTexture`); absent: `perFace`. */

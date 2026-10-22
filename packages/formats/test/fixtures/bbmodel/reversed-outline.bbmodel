@@ -1,0 +1,575 @@
+{
+  "meta": {
+    "format_version": "4.10",
+    "model_format": "free",
+    "box_uv": false
+  },
+  "name": "reversed-outline",
+  "resolution": {
+    "width": 16,
+    "height": 16
+  },
+  "elements": [
+    {
+      "name": "board",
+      "type": "cube",
+      "uuid": "c-board",
+      "from": [
+        -8,
+        0,
+        -4
+      ],
+      "to": [
+        8,
+        2,
+        4
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            0,
+            0,
+            8,
+            8
+          ],
+          "texture": 0
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            8,
+            8
+          ],
+          "texture": 0
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            8,
+            8
+          ],
+          "texture": 0
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            8,
+            8
+          ],
+          "texture": 0
+        },
+        "up": {
+          "uv": [
+            8,
+            0,
+            16,
+            8
+          ],
+          "texture": 0
+        },
+        "down": {
+          "uv": [
+            0,
+            0,
+            8,
+            8
+          ],
+          "texture": 0
+        }
+      }
+    },
+    {
+      "name": "shell",
+      "type": "cube",
+      "uuid": "c-shell",
+      "from": [
+        8.3,
+        2.3,
+        4.3
+      ],
+      "to": [
+        -8.3,
+        -0.3,
+        -4.3
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            0,
+            8,
+            8,
+            16
+          ],
+          "texture": 0
+        },
+        "east": {
+          "uv": [
+            0,
+            8,
+            8,
+            16
+          ],
+          "texture": 0
+        },
+        "south": {
+          "uv": [
+            0,
+            8,
+            8,
+            16
+          ],
+          "texture": 0
+        },
+        "west": {
+          "uv": [
+            0,
+            8,
+            8,
+            16
+          ],
+          "texture": 0
+        },
+        "up": {
+          "uv": [
+            0,
+            8,
+            8,
+            16
+          ],
+          "texture": 0
+        },
+        "down": {
+          "uv": [
+            0,
+            8,
+            8,
+            16
+          ],
+          "texture": 0
+        }
+      }
+    },
+    {
+      "name": "shell-b",
+      "type": "cube",
+      "uuid": "c-shell-b",
+      "from": [
+        12,
+        0,
+        0
+      ],
+      "to": [
+        10,
+        2,
+        2
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "east": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "south": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "west": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "up": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "down": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        }
+      }
+    },
+    {
+      "name": "shell-c",
+      "type": "cube",
+      "uuid": "c-shell-c",
+      "from": [
+        16,
+        2,
+        0
+      ],
+      "to": [
+        14,
+        0,
+        2
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "east": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "south": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "west": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            8,
+            8
+          ],
+          "texture": 0
+        },
+        "down": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        }
+      }
+    },
+    {
+      "name": "shell-d",
+      "type": "cube",
+      "uuid": "c-shell-d",
+      "from": [
+        20,
+        2,
+        2
+      ],
+      "to": [
+        18,
+        0,
+        0
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 1
+        },
+        "east": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 1
+        },
+        "south": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 1
+        },
+        "west": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 1
+        },
+        "up": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 1
+        },
+        "down": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 1
+        }
+      }
+    },
+    {
+      "name": "shell-e",
+      "type": "cube",
+      "uuid": "c-shell-e",
+      "from": [
+        22,
+        0,
+        0
+      ],
+      "to": [
+        24,
+        2,
+        2
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "stretch": [
+        -1,
+        1,
+        1
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "east": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "south": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "west": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "up": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "down": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        }
+      }
+    },
+    {
+      "name": "shell-f",
+      "type": "cube",
+      "uuid": "c-shell-f",
+      "from": [
+        26,
+        0,
+        0
+      ],
+      "to": [
+        28,
+        0.5,
+        2
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "inflate": -0.5,
+      "faces": {
+        "north": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "east": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "south": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "west": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "up": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "down": {
+          "uv": [
+            8,
+            8,
+            16,
+            16
+          ],
+          "texture": 0
+        }
+      }
+    }
+  ],
+  "outliner": [
+    "c-board",
+    "c-shell",
+    "c-shell-b",
+    "c-shell-c",
+    "c-shell-d",
+    "c-shell-e",
+    "c-shell-f"
+  ],
+  "textures": [
+    {
+      "name": "outline.png",
+      "uuid": "t-outline",
+      "render_sides": "auto",
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAnElEQVR4AaXBoVlEMRSE0Z/7PRUTHcRoilhPD1sEika2KxRFjImOiV2YBtbknLefr48n/6RG2JuQGvHJnegaxPIkugZRHLqkRtibkBphb6LfBrE8ia5BLE+iOHTZm5AaYW9CasTyJLoGsTyJrkEUhy6pEfYmpEbYm+i3QSxPomsQy5MoDl3v37+88nzceaU4VBwqDhWHikPFoeLQH4ykMTRlR9HLAAAAAElFTkSuQmCC"
+    },
+    {
+      "name": "outline-double.png",
+      "uuid": "t-outline-double",
+      "render_sides": "double",
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAnElEQVR4AaXBoVlEMRSE0Z/7PRUTHcRoilhPD1sEika2KxRFjImOiV2YBtbknLefr48n/6RG2JuQGvHJnegaxPIkugZRHLqkRtibkBphb6LfBrE8ia5BLE+iOHTZm5AaYW9CasTyJLoGsTyJrkEUhy6pEfYmpEbYm+i3QSxPomsQy5MoDl3v37+88nzceaU4VBwqDhWHikPFoeLQH4ykMTRlR9HLAAAAAElFTkSuQmCC"
+    }
+  ]
+}

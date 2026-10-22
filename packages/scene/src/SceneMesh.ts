@@ -10,6 +10,13 @@ export interface SceneMeshGroup {
    * flipped toward the viewer or ray.
    */
   readonly doubleSided?: boolean;
+  /**
+   * Absent or `false`: an ordinary face. `true`: only camera rays (the first ray of a path, the preview's raster) see
+   * the face; every other ray ignores it: path bounces, shadow rays, fill and ambient occlusion, the shadow catcher
+   * and the light bake. Blockbench's inverted-hull outlines load this way, so the hull draws its rim without shading
+   * what it encloses.
+   */
+  readonly cameraOnly?: boolean;
 }
 
 /**

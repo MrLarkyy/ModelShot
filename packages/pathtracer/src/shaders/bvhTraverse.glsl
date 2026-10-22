@@ -1,6 +1,7 @@
 // Stack traversal of the BVH (buildBvh.ts layout) with the scene format's rules for every ray: an invisible texel is
 // skipped as if absent, a single-sided face counts only from its front (shadow rays: only if its front faces the
-// light), and camera and bounce rays keep the hit with the smallest render-order key.
+// light), a camera-only face only for camera rays, and camera and bounce rays keep the hit with the smallest
+// render-order key.
 #include "rng"
 #include "surfaceHit"
 
@@ -23,6 +24,15 @@ vec3 safeInverse(vec3 d) {
   // A zero component would give 0 * inf = NaN at a slab boundary.
   vec3 tiny = vec3(1.0e-30);
   return 1.0 / mix(d, sign(d + tiny) * tiny, lessThan(abs(d), tiny));
+}
+
+// The triangle code in w of its second position texel (packSceneData.ts): double-sided 1, camera-only 2.
+bool isDoubleSided(float code) {
+  return mod(code, 2.0) > 0.5;
+}
+
+bool isCameraOnly(float code) {
+  return code > 1.5;
 }
 
 bool boxHit(vec3 lo, vec3 hi, vec3 origin, vec3 inverseDirection, float tMin, float tMax, out float entry) {
@@ -59,6 +69,7 @@ bool triangleHit(vec3 origin, vec3 direction, vec3 p0, vec3 p1, vec3 p2, out flo
 // The visible hit with the smallest key t * depthScale - (order + back side) * tie in [tMin, tMax], skipping the
 // triangle skip (the one the ray leaves). depthScale is the cosine to the view axis for camera rays, 1 otherwise. A
 // partial texel is taken with probability alpha (stochastic transparency), drawn per triangle in alphaDimension.
+// Camera-only triangles count only when cameraRay is set; the form without it is for every other ray.
 bool closestHit(
   vec3 origin,
   vec3 direction,
@@ -68,7 +79,8 @@ bool closestHit(
   int skip,
   uint sampleKey,
   uint alphaDimension,
-  out Hit hit
+  out Hit hit,
+  bool cameraRay
 ) {
   hit = Hit(-1, 0.0, vec2(0.0), false);
   if (u_nodeCount == 0) return false;
@@ -107,7 +119,8 @@ bool closestHit(
       bool back;
       if (!triangleHit(origin, direction, p0.xyz, p1.xyz, p2.xyz, t, bary, back)) continue;
       if (t < tMin || t > tMax) continue;
-      if (back && p1.w < 0.5) continue;
+      if (!cameraRay && isCameraOnly(p1.w)) continue;
+      if (back && !isDoubleSided(p1.w)) continue;
       float order = p2.w + (back ? u_backSideOrder : 0.0);
       float key = t * depthScale - order * u_orderTie;
       if (key >= bestKey) continue;
@@ -124,9 +137,24 @@ bool closestHit(
   return hit.triangle >= 0;
 }
 
+bool closestHit(
+  vec3 origin,
+  vec3 direction,
+  float tMin,
+  float tMax,
+  float depthScale,
+  int skip,
+  uint sampleKey,
+  uint alphaDimension,
+  out Hit hit
+) {
+  return closestHit(origin, direction, tMin, tMax, depthScale, skip, sampleKey, alphaDimension, hit, false);
+}
+
 // Light that reaches the light along direction from origin: 0 behind an opaque texel, times 1 - alpha for each
 // partial texel crossed (order-independent). Render order does not apply to occlusion. A single-sided face blocks only
-// when its front faces the light, i.e. when this ray, travelling toward the light, meets its back.
+// when its front faces the light, i.e. when this ray, travelling toward the light, meets its back; a camera-only face
+// never blocks.
 float shadowTransmittance(vec3 origin, vec3 direction, int skip) {
   if (u_nodeCount == 0) return 1.0;
   vec3 inverseDirection = safeInverse(direction);
@@ -159,7 +187,8 @@ float shadowTransmittance(vec3 origin, vec3 direction, int skip) {
       bool back;
       if (!triangleHit(origin, direction, p0.xyz, p1.xyz, p2.xyz, t, bary, back)) continue;
       if (t <= 0.0) continue;
-      if (!back && p1.w < 0.5) continue;
+      if (isCameraOnly(p1.w)) continue;
+      if (!back && !isDoubleSided(p1.w)) continue;
       float alpha;
       int coverage = hitCoverage(triangle, int(p0.w), bary, alpha);
       if (coverage == COVERAGE_OPAQUE) return 0.0;

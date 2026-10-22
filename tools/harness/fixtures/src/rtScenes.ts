@@ -10,6 +10,7 @@ import shapesObjSource from '../../../../packages/formats/test/fixtures/obj/shap
 import shapesPngUri from '../../../../packages/formats/test/fixtures/obj/shapes.png?inline';
 import flatSource from '../models/rt-flat.bbmodel?raw';
 import alphaRampUri from '../models/rt-alpha-ramp.png?inline';
+import outlineHullSource from '../models/outline-hull.bbmodel?raw';
 import showcaseSource from '../models/rt-showcase.bbmodel?raw';
 import { benchScene } from './benchScene';
 import { cutoutChecker } from './cutoutChecker';
@@ -70,6 +71,8 @@ export const RT_SCENE_NAMES = [
   'edges-200k',
   'edges-hostile',
   'edges-weld',
+  'outline-hull',
+  'outline-hull-board',
 ] as const;
 export type RtSceneName = (typeof RT_SCENE_NAMES)[number];
 
@@ -227,6 +230,8 @@ export const RT_VARIANTS: Readonly<Record<string, Partial<RtView>>> = {
     bake: 64,
     fallback: true,
   },
+  // MS-50: a board inside an inverted-hull outline (a Blockbench cube with from > to), seen from above its side.
+  'outline-hull': { scene: 'outline-hull', yawDeg: 30, pitchDeg: 30 },
 };
 
 /** The look of a view: its preset, with the rim light black under `rim=0`. */
@@ -380,6 +385,15 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return holdingCube(playerScene('classic', 'classic'), 'walk');
     case 'player-wave':
       return posedPlayer(playerScene('classic', 'classic'), 'wave');
+    case 'outline-hull':
+      return load(outlineHullSource);
+    case 'outline-hull-board': {
+      // The shell keeps its vertices, so the camera fits the same bounds as outline-hull, but draws no triangle.
+      const doc = load(outlineHullSource);
+      const drop = (mesh: SceneMesh) =>
+        mesh.name === 'shell' ? { ...mesh, indices: new Uint32Array(0), groups: [] } : mesh;
+      return { ...doc, meshes: doc.meshes.map(drop) };
+    }
   }
 }
 
