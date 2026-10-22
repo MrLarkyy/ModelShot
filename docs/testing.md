@@ -411,7 +411,9 @@ and `pathtracer.spec.ts`, golden project):
 The look review page `review.html` (harness only, no build ships it) renders a `.bbmodel` the user picks (read from
 the file input, nothing fetched; none: the harness player with a held cube) under a preset, side by side: the baked
 preview (64 samples) and the render (seed 1, `samples`, default 256), `size` CSS pixels (default 512), yaw and pitch
-inputs, a PNG download of each. `environment.spec.ts` opens it at 4 samples and checks it finishes on the fixture
+inputs, a PNG download of each. The camera fits the model's outline (its visible vertices projected from yaw and
+pitch) to 90 % of the view on the tighter axis, centred (`fitCameraToPoints`, tested); unticking "Fit" uses the
+app's bounding-sphere framing. `environment.spec.ts` opens it at 4 samples and checks it finishes on the fixture
 origin. Step 14 of MS-19 compares its Marketplace output with reference renders kept outside the repository.
 
 For a manual run on real hardware open `pt.html?scene=bench&size=512&samples=256&timing=1`: one sample per animation

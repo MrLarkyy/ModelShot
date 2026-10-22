@@ -3,13 +3,16 @@ import { DEFAULT_LOOK, LOOK_PRESETS } from '@modelshot/looks';
 import { LightBaker, PathTracer } from '@modelshot/pathtracer';
 import { OrbitController, RealtimeRenderer } from '@modelshot/renderer-rt';
 import { sceneBounds, type SceneCamera, type SceneDocument } from '@modelshot/scene';
+import { fitCameraToPoints } from './fitCameraToPoints';
 import { lookByName } from './lookByName';
 import { rtScene } from './rtScenes';
+import { sceneTriangles } from './sceneTriangles';
 
 // The look review page (MS-19): a model the user picks (read from the file input, nothing fetched) or the harness
 // player, under a look preset, side by side in the baked preview and the path tracer, each downloadable as a PNG for
 // a comparison with reference images outside the repository. Harness only, never part of a build. URL parameters:
-// preset (default studio), samples (render samples, default 256), size (CSS pixels, default 512); the page renders
+// preset (default studio), samples (render samples, default 256), size (CSS pixels, default 512). The camera fits the
+// model's outline (its vertices) to the view by default, the app's bounding-sphere framing when unticked. It renders
 // once on load and sets data-state="done" on the body when both images are complete.
 
 const params = new URLSearchParams(location.search);
@@ -41,6 +44,7 @@ const modelInput = element<HTMLInputElement>('model');
 const presetSelect = element<HTMLSelectElement>('preset');
 const yawInput = element<HTMLInputElement>('yaw');
 const pitchInput = element<HTMLInputElement>('pitch');
+const fitInput = element<HTMLInputElement>('fit');
 const button = element<HTMLButtonElement>('render');
 const status = element<HTMLElement>('status');
 
@@ -73,14 +77,14 @@ async function pickedScene(): Promise<{ doc: SceneDocument; name: string }> {
 }
 
 function camera(doc: SceneDocument): SceneCamera {
-  const controller = new OrbitController({
-    damping: false,
-    yawDeg: Number(yawInput.value) || 0,
-    pitchDeg: Math.max(-89, Math.min(89, Number(pitchInput.value) || 0)),
-  });
+  const yawDeg = Number(yawInput.value) || 0;
+  const pitchDeg = Math.max(-89, Math.min(89, Number(pitchInput.value) || 0));
+  const controller = new OrbitController({ damping: false, yawDeg, pitchDeg });
   controller.setAspect(1);
-  controller.reset(sceneBounds(doc));
-  return controller.camera();
+  const bounds = sceneBounds(doc);
+  controller.reset(bounds);
+  if (!fitInput.checked || !bounds) return controller.camera();
+  return fitCameraToPoints(sceneTriangles(doc).positions, bounds, yawDeg, pitchDeg, controller.fov, 1);
 }
 
 async function download(link: HTMLAnchorElement, source: HTMLCanvasElement, name: string): Promise<void> {
