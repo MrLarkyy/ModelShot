@@ -1,0 +1,178 @@
+{
+  "meta": {
+    "format_version": "4.10",
+    "model_format": "free",
+    "box_uv": false
+  },
+  "name": "outline-hull",
+  "resolution": {
+    "width": 16,
+    "height": 16
+  },
+  "elements": [
+    {
+      "name": "board",
+      "type": "cube",
+      "uuid": "c-board",
+      "from": [
+        -8,
+        0,
+        -4
+      ],
+      "to": [
+        8,
+        4,
+        4
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            0,
+            0,
+            8,
+            8
+          ],
+          "texture": 0
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            8,
+            8
+          ],
+          "texture": 0
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            8,
+            8
+          ],
+          "texture": 0
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            8,
+            8
+          ],
+          "texture": 0
+        },
+        "up": {
+          "uv": [
+            8,
+            0,
+            16,
+            8
+          ],
+          "texture": 0
+        },
+        "down": {
+          "uv": [
+            0,
+            0,
+            8,
+            8
+          ],
+          "texture": 0
+        }
+      }
+    },
+    {
+      "name": "shell",
+      "type": "cube",
+      "uuid": "c-shell",
+      "from": [
+        8.3,
+        4.3,
+        4.3
+      ],
+      "to": [
+        -8.3,
+        -0.3,
+        -4.3
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            0,
+            8,
+            8,
+            16
+          ],
+          "texture": 0
+        },
+        "east": {
+          "uv": [
+            0,
+            8,
+            8,
+            16
+          ],
+          "texture": 0
+        },
+        "south": {
+          "uv": [
+            0,
+            8,
+            8,
+            16
+          ],
+          "texture": 0
+        },
+        "west": {
+          "uv": [
+            0,
+            8,
+            8,
+            16
+          ],
+          "texture": 0
+        },
+        "up": {
+          "uv": [
+            0,
+            8,
+            8,
+            16
+          ],
+          "texture": 0
+        },
+        "down": {
+          "uv": [
+            0,
+            8,
+            8,
+            16
+          ],
+          "texture": 0
+        }
+      }
+    }
+  ],
+  "outliner": [
+    "c-board",
+    "c-shell"
+  ],
+  "textures": [
+    {
+      "name": "outline-hull.png",
+      "uuid": "t-outline-hull",
+      "render_sides": "auto",
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAnElEQVR4AaXBoVlEMRSE0Z/7PRUTHcRoilhPD1sEika2KxRFjImOiV2YBtbknLefr48n/6RG2JuQGvHJnegaxPIkugZRHLqkRtibkBphb6LfBrE8ia5BLE+iOHTZm5AaYW9CasTyJLoGsTyJrkEUhy6pEfYmpEbYm+i3QSxPomsQy5MoDl3v37+88nzceaU4VBwqDhWHikPFoeLQH4ykMTRlR9HLAAAAAElFTkSuQmCC"
+    }
+  ]
+}

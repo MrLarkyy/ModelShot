@@ -20,6 +20,7 @@ import {
   type Image,
 } from '../src/imageMetrics';
 import { shadowStep } from '../src/shadowStep';
+import { outlineHullProbe } from '../src/outlineHullProbe';
 import { differenceMask, maskedPng } from '../src/edgeProbes';
 
 /**
@@ -599,5 +600,28 @@ test.describe('lifetime', () => {
     expect(counts.loaded.gl).toBeGreaterThan(0);
     expect(counts.loaded.bitmaps).toBe(2);
     expect({ gl: counts.gl, bitmaps: counts.bitmaps, step: counts.step }).toEqual({ gl: 0, bitmaps: 0, step: 0 });
+  });
+});
+
+/**
+ * MS-50: a board inside an inverted-hull outline (a Blockbench cube with from > to on every axis, its texture `auto`
+ * sided): the board keeps its brightness and the hull shows only as a dark rim; paired with rt-outline-hull.
+ */
+test.describe('outline hull', () => {
+  test.describe.configure({ timeout: 120_000 });
+  const golden = pt('outline-hull', 'outline-hull', 64);
+
+  test(`${golden.name} matches its golden`, async ({ page }, testInfo) => {
+    await expectGolden(page, testInfo, golden);
+    expect(await page.evaluate(() => window.__msFixture?.pt?.capped())).toEqual({ traversals: 0, pixels: 0 });
+  });
+
+  test('the board keeps its brightness inside the hull, a dark rim shows around it', async ({ page }) => {
+    const withHull = await render(page, 'variant=outline-hull&seed=1&samples=64');
+    const alone = await render(page, 'variant=outline-hull&scene=outline-hull-board&seed=1&samples=64');
+    const probe = outlineHullProbe(withHull.image, alone.image);
+    console.log(`[pt probe] outline hull: ${JSON.stringify(probe)}`);
+    expect(probe.boardWithHull).toBeGreaterThanOrEqual(0.6 * probe.boardAlone);
+    expect(probe.rimPixels).toBeGreaterThan(200);
   });
 });

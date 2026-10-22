@@ -9,6 +9,7 @@ import shapesObjSource from '../../../../packages/formats/test/fixtures/obj/shap
 import shapesPngUri from '../../../../packages/formats/test/fixtures/obj/shapes.png?inline';
 import flatSource from '../models/rt-flat.bbmodel?raw';
 import alphaRampUri from '../models/rt-alpha-ramp.png?inline';
+import outlineHullSource from '../models/outline-hull.bbmodel?raw';
 import showcaseSource from '../models/rt-showcase.bbmodel?raw';
 import { benchScene } from './benchScene';
 import { cutoutChecker } from './cutoutChecker';
@@ -69,6 +70,8 @@ export const RT_SCENE_NAMES = [
   'edges-200k',
   'edges-hostile',
   'edges-weld',
+  'outline-hull',
+  'outline-hull-board',
 ] as const;
 export type RtSceneName = (typeof RT_SCENE_NAMES)[number];
 
@@ -207,6 +210,8 @@ export const RT_VARIANTS: Readonly<Record<string, Partial<RtView>>> = {
   'bake-turntable-y030': { yawDeg: 30, bake: 64 },
   // Edge rounding (MS-15): sharp-edged cube and wedge beside a plane, a card and a smooth sphere.
   edges: { scene: 'edges', yawDeg: 30, pitchDeg: 35 },
+  // MS-50: a board inside an inverted-hull outline (a Blockbench cube with from > to), seen from above its side.
+  'outline-hull': { scene: 'outline-hull', yawDeg: 30, pitchDeg: 30 },
 };
 
 function load(source: string): SceneDocument {
@@ -352,6 +357,11 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return holdingCube(playerScene('classic', 'classic'), 'walk');
     case 'player-wave':
       return posedPlayer(playerScene('classic', 'classic'), 'wave');
+    case 'outline-hull':
+      return load(outlineHullSource);
+    case 'outline-hull-board':
+      // Framed as outline-hull: the hull is symmetric about the board, so the board centre stays in the same pixel.
+      return hideMeshes(load(outlineHullSource), 'shell');
   }
 }
 
