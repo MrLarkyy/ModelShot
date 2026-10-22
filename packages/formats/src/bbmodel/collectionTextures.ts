@@ -49,12 +49,8 @@ export function readCollections(
       return;
     }
     readChildren(field(entry, 'children'), childPath(path, 'children'), index, byChild, limits, warnings);
-    const scope = field(entry, 'scope');
-    if (typeof scope === 'number' && Number.isFinite(scope)) {
-      if (scope !== 0 && !byScope.has(scope)) byScope.set(scope, index);
-    } else if (scope !== undefined) {
-      warnings.add('UNSUPPORTED_VALUE', childPath(path, 'scope'), `expected a number, got ${quoteValue(scope)}`);
-    }
+    const scope = readScope(entry, path, warnings);
+    if (scope !== undefined && !byScope.has(scope)) byScope.set(scope, index);
     texture[index] = collectionTexture(field(entry, 'texture'), childPath(path, 'texture'), textureIds, warnings);
   });
   return { present: true, byChild, byScope, texture };
@@ -112,6 +108,7 @@ export function collectionElementTextures(
   placements: readonly ElementPlacement[],
   elements: readonly JsonObject[],
   fallback: number,
+  warnings: BbmodelWarningList,
 ): (number | undefined)[] {
   const result: (number | undefined)[] = [];
   if (!collections.present) return result;
@@ -122,15 +119,14 @@ export function collectionElementTextures(
   });
   for (const { element: index, node } of placements) {
     const element = elements[index];
-    if (!element) continue;
+    // Only cube faces follow collections; other types are not read here.
+    if (!element || (field(element, 'type') ?? 'cube') !== 'cube') continue;
     const uuid = field(element, 'uuid');
-    const scope = field(element, 'scope');
+    const scope = readScope(element, childPath('$.elements', index), warnings);
     const first = Math.min(
       node >= 0 ? (nodeFirst[node] ?? Infinity) : Infinity,
       typeof uuid === 'string' ? lookup(collections.byChild, uuid) : Infinity,
-      typeof scope === 'number' && Number.isFinite(scope) && scope !== 0
-        ? lookup(collections.byScope, scope)
-        : Infinity,
+      scope === undefined ? Infinity : lookup(collections.byScope, scope),
     );
     result[index] = Number.isFinite(first) ? (collections.texture[first] ?? -1) : fallback;
   }
@@ -139,4 +135,21 @@ export function collectionElementTextures(
 
 function lookup<K>(map: ReadonlyMap<K, number>, key: K): number {
   return map.get(key) ?? Infinity;
+}
+
+/**
+ * A collection's or cube's `scope` as Blockbench's `Property.merge` and `Merge.number` read it (util.js:401-413): a
+ * number as is, a string by `parseFloat` (`"2"` and `" 2abc"` give 2; `""` and `"x"` nothing), `null` skipped.
+ * `undefined` when absent, 0 (`Collection.contains` needs a truthy scope) or unreadable; only unreadable warns.
+ * Arrays and objects, which `parseFloat` would stringify, count as unreadable.
+ */
+function readScope(owner: JsonObject, path: string, warnings: BbmodelWarningList): number | undefined {
+  const value = field(owner, 'scope');
+  if (value === undefined || value === null) return undefined;
+  const scope = typeof value === 'number' ? value : typeof value === 'string' ? Number.parseFloat(value) : Number.NaN;
+  if (Number.isNaN(scope)) {
+    warnings.add('UNSUPPORTED_VALUE', childPath(path, 'scope'), `expected a number, got ${quoteValue(value)}; ignored`);
+    return undefined;
+  }
+  return scope === 0 ? undefined : scope;
 }

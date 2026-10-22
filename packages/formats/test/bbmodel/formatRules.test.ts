@@ -767,7 +767,7 @@ describe('default texture (Blockbench Face.getTexture, Texture.getDefault)', () 
       const root = {
         collections: [
           collection({ children: ['c0'], texture: 1 }),
-          collection({ uuid: 'k1', children: 'c0', scope: '2' }),
+          collection({ uuid: 'k1', children: 'c0', scope: 'x' }),
         ],
       };
       const { groups, warnings } = load(format, textures(), ['c0'], root);
@@ -777,6 +777,59 @@ describe('default texture (Blockbench Face.getTexture, Texture.getDefault)', () 
         ['UNSUPPORTED_VALUE', '$.collections[1].children'],
         ['UNSUPPORTED_VALUE', '$.collections[1].scope'],
       ]);
+    });
+
+    describe('scope reads like Blockbench Merge.number (util.js:401-413)', () => {
+      const scopes = (collectionScope: unknown, cubeScope: unknown) => {
+        const root = {
+          elements: [cube({ faces, scope: cubeScope })],
+          collections: [collection({ scope: collectionScope, texture: 't-1' })],
+        };
+        const { groups, warnings } = load(format, textures(), ['c0'], root);
+        const scopeWarnings = warnings.filter((w) => w.path.endsWith('.scope')).map((w) => [w.code, w.path]);
+        return { groups, scopeWarnings };
+      };
+
+      it.each([
+        ['2', 2],
+        [2, '2'],
+        ['2', '2'],
+        [' 2abc', '2.0'],
+        ['1e999', 'Infinity'],
+      ])('a collection scope %j matches a cube scope %j, without a warning', (collectionScope, cubeScope) => {
+        expect(scopes(collectionScope, cubeScope)).toEqual({ groups: [[[1, 3]]], scopeWarnings: [] });
+      });
+
+      it.each([
+        ['x', 2, ['$.collections[0].scope']],
+        [2, 'x', ['$.elements[0].scope']],
+        ['x', 'x', ['$.collections[0].scope', '$.elements[0].scope']],
+        ['', '', ['$.collections[0].scope', '$.elements[0].scope']],
+        [[2], true, ['$.collections[0].scope', '$.elements[0].scope']],
+      ])(
+        'collection scope %j, cube scope %j: no number, warns and matches nothing',
+        (collectionScope, cubeScope, paths) => {
+          expect(scopes(collectionScope, cubeScope)).toEqual({
+            groups: [[[0, 3]]],
+            scopeWarnings: paths.map((path) => ['UNSUPPORTED_VALUE', path]),
+          });
+        },
+      );
+
+      it.each([
+        [null, null],
+        ['0', '0'],
+      ])('collection scope %j, cube scope %j: no scope, no warning', (collectionScope, cubeScope) => {
+        expect(scopes(collectionScope, cubeScope)).toEqual({ groups: [[[0, 3]]], scopeWarnings: [] });
+      });
+
+      it('a mesh scope is not read', () => {
+        const element = mesh({ scope: 'x' });
+        const text = json(
+          model({ meta: meta(format), elements: [element], collections: [collection({ scope: 'x' })] }),
+        );
+        expect(loadBbmodel(text).warnings.map((w) => w.path)).toEqual(['$.collections[0].scope']);
+      });
     });
 
     it('children that are no uuid string are skipped without a warning', () => {

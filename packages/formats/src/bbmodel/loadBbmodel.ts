@@ -128,6 +128,7 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
         hierarchy.placements,
         elementObjects,
         context.defaultTexture ?? -1,
+        warnings,
       )
     : [];
   const placed = prepareElements(
