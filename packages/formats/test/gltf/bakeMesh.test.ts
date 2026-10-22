@@ -4,6 +4,7 @@ import * as decode from '../../src/gltf/decodePrimitive';
 import { loadGltf, type GltfLoadOptions } from '../../src/index';
 import { expectGltfError, json } from './expectGltfError';
 import { gltfDoc, TRIANGLE, type DocOptions, type Json } from './gltfBuilder';
+import { expectCpuBelow } from '../support/expectCpuBelow';
 
 vi.mock('../../src/gltf/bakeMesh', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../src/gltf/bakeMesh')>();
@@ -150,10 +151,9 @@ describe('instances (review round 2)', () => {
       (doc.accessors as Json[])[0] = { componentType: 5126, count, type: 'VEC3' };
       return json(doc);
     };
-    const start = performance.now();
+    const text = huge(300_000);
     // 300 000 addressed, 3 drawn per node: decoded once, baked 1000 times.
-    expect(loadGltf(huge(300_000)).scene.meshes).toHaveLength(1000);
-    expect(performance.now() - start).toBeLessThan(2000);
+    expect(expectCpuBelow(2000, () => loadGltf(text)).scene.meshes).toHaveLength(1000);
     expect(decode.decodePrimitive).toHaveBeenCalledTimes(1);
     vi.mocked(decode.decodePrimitive).mockClear();
     expectGltfError(huge(400_001), 'TOO_MANY_VERTICES', '$.nodes[0]');

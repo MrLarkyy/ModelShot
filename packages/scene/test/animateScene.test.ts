@@ -9,6 +9,7 @@ import {
   type SceneDocument,
 } from '../src/index';
 import { testDoc, testNode } from './sceneDocs';
+import { expectCpuBelow } from './expectCpuBelow';
 
 const SWING: SceneAnimation = {
   name: 'swing',
@@ -207,8 +208,9 @@ describe('animateScene', () => {
     );
     const doc = { ...testDoc(nodes, []), animations: [{ name: 'big', loop: 'loop' as const, length: 10, channels }] };
     animateScene(doc, { animation: 0, time: 0 });
-    const start = performance.now();
-    for (const time of [0.15, 3.33, 7.77]) animateScene(doc, { animation: 0, time });
-    expect((performance.now() - start) / 3).toBeLessThan(200);
+    // 200 ms of CPU per frame over three frames.
+    expectCpuBelow(600, () => {
+      for (const time of [0.15, 3.33, 7.77]) animateScene(doc, { animation: 0, time });
+    });
   });
 });

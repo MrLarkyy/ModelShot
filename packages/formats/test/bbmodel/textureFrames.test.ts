@@ -9,6 +9,7 @@ import {
 } from '../../src/bbmodel/textureFrames';
 import { DEFAULT_BBMODEL_LIMITS, loadBbmodel } from '../../src/index';
 import { cube, fixture, mesh, meshFace, model, pngDataUri } from './fixtures';
+import { expectCpuBelow } from '../support/expectCpuBelow';
 
 const PATH = '$.textures[0]';
 
@@ -109,9 +110,7 @@ describe('frame count (Blockbench Texture.frameCount)', () => {
   });
 
   it('a uv size under one frame pixel tall warns and draws one image, without looping over the count', () => {
-    const start = performance.now();
-    const { result, warnings } = frames(16, 16, { format: 'free', uv: [16, 1e-7] });
-    expect(performance.now() - start).toBeLessThan(50);
+    const { result, warnings } = expectCpuBelow(50, () => frames(16, 16, { format: 'free', uv: [16, 1e-7] }));
     expect(result).toBeUndefined();
     expect(warnings.map((w) => [w.code, w.path])).toEqual([['UNSUPPORTED_VALUE', PATH]]);
     expect(warnings[0]?.message).toContain('160000000 frames');
@@ -216,9 +215,7 @@ describe('frame order (Blockbench TextureAnimator)', () => {
   it('custom: counter slots over a period above MAX_FRAME_ORDER_LENGTH are dropped with a warning', () => {
     // 4096 one-pixel frames, 3 tokens: the period lcm(3, 4096) = 12288 is over 8192.
     const fields = { frame_order_type: 'custom', frame_order: '5 x x' };
-    const start = performance.now();
-    const { result, warnings } = frames(1, 4096, { fields });
-    expect(performance.now() - start).toBeLessThan(50);
+    const { result, warnings } = expectCpuBelow(50, () => frames(1, 4096, { fields }));
     expect(result?.count).toBe(4096);
     expect(result?.order).toEqual([5]);
     expect(warnings.map((w) => w.path)).toEqual([`${PATH}.frame_order`]);
@@ -275,11 +272,8 @@ describe('untrusted frame fields', () => {
 
   it('a frame_order at MAX_FRAME_ORDER_CHARS is bounded; one more warns and plays in plain order, never fails', () => {
     const longest = '1 '.repeat(MAX_FRAME_ORDER_CHARS / 2);
-    const start = performance.now();
-    const { scene } = loadBbmodel(
-      stripModel(16, 64, 'java_block', { frame_order_type: 'custom', frame_order: longest }),
-    );
-    expect(performance.now() - start).toBeLessThan(1000);
+    const text = stripModel(16, 64, 'java_block', { frame_order_type: 'custom', frame_order: longest });
+    const { scene } = expectCpuBelow(1000, () => loadBbmodel(text));
     // The trailing space is a counter slot; its period lcm(32769, 4) is over the bound, so it is dropped.
     expect(scene.textures[0]?.frames?.order).toHaveLength(MAX_FRAME_ORDER_CHARS / 2);
     for (const format of ['java_block', 'modded_entity']) {
