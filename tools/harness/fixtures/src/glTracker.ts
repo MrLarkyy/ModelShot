@@ -1,5 +1,6 @@
 export interface GlTracker {
   liveGlObjects: () => number;
+  livePrograms: () => number;
   openBitmaps: () => number;
 }
 
@@ -13,6 +14,7 @@ type GlMethod = (this: WebGL2RenderingContext, ...args: unknown[]) => unknown;
  */
 export function installGlTracker(): GlTracker {
   const live = new Set<unknown>();
+  const programs = new Set<unknown>();
   const proto = WebGL2RenderingContext.prototype as unknown as Record<string, GlMethod>;
   for (const kind of GL_KINDS) {
     const create = proto[`create${kind}`];
@@ -21,10 +23,12 @@ export function installGlTracker(): GlTracker {
     proto[`create${kind}`] = function (this: WebGL2RenderingContext, ...args: unknown[]): unknown {
       const object = create.apply(this, args);
       if (object) live.add(object);
+      if (object && kind === 'Program') programs.add(object);
       return object;
     };
     proto[`delete${kind}`] = function (this: WebGL2RenderingContext, ...args: unknown[]): unknown {
       live.delete(args[0]);
+      programs.delete(args[0]);
       return remove.apply(this, args);
     };
   }
@@ -44,5 +48,5 @@ export function installGlTracker(): GlTracker {
     close.call(this);
   };
 
-  return { liveGlObjects: () => live.size, openBitmaps: () => bitmaps.size };
+  return { liveGlObjects: () => live.size, livePrograms: () => programs.size, openBitmaps: () => bitmaps.size };
 }

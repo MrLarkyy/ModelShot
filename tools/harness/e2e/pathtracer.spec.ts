@@ -350,6 +350,15 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
     expect(stages.partway.remainingMs).toBeGreaterThan(0);
     expect(stages.done).toMatchObject({ samplesDone: 32, running: false, converged: false, remainingMs: 0 });
     expect(stages.done.elapsedMs).toBeGreaterThanOrEqual(stages.partway.elapsedMs);
+    // The scale is the one the targets were made with, not queried again: a lost context reports it unchanged.
+    const lost = await page.evaluate(async () => {
+      const ptc = window.__msFixture!.pt!;
+      await ptc.lose();
+      const read = { supersample: ptc.progress.supersample, size: ptc.accumulationSize };
+      await ptc.restore();
+      return read;
+    });
+    expect(lost).toEqual({ supersample: 2, size: [128, 128] });
     for (const [size, scale] of [
       [1024, 2],
       [1448, 1],
@@ -420,6 +429,79 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
     });
     expect(counts.loaded).toBeGreaterThan(0);
     expect({ gl: counts.gl, step: counts.step }).toEqual({ gl: 0, step: 0 });
+  });
+
+  test('explicit default quality fields render the bytes of a request without them', async ({ page }) => {
+    const plain = await referencePixels(page, TURNTABLE);
+    const explicit = await render(page, 'variant=turntable-y030&seed=1&samples=64&supersample=1&denoise=0');
+    expect(explicit.image.data.equals(plain)).toBe(true);
+  });
+
+  test('an emissive face over near-black texels denoises at 1 sample with no NaN and no black blob', async ({
+    page,
+  }) => {
+    // The albedo floor makes one sample's variance about 1e6 here, far over half precision: it must not reach the filter.
+    const plain = (await render(page, 'variant=emissive-dark&seed=1&samples=1')).image;
+    const denoised = (await render(page, 'variant=emissive-dark&seed=1&samples=1&denoise=1')).image;
+    let glowing = 0;
+    let lostGlow = 0;
+    let blackened = 0;
+    for (let y = 0; y < plain.height; y++) {
+      for (let x = 0; x < plain.width; x++) {
+        const before = luminance(pixel(plain, x, y));
+        const after = luminance(pixel(denoised, x, y));
+        if (before > 150) glowing++;
+        if (before > 150 && after < 30) lostGlow++;
+        if (after < 2 && before > 30) blackened++;
+      }
+    }
+    console.log(
+      `[pt quality] emissive over near-black: ${glowing} glowing px, ${lostGlow} lost, ${blackened} blackened`,
+    );
+    expect(glowing, 'the bricks glow').toBeGreaterThan(500);
+    expect({ lostGlow, blackened }).toEqual({ lostGlow: 0, blackened: 0 });
+  });
+
+  test('a context lost during the noise readback never reads as convergence', async ({ page }) => {
+    await openFixture(page, '/pt.html?variant=closeup&seed=1&samples=64&size=64');
+    const result = await page.evaluate(async () => {
+      const ptc = window.__msFixture!.pt!;
+      // 0.01 is far under the noise of a few samples; the zeros a lost context reads would pass it.
+      ptc.tryQuality({ noiseThreshold: 0.01 });
+      const lost = ptc.loseDuringNoise();
+      const drawn = ptc.step(64);
+      const { converged, noise } = ptc.progress;
+      await lost;
+      await ptc.restore();
+      return { drawn, converged, noise };
+    });
+    expect(result).toEqual({ drawn: 2, converged: false, noise: null });
+  });
+
+  test('a plain request links only trace and present; a quality request and a restore link only what it needs', async ({
+    page,
+  }) => {
+    await openFixture(page, '/pt.html?variant=turntable-y030&seed=1&samples=4&size=64&track=1');
+    const counts = await page.evaluate(async () => {
+      const ptc = window.__msFixture!.pt!;
+      const plain = ptc.livePrograms();
+      ptc.tryQuality({ noiseThreshold: 0.5 });
+      ptc.step(4);
+      const noise = ptc.livePrograms();
+      ptc.tryQuality({ supersample: 2, denoise: true });
+      ptc.step(1);
+      const denoised = ptc.livePrograms();
+      // The lost programs are never deleted (they died with the context), so a restore counts on top of them.
+      await ptc.lose();
+      await ptc.restore();
+      const restored = ptc.livePrograms() - denoised;
+      ptc.render();
+      const plainAfter = ptc.livePrograms() - denoised;
+      ptc.tryQuality({ noiseThreshold: 0.5 });
+      ptc.step(4);
+      return { plain, noise, denoised, restored, plainAfter, noiseAfter: ptc.livePrograms() - denoised };
+    });
+    expect(counts).toEqual({ plain: 2, noise: 3, denoised: 6, restored: 2, plainAfter: 2, noiseAfter: 3 });
   });
 });
 

@@ -178,6 +178,10 @@ export interface PtControls {
   setLook: (id: string) => string;
   /** Image position (pixels, top-left origin) of a world point under the current camera. */
   project: (x: number, y: number, z: number) => [number, number];
+  /** Live WebGL programs; -1 unless the page was opened with track=1. */
+  livePrograms: () => number;
+  /** Loses the context inside the next float readback (the noise estimate's), mid-step; resolves once it is lost. */
+  loseDuringNoise: () => Promise<void>;
   /** `PathTracer.progress` and `running` of the current request. */
   readonly progress: PtProgress;
   readonly running: boolean;

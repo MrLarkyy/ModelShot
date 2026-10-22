@@ -11,6 +11,7 @@ import { cameraProjection, cameraView, mat4Multiply, type SceneDocument } from '
 import { installSampleBench, installSampleReadout, installSceneBench } from './bench';
 import { readDrawingBufferBase64 } from './context';
 import type { MsFixture, PtControls, PtProbe } from './fixtureApi';
+import { encodeRgbaPng } from './encodeRgbaPng';
 import { installGlTracker } from './glTracker';
 import { computePtProbes, sceneProbes } from './ptProbes';
 import { lookByName } from './lookByName';
@@ -25,10 +26,26 @@ import { isRtSceneName, parseRtView, reverseMeshOrder, rtCamera, rtLook, rtScene
 const params = new URLSearchParams(location.search);
 
 /** Path-tracer-only presets: a realtime view plus what only the tracer has. */
-const PT_VARIANTS: Readonly<Record<string, { view: string; options: SetSceneOptions }>> = {
+const PT_VARIANTS: Readonly<Record<string, { view: string; options: SetSceneOptions; darken?: number }>> = {
   // The showcase's brick material (the body's east face) glows warm; the post beside it picks up its light.
   emissive: { view: 'turntable-y030', options: { emission: [undefined, [4, 2.2, 0.8]] } },
+  // A 4x glow over near-black texels (MS-18): divided by the floored albedo, one sample's variance overflows half floats.
+  'emissive-dark': { view: 'turntable-y030', options: { emission: [undefined, [16, 8.8, 3.2]] }, darken: 1 },
 };
+
+/** `doc` with material `index` on a copy of its texture whose every texel is near-black (sRGB 2, opaque). */
+function darkenMaterial(doc: SceneDocument, index: number): SceneDocument {
+  const material = doc.materials[index];
+  const original = material ? doc.textures[material.texture] : undefined;
+  if (!material || !original) throw new Error(`material ${index} has no texture to darken`);
+  const rgba = new Uint8Array(original.width * original.height * 4).map((_, i) => (i % 4 === 3 ? 255 : 2));
+  const texture = { ...original, name: 'near-black', bytes: encodeRgbaPng(original.width, original.height, rgba) };
+  return {
+    ...doc,
+    textures: [...doc.textures, texture],
+    materials: doc.materials.map((m, i) => (i === index ? { ...m, texture: doc.textures.length } : m)),
+  };
+}
 
 function intParam(name: string, fallback: number, min: number, max: number): number {
   const raw = params.get(name);
@@ -116,7 +133,8 @@ async function start(): Promise<void> {
   Object.defineProperty(api, 'samplesDone', { get: () => tracer.samplesDone });
 
   const sceneOf = (name: RtSceneName): SceneDocument => {
-    const doc = rtScene(name);
+    const plain = rtScene(name);
+    const doc = ptVariant?.darken !== undefined ? darkenMaterial(plain, ptVariant.darken) : plain;
     return view.reverse ? reverseMeshOrder(doc) : doc;
   };
   let doc = sceneOf(view.scene);
@@ -196,6 +214,7 @@ async function start(): Promise<void> {
       return probes();
     },
     liveGlObjects: () => tracker?.liveGlObjects() ?? -1,
+    livePrograms: () => tracker?.livePrograms() ?? -1,
     openBitmaps: () => tracker?.openBitmaps() ?? -1,
     render,
     step: (maxSamples) => tracer.step(maxSamples),
@@ -324,6 +343,23 @@ async function start(): Promise<void> {
     },
     get accumulationSize(): [number, number] {
       return [tracer.accumulationWidth, tracer.accumulationHeight];
+    },
+    loseDuringNoise: () => {
+      if (!lose) return Promise.reject(new Error('WEBGL_lose_context is not available'));
+      // Resolve on the next task after the lost event, as `lose` does: only then may the context be restored.
+      const lost = new Promise<void>((resolve) =>
+        canvas.addEventListener('webglcontextlost', () => setTimeout(resolve, 0), { once: true }),
+      );
+      const read = gl.readPixels.bind(gl) as (...args: unknown[]) => void;
+      // The next float readback (the noise blocks') finds the context lost, as if it went during the step.
+      gl.readPixels = (...args: unknown[]) => {
+        if (args[6] instanceof Float32Array) {
+          gl.readPixels = read;
+          lose.loseContext();
+        }
+        read(...args);
+      };
+      return lost;
     },
     tryQuality: (fields) => {
       try {
