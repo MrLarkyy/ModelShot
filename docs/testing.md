@@ -472,7 +472,7 @@ light and look (`fixtures/src/modelViewCamera.ts`), in two independent ways that
 shading include:
 
 - `raster`: an orthographic depth-only pass from the light (DEPTH_COMPONENT24, 1024², alpha-tested, slope polygon
-  offset, back faces of single-sided runs culled as seen from the light), then the camera pass with the same culling,
+  offset, back faces of single-sided runs culled as seen from the light, camera-only runs skipped), then the camera pass with the same culling,
   alpha discard, a `gl_FrontFacing` normal flip and a hard shadow-map lookup, into its own RGBA8 +
   DEPTH_COMPONENT24 target (blitted to the canvas; the default depth buffer may have only 16 bits). Its fragment depth
   is the scene format's render-order key (view depth − (order + back) × TIE, back = −1/16 for a back face) over
@@ -484,7 +484,7 @@ shading include:
 - `raycast`: per pixel centre, a camera ray to the nearest triangle whose texel passes the alpha test
   (single-sided triangles only from the front; the smallest render-order key wins, the same key), shaded with the barycentric vertex normal, then one shadow ray toward the light that an
   alpha-passing
-  triangle blocks (a single-sided one only if its front faces the light). Triangles and their vertex normals live in
+  triangle blocks (a single-sided one only if its front faces the light; a camera-only one never). Triangles and their vertex normals live in
   an RGBA32F data texture (at most 256, checked against `MAX_TEXTURE_SIZE`).
 
 Textures are decoded with `createImageBitmap(…, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' })`,
@@ -497,18 +497,20 @@ shaders share with TypeScript (`MAX_MATERIALS`, `MODE_*`, `RENDER_ORDER_TIE`, `S
 `fixtures/src/modelShaderDefines.ts`, so it has one source; a model with more materials or textures than the tables
 hold fails with a clear error.
 
-| variant                | golden                     | checks                                                                                           |
-| ---------------------- | -------------------------- | ------------------------------------------------------------------------------------------------ |
-| `alpha-plane-raster`   | `alpha-plane-raster.png`   | golden; probes; pair                                                                             |
-| `alpha-plane-raycast`  | `alpha-plane-raycast.png`  | golden; probes; pair; byte-identical re-render                                                   |
-| `mesh-shapes-raster`   | `mesh-shapes-raster.png`   | golden (triangle, out-of-order quad, n-gons, null-texture face, rotated mesh, smooth arch); pair |
-| `mesh-shapes-raycast`  | `mesh-shapes-raycast.png`  | golden; pair                                                                                     |
-| `render-order-raster`  | `render-order-raster.png`  | golden; render-order probes; pair                                                                |
-| `render-order-raycast` | `render-order-raycast.png` | golden; render-order probes; pair                                                                |
-| `gltf-nodes-raster`    | `gltf-nodes-raster.png`    | golden (glTF hierarchy, baked transforms, factor textures); `MASK` probes; pair                  |
-| `gltf-nodes-raycast`   | `gltf-nodes-raycast.png`   | golden; `MASK` probes; pair                                                                      |
-| `player-raster`        | `player-raster.png`        | golden; skin probes; pair                                                                        |
-| `player-raycast`       | `player-raycast.png`       | golden; skin probes; pair                                                                        |
+| variant                           | golden                     | checks                                                                                           |
+| --------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------ |
+| `alpha-plane-raster`              | `alpha-plane-raster.png`   | golden; probes; pair                                                                             |
+| `alpha-plane-raycast`             | `alpha-plane-raycast.png`  | golden; probes; pair; byte-identical re-render                                                   |
+| `mesh-shapes-raster`              | `mesh-shapes-raster.png`   | golden (triangle, out-of-order quad, n-gons, null-texture face, rotated mesh, smooth arch); pair |
+| `mesh-shapes-raycast`             | `mesh-shapes-raycast.png`  | golden; pair                                                                                     |
+| `render-order-raster`             | `render-order-raster.png`  | golden; render-order probes; pair                                                                |
+| `render-order-raycast`            | `render-order-raycast.png` | golden; render-order probes; pair                                                                |
+| `gltf-nodes-raster`               | `gltf-nodes-raster.png`    | golden (glTF hierarchy, baked transforms, factor textures); `MASK` probes; pair                  |
+| `gltf-nodes-raycast`              | `gltf-nodes-raycast.png`   | golden; `MASK` probes; pair                                                                      |
+| `player-raster`                   | `player-raster.png`        | golden; skin probes; pair                                                                        |
+| `player-raycast`                  | `player-raycast.png`       | golden; skin probes; pair                                                                        |
+| `alpha-plane-camera-only-raster`  | none                       | probes: the camera-only cutout plane is seen but its shadow is absent                            |
+| `alpha-plane-camera-only-raycast` | none                       | probes: the camera-only cutout plane is seen but its shadow is absent                            |
 
 The page publishes `probes`: pixels of chosen texels of the cutout plane (and of their shadows on the ground,
 following the light ray) and of the plane seen from behind, with the texel colour. `modelView.spec.ts` checks that the
