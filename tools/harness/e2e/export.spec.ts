@@ -37,6 +37,21 @@ const VIDEO_MEAN_TOLERANCE = 5;
  */
 const PAIR_TOLERANCE = 2;
 const CATCHER_PAIR_TOLERANCE = 45;
+/**
+ * The same with supersample 2 (solid 0, all 36 with the catcher measured) and denoise (solid 14, all 63 measured: the
+ * denoised radiance of a transparent request has no backdrop to filter, so silhouettes and the shadow edge differ).
+ */
+const QUALITY_PAIR_TOLERANCE = 18;
+const QUALITY_CATCHER_PAIR_TOLERANCE = 79;
+/**
+ * The transparent canvas against the opaque one, every pixel: 0 measured plain and supersampled (the canvas composites
+ * in linear light, so it is the opaque mean); denoised 14 without and 35 with the catcher (the filter sees different
+ * radiance), times 1.25.
+ */
+const CANVAS_TOLERANCE = 1;
+const DENOISED_CANVAS_TOLERANCE = 44;
+/** The APNG frames ImageDecoder composites, at fully opaque pixels: 0 measured. */
+const APNG_DECODER_TOLERANCE = 0;
 
 const bytes = (b64: string): Buffer => Buffer.from(b64, 'base64');
 
@@ -108,7 +123,32 @@ test.describe('export', () => {
     test(`export-turntable-f${frame} matches its golden`, async ({ page }, testInfo) => {
       await expectGolden(page, testInfo, golden(`turntable-f${frame}`, `turntable-f${frame}`));
     });
+    test(`export-animation-f${frame} matches its golden`, async ({ page }, testInfo) => {
+      await expectGolden(page, testInfo, golden(`animation-f${frame}`, `animation-f${frame}`));
+    });
   }
+
+  test('an animation export keeps one shadow catcher under every pose while the model bobs', async ({ page }) => {
+    await openExport(page);
+    const outcome = await page.evaluate(() =>
+      window.__msExport!.clip({ format: 'apng', transparent: true, clip: 'animation' }),
+    );
+    expect(outcome.frames).toBe(4);
+    // One setScene per pose, every one with the same catcher bounds: the union of the poses.
+    expect(outcome.catcherBounds).toHaveLength(4);
+    const first = outcome.catcherBounds[0];
+    expect(first).not.toBeNull();
+    for (const bounds of outcome.catcherBounds) expect(bounds).toEqual(first);
+    outcome.decoded.forEach((frame, i) =>
+      expect(bytes(frame).equals(bytes(outcome.read[i]!)), `frame ${i}`).toBe(true),
+    );
+    // The model moves (frames 0 and 2 are a bob apart); the catcher stays at the rest pose's floor (y 0), its box
+    // reaching the top of the bob (3 units over the model).
+    expect(bytes(outcome.read[0]!).equals(bytes(outcome.read[2]!))).toBe(false);
+    console.log(`[export] animation catcher bounds ${JSON.stringify(first)}`);
+    expect(first?.min[1]).toBe(0);
+    expect(first?.max[1]).toBe(23);
+  });
 
   for (const format of ['apng', 'gif', 'webp', 'webm', 'mp4'] as const) {
     test(`a ${format} turntable decodes to the frames the path tracer rendered`, async ({ page }) => {
@@ -201,5 +241,103 @@ test.describe('export', () => {
       if (catcher) expect(all.max).toBeLessThanOrEqual(CATCHER_PAIR_TOLERANCE);
       else expect(strict.max).toBeLessThanOrEqual(PAIR_TOLERANCE);
     }
+  });
+
+  for (const quality of [{}, { supersample: 2 }, { denoise: true }] as const) {
+    const label = JSON.stringify(quality);
+    test(`a transparent still ${label} keeps per-texel alpha and its canvas shows the opaque one`, async ({ page }) => {
+      await openExport(page);
+      for (const catcher of [false, true]) {
+        const transparent = await page.evaluate(
+          ([q, c]) => window.__msExport!.still({ ...q, catcher: c, transparent: true }),
+          [quality, catcher] as const,
+        );
+        const opaque = await page.evaluate(
+          ([q, c]) => window.__msExport!.still({ ...q, catcher: c, transparent: false }),
+          [quality, catcher] as const,
+        );
+        const decoded = bytes(transparent.decoded);
+        expect(decoded.equals(bytes(transparent.read))).toBe(true);
+        expect(transparent.warnings).toEqual([]);
+        if (!catcher) {
+          const probe = (name: string) => transparent.probes.find((p) => p.name === name)!;
+          expect(alphaAt(decoded, probe('opaque-texel').x, probe('opaque-texel').y)).toBe(255);
+          expect(alphaAt(decoded, probe('transparent-texel').x, probe('transparent-texel').y)).toBe(0);
+          expect(alphaAt(decoded, 0, 0)).toBe(0);
+        }
+        // The canvas composites in linear light: an opaque render's mean, so every pixel matches the opaque canvas
+        // (coverage = 1 - shade per sample makes the catcher match too).
+        const canvas = difference(bytes(transparent.canvas), bytes(opaque.canvas));
+        console.log(
+          `[export] canvas ${label} catcher ${catcher}: transparent vs opaque max ${canvas.max} mean ${canvas.mean.toFixed(3)}`,
+        );
+        expect(canvas.max).toBeLessThanOrEqual('denoise' in quality ? DENOISED_CANVAS_TOLERANCE : CANVAS_TOLERANCE);
+      }
+    });
+  }
+
+  for (const quality of [{ supersample: 2 }, { denoise: true }] as const) {
+    test(`the readback of a transparent still ${JSON.stringify(quality)} over the backdrop looks like the opaque one`, async ({
+      page,
+    }) => {
+      await openExport(page);
+      for (const catcher of [false, true]) {
+        const outcome = await page.evaluate(([q, c]) => window.__msExport!.pair({ ...q, catcher: c }), [
+          quality,
+          catcher,
+        ] as const);
+        const alpha = bytes(outcome.alpha);
+        const solid = (i: number) => alpha[i / 4] === 0 || alpha[i / 4] === 255;
+        const strict = difference(bytes(outcome.composited), bytes(outcome.opaque), solid);
+        const all = difference(bytes(outcome.composited), bytes(outcome.opaque));
+        console.log(
+          `[export] pair ${JSON.stringify(quality)} catcher ${catcher}: solid max ${strict.max} mean ${strict.mean.toFixed(3)}, all max ${all.max} mean ${all.mean.toFixed(3)}`,
+        );
+        if (catcher) expect(all.max).toBeLessThanOrEqual(QUALITY_CATCHER_PAIR_TOLERANCE);
+        else expect(strict.max).toBeLessThanOrEqual(QUALITY_PAIR_TOLERANCE);
+      }
+    });
+  }
+
+  test('readImage is null once the context is lost, before its event too, and an export losing it rejects', async ({
+    page,
+  }) => {
+    await openExport(page);
+    const outcome = await page.evaluate(() => window.__msExport!.lose());
+    expect(outcome).toEqual({ before: true, beforeEvent: true, afterEvent: true, clipCode: 'CONTEXT_LOST' });
+  });
+
+  for (const format of ['webm', 'mp4'] as const) {
+    test(`a ${format} plays in a video element with its size, duration and frames`, async ({ page }) => {
+      await openExport(page);
+      const outcome = await page.evaluate((f) => window.__msExport!.video(f), format);
+      console.log(
+        `[export] ${format} as ${outcome.format} (${outcome.type}): ${outcome.played ? 'played' : 'not playable'}`,
+      );
+      if (!outcome.played) {
+        // An open-source Chromium may not play H.264; the decode test covers the stream through VideoDecoder.
+        expect(format).toBe('mp4');
+        return;
+      }
+      expect([outcome.played.width, outcome.played.height]).toEqual([SIZE, SIZE]);
+      // 4 frames at 8 fps.
+      expect(outcome.played.duration).toBeCloseTo(0.5, 2);
+      const frame = difference(bytes(outcome.played.frame), bytes(outcome.read));
+      console.log(`[export] ${format} video frame 2: max ${frame.max} mean ${frame.mean.toFixed(3)}`);
+      expect(frame.mean).toBeLessThanOrEqual(VIDEO_MEAN_TOLERANCE);
+    });
+  }
+
+  test('the browser reads the APNG with its frame count, durations and pixels', async ({ page }) => {
+    await openExport(page);
+    const outcome = await page.evaluate(() => window.__msExport!.apngTiming());
+    expect(outcome.frames).toBe(4);
+    expect(outcome.durations).toEqual([125_000, 125_000, 125_000, 125_000]);
+    outcome.decoded.forEach((frame, i) => {
+      const read = bytes(outcome.read[i]!);
+      const opaque = difference(bytes(frame), read, (k) => read[k + 3] === 255);
+      console.log(`[export] apng ImageDecoder frame ${i}: opaque pixels max ${opaque.max}`);
+      expect(opaque.max).toBeLessThanOrEqual(APNG_DECODER_TOLERANCE);
+    });
   });
 });

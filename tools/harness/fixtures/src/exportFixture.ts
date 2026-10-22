@@ -8,16 +8,34 @@ import {
   type FrameRenderer,
 } from '@modelshot/export';
 import { agxToneMap, backdropColor } from '@modelshot/looks';
-import { PathTracer, type RenderedImage } from '@modelshot/pathtracer';
-import { cameraProjection, cameraView, mat4Multiply, type SceneCamera, type SceneDocument } from '@modelshot/scene';
-import { decodeImageFrames, decodePngFrames, decodeVideoFrames, demuxMp4, demuxWebm } from './exportDecode';
+import { PathTracer, type RenderedImage, type SetSceneOptions } from '@modelshot/pathtracer';
+import {
+  cameraProjection,
+  cameraView,
+  mat4Multiply,
+  type SceneAnimationChannel,
+  type SceneCamera,
+  type SceneDocument,
+} from '@modelshot/scene';
+import { readDrawingBufferBase64 } from './context';
+import {
+  decodeImageFrames,
+  decodePngFrames,
+  decodeVideoFrames,
+  demuxMp4,
+  demuxWebm,
+  playVideo,
+  readImageTiming,
+} from './exportDecode';
 import type { MsFixture, PtProbe } from './fixtureApi';
 import { computePtProbes, sceneProbes } from './ptProbes';
 import { hideMeshes, parseRtView, rtCamera, rtLook, rtScene, type RtView } from './rtScenes';
 
 // URL parameters: variant=still-transparent (the alpha-plane scene without its ground and back plane under its fixed
-// camera, so camera rays through a cut-out texel leave the scene; transparent, catcher on, exported as PNG) or turntable-f<0..3> (frame i of a transparent 4-frame turntable of the showcase as APNG, catcher
-// on); seed (default 1) and samples (default 16). Without a variant the page only sets up `window.__msExport`.
+// camera, so camera rays through a cut-out texel leave the scene; transparent, catcher on, exported as PNG),
+// turntable-f<0..3> (frame i of a transparent 4-frame turntable of the showcase as APNG, catcher on) or
+// animation-f<0..3> (frame i of a transparent 4-frame animation of the showcase bobbing up and down, APNG, catcher on);
+// seed (default 1) and samples (default 16). Without a variant the page only sets up `window.__msExport`.
 const params = new URLSearchParams(location.search);
 const SIZE = 64;
 const TURNTABLE_FRAMES = 4;
@@ -31,6 +49,17 @@ export interface ExportStillOutcome {
   readonly read: string;
   readonly probes: readonly PtProbe[];
   readonly samplesDone: number;
+  /** Base64 RGBA, rows top to bottom: the canvas the tracer presented to at the end. */
+  readonly canvas: string;
+  readonly warnings: readonly string[];
+}
+
+/** A still's render request beyond seed and samples. */
+export interface ExportStillOptions {
+  readonly catcher: boolean;
+  readonly transparent: boolean;
+  readonly supersample?: number;
+  readonly denoise?: boolean;
 }
 
 export interface ExportClipOutcome {
@@ -44,6 +73,35 @@ export interface ExportClipOutcome {
   /** Which decoder read the file. */
   readonly decoder: string;
   readonly bytes: number;
+  /** `catcherBounds` of every `setScene` the export made (`null` where it passed none). */
+  readonly catcherBounds: readonly ({ min: number[]; max: number[] } | null)[];
+}
+
+export interface ExportLossOutcome {
+  /** `readImage()` after a finished render: before the loss, right after `loseContext` and after the event. */
+  readonly before: boolean;
+  readonly beforeEvent: boolean;
+  readonly afterEvent: boolean;
+  /** The code an export rejects with when the context goes at its frame 1. */
+  readonly clipCode: string;
+}
+
+export interface ExportVideoOutcome {
+  readonly format: string;
+  /** What a video element made of the file, `null` when it cannot play the type. */
+  readonly played: { width: number; height: number; duration: number; frame: string } | null;
+  /** `readImage()` of the frame the element was seeked to. */
+  readonly read: string;
+  readonly type: string;
+}
+
+export interface ExportTimingOutcome {
+  readonly frames: number;
+  /** Microseconds per frame, as the browser's ImageDecoder reads them. */
+  readonly durations: readonly number[];
+  /** Base64 RGBA per frame from ImageDecoder, and the rendered frames. */
+  readonly decoded: readonly string[];
+  readonly read: readonly string[];
 }
 
 export interface ExportCancelOutcome {
@@ -62,16 +120,23 @@ export interface ExportPairOutcome {
   readonly alpha: string;
 }
 
+export interface ExportClipOptions {
+  readonly format: ClipFormat;
+  readonly transparent: boolean;
+  /** Formats the page pretends it cannot encode (a stubbed probe). */
+  readonly refuse?: readonly ('webp' | 'webm' | 'mp4')[];
+  /** `animation`: the showcase bobbing up and down (`bobbingShowcase`), 4 frames over its 1 s at 4 fps. */
+  readonly clip?: 'turntable' | 'animation';
+}
+
 export interface ExportControls {
-  still: (options: { catcher: boolean; transparent: boolean }) => Promise<ExportStillOutcome>;
-  clip: (options: {
-    format: ClipFormat;
-    transparent: boolean;
-    /** Formats the page pretends it cannot encode (a stubbed probe). */
-    refuse?: readonly ('webp' | 'webm' | 'mp4')[];
-  }) => Promise<ExportClipOutcome>;
+  still: (options: ExportStillOptions) => Promise<ExportStillOutcome>;
+  clip: (options: ExportClipOptions) => Promise<ExportClipOutcome>;
   cancel: (options: { atFrame: number; atSample: number }) => Promise<ExportCancelOutcome>;
-  pair: (options: { catcher: boolean }) => Promise<ExportPairOutcome>;
+  pair: (options: Omit<ExportStillOptions, 'transparent'>) => Promise<ExportPairOutcome>;
+  lose: () => Promise<ExportLossOutcome>;
+  video: (format: 'webm' | 'mp4') => Promise<ExportVideoOutcome>;
+  apngTiming: () => Promise<ExportTimingOutcome>;
 }
 
 declare global {
@@ -115,9 +180,16 @@ function tracerFor(view: RtView): PathTracer {
   return PathTracer.create(canvas, { look: rtLook(view), preserveDrawingBuffer: true });
 }
 
-/** `tracer` with every `readImage` result kept, as the export rendered it. */
-function recording(tracer: PathTracer, frames: RenderedImage[]): FrameRenderer {
+/** `tracer` with every `readImage` result and `setScene` option kept, as the export used them. */
+function recording(
+  tracer: PathTracer,
+  frames: RenderedImage[],
+  scenes: (SetSceneOptions | undefined)[] = [],
+): FrameRenderer {
   return {
+    get accumulationWidth() {
+      return tracer.accumulationWidth;
+    },
     get width() {
       return tracer.width;
     },
@@ -130,7 +202,10 @@ function recording(tracer: PathTracer, frames: RenderedImage[]): FrameRenderer {
     get contextLost() {
       return tracer.contextLost;
     },
-    setScene: (doc, options) => tracer.setScene(doc, options),
+    setScene: (doc, options) => {
+      scenes.push(options);
+      return tracer.setScene(doc, options);
+    },
     setCamera: (camera) => tracer.setCamera(camera),
     resize: (size) => tracer.resize(size),
     start: (request) => tracer.start(request),
@@ -152,7 +227,15 @@ function project(camera: SceneCamera, p: [number, number, number]): [number, num
   return [((row(0) / w) * 0.5 + 0.5) * SIZE, (0.5 - (row(1) / w) * 0.5) * SIZE];
 }
 
-async function still(options: { catcher: boolean; transparent: boolean }): Promise<ExportStillOutcome> {
+/** The canvas's pixels, rows top to bottom. */
+function readCanvas(): Uint8Array {
+  const gl = canvas.getContext('webgl2');
+  if (!gl) throw new Error('WebGL2 context missing');
+  const rows = Uint8Array.from(atob(readDrawingBufferBase64(gl, SIZE, SIZE)), (c) => c.charCodeAt(0));
+  return bottomUp(rows, SIZE, SIZE);
+}
+
+async function still(options: ExportStillOptions): Promise<ExportStillOutcome> {
   const view = viewOf('alpha-plane');
   const doc: SceneDocument = hideMeshes(hideMeshes(rtScene(view.scene), 'ground'), 'back-plane');
   const camera = rtCamera(doc, view, 1);
@@ -167,6 +250,8 @@ async function still(options: { catcher: boolean; transparent: boolean }): Promi
       seed,
       samples,
       transparent: options.transparent,
+      ...(options.supersample !== undefined ? { supersample: options.supersample } : {}),
+      ...(options.denoise !== undefined ? { denoise: options.denoise } : {}),
       scene: { shadowCatcher: options.catcher },
     });
     const [decoded] = decodePngFrames(new Uint8Array(await result.blob.arrayBuffer()));
@@ -179,6 +264,8 @@ async function still(options: { catcher: boolean; transparent: boolean }): Promi
       read: base64(image.data),
       probes: computePtProbes(doc, sceneProbes(view.scene), (p) => project(camera, p)),
       samplesDone: tracer.samplesDone,
+      canvas: base64(readCanvas()),
+      warnings: result.warnings.map((w) => w.code),
     };
   } finally {
     tracer.dispose();
@@ -246,29 +333,58 @@ function refuseFormats(refuse: readonly string[]): () => void {
 
 const TURNTABLE_VIEW = 'turntable-y030';
 
-async function clip(options: {
-  format: ClipFormat;
-  transparent: boolean;
-  refuse?: readonly ('webp' | 'webm' | 'mp4')[];
-}): Promise<ExportClipOutcome> {
+/**
+ * The showcase with an animation of its own: every root node rises 3 units and comes back down over 1 s, a vertical
+ * bob, so a catcher that rode with the pose would rise with it.
+ */
+function bobbingShowcase(): SceneDocument {
+  const doc = rtScene(viewOf(TURNTABLE_VIEW).scene);
+  const channels = doc.rootNodes.map((node): SceneAnimationChannel => ({
+    node,
+    property: 'translation',
+    keyframes: [
+      { time: 0, value: [0, 0, 0], interpolation: 'linear' },
+      { time: 0.5, value: [0, 3, 0], interpolation: 'linear' },
+      { time: 1, value: [0, 0, 0], interpolation: 'linear' },
+    ],
+  }));
+  return { ...doc, animations: [{ name: 'bob', loop: 'loop', length: 1, channels }] };
+}
+
+/** Exports the 4-frame clip of `options` and reads the file back with the decoder for its format. */
+async function exportedClip(
+  options: ExportClipOptions,
+  tracer: PathTracer,
+): Promise<{ result: ExportResult; read: RenderedImage[]; scenes: (SetSceneOptions | undefined)[] }> {
   const view = viewOf(TURNTABLE_VIEW);
-  const doc = rtScene(view.scene);
+  const animated = options.clip === 'animation';
+  const doc = animated ? bobbingShowcase() : rtScene(view.scene);
   const read: RenderedImage[] = [];
-  const tracer = tracerFor(view);
+  const scenes: (SetSceneOptions | undefined)[] = [];
+  const base = {
+    format: options.format,
+    width: SIZE,
+    height: SIZE,
+    camera: rtCamera(doc, view, 1),
+    seed,
+    samples,
+    transparent: options.transparent,
+  };
+  const result = await exportClip(
+    recording(tracer, read, scenes),
+    doc,
+    animated
+      ? { ...base, kind: 'animation', animation: 'bob', fps: 4 }
+      : { ...base, kind: 'turntable', fps: FPS, frames: TURNTABLE_FRAMES },
+  );
+  return { result, read, scenes };
+}
+
+async function clip(options: ExportClipOptions): Promise<ExportClipOutcome> {
+  const tracer = tracerFor(viewOf(TURNTABLE_VIEW));
   const restore = refuseFormats(options.refuse ?? []);
   try {
-    const result = await exportClip(recording(tracer, read), doc, {
-      kind: 'turntable',
-      format: options.format,
-      width: SIZE,
-      height: SIZE,
-      camera: rtCamera(doc, view, 1),
-      seed,
-      samples,
-      fps: FPS,
-      frames: TURNTABLE_FRAMES,
-      transparent: options.transparent,
-    });
+    const { result, read, scenes } = await exportedClip(options, tracer);
     const { frames, decoder } = await decodeFile(result, FPS);
     return {
       format: result.format,
@@ -279,6 +395,9 @@ async function clip(options: {
       read: read.map((image) => base64(image.data)),
       decoder,
       bytes: result.blob.size,
+      catcherBounds: scenes.map((o) =>
+        o?.catcherBounds ? { min: [...o.catcherBounds.min], max: [...o.catcherBounds.max] } : null,
+      ),
     };
   } finally {
     restore();
@@ -332,9 +451,9 @@ function backdropRow(view: RtView, y: number): number[] {
   return agxToneMap(backdropColor(look, (SIZE - y - 0.5) / SIZE), look.toneMapping).map((v) => v * 255);
 }
 
-async function pair(options: { catcher: boolean }): Promise<ExportPairOutcome> {
-  const transparent = await still({ catcher: options.catcher, transparent: true });
-  const opaque = await still({ catcher: options.catcher, transparent: false });
+async function pair(options: Omit<ExportStillOptions, 'transparent'>): Promise<ExportPairOutcome> {
+  const transparent = await still({ ...options, transparent: true });
+  const opaque = await still({ ...options, transparent: false });
   const fg = Uint8Array.from(atob(transparent.decoded), (c) => c.charCodeAt(0));
   const view = viewOf('alpha-plane');
   const composited = new Uint8Array(fg.length);
@@ -352,7 +471,94 @@ async function pair(options: { catcher: boolean }): Promise<ExportPairOutcome> {
   return { composited: base64(composited), opaque: opaque.decoded, alpha: base64(alpha) };
 }
 
-window.__msExport = { still, clip, cancel, pair };
+/** A finished render loses its context; then an export loses it at frame 1. */
+async function lose(): Promise<ExportLossOutcome> {
+  const view = viewOf(TURNTABLE_VIEW);
+  const doc = rtScene(view.scene);
+  const tracer = tracerFor(view);
+  const gl = canvas.getContext('webgl2');
+  const extension = gl?.getExtension('WEBGL_lose_context');
+  if (!extension) throw new Error('WEBGL_lose_context is not available');
+  const options = {
+    kind: 'turntable',
+    format: 'apng',
+    width: SIZE,
+    height: SIZE,
+    camera: rtCamera(doc, view, 1),
+    seed,
+    samples,
+    fps: FPS,
+    frames: TURNTABLE_FRAMES,
+  } as const;
+  const event = (type: string) =>
+    new Promise<void>((resolve) => canvas.addEventListener(type, () => setTimeout(resolve, 0), { once: true }));
+  try {
+    await exportStill(tracer, doc, { ...options, kind: 'still', format: 'png' });
+    const before = tracer.readImage() !== null;
+    const lost = event('webglcontextlost');
+    extension.loseContext();
+    const beforeEvent = tracer.readImage() === null;
+    await lost;
+    const afterEvent = tracer.readImage() === null;
+    const restored = new Promise<void>((resolve) => {
+      const stop = tracer.onContextRestored(() => {
+        stop();
+        resolve();
+      });
+    });
+    extension.restoreContext();
+    await restored;
+    let clipCode = 'resolved';
+    try {
+      await exportClip(tracer, doc, options, {
+        onProgress: (p) => {
+          if (p.phase === 'render' && p.frame === 1 && p.samplesDone === 2) extension.loseContext();
+        },
+      });
+    } catch (error) {
+      clipCode = error instanceof ExportError ? error.code : String(error);
+    }
+    return { before, beforeEvent, afterEvent, clipCode };
+  } finally {
+    tracer.dispose();
+  }
+}
+
+/** A WebM or MP4 turntable played by a video element, seeked into frame 2. */
+async function video(format: 'webm' | 'mp4'): Promise<ExportVideoOutcome> {
+  const tracer = tracerFor(viewOf(TURNTABLE_VIEW));
+  try {
+    const { result, read } = await exportedClip({ format, transparent: false }, tracer);
+    const file = new Uint8Array(await result.blob.arrayBuffer());
+    const codec = result.format === 'mp4' ? demuxMp4(file, FPS).codec : demuxWebm(file).codec;
+    const type = `${result.mimeType}; codecs="${codec}"`;
+    const played = await playVideo(file, type, 2.5 / FPS);
+    return {
+      format: result.format,
+      type,
+      played: played && { ...played, frame: base64(played.rgba) },
+      read: base64(read[2]?.data ?? new Uint8Array(0)),
+    };
+  } finally {
+    tracer.dispose();
+  }
+}
+
+/** The APNG turntable as the browser's ImageDecoder reads it: frames, their durations and pixels. */
+async function apngTiming(): Promise<ExportTimingOutcome> {
+  const tracer = tracerFor(viewOf(TURNTABLE_VIEW));
+  try {
+    const { result, read } = await exportedClip({ format: 'apng', transparent: true }, tracer);
+    const file = new Uint8Array(await result.blob.arrayBuffer());
+    const timing = await readImageTiming(file, 'image/apng');
+    const decoded = await decodeImageFrames(file, 'image/apng');
+    return { ...timing, decoded: decoded.map(base64), read: read.map((image) => base64(image.data)) };
+  } finally {
+    tracer.dispose();
+  }
+}
+
+window.__msExport = { still, clip, cancel, pair, lose, video, apngTiming };
 
 const api: MsFixture = {
   ready: Promise.resolve(),
@@ -382,11 +588,12 @@ async function start(): Promise<void> {
     api.samplesDone = outcome.samplesDone;
     rgba = Uint8Array.from(atob(outcome.decoded), (c) => c.charCodeAt(0));
   } else {
-    const match = /^turntable-f([0-3])$/.exec(variant);
+    const match = /^(turntable|animation)-f([0-3])$/.exec(variant);
     if (!match) throw new Error(`unknown variant "${variant}"`);
-    const outcome = await clip({ format: 'apng', transparent: true });
+    const kind = match[1] === 'animation' ? 'animation' : 'turntable';
+    const outcome = await clip({ format: 'apng', transparent: true, clip: kind });
     api.samplesDone = samples;
-    rgba = Uint8Array.from(atob(outcome.decoded[Number(match[1])] ?? ''), (c) => c.charCodeAt(0));
+    rgba = Uint8Array.from(atob(outcome.decoded[Number(match[2])] ?? ''), (c) => c.charCodeAt(0));
   }
   const flipped = bottomUp(rgba, SIZE, SIZE);
   api.readRGBA = () => base64(flipped);

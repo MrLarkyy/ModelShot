@@ -110,6 +110,64 @@ export async function decodeImageFrames(file: Uint8Array, type: string): Promise
   }
 }
 
+/** Frame count and per-frame durations (microseconds) the browser's ImageDecoder reads from an animated image. */
+export async function readImageTiming(
+  file: Uint8Array,
+  type: string,
+): Promise<{ frames: number; durations: number[] }> {
+  const decoder = new ImageDecoder({ data: file, type });
+  try {
+    await decoder.tracks.ready;
+    const frames = decoder.tracks.selectedTrack?.frameCount ?? 0;
+    const durations: number[] = [];
+    for (let i = 0; i < frames; i++) {
+      const { image } = await decoder.decode({ frameIndex: i });
+      durations.push(image.duration ?? -1);
+      image.close();
+    }
+    return { frames, durations };
+  } finally {
+    decoder.close();
+  }
+}
+
+/**
+ * What a video element makes of the file: its size and duration, and the frame shown at `seconds` (RGBA, drawn through
+ * a canvas); `null` when the browser says it cannot play `type`.
+ */
+export async function playVideo(
+  file: Uint8Array,
+  type: string,
+  seconds: number,
+): Promise<{ width: number; height: number; duration: number; rgba: Uint8Array } | null> {
+  const video = document.createElement('video');
+  if (video.canPlayType(type) === '') return null;
+  const url = URL.createObjectURL(new Blob([new Uint8Array(file)], { type }));
+  try {
+    video.muted = true;
+    video.preload = 'auto';
+    const loaded = new Promise<void>((resolve, reject) => {
+      video.addEventListener('loadeddata', () => resolve(), { once: true });
+      video.addEventListener('error', () => reject(new Error(`video error ${video.error?.code ?? '?'}`)), {
+        once: true,
+      });
+    });
+    video.src = url;
+    await loaded;
+    const seeked = new Promise<void>((resolve) => video.addEventListener('seeked', () => resolve(), { once: true }));
+    video.currentTime = seconds;
+    await seeked;
+    const canvas = new OffscreenCanvas(video.videoWidth, video.videoHeight);
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) throw new Error('no 2D context');
+    context.drawImage(video, 0, 0);
+    const rgba = new Uint8Array(context.getImageData(0, 0, video.videoWidth, video.videoHeight).data);
+    return { width: video.videoWidth, height: video.videoHeight, duration: video.duration, rgba };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 interface Sample {
   readonly data: Uint8Array;
   readonly key: boolean;
