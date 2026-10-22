@@ -15,6 +15,7 @@ import { readDrawingBufferBase64 } from './context';
 import { spinMainThread, startEventLoopLag } from './eventLoopLag';
 import type { MsFixture, RtBakeOutcome, RtBakeRequest, RtControls } from './fixtureApi';
 import { breakFramebuffers } from './breakFramebuffers';
+import { recordDrawStates } from './drawStates';
 import { installGlTracker } from './glTracker';
 import { computePtProbes, sceneProbes } from './ptProbes';
 import {
@@ -34,7 +35,8 @@ import { lookByName } from './lookByName';
 // fps=1 (continuous drawing with a frame-time readout, for a manual run on real hardware); bake=<samples> (bake the
 // light before the first frame; 0 none), catcher=0|1, bakeSeed (default 1), bakeTile (default 64), pose=<player
 // preset> (the scene re-posed, framed as loaded), lag=1 (main-thread event-loop lag probe), edges=<width> (rounded
-// edges, 0 none; default the look's), preset=<look preset id> (default studio), rim=0 (the preset's rim light black).
+// edges, 0 none; default the look's), preset=<look preset id> (default studio), rim=0 (the preset's rim light black),
+// msaa=<n> (maxMsaaSamples; default the renderer's).
 const params = new URLSearchParams(location.search);
 
 function intParam(name: string, fallback: number, min: number, max: number): number {
@@ -86,6 +88,7 @@ window.__msFixture = api;
 async function start(): Promise<void> {
   const size = intParam('size', 256, 16, 4096);
   const maxTextureSide = intParam('maxTextureSide', 4096, 1, 16384);
+  const maxMsaaSamples = params.has('msaa') ? intParam('msaa', 4, 0, 16) : null;
   const bakeSeed = intParam('bakeSeed', 1, 0, 99999);
   const bakeTile = intParam('bakeTile', 64, 16, 512);
   const poseName = params.get('pose');
@@ -103,6 +106,7 @@ async function start(): Promise<void> {
     texelAntialias: view.texelAntialias,
     preserveDrawingBuffer: !continuous,
     maxTextureSide,
+    ...(maxMsaaSamples !== null ? { maxMsaaSamples } : {}),
     ...(view.edges !== null ? { edges: { width: view.edges } } : {}),
   });
   const capabilities = renderer.capabilities;
@@ -283,6 +287,7 @@ async function start(): Promise<void> {
       frame();
       return { current, same };
     },
+    drawStatesPerFrame: () => recordDrawStates(gl, () => renderer.render()),
     drawCallsPerFrame: () => {
       let calls = 0;
       const drawElements = gl.drawElements.bind(gl);

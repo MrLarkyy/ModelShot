@@ -26,6 +26,9 @@ import { traceMainThread } from '../src/mainThreadTrace';
 import { shadowStep } from '../src/shadowStep';
 import { OUTLINE_HULL_BOARD_LEVELS, outlineHullProbe } from '../src/outlineHullProbe';
 import { edgesSceneSharpEdges } from '../fixtures/src/edgesScene';
+import { CUTOUT_EDGE_TEXELS, cutoutEdgeOpaque, cutoutEdgePoint } from '../fixtures/src/cutoutEdge';
+import { agxInverse } from '../src/agxInverse';
+import { cutoutSeams } from '../src/cutoutSeams';
 import type { ModelViewProbe, PtProbe, RtBakeOutcome, RtBakeRequest } from '../fixtures/src/fixtureApi';
 
 const spec = (name: string, variant: string): RasterGoldenSpec => ({
@@ -109,6 +112,10 @@ function changedShare(a: Image, b: Image): number {
   return changed / (a.width * a.height);
 }
 
+/** 8-bit display colour of the default (studio) look to linear light. */
+const studioLinear = (rgb: readonly [number, number, number]) =>
+  agxInverse([rgb[0] / 255, rgb[1] / 255, rgb[2] / 255], lookPresetFile('studio').toneMapping);
+
 test.describe('realtime goldens', () => {
   for (const golden of [...GOLDENS, ...BAKED]) {
     test(`${golden.name} matches its golden`, async ({ page }, testInfo) => {
@@ -188,7 +195,7 @@ test('partial alpha does not depend on draw order (float path and fallback)', as
 test('glTF scene: no frame shows an atlas texel from outside its face region', async ({ page }) => {
   for (const yaw of [0, 30, 60, 90, 180, 270]) {
     const { image } = await render(page, `variant=gltf-nodes-y030&yaw=${yaw}`);
-    expect(sentinelPixels(image), `gltf-nodes yaw ${yaw}`).toBe(0);
+    expect(sentinelPixels(image, studioLinear), `gltf-nodes yaw ${yaw}`).toBe(0);
   }
 });
 
@@ -214,6 +221,120 @@ test('a cutout texel shows the backdrop exactly, an opaque neighbour does not', 
     expect(pixel(image, cx, cy), `cutout texel${extra}`).toEqual(backdrop);
     expect(near(pixel(image, ox, oy), backdrop, 8), `opaque texel${extra}`).toBe(false);
   }
+});
+
+/** The cutout-edge quad's texture region inside the middle of its opaque ring, in image pixels of the current view. */
+async function cutoutEdgeRegion(page: Page): Promise<[number, number][]> {
+  const far = CUTOUT_EDGE_TEXELS - 0.5;
+  const corners = [
+    cutoutEdgePoint(0.5, 0.5),
+    cutoutEdgePoint(far, 0.5),
+    cutoutEdgePoint(far, far),
+    cutoutEdgePoint(0.5, far),
+  ];
+  return Promise.all(corners.map((corner) => projectPoint(page, corner)));
+}
+
+test.describe('anti-aliased cutout seams (alpha-to-coverage, MS-30)', () => {
+  test('cutout edges on the MSAA path are anti-aliased, the cut-out texels unchanged', async ({ page }) => {
+    const backdrop = (await render(page, 'scene=empty&look=edge')).image;
+    const hard = (await render(page, 'variant=cutout-edge&aa=0')).image;
+    const soft = await render(page, 'variant=cutout-edge');
+    expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('raster');
+    expect(await page.evaluate(() => window.__msFixture?.rt?.msaaSamples)).toBeGreaterThan(1);
+    const region = await cutoutEdgeRegion(page);
+    const seams = cutoutSeams(soft.image, hard, backdrop, region, studioLinear);
+    const summary = JSON.stringify(seams);
+    // (a) Only pixels beside a hard-cutout boundary change.
+    expect(seams.farChanges, summary).toBe(0);
+    // (b) Most seam pixels resolve to a mix of texel and backdrop.
+    expect(seams.transitions, summary).toBeGreaterThan(200);
+    expect(seams.mixedTransitions, summary).toBeGreaterThanOrEqual(seams.transitions * 0.5);
+    // (c) The covered area is the hard shape's: the 50 % contour lies on the texel boundaries.
+    expect(Math.abs(seams.area - seams.hardArea), summary).toBeLessThanOrEqual(0.5 * seams.boundaryRows);
+    // (d) Texel centres: a cut-out texel shows the backdrop exactly, an opaque one its colour.
+    for (let row = 1; row < CUTOUT_EDGE_TEXELS - 1; row++) {
+      for (let column = 1; column < CUTOUT_EDGE_TEXELS - 1; column++) {
+        const [x, y] = await projectPoint(page, cutoutEdgePoint(column + 0.5, row + 0.5));
+        const label = `texel ${column}, ${row}`;
+        if (cutoutEdgeOpaque(column, row))
+          expect(near(pixel(soft.image, x, y), pixel(hard, x, y), 1), label).toBe(true);
+        else expect(pixel(soft.image, x, y), label).toEqual(pixel(backdrop, x, y));
+      }
+    }
+    // Without sample buffers the seams stay hard.
+    const single = await render(page, 'variant=cutout-edge&msaa=0');
+    expect(await page.evaluate(() => window.__msFixture?.rt?.msaaSamples)).toBe(0);
+    const singleSeams = cutoutSeams(single.image, hard, backdrop, region, studioLinear);
+    expect(singleSeams.mixes, JSON.stringify(singleSeams)).toBe(0);
+  });
+
+  test('the fallback and exact-key frames keep hard per-texel cutouts', async ({ page }) => {
+    const backdrop = (await render(page, 'scene=empty&look=edge&fallback=1')).image;
+    const hard = (await render(page, 'variant=cutout-edge&aa=0&fallback=1')).image;
+    const soft = (await render(page, 'variant=cutout-edge&fallback=1')).image;
+    expect(await page.evaluate(() => window.__msFixture?.rt?.path)).toBe('fallback');
+    const region = await cutoutEdgeRegion(page);
+    const fallback = cutoutSeams(soft, hard, backdrop, region, studioLinear);
+    expect(fallback.mixes, JSON.stringify(fallback)).toBe(0);
+    let classChanges = 0;
+    for (let y = 0; y < hard.height; y++) {
+      for (let x = 0; x < hard.width; x++) {
+        const b = pixel(backdrop, x, y);
+        if (near(pixel(soft, x, y), b, 2) !== near(pixel(hard, x, y), b, 2)) classChanges++;
+      }
+    }
+    expect(classChanges, 'pixels that change between model and backdrop with texel AA (fallback)').toBe(0);
+
+    const floatBackdrop = (await render(page, 'scene=empty&look=edge&depth=inside')).image;
+    const exactHard = (await render(page, 'variant=cutout-edge-inside&aa=0')).image;
+    const exactSoft = (await render(page, 'variant=cutout-edge-inside')).image;
+    expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('exact');
+    const exact = cutoutSeams(exactSoft, exactHard, floatBackdrop, region, studioLinear);
+    expect(exact.boundary, JSON.stringify(exact)).toBeGreaterThan(200);
+    expect(exact.mixes, JSON.stringify(exact)).toBe(0);
+  });
+
+  test('alpha-to-coverage is on only for the opaque pass into a multisampled target', async ({ page }) => {
+    for (const [query, expected] of [
+      ['variant=turntable-y030', 'on'],
+      ['variant=cutout-edge', 'on'],
+      ['variant=turntable-y030&aa=0', 'off'],
+      ['variant=cutout-edge-inside', 'off'],
+      ['variant=turntable-y030&fallback=1', 'off'],
+      ['variant=cutout-checker&bake=4', 'on'],
+    ] as const) {
+      await openFixture(page, `/rt.html?${query}`);
+      const states = await page.evaluate(() => window.__msFixture!.rt!.drawStatesPerFrame());
+      const programs = new Set(states.map((state) => state.program));
+      const wrong = states.filter(
+        (state) => state.alphaToCoverage && (state.program !== 'opaque' || state.samples < 2),
+      );
+      expect(wrong, `${query}: alpha-to-coverage outside the opaque pass into MSAA`).toEqual([]);
+      const opaque = states.filter((state) => state.program === (query.includes('fallback') ? 'fallback' : 'opaque'));
+      expect(opaque.length, `${query}: opaque draws`).toBeGreaterThan(0);
+      if (expected === 'on') {
+        expect(
+          opaque.every((state) => state.alphaToCoverage && state.samples > 1),
+          `${query}: every opaque draw`,
+        ).toBe(true);
+      } else {
+        expect(
+          states.some((state) => state.alphaToCoverage),
+          `${query}: no draw`,
+        ).toBe(false);
+      }
+      expect(programs.has('present') || query.includes('fallback'), `${query}: ${[...programs].join(', ')}`).toBe(true);
+    }
+    // The passes around it really are recorded: OIT and the catcher draw without it.
+    await openFixture(page, '/rt.html?variant=turntable-y030');
+    const turntable = await page.evaluate(() => window.__msFixture!.rt!.drawStatesPerFrame());
+    expect(turntable.some((state) => state.program === 'oitAccum' && !state.alphaToCoverage)).toBe(true);
+    expect(turntable.some((state) => state.program === 'backdrop' && !state.alphaToCoverage)).toBe(true);
+    await openFixture(page, '/rt.html?variant=cutout-checker&bake=4');
+    const baked = await page.evaluate(() => window.__msFixture!.rt!.drawStatesPerFrame());
+    expect(baked.some((state) => state.program === 'catcher' && !state.alphaToCoverage)).toBe(true);
+  });
 });
 
 test('the context comes back after a loss without a reload', async ({ page }) => {

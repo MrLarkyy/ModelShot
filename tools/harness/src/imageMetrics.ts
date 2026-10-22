@@ -24,14 +24,77 @@ export const near = (a: readonly number[], b: readonly number[], levels: number)
 export const luminance = ([r, g, b]: readonly number[]): number =>
   0.2126 * (r ?? 0) + 0.7152 * (g ?? 0) + 0.0722 * (b ?? 0);
 
-/** Pixels whose hue leans to the magenta sentinel: red and blue both clearly above green. */
-export function sentinelPixels(image: Image): number {
+type Rgb3 = readonly [number, number, number];
+
+const leansMagenta = ([r, g, b]: Rgb3): boolean => r - g > 24 && b - g > 24;
+
+/** Distance of `p` to the triangle a, b, c (a segment or a point when corners repeat), all in linear light. */
+function triangleDistance(p: Rgb3, a: Rgb3, b: Rgb3, c: Rgb3): number {
+  const sub = (u: Rgb3, v: Rgb3): Rgb3 => [u[0] - v[0], u[1] - v[1], u[2] - v[2]];
+  const dot = (u: Rgb3, v: Rgb3): number => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+  const along = (u: Rgb3, v: Rgb3, t: number): Rgb3 => [u[0] + t * v[0], u[1] + t * v[1], u[2] + t * v[2]];
+  const segment = (u: Rgb3, v: Rgb3): number => {
+    const d = sub(v, u);
+    const length2 = dot(d, d);
+    const t = length2 > 0 ? Math.min(1, Math.max(0, dot(sub(p, u), d) / length2)) : 0;
+    const r = sub(p, along(u, d, t));
+    return Math.sqrt(dot(r, r));
+  };
+  let best = Math.min(segment(a, b), segment(b, c), segment(a, c));
+  // Inside the triangle: barycentric coordinates of p's projection onto its plane.
+  const [e0, e1, w] = [sub(b, a), sub(c, a), sub(p, a)];
+  const [d00, d01, d11, d20, d21] = [dot(e0, e0), dot(e0, e1), dot(e1, e1), dot(w, e0), dot(w, e1)];
+  const det = d00 * d11 - d01 * d01;
+  if (det > 1e-12) {
+    const v = (d11 * d20 - d01 * d21) / det;
+    const u = (d00 * d21 - d01 * d20) / det;
+    if (v >= 0 && u >= 0 && u + v <= 1) {
+      const r = sub(w, [v * e0[0] + u * e1[0], v * e0[1] + u * e1[1], v * e0[2] + u * e1[2]]);
+      best = Math.min(best, Math.sqrt(dot(r, r)));
+    }
+  }
+  return best;
+}
+
+/**
+ * Pixels whose hue leans to the magenta sentinel: red and blue both clearly above green. With `linear` (8-bit display
+ * colour to linear light), a pixel within 0.01 in linear light of a blend of up to three of its 8 neighbours that do
+ * not lean magenta does not count: an anti-aliased edge where a red texel meets a blue one (MSAA resolves in linear
+ * light) is such a blend, a sentinel texel read into a face is not, its colour lies in none of its neighbours.
+ */
+export function sentinelPixels(image: Image, linear?: (display: Rgb3) => Rgb3): number {
   let count = 0;
-  for (let i = 0; i < image.data.length; i += 4) {
-    const [r = 0, g = 0, b = 0] = image.data.subarray(i, i + 3);
-    if (r - g > 24 && b - g > 24) count++;
+  for (let y = 0; y < image.height; y++) {
+    for (let x = 0; x < image.width; x++) {
+      const p = pixel(image, x, y);
+      if (!leansMagenta(p)) continue;
+      if (linear && blendOfNeighbours(image, x, y, linear)) continue;
+      count++;
+    }
   }
   return count;
+}
+
+function blendOfNeighbours(image: Image, x: number, y: number, linear: (display: Rgb3) => Rgb3): boolean {
+  const neighbours: Rgb3[] = [];
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const [nx, ny] = [x + dx, y + dy];
+      if ((dx === 0 && dy === 0) || nx < 0 || ny < 0 || nx >= image.width || ny >= image.height) continue;
+      const n = pixel(image, nx, ny);
+      if (!leansMagenta(n)) neighbours.push(linear(n));
+    }
+  }
+  const p = linear(pixel(image, x, y));
+  for (let i = 0; i < neighbours.length; i++) {
+    for (let j = i; j < neighbours.length; j++) {
+      for (let k = j; k < neighbours.length; k++) {
+        const [a, b, c] = [neighbours[i], neighbours[j], neighbours[k]];
+        if (a && b && c && triangleDistance(p, a, b, c) <= 0.01) return true;
+      }
+    }
+  }
+  return false;
 }
 
 /** Bounding box of the pixels that differ from the backdrop (the top-left pixel). */

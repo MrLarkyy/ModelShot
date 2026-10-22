@@ -1,4 +1,5 @@
 import type { BlockReport } from './eventLoopLag';
+import type { DrawState } from './drawStates';
 
 export interface MsFixture {
   ready: Promise<void>;
@@ -62,6 +63,8 @@ export interface RtControls {
   render: () => void;
   /** Mesh draw calls (drawElements) of one rendered frame. */
   drawCallsPerFrame: () => number;
+  /** Program, alpha-to-coverage and draw-framebuffer samples at every draw call of one rendered frame. */
+  drawStatesPerFrame: () => DrawState[];
   /** Makes every framebuffer report itself incomplete from now on (see breakFramebuffers.ts). */
   breakFramebuffers: () => void;
   /** WEBGL_lose_context: resolves once the context is lost, or restored and redrawn. */

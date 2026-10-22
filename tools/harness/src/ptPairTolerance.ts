@@ -8,13 +8,14 @@ import type { CompareOptions } from './compareImages';
  * into the backdrop and would count as model), radiance with it on both.
  */
 export const PT_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions>> = {
-  'turntable-y030': { threshold: 0.1, maxDiffRatio: 0.00353, maxMeanDelta: 0.953 },
-  iso: { threshold: 0.1, maxDiffRatio: 0.00639, maxMeanDelta: 1.18 },
-  // MS-41: the ground is world-charted and has the render's shadows; measured 0.01041 / 1.567 (per vertex 0.03178 /
-  // 2.189 under a limit of 0.0398 / 2.48), x 1.25.
-  'alpha-plane': { threshold: 0.1, maxDiffRatio: 0.013, maxMeanDelta: 1.96 },
+  // MS-30: the preview's cut-out seams are anti-aliased (alpha-to-coverage) like the render's; turntable-y030, iso,
+  // alpha-plane and cutout-checker measured 0.00217 / 0.724, 0.00409 / 0.889, 0.00354 / 1.334 and 0.00340 / 0.623,
+  // x 1.25 (before 0.00307 / 0.772, 0.00558 / 0.959, 0.01041 / 1.567 under MS-41's world charts, 0.00447 / 0.731).
+  'turntable-y030': { threshold: 0.1, maxDiffRatio: 0.00271, maxMeanDelta: 0.905 },
+  iso: { threshold: 0.1, maxDiffRatio: 0.00512, maxMeanDelta: 1.12 },
+  'alpha-plane': { threshold: 0.1, maxDiffRatio: 0.00443, maxMeanDelta: 1.67 },
   'player-hold-34': { threshold: 0.1, maxDiffRatio: 0.0232, maxMeanDelta: 1.62 },
-  'cutout-checker': { threshold: 0.1, maxDiffRatio: 0.00525, maxMeanDelta: 0.908 },
+  'cutout-checker': { threshold: 0.1, maxDiffRatio: 0.00426, maxMeanDelta: 0.78 },
   edges: { threshold: 0.1, maxDiffRatio: 0.00082, maxMeanDelta: 0.496 },
   // MS-19 with the narrow view-relative rims (round 5), measured 0.01936 / 1.237, 0.02147 / 1.109 and 0.02116 /
   // 1.281; a limit stays where the measurement x 1.25 would raise it (earlier rounds' 0.0223 / 1.43, 0.0241 / 1.13,
