@@ -145,7 +145,7 @@ Video is opaque: WebCodecs alpha encoding is not dependable across browsers, so 
 `mp4` renders opaque, over the backdrop, with an `ALPHA_DROPPED` warning. Video is lossy too: 4:2:0 chroma and the
 codec's blocks move colours at texel edges by tens of levels (60 to 80 measured at 64 × 64, a mean of 2 to 4); APNG
 and WebP keep pixel art exact. The level is the smallest whose picture size and rate hold the clip (H.264 MaxFS and
-MaxMBPS, VP9 picture size and luma sample rate: 1280 × 720 at 60 fps is H.264 3.2 and VP9 4.0, 1920 × 1080 at 60
+MaxMBPS, VP9 picture size, luma sample rate and longest side: 1280 × 720 at 60 fps is H.264 3.2 and VP9 4.0, 1920 × 1080 at 60
 fps H.264 4.2 and VP9 4.1), probed with `VideoEncoder.isConfigSupported` at the clip's size and rate; bitrate about
 0.25 bit per pixel and frame (0.25 Mbit/s to 40 Mbit/s). Frames must come out in order (no B-frame reordering); else
 `ENCODER_FAILED`.

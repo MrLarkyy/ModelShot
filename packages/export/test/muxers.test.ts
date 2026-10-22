@@ -300,4 +300,11 @@ describe('video codec choice', () => {
     expect(videoCodecCandidates('webm', 1280, 720, 60)[0]?.codec).toBe('vp09.00.40.08');
     expect(videoCodecCandidates('webm', 1920, 1080, 60)[0]?.codec).toBe('vp09.00.41.08');
   });
+
+  it('takes the longest side into the VP9 level: a strip is no level 1.0 picture', () => {
+    // 2048 x 16 fits level 1.0's picture size (36 864) but not its breadth (512); 2048 is level 3.0's.
+    expect(videoCodecCandidates('webm', 2048, 16, 30)[0]?.codec).toBe('vp09.00.30.08');
+    expect(videoCodecCandidates('webm', 2048, 64, 30)[0]?.codec).toBe('vp09.00.30.08');
+    expect(videoCodecCandidates('webm', 512, 64, 25)[0]?.codec).toBe('vp09.00.10.08');
+  });
 });
