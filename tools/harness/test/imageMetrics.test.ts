@@ -48,6 +48,14 @@ describe('image metrics', () => {
     expect(sentinelPixels(edge, toLinear)).toBe(0);
     const bleed = image(8, 8, (x, y) => (x >= 3 && x < 5 && y >= 3 && y < 5 ? [200, 40, 210] : red));
     expect(sentinelPixels(bleed, toLinear)).toBe(4);
+    // A one-pixel line between a red and a blue face, blended with the sentinel: no mix of its neighbours.
+    const sentinel = [200, 40, 210];
+    for (const share of [0.15, 0.5, 1]) {
+      const mixed = [0, 1, 2].map((c) => Math.round((1 - share) * ((red[c]! + blue[c]!) / 2) + share * sentinel[c]!));
+      const line = image(8, 8, (x) => (x < 4 ? red : x > 4 ? blue : mixed));
+      expect(sentinelPixels(line), `share ${share} plain`).toBe(8);
+      expect(sentinelPixels(line, toLinear), `share ${share}`).toBe(8);
+    }
   });
 
   it('compares hues independent of brightness', () => {
