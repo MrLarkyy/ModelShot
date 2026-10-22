@@ -3,9 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_RT_VIEW, RT_VARIANTS, rtScene } from '../fixtures/src/rtScenes';
 
 /**
- * Which meshes of every baked fixture variant get world-density charts (MS-41), so a baked golden cannot change by a
- * chart mode unnoticed. A variant without one lays out exactly as before world charts: its key was recorded on
- * origin/main 086af35.
+ * Which meshes of every baked fixture view get world-density charts (MS-41), so a baked golden or a preview-vs-render
+ * pair cannot change by a chart mode unnoticed: the variants that bake themselves and the views the pair tests bake
+ * (`bake=64`, pathtracer.spec.ts PT_PAIR_TOLERANCE). A view without one lays out exactly as before world charts: its
+ * key was recorded on origin/main 086af35.
  */
 const CENSUS: Readonly<Record<string, { world: readonly string[]; key?: string }>> = {
   'bake-cutout-checker': { world: [], key: 'd713fc70842b7e60' },
@@ -17,23 +18,33 @@ const CENSUS: Readonly<Record<string, { world: readonly string[]; key?: string }
   'preset-marketplace-yaw30': { world: [], key: 'a85876914bc0f880' },
   'preset-marketplace-fallback': { world: [], key: 'a85876914bc0f880' },
   'bake-gltf-contact': { world: ['ground', 'box'] },
+  // Pair views.
+  'turntable-y030': { world: [], key: 'e225d06c95593c4a' },
+  iso: { world: [], key: 'e225d06c95593c4a' },
+  'alpha-plane': { world: ['ground'] },
+  'player-hold-34': { world: [], key: 'a85876914bc0f880' },
+  'cutout-checker': { world: [], key: 'd713fc70842b7e60' },
+  // Its untextured wedge, plane and smooth sphere: per vertex before.
+  edges: { world: ['wedge', 'plane', 'sphere'] },
+  'outline-hull': { world: [], key: '4b2c48876d06f4e3' },
+  'gltf-contact': { world: ['ground', 'box'] },
 };
 
-describe('lightmap chart census of the baked fixture variants', () => {
-  const baked = Object.entries(RT_VARIANTS).filter(([, variant]) => (variant.bake ?? DEFAULT_RT_VIEW.bake) > 0);
-
-  it('lists every baked variant', () => {
-    expect(baked.map(([name]) => name).sort()).toEqual(Object.keys(CENSUS).sort());
+describe('lightmap chart census of the baked fixture views', () => {
+  it('lists every variant that bakes', () => {
+    const baked = Object.entries(RT_VARIANTS).filter(([, variant]) => (variant.bake ?? DEFAULT_RT_VIEW.bake) > 0);
+    for (const [name] of baked) expect(Object.keys(CENSUS), name).toContain(name);
   });
 
-  for (const [name, variant] of baked) {
+  for (const [name, expected] of Object.entries(CENSUS)) {
     it(`${name}: world charts on exactly the listed meshes`, () => {
-      const doc = rtScene(variant.scene ?? DEFAULT_RT_VIEW.scene);
+      const variant = RT_VARIANTS[name];
+      expect(variant, name).toBeDefined();
+      const doc = rtScene(variant?.scene ?? DEFAULT_RT_VIEW.scene);
       const layout = lightmapLayout(doc);
       const world = new Set(layout.charts.filter((c) => c.mode === 'world').map((c) => doc.meshes[c.mesh]?.name));
-      expect([...world]).toEqual(CENSUS[name]?.world);
-      const key = CENSUS[name]?.key;
-      if (key) expect(layout.layoutKey).toBe(key);
+      expect([...world]).toEqual(expected.world);
+      if (expected.key) expect(layout.layoutKey).toBe(expected.key);
     });
   }
 });

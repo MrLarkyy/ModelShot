@@ -125,4 +125,28 @@ describe('worldCharts', () => {
     expect(Math.max(...at.corners)).toBeCloseTo(2 / 0.3, 4);
     expect(worldChartTexels(chart!, 10).texels).toEqual([1, 1]);
   });
+
+  it('joins only across an edge of exactly two triangles, so an edge fan stays linear', () => {
+    // Three coplanar triangles on the edge (0,0,0)-(1,0,0): none joins; without the third, the two do.
+    const three = mesh([0, 0, 0, 1, 0, 0, 0.5, 1, 0, 0.5, -1, 0, 0.5, 2, 0], [0, 1, 2, 1, 0, 3, 0, 1, 4]);
+    expect(worldCharts(three, all(three), 32)).toHaveLength(3);
+    const two = mesh([0, 0, 0, 1, 0, 0, 0.5, 1, 0, 0.5, -1, 0], [0, 1, 2, 1, 0, 3]);
+    expect(worldCharts(two, all(two), 32)).toHaveLength(1);
+    // 4096 triangles on one edge, as many as the gate lets through: was 230 ms a mesh, quadratic in the fan.
+    const positions = [0, 0, 0, 1, 0, 0];
+    const indices: number[] = [];
+    for (let i = 0; i < 4096; i++) {
+      positions.push(0.5, 1 + i * 1e-3, 0);
+      indices.push(0, 1, i + 2);
+    }
+    const fan = mesh(positions, indices);
+    const triangles = all(fan);
+    expect(worldCharts(fan, triangles, 32)).toHaveLength(4096);
+    const start = performance.now();
+    for (let m = 0; m < 49; m++) worldCharts(fan, triangles, 32);
+    const ms = performance.now() - start;
+    console.log(`[world charts] 49 fans of 4096 triangles: ${ms.toFixed(0)} ms`);
+    // The 49 meshes of the load scene took 11.3 s before; the load budget is 3.5 s for everything.
+    expect(ms).toBeLessThan(3000);
+  });
 });

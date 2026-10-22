@@ -110,6 +110,24 @@ describe('lightmapLayout', () => {
     expect(layout.downscale).toBe(1);
   });
 
+  it('sizes the world texel by the triangles kept, not by a vertex no triangle uses', () => {
+    const untextured = faceQuad(0, 0, { groups: [{ material: -1, start: 0, count: 6 }] });
+    const stray = {
+      ...untextured,
+      positions: new Float32Array([...untextured.positions, 1e6, 1e6, 1e6]),
+      normals: new Float32Array([...untextured.normals, 0, 0, 1]),
+      uvs: new Float32Array([...untextured.uvs, 0, 0]),
+      uvRects: new Float32Array([...untextured.uvRects, 0, 0, 1, 1]),
+    };
+    const size = (mesh: SceneMesh) => {
+      const chart = lightmapLayout(withMeshes([mesh])).charts[0]!;
+      return [chart.mode, chart.width, chart.height];
+    };
+    // The unit quad at sqrt 2 / 256 per texel.
+    expect(size(untextured)).toEqual(['world', 182, 182]);
+    expect(size(stray)).toEqual(size(untextured));
+  });
+
   it('bakes per vertex an untextured mesh of more than 4096 triangles', () => {
     const triangles = 4097;
     const positions = new Float32Array(triangles * 9);

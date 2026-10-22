@@ -148,7 +148,7 @@ describe('batchScene', () => {
       ]);
       expect([...(batch?.uvs.subarray(i * 2, i * 2 + 2) ?? [])]).toEqual([...a.uvs.subarray(v * 2, v * 2 + 2)]);
       expect([...(batch?.lightmap.subarray(i * 4, i * 4 + 4) ?? [])]).toEqual([...corners.subarray(i * 8, i * 8 + 4)]);
-      expect([...(batch?.lightmapChart.subarray(i * 4, i * 4 + 4) ?? [])]).toEqual([
+      expect([...(batch?.lightmapChart?.subarray(i * 4, i * 4 + 4) ?? [])]).toEqual([
         ...corners.subarray(i * 8 + 4, i * 8 + 8),
       ]);
       // Edge rounding: index 3 is split vertex 4, its own distances.
@@ -163,8 +163,10 @@ describe('batchScene', () => {
     expect([...(batch?.edgeDistances.subarray(3 * 4, 4 * 4) ?? [])]).toEqual([16, 17, 18, 19]);
     // Quad b: its vertex data, no chart.
     expect([...(batch?.lightmap.subarray(6 * 4) ?? [])]).toEqual([...lightmapB]);
-    expect([...(batch?.lightmapChart.subarray(6 * 4) ?? [])]).toEqual(new Array(16).fill(0));
+    expect([...(batch?.lightmapChart?.subarray(6 * 4) ?? [])]).toEqual(new Array(16).fill(0));
     const plain = batchScene(doc([quad(0, 10)]), [], [lightmapB]);
+    // No world-charted mesh: no chart attribute at all (left disabled at upload).
+    expect(plain[0]?.lightmapChart).toBeNull();
     expect([...(plain[0]?.positions ?? [])]).toEqual([...(batch?.positions.subarray(6 * 3) ?? [])]);
   });
 });

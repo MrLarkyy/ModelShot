@@ -713,8 +713,9 @@ async function modelViewProbes(page: Page, variant: string): Promise<ModelViewPr
 const PT_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions>> = {
   'turntable-y030': { threshold: 0.1, maxDiffRatio: 0.00353, maxMeanDelta: 0.953 },
   iso: { threshold: 0.1, maxDiffRatio: 0.00639, maxMeanDelta: 1.18 },
-  // Mean delta: measured 2.189 x 1.25 = 2.74 is above the unbaked limit, which therefore stays.
-  'alpha-plane': { threshold: 0.1, maxDiffRatio: 0.0398, maxMeanDelta: 2.48 },
+  // MS-41: the ground is world-charted and has the render's shadows; measured 0.01041 / 1.567 (per vertex 0.03178 /
+  // 2.189 under a limit of 0.0398 / 2.48), x 1.25.
+  'alpha-plane': { threshold: 0.1, maxDiffRatio: 0.013, maxMeanDelta: 1.96 },
   'player-hold-34': { threshold: 0.1, maxDiffRatio: 0.0232, maxMeanDelta: 1.62 },
   'cutout-checker': { threshold: 0.1, maxDiffRatio: 0.00525, maxMeanDelta: 0.908 },
   edges: { threshold: 0.1, maxDiffRatio: 0.00082, maxMeanDelta: 0.496 },
@@ -727,9 +728,20 @@ const PT_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions>> = {
   'preset-marketplace-yaw30': { threshold: 0.1, maxDiffRatio: 0.0265, maxMeanDelta: 1.52 },
   // MS-50: measured ratio 0.01642, mean delta 0.912 (the rim's antialiased silhouette against the traced box filter).
   'outline-hull': { threshold: 0.1, maxDiffRatio: 0.0205, maxMeanDelta: 1.14 },
+  // MS-41, catcher off: measured 0.10661 / 5.627, x 1.25. The ground agrees; the box's sides do not: the render lights
+  // them with the bright ground's bounce, the bake has no interreflection (its top, lit alike, matches to the level).
+  'gltf-contact': { threshold: 0.1, maxDiffRatio: 0.133, maxMeanDelta: 7.03 },
 };
 
-const PAIR_SAMPLES: Readonly<Record<string, number>> = { 'alpha-plane': 128, 'cutout-checker': 128, edges: 128 };
+const PAIR_SAMPLES: Readonly<Record<string, number>> = {
+  'alpha-plane': 128,
+  'cutout-checker': 128,
+  edges: 128,
+  'gltf-contact': 128,
+};
+
+/** Views whose render has no shadow catcher (their variant turns it off): the preview's radiance is compared without. */
+const PAIR_WITHOUT_CATCHER: ReadonlySet<string> = new Set(['gltf-contact']);
 
 test.describe('the render frames and lights like the baked preview', () => {
   for (const [variant, tolerance] of Object.entries(PT_PAIR_TOLERANCE)) {
@@ -738,7 +750,7 @@ test.describe('the render frames and lights like the baked preview', () => {
       test.setTimeout(300_000);
       const samples = PAIR_SAMPLES[variant] ?? 64;
       const preview = (catcher: 0 | 1) => openFixture(page, `/rt.html?variant=${variant}&bake=64&catcher=${catcher}`);
-      const previewPng = encodeFlipped(await preview(1));
+      const previewPng = encodeFlipped(await preview(PAIR_WITHOUT_CATCHER.has(variant) ? 0 : 1));
       const traced = await render(page, `variant=${variant}&seed=1&samples=${samples}`);
       const framingPreview = decodePng(encodeFlipped(await preview(0)));
       const framingTraced = await render(page, `variant=${variant}&seed=1&samples=${samples}&catcher=0`);

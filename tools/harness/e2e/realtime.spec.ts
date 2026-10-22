@@ -933,7 +933,9 @@ test.describe('baked lighting', () => {
     };
     console.log(`[rt probe] gltf-contact contact / open: ${JSON.stringify(levels)}`);
     // Measured (SwiftShader, seed 1): contact 0.70 of unbaked, the path tracer 0.74 of its open ground and 5.5 % from
-    // the preview. Per vertex the ground had only its four corner texels, far from the box: no shadow there.
+    // the preview. Per vertex the ground had only its four corner texels, far from the box: no shadow there (1.0). The
+    // 0.8 limit sits between the two with 0.1 to spare above the shadow (the probe averages 5 x 5 pixels of 64-sample
+    // texels), and stays below the render's own contact (0.74) plus that margin.
     const [contact = 0, open = 0] = levels.baked;
     const [plainContact = 0, plainOpen = 0] = levels.unbaked;
     const [ptContact = 0, ptOpen = 0] = levels.pt;

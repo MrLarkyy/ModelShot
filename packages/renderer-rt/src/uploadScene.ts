@@ -96,10 +96,13 @@ export function uploadScene(
     vaos.push(vao);
     gl.bindVertexArray(vao);
     for (const { location, size, key } of ATTRIBUTES) {
+      const data = batch[key];
+      // Left disabled: a constant no vertex of the batch reads (lightmapChart without world charts).
+      if (!data) continue;
       const buffer = gl.createBuffer();
       buffers.push(buffer);
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-      gl.bufferData(gl.ARRAY_BUFFER, batch[key], gl.STATIC_DRAW);
+      gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
       gl.enableVertexAttribArray(location);
       gl.vertexAttribPointer(location, size, gl.FLOAT, false, 0, 0);
     }
@@ -241,7 +244,8 @@ export function uploadExactGeometry(gl: WebGL2RenderingContext, scene: GpuScene)
   for (const { batch } of scene.opaque) {
     if (vaos.has(batch)) continue;
     const n = batch.indices.length;
-    const arrays: Record<(typeof ATTRIBUTES)[number]['key'], Float32Array> = {
+    const chart = batch.lightmapChart;
+    const arrays: Record<(typeof ATTRIBUTES)[number]['key'], Float32Array | null> = {
       positions: new Float32Array(n * 3),
       normals: new Float32Array(n * 3),
       uvs: new Float32Array(n * 2),
@@ -249,25 +253,21 @@ export function uploadExactGeometry(gl: WebGL2RenderingContext, scene: GpuScene)
       lightmap: new Float32Array(n * 4),
       edgeDistances: new Float32Array(n * 4),
       edgeAngles: new Float32Array(n * 4),
-      lightmapChart: new Float32Array(n * 4),
+      lightmapChart: chart ? new Float32Array(n * 4) : null,
     };
-    const corners = CORNER_LOCATIONS.map(() => new Float32Array(n * 3));
-    const { indices, positions, normals, uvs, uvRects, lightmap, edgeDistances, edgeAngles, lightmapChart } = batch;
-    // Plain index loops: this runs once per scene on up to the loader's 200 000 triangles.
-    for (let i = 0; i < n; i++) {
-      const v = indices[i] ?? 0;
-      for (let k = 0; k < 3; k++) {
-        arrays.positions[i * 3 + k] = positions[v * 3 + k] ?? 0;
-        arrays.normals[i * 3 + k] = normals[v * 3 + k] ?? 0;
+    // Every vertex attribute of the batch, de-indexed: `size` floats per vertex, read at the index's vertex.
+    for (const { size, key } of ATTRIBUTES) {
+      const from = batch[key];
+      const to = arrays[key];
+      if (!from || !to) continue;
+      // Plain index loops: this runs once per scene on up to the loader's 200 000 triangles.
+      for (let i = 0; i < n; i++) {
+        const v = batch.indices[i] ?? 0;
+        for (let k = 0; k < size; k++) to[i * size + k] = from[v * size + k] ?? 0;
       }
-      arrays.uvs[i * 2] = uvs[v * 2] ?? 0;
-      arrays.uvs[i * 2 + 1] = uvs[v * 2 + 1] ?? 0;
-      for (let k = 0; k < 4; k++) arrays.uvRects[i * 4 + k] = uvRects[v * 4 + k] ?? 0;
-      for (let k = 0; k < 4; k++) arrays.lightmap[i * 4 + k] = lightmap[v * 4 + k] ?? 0;
-      for (let k = 0; k < 4; k++) arrays.edgeDistances[i * 4 + k] = edgeDistances[v * 4 + k] ?? 0;
-      for (let k = 0; k < 4; k++) arrays.edgeAngles[i * 4 + k] = edgeAngles[v * 4 + k] ?? 0;
-      for (let k = 0; k < 4; k++) arrays.lightmapChart[i * 4 + k] = lightmapChart[v * 4 + k] ?? 0;
     }
+    const corners = CORNER_LOCATIONS.map(() => new Float32Array(n * 3));
+    const { indices, positions } = batch;
     for (let t = 0; t < n; t += 3) {
       for (let c = 0; c < 3; c++) {
         const corner = corners[c];
@@ -288,7 +288,10 @@ export function uploadExactGeometry(gl: WebGL2RenderingContext, scene: GpuScene)
       gl.enableVertexAttribArray(location);
       gl.vertexAttribPointer(location, size, gl.FLOAT, false, 0, 0);
     };
-    for (const { location, size, key } of ATTRIBUTES) attribute(location, size, arrays[key]);
+    for (const { location, size, key } of ATTRIBUTES) {
+      const data = arrays[key];
+      if (data) attribute(location, size, data);
+    }
     CORNER_LOCATIONS.forEach((location, c) => attribute(location, 3, corners[c] ?? new Float32Array(0)));
     const triangleFlags = sharedEdgeFlags(positions, indices);
     const vertexFlags = new Float32Array(n);

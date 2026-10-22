@@ -120,8 +120,9 @@ function project(
 
 /**
  * World charts of a mesh's kept triangles (finite, non-zero area): edges are matched by exact position, so a flat
- * mesh with its own vertices per face still joins; a chart grows from the first unassigned triangle in triangle order
- * to at most `maxTriangles` triangles. A pure function of the rest geometry and the triangle order.
+ * mesh with its own vertices per face still joins, and only an edge of exactly two triangles joins them (linear time);
+ * a chart grows from the first unassigned triangle in triangle order to at most `maxTriangles` triangles. A pure
+ * function of the rest geometry and the triangle order.
  */
 export function worldCharts(
   mesh: SceneMesh,
@@ -150,19 +151,30 @@ export function worldCharts(
       ids[t * 3 + c] = id;
     }
   }
-  // Per edge slot (triangle × 3 + edge) the next slot with the same position pair, −1 at the end.
+  // Per edge slot (triangle × 3 + edge) the one other slot with the same position pair, −1 when the edge is open or
+  // shared by more than two triangles: such an edge joins nothing, so a fan of thousands of triangles on one edge costs
+  // no more than a strip.
   const distinct = byPosition.size;
-  const edgeKey = new Float64Array(count * 3);
-  const next = new Int32Array(count * 3).fill(-1);
-  const head = new Map<number, number>();
+  const partner = new Int32Array(count * 3).fill(-1);
+  const firstSlot = new Map<number, number>();
   for (let s = 0; s < count * 3; s++) {
     const t = Math.floor(s / 3);
     const a = ids[s] ?? 0;
     const b = ids[t * 3 + ((s + 1) % 3)] ?? 0;
     const key = Math.min(a, b) * distinct + Math.max(a, b);
-    edgeKey[s] = key;
-    next[s] = head.get(key) ?? -1;
-    head.set(key, s);
+    const other = firstSlot.get(key);
+    if (other === undefined) {
+      firstSlot.set(key, s);
+    } else if (other >= 0 && (partner[other] ?? -1) < 0) {
+      partner[other] = s;
+      partner[s] = other;
+    } else {
+      if (other >= 0) {
+        partner[partner[other] ?? 0] = -1;
+        partner[other] = -1;
+      }
+      firstSlot.set(key, -1);
+    }
   }
 
   const chartOf = new Int32Array(count).fill(-1);
@@ -175,17 +187,17 @@ export function worldCharts(
     for (let k = 0; k < members.length && members.length < maxTriangles; k++) {
       const t = members[k] ?? 0;
       for (let e = 0; e < 3; e++) {
-        for (let s = head.get(edgeKey[t * 3 + e] ?? 0) ?? -1; s >= 0; s = next[s] ?? -1) {
-          const other = Math.floor(s / 3);
-          if ((chartOf[other] ?? -1) >= 0 || triangles[other]?.group !== group) continue;
-          const dot =
-            (normals[other * 3] ?? 0) * (normals[seed * 3] ?? 0) +
-            (normals[other * 3 + 1] ?? 0) * (normals[seed * 3 + 1] ?? 0) +
-            (normals[other * 3 + 2] ?? 0) * (normals[seed * 3 + 2] ?? 0);
-          if (!(dot > 1 - COPLANAR_TOLERANCE) || members.length >= maxTriangles) continue;
-          chartOf[other] = charts.length;
-          members.push(other);
-        }
+        const s = partner[t * 3 + e] ?? -1;
+        if (s < 0) continue;
+        const other = Math.floor(s / 3);
+        if ((chartOf[other] ?? -1) >= 0 || triangles[other]?.group !== group) continue;
+        const dot =
+          (normals[other * 3] ?? 0) * (normals[seed * 3] ?? 0) +
+          (normals[other * 3 + 1] ?? 0) * (normals[seed * 3 + 1] ?? 0) +
+          (normals[other * 3 + 2] ?? 0) * (normals[seed * 3 + 2] ?? 0);
+        if (!(dot > 1 - COPLANAR_TOLERANCE) || members.length >= maxTriangles) continue;
+        chartOf[other] = charts.length;
+        members.push(other);
       }
     }
     members.sort((a, b) => a - b);
@@ -205,6 +217,11 @@ export function worldCharts(
     });
   }
   return charts;
+}
+
+/** Texels of `chart` across at `texel` mesh units per lightmap texel, at least one each way, its back block excluded. */
+export function worldChartArea(chart: WorldChart, texel: number): number {
+  return Math.max(1, Math.ceil(chart.span[0] / texel)) * Math.max(1, Math.ceil(chart.span[1] / texel));
 }
 
 /** `chart` at `texel` mesh units per lightmap texel: at least one texel each way, corners in texels. */

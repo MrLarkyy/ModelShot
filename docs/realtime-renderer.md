@@ -68,9 +68,10 @@ if (lighting) renderer.setLighting(lighting);
   meshes), an untextured face (a glTF base colour swatch included), a degenerate UV triangle or a chart of more than
   `MAX_CHART_TRIANGLES` (32) triangles gets **world charts** instead (MS-41), when it has at most
   `MAX_WORLD_MESH_TRIANGLES` (4096) triangles: edge-connected coplanar triangles of one group (edges matched by
-  position, so faces with their own vertices join), at most 32 per chart, projected onto their plane along the
-  triangle edge that bounds them tightest, at one **world texel** for the whole scene: the diagonal of the visible
-  meshes' rest positions / `WORLD_TEXELS_PER_EXTENT` (256), never finer than the finest texture texel of a texel
+  position, so faces with their own vertices join; only an edge of exactly two triangles joins, so a fan of thousands
+  on one edge costs linear time), at most 32 per chart, projected onto their plane along the
+  triangle edge that bounds them tightest, at one **world texel** for the whole scene: the diagonal of the bounds of the
+  visible meshes' kept triangles at rest (a vertex no triangle uses does not count) / `WORLD_TEXELS_PER_EXTENT` (256), never finer than the finest texture texel of a texel
   chart. A two-triangle ground of a glTF or OBJ scene so gets a shadow where the box on it stands, not one light value
   per corner. A denser mesh is baked per vertex: one texel per vertex (two when double-sided), interpolated. The atlas
   is `LIGHTMAP_WIDTH` (2048) wide; when the charts would need more than `MAX_LIGHTMAP_TEXELS` (2²¹) texels, the world
@@ -90,7 +91,8 @@ u_lookKeyColor × max(n·u_lookKeyDirection, 0) × a + fillLight(n)) + rimLight(
   shimmer of its own. World charts are read bilinearly at their own grid (an untextured face has no texel grid to
   keep; seam taps would show its blocks), the 2 × 2 texels clamped to the chart: a world-charted mesh is drawn
   de-indexed, a vertex per triangle corner (`LightmapLayout.cornerData`, composed with the sharp-edge split, so edge
-  rounding stays), each corner carrying its point in the lightmap and its chart's rectangle (attribute 11); the
+  rounding stays), each corner carrying its point in the lightmap and its chart's rectangle (attribute 11, uploaded
+  only for a batch with world charts and left disabled elsewhere, as no other vertex reads it); the
   vertex shader passes them in the vertex-light varyings, as two more varyings would exceed the minimum of 15 next to
   the exact depth key's. Vertex charts are fetched in `mesh.vert.glsl` and interpolated; the back pass reads the back
   chart. The light is sampled before the first `discard` (derivatives).

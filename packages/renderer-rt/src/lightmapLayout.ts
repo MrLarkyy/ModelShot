@@ -3,6 +3,7 @@ import { RendererError } from './RendererError';
 import {
   MAX_WORLD_MESH_TRIANGLES,
   WORLD_TEXELS_PER_EXTENT,
+  worldChartArea,
   worldChartTexels,
   worldCharts,
   type WorldChart,
@@ -333,28 +334,22 @@ function worldProtos(m: number, charts: readonly WorldChart[], texel: number): P
   });
 }
 
-/** Diagonal of the bounds of the visible meshes' rest positions, in mesh units; 0 without a finite position. */
-function sceneDiagonal(doc: SceneDocument, visible: readonly boolean[]): number {
-  const lo = [Infinity, Infinity, Infinity];
-  const hi = [-Infinity, -Infinity, -Infinity];
-  doc.meshes.forEach((mesh, m) => {
-    if (!visible[m]) return;
-    const p = mesh.positions;
-    for (let i = 0; i + 2 < p.length; i += 3) {
-      const x = p[i] ?? NaN;
-      const y = p[i + 1] ?? NaN;
-      const z = p[i + 2] ?? NaN;
-      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
-      lo[0] = Math.min(lo[0] ?? 0, x);
-      lo[1] = Math.min(lo[1] ?? 0, y);
-      lo[2] = Math.min(lo[2] ?? 0, z);
-      hi[0] = Math.max(hi[0] ?? 0, x);
-      hi[1] = Math.max(hi[1] ?? 0, y);
-      hi[2] = Math.max(hi[2] ?? 0, z);
+/**
+ * Grows `bounds` ([minX, minY, minZ, maxX, maxY, maxZ]) by the corners of `triangles` (finite, kept): a vertex no
+ * triangle uses, however far, does not stretch the world texel.
+ */
+function growBounds(bounds: number[], mesh: SceneMesh, triangles: readonly MeshTriangle[]): void {
+  const p = mesh.positions;
+  for (const { first } of triangles) {
+    for (let c = 0; c < 3; c++) {
+      const v = (mesh.indices[first + c] ?? 0) * 3;
+      for (let axis = 0; axis < 3; axis++) {
+        const x = p[v + axis] ?? 0;
+        bounds[axis] = Math.min(bounds[axis] ?? 0, x);
+        bounds[axis + 3] = Math.max(bounds[axis + 3] ?? 0, x);
+      }
     }
-  });
-  const d = Math.hypot((hi[0] ?? 0) - (lo[0] ?? 0), (hi[1] ?? 0) - (lo[1] ?? 0), (hi[2] ?? 0) - (lo[2] ?? 0));
-  return Number.isFinite(d) ? d : 0;
+  }
 }
 
 /** Texels a chart covers at `downscale`, its back block included. */
@@ -460,8 +455,9 @@ function hashDocument(hash: LayoutHash, doc: SceneDocument, visible: readonly bo
  * affinely (every Blockbench element) gets a chart per face at its own texel grid, so light changes per texel like the
  * albedo; faces sharing atlas cells each get their own chart and a double-sided face a second one for its back. Other
  * meshes (shared smooth vertices, untextured faces) of at most MAX_WORLD_MESH_TRIANGLES triangles get world charts:
- * edge-connected coplanar triangles at one world texel, the scene's rest diagonal / WORLD_TEXELS_PER_EXTENT but never
- * finer than the finest texture texel; denser meshes get one texel per vertex, interpolated. If the charts do not fit
+ * edge-connected coplanar triangles at one world texel, the rest diagonal of the kept triangles' bounds /
+ * WORLD_TEXELS_PER_EXTENT but never finer than the finest texture texel; denser meshes get one texel per vertex,
+ * interpolated. If the charts do not fit
  * MAX_LIGHTMAP_TEXELS, the world texel doubles (up to MAX_WORLD_COARSENING times), then world-charted meshes fall back
  * to one texel per vertex, then texel charts take 2, 4, … texture texels per lightmap texel; when even that fails it
  * throws `RendererError` `SCENE_TOO_LARGE` before allocating any lightmap. Without a world-charted mesh it packs
@@ -474,9 +470,11 @@ export function lightmapLayout(doc: SceneDocument): LightmapLayout {
   const fixed: (ProtoChart[] | null)[] = doc.meshes.map(() => null);
   const world = new Map<number, { charts: WorldChart[]; triangles: MeshTriangle[] }>();
   let finestTexel = Infinity;
+  const bounds = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
   doc.meshes.forEach((mesh, m) => {
     if (!visible[m]) return;
     const triangles = meshTriangles(mesh);
+    growBounds(bounds, mesh, triangles);
     const texel = texelCharts(doc, m, mesh, triangles);
     if (texel) {
       finestTexel = Math.min(finestTexel, texel.finest);
@@ -507,14 +505,29 @@ export function lightmapLayout(doc: SceneDocument): LightmapLayout {
   let packing: Packing | null = null;
   let downscale = 1;
   const baseTexel = Math.max(
-    sceneDiagonal(doc, visible) / WORLD_TEXELS_PER_EXTENT,
+    Math.hypot(
+      (bounds[3] ?? 0) - (bounds[0] ?? 0),
+      (bounds[4] ?? 0) - (bounds[1] ?? 0),
+      (bounds[5] ?? 0) - (bounds[2] ?? 0),
+    ) / WORLD_TEXELS_PER_EXTENT,
     Number.isFinite(finestTexel) ? finestTexel : 0,
   );
   if (world.size > 0 && baseTexel > 0 && Number.isFinite(baseTexel)) {
     // World light never costs a textured face its resolution: coarsen it first, at downscale 1.
+    // The area of a world texel from the charts' spans: charts are built only for a texel that could fit.
+    let fixedArea = 0;
+    for (const list of fixed) for (const proto of list ?? []) fixedArea += chartArea(proto, 1);
+    const worldArea = (texel: number): number => {
+      let sum = 0;
+      for (const { charts } of world.values()) {
+        for (const chart of charts) sum += worldChartArea(chart, texel) * (chart.back ? 2 : 1);
+      }
+      return sum;
+    };
     for (let scale = 1; scale <= MAX_WORLD_COARSENING && !packing; scale *= 2) {
+      if (fixedArea + worldArea(baseTexel * scale) > MAX_LIGHTMAP_TEXELS) continue;
       protos = assemble(baseTexel * scale);
-      if (area(protos, 1) <= MAX_LIGHTMAP_TEXELS) packing = pack(protos, 1);
+      packing = pack(protos, 1);
     }
   }
   if (!packing) {

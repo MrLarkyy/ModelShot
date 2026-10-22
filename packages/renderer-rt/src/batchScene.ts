@@ -43,8 +43,11 @@ export interface SceneBatch {
    * world-charted mesh); (0, 0, −1, 0) without a layout.
    */
   readonly lightmap: Float32Array;
-  /** 4 per vertex: its world chart's rectangle (the last 4 of `LightmapLayout.cornerData`); 0 for other meshes. */
-  readonly lightmapChart: Float32Array;
+  /**
+   * 4 per vertex: its world chart's rectangle (the last 4 of `LightmapLayout.cornerData`), 0 for other meshes; null
+   * when no mesh of the batch has world charts (the attribute is then left disabled: only world corners read it).
+   */
+  readonly lightmapChart: Float32Array | null;
   /** 4 per vertex: distances to its sharp-edge slots (`SharpEdgeAttributes.distances`); `NO_EDGE` without them. */
   readonly edgeDistances: Float32Array;
   /** 4 per vertex: the slots' signed angles (`SharpEdgeAttributes.angles`); 0 without them. */
@@ -111,7 +114,9 @@ function merge(
   const bases = new Map<SceneMesh, number>();
   let vertices = 0;
   let indexCount = 0;
+  let world = false;
   for (const { mesh, group } of parts) {
+    world ||= cornersOf(mesh) !== null;
     if (!bases.has(mesh)) {
       bases.set(mesh, vertices);
       vertices += cornersOf(mesh) ? mesh.indices.length : (edgesOf(mesh)?.vertexOf.length ?? mesh.positions.length / 3);
@@ -125,7 +130,7 @@ function merge(
     uvs: new Float32Array(vertices * 2),
     uvRects: new Float32Array(vertices * 4),
     lightmap: new Float32Array(vertices * 4),
-    lightmapChart: new Float32Array(vertices * 4),
+    lightmapChart: world ? new Float32Array(vertices * 4) : null,
     edgeDistances: new Float32Array(vertices * EDGE_SLOTS).fill(NO_EDGE),
     edgeAngles: new Float32Array(vertices * EDGE_SLOTS),
     indices: new Uint32Array(indexCount),
@@ -142,7 +147,7 @@ function merge(
       for (let i = 0; i < vertexOf.length; i++) {
         for (let k = 0; k < 4; k++) {
           batch.lightmap[(base + i) * 4 + k] = corners[i * 8 + k] ?? 0;
-          batch.lightmapChart[(base + i) * 4 + k] = corners[i * 8 + 4 + k] ?? 0;
+          if (batch.lightmapChart) batch.lightmapChart[(base + i) * 4 + k] = corners[i * 8 + 4 + k] ?? 0;
         }
       }
       if (edges) {
