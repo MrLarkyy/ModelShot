@@ -412,7 +412,7 @@ and `pathtracer.spec.ts`, golden project):
 - a look set while the render's `setScene` decodes gives the bytes of a render under that look from the start;
 - Marketplace renders the same bytes in batches of 7 and 64-pixel tiles;
 - the rim light, unshadowed: of the pixels it brightens by more than 12 levels in the preview (Rim against `rim=0`,
-  unbaked) the render brightens 99.97 % too (3 277 preview, 3 553 render pixels: the jittered camera rays catch a
+  unbaked) the render brightens 99.7 % too (2 565 preview, 2 843 render pixels: the jittered camera rays catch a
   little more of the grazing fillets);
 - the Marketplace rim's line and the faces' texels (`pathtracer.spec.ts`): the held-cube player at 512 px, pitch 20,
   yaw 210 and 30, baked preview and render (16 samples). `silhouettePixels` of `imageMetrics.ts` splits the model
