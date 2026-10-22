@@ -43,7 +43,7 @@ export default defineConfig(
     },
   },
   {
-    files: ['packages/*/scripts/**/*.mjs'],
+    files: ['packages/*/scripts/**/*.mjs', 'tools/wiki/**/*.mjs'],
     languageOptions: { globals: globals.node },
   },
   {

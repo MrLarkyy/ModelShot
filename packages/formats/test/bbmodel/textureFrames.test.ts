@@ -51,18 +51,62 @@ describe('frame count (Blockbench Texture.frameCount)', () => {
     expect(frames(width, height, { uv }).result?.count).toBe(count);
   });
 
-  it.each(['java_block', 'free', 'bedrock', 'bedrock_block', 'bedrock_old'])('%s animates textures', (format) => {
+  const ANIMATING = [
+    'java_block',
+    'free',
+    'bedrock',
+    'bedrock_block',
+    'bedrock_old',
+    'image',
+    'geckolib_model',
+    'animated_entity_model',
+    'azure_model',
+    'bamo_model',
+    'free_rotation',
+    'java_block_sequence',
+    'cosmic_reach_entity_model',
+  ];
+
+  it.each(ANIMATING)('%s animates textures', (format) => {
     expect(frames(16, 64, { format }).result?.count).toBe(4);
   });
 
-  it.each(['modded_entity', 'optifine_entity', 'skin', 'unknown', ''])(
-    '%s draws a strip as one image and ignores its fields',
+  it.each(['geckolib_model', 'free_rotation', 'java_block_sequence'])(
+    '%s times frames by frame_time ticks',
     (format) => {
-      const { result, warnings } = frames(16, 64, { format, fields: { frame_time: 'x', fps: [] } });
-      expect(result).toBeUndefined();
-      expect(warnings).toEqual([]);
+      expect(frames(16, 64, { format, fields: { frame_time: 4, fps: 20 } }).result?.frameTime).toBeCloseTo(0.2);
     },
   );
+
+  it.each(['image', 'azure_model', 'animated_entity_model', 'bamo_model', 'cosmic_reach_entity_model'])(
+    '%s times frames by fps',
+    (format) => {
+      expect(frames(16, 64, { format, fields: { frame_time: 4, fps: 20 } }).result?.frameTime).toBeCloseTo(0.05);
+    },
+  );
+
+  it.each(ANIMATING.slice(5))('loading a %s model gives its strip frames without warnings', (format) => {
+    const loaded = loadBbmodel(stripModel(16, 64, format));
+    expect(loaded.scene.textures[0]?.frames?.count).toBe(4);
+    expect(loaded.warnings).toEqual([]);
+  });
+
+  it.each([
+    'modded_entity',
+    'optifine_entity',
+    'optifine_part',
+    'optifine_player_model',
+    'skin',
+    'eme_entity',
+    'figura',
+    'hytale_character',
+    'unknown',
+    '',
+  ])('%s draws a strip as one image and ignores its fields', (format) => {
+    const { result, warnings } = frames(16, 64, { format, fields: { frame_time: 'x', fps: [] } });
+    expect(result).toBeUndefined();
+    expect(warnings).toEqual([]);
+  });
 
   it('a uv size under one frame pixel tall warns and draws one image, without looping over the count', () => {
     const start = performance.now();

@@ -1,0 +1,8 @@
+{
+  "name": "@modelshot/wiki",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node build.mjs --check"
+  }
+}
