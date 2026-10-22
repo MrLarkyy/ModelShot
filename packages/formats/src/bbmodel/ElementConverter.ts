@@ -21,8 +21,9 @@ export interface ConverterContext {
   /** Blockbench's default texture (`defaultTexture`); absent or −1 for none. */
   readonly defaultTexture?: number;
   /**
-   * Texture of the element's parent group in a per-group-texture format; absent when the group sets none, −1 when it
-   * names a texture that does not exist (Blockbench then draws the face untextured).
+   * Texture every face of the element shows, overriding `textureRule`: its parent group's in a per-group-texture
+   * format, or a Hytale cube's collection texture (or the default texture outside every collection); absent when
+   * none applies, −1 when it names a texture that does not exist (Blockbench then draws the face untextured).
    */
   readonly groupTexture?: number;
   /** Material of the layer composite that every drawn face uses; absent when no texture is layered. */
@@ -33,7 +34,7 @@ export interface ConverterContext {
   readonly boxUv: boolean;
   /** A box-UV project before format 4.5: a cube's `shade: false` means mirrored UV (Blockbench's import). */
   readonly shadeMirrorsUv?: boolean;
-  /** Box-UV sizes are not floored (Blockbench `box_uv_float_size`, only `modded_entity`). */
+  /** Box-UV sizes are not floored (Blockbench `box_uv_float_size`: `modded_entity` and the Hytale formats). */
   readonly boxUvFloatSize: boolean;
   readonly maxStringChars: number;
   readonly maxVertices: number;

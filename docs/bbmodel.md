@@ -37,7 +37,8 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
   the format's default texture, as Blockbench draws it (Conversion, Blockbench conventions 15).
 - **Box UV** (`meta.box_uv` or the cube's `box_uv`): faces without a `uv` get Blockbench's box layout from
   `uv_offset`, the cube size and `mirror_uv`. The size is `to − from` of the plain cube (inflate and stretch ignored),
-  floored as `floor(to − from + 1e-7)`, except in `modded_entity` where Blockbench keeps fractional box-UV sizes. In a
+  floored as `floor(to − from + 1e-7)`, except in `modded_entity` and the Hytale plugin formats `hytale_character` and
+  `hytale_prop`, where Blockbench keeps fractional box-UV sizes (`Format.box_uv_float_size`). In a
   box-UV project (`meta.box_uv`) before format 4.5 a cube's `shade: false` means mirrored UV, as Blockbench reads it.
 - **Groups / bones**: `name`, `origin` (pivot), `rotation`, `visibility`; inline in the outliner (format ≤ 4.x) or in the
   top-level `groups` array referenced by uuid from the outliner (format 5.x). Both give the same node tree. Files before
@@ -45,9 +46,10 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
 - **Textures**: PNG only. Embedded `data:image/png;base64,…` sources are decoded; any other texture is matched by the
   case-insensitive base name of its `relative_path`, then `path`, then `name` against `options.textureFiles`.
   In the formats with per-texture UV size (Blockbench `Format.per_texture_uv_size`: `free`, `image`,
-  `optifine_entity`, `optifine_part`) `uv_width`/`uv_height` set a texture's UV space; in every other format, and when
-  absent, the project `resolution` (default 16×16) does. A bad value fails a `free` file (`INVALID_FIELD`) and warns
-  in the other three (read since MS-29; the resolution is used). Bedrock's per-texture UV size exists only with a
+  `optifine_entity`, `optifine_part`, and the plugin formats `figura`, `hytale_character` and `hytale_prop`)
+  `uv_width`/`uv_height` set a texture's UV space; in every other format, and when absent, the project `resolution`
+  (default 16×16) does. A bad value fails a `free` file (`INVALID_FIELD`) and warns in the others (read since MS-29,
+  the plugin formats since MS-51; the resolution is used). Bedrock's per-texture UV size exists only with a
   multi-file ruleset, which is Blockbench runtime state not saved in the file, so bedrock models use the project
   resolution.
 - **Frame-strip (animated) textures** (MS-27): in the formats where Blockbench animates textures (`free`,
@@ -143,23 +145,35 @@ scale (played as the smallest positive scale).
   | anything else (unknown string, number, null…) | as `default`, `UNSUPPORTED_VALUE` at `$.textures[i].render_mode`  |
 
 - Layer composite: in a single-texture format (`bedrock`, `bedrock_old`, `modded_entity`, `skin`, `image`,
-  `bedrock_block`, `optifine_entity`, `optifine_part`) with two or more textures, one of them `layered` and at least
-  one `visible`, one more material follows the texture materials: `name: "layered"`, `alphaMode: "blend"`,
+  `bedrock_block`, `optifine_entity`, `optifine_part`, and the plugin formats `geckolib_model`,
+  `animated_entity_model`, `azure_model`, `cosmic_reach_entity_model`, `optifine_player_model`, `hytale_character` and
+  `hytale_prop`, the Hytale ones with or without `collections`, collection textures included) with two or more
+  textures, one of them `layered` and at least one `visible`, one more material follows the texture materials: `name: "layered"`, `alphaMode: "blend"`,
   `alphaCutoff: 0.05`, `layers` the last three visible textures in file order, bottom first (a missing texture keeps
   its slot), and `texture` the bottom layer. Every face the loader draws uses it, sided as the format's default (the
   textures' `render_sides` and their own render modes do not apply); a cube face with `texture: null` stays removed.
   In any other format `layered` is `default`.
-- Default texture (Blockbench conventions 15): in `bedrock`, `bedrock_old`, `modded_entity`, `skin` and `image`
-  every face (except `texture: null`) shows the default texture, whatever it stores; in `bedrock_block` blank faces do;
+- Default texture (Blockbench conventions 15): in `bedrock`, `bedrock_old`, `modded_entity`, `skin`, `image`, the
+  plugin formats `geckolib_model`, `animated_entity_model`, `azure_model`, `cosmic_reach_entity_model` and
+  `optifine_player_model`, and the Hytale formats `hytale_character` and `hytale_prop` when the file has no non-empty
+  `collections` array, every face (except `texture: null`) shows the default texture, whatever it stores; in
+  `bedrock_block` blank faces do. In the Hytale formats with a non-empty `collections` array a cube that a collection
+  contains (the cube's uuid or an ancestor group's uuid in its `children`, or an equal non-zero `scope` on both; the
+  first such collection in file order) shows that collection's `texture` (a texture uuid) on every face except
+  `texture: null`, untextured when it has none or names no texture (`UNKNOWN_REFERENCE`); any other cube shows the
+  default texture on those faces, and mesh faces follow `bedrock_block`'s rule (blank faces show the default texture);
   in `optifine_entity` and `optifine_part` every face shows its parent group's `texture` (a texture uuid; one naming no
   texture warns `UNKNOWN_REFERENCE` and leaves the faces untextured, as Blockbench draws them) or else the default
-  texture. The default texture is the first with `use_as_default` (`bedrock_block`, `optifine_*`; ignored elsewhere),
+  texture. The default texture is the first with `use_as_default` (`bedrock_block`, `optifine_entity`,
+  `optifine_part`, `hytale_character`, `hytale_prop`; ignored elsewhere),
   else the last `visible` texture when there are two or more and one is `layered`, else the first; none leaves the
   face untextured. UV size, frame division and sidedness follow the texture shown. A mesh face with `texture: null`
-  draws with the default texture's material in the `single` formats above (Blockbench gives the whole mesh that
+  draws with the default texture's material in the formats above where every face shows it (Hytale only without
+  `collections`; Blockbench gives the whole mesh that
   material), its UVs still over the project resolution without frame division, and with its group's texture in the
-  `optifine` formats; elsewhere it stays untextured. `free`, `java_block` and other formats keep each face's own
-  texture.
+  `optifine` formats; elsewhere it stays untextured. `free`, `java_block`, `figura`, the plugin formats `bamo_model`,
+  `free_rotation`, `java_block_sequence`, `cosmic_reach_model` and `eme_entity`, and unknown formats keep each face's
+  own texture.
 - Animations: keyframes of a format 5.0 file are taken in Blockbench's own convention, which is the scene's:
   Blockbench adds a keyframe's rotation (degrees) and position to the bone's three.js rotation and position, set from
   the group's `rotation` and `origin` as the loader reads them, and multiplies its scale. Files before format 5.0
@@ -254,7 +268,31 @@ format, quad order and split, normal sign, `render_sides`, `render_order` and th
     under `single_texture`, or under `single_texture_default` with per-group textures or on a blank face; else the
     stored texture. `Texture.getDefault`: a `use_as_default` texture under `single_texture_default`, else the selected
     texture (runtime state, never saved: ModelShot treats it as unset, as in a freshly opened project), else the last
-    visible texture when there are two or more and one is `layered`, else the first.
+    visible texture when there are two or more and one is `layered`, else the first. Plugin formats (MS-51, checked
+    against blockbench-plugins and Blockbench master of 2026-10-22): GeckoLib's `geckolib_model` and its legacy
+    `animated_entity_model` (geckolib.js:7405-7421, animation_utils.js:7096-7108), AzureLib's `azure_model`
+    (azurelib_utils.js), Cosmic Reach's `cosmic_reach_entity_model` (cosmic_reach_model_editor.js:583-605) and
+    OptiFine player models' `optifine_player_model` (optifine_player_models.js:562-572) set `single_texture`;
+    Figura's `figura` (figura_format.js:59-73) sets `per_texture_uv_size`; the Hytale formats `hytale_character` and
+    `hytale_prop` (hytale_plugin.js:795-887) set `single_texture_default`, `per_texture_uv_size` and
+    `box_uv_float_size`, and define `single_texture` as a getter that holds while `Collection.all` is empty
+    (:885-887). Blockbench fills `Collection.all` with one collection per entry of a `collections` array in the file,
+    in file order, and ignores any other value (bbmodel.js:520-525; it saves the array only when non-empty, each entry
+    as `uuid`, `name`, `children`, `scope`, export settings and, in Hytale formats, `texture`, collections.ts:246-253,
+    :489-535). Its constructor reads `uuid` from the entry, so a `null` entry throws and Blockbench cannot open the
+    file; any other entry that is no object (number, string, array) becomes an empty collection, which still turns
+    `single_texture` off. ModelShot ignores a non-array without a warning and counts every entry that is no object,
+    `null` included, as an empty collection with an `UNSUPPORTED_VALUE` warning. The Hytale plugin also replaces
+    `CubeFace.getTexture` (hytale_plugin.js:1283-1302): a `null` face has none; else the first collection that
+    `contains` the cube (`Collection.contains`, collections.ts:182-195: its `scope` is non-zero and equals the cube's
+    saved `scope` (both read by `Merge.number`, util.js:401-413, so a numeric string such as `"2"` counts as 2), or
+    `children` lists the cube's uuid or an ancestor group's uuid) gives its `texture` (none when unset or unknown), and a cube no collection contains gets `Texture.getDefault()`. Mesh faces keep `Face.getTexture`, and
+    with collections present the cube controller draws each face with the texture `getTexture` returns, its UVs by
+    that texture's UV size (cube.js:1272-1290, 1355-1368); the layer composite still comes first. BAMO's
+    `bamo_model`, Free Rotation's `free_rotation`, Java Block Sequencer's `java_block_sequence`, Cosmic Reach's
+    `cosmic_reach_model` and Easy Model Entities' `eme_entity` set none of these flags, and no plugin sets
+    `per_group_texture`. ModelShot reads a plugin format as if the plugin were installed; an id no rule names keeps
+    per-face textures and the project resolution.
 
 ## Limits
 
@@ -321,14 +359,14 @@ bounded by `maxNesting`, not by the call stack.
 
 The model still loads; at most 100 warnings are kept (`MAX_BBMODEL_WARNINGS`). Each has `code`, `path`, `message`.
 
-| code                  | when                                                                                                   |
-| --------------------- | ------------------------------------------------------------------------------------------------------ |
-| `UNSUPPORTED_ELEMENT` | an element type other than `cube` or `mesh`; skipped                                                   |
-| `UNSUPPORTED_VALUE`   | an unknown `render_order`, `render_sides`, `render_mode` or `shading` string; the default is used      |
-| `UNKNOWN_REFERENCE`   | an outliner entry names a uuid no element has (skipped), or an optifine group `texture` no texture has |
-| `SOURCE_NOT_FETCHED`  | a texture `source` that is not a data URI (a URL or file path); never fetched                          |
-| `MISSING_TEXTURE`     | no embedded image and no matching picked file; the texture is `missing`                                |
-| `UNSUPPORTED_CHANNEL` | an animation part not played as authored (Not yet supported); once per animation, animator and channel |
+| code                  | when                                                                                                                        |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `UNSUPPORTED_ELEMENT` | an element type other than `cube` or `mesh`; skipped                                                                        |
+| `UNSUPPORTED_VALUE`   | an unknown `render_order`, `render_sides`, `render_mode` or `shading` string; the default is used                           |
+| `UNKNOWN_REFERENCE`   | an outliner entry names a uuid no element has (skipped), or an optifine group or Hytale collection `texture` no texture has |
+| `SOURCE_NOT_FETCHED`  | a texture `source` that is not a data URI (a URL or file path); never fetched                                               |
+| `MISSING_TEXTURE`     | no embedded image and no matching picked file; the texture is `missing`                                                     |
+| `UNSUPPORTED_CHANNEL` | an animation part not played as authored (Not yet supported); once per animation, animator and channel                      |
 
 Textures in an animating format warn `UNSUPPORTED_VALUE` for a `frame_time`, `fps`, `frame_order_type`,
 `frame_order` or `frame_interpolate` of the wrong type or out of range (the default is used), for a `frame_order`
@@ -340,7 +378,15 @@ as one image).
 Textures also warn `UNSUPPORTED_VALUE` for a `render_mode` that is no known mode, of any type (`default` is used),
 and for a `visible` or `use_as_default` that is no boolean (`true` and `false` are used); in `optifine_entity` and
 `optifine_part` a group `texture` that is no string warns `UNSUPPORTED_VALUE` (ignored) and one naming no texture
-`UNKNOWN_REFERENCE` (the group's faces are untextured); in `image`, `optifine_entity` and `optifine_part` a
+`UNKNOWN_REFERENCE` (the group's faces are untextured); in `hytale_character` and `hytale_prop` a `collections`
+entry that is no object warns `UNSUPPORTED_VALUE` at `$.collections[i]` (counted as an empty collection; Blockbench
+cannot open a file with a `null` entry), as do a `children` that is no array at `$.collections[i].children`
+(ignored), a `scope` that is no number and no string `parseFloat` reads (`"x"`, `""`, `true`), or any array or
+object (Blockbench would turn an array such as `[2]` into 2; ModelShot ignores it with a warning), at
+`$.collections[i].scope` or, on a cube, at `$.elements[i].scope` (ignored; `null` is skipped silently) and a `texture` that is no string at
+`$.collections[i].texture` (the collection's cubes are untextured), while a `texture` naming no texture warns
+`UNKNOWN_REFERENCE` there (untextured too); a child that is no uuid string is skipped silently, and other formats do
+not read `collections`; in `image`, `optifine_entity` and `optifine_part` a
 `uv_width` or `uv_height` that is no positive number warns `UNSUPPORTED_VALUE` (the resolution is used). None of
 these fails a file: the fields were ignored before MS-29.
 
@@ -391,6 +437,18 @@ time follows `frame_time` ticks. A file whose `meta.model_format` is absent, emp
 compatibility rule: `java_block` rules, or `bedrock_old` when `meta.bone_rig` is truthy, where every rule used to treat
 it as an unknown format; its `source.modelFormat` stays `unknown`. Files with `null`, `false` or `0` there used to fail with `INVALID_FIELD` and now load. Frame fields only ever warn, so no file that loaded
 before fails.
+
+MS-51 applies the texture rules of Blockbench plugin formats, a behaviour change for files that loaded before: in
+`geckolib_model`, `animated_entity_model`, `azure_model`, `cosmic_reach_entity_model` and `optifine_player_model`
+every face (except `texture: null`) now shows the default texture and a `layered` texture composites, as in
+`bedrock`; in `figura`, `hytale_character` and `hytale_prop` `uv_width`/`uv_height` now set a texture's UV space;
+the Hytale formats also show the default texture on every cube and mesh face without `collections`; with them a
+cube shows the texture of the first collection containing it, any other cube the default texture, and meshes the
+default texture on blank faces only; they also honour `use_as_default`, composite `layered` textures and keep fractional box-UV sizes. `bamo_model`,
+`free_rotation`, `java_block_sequence`, `cosmic_reach_model`, `eme_entity` and every other format load exactly as
+before. A bad `uv_width`/`uv_height` in the newly read formats and a malformed Hytale `collections` entry only
+warn, so no file that loaded before fails.
+Reload affected models; scene documents need no migration.
 
 ## Local-first
 
