@@ -1,4 +1,11 @@
-import { cameraBasis, fitClipPlanes, orbitDirection, type SceneBounds, type SceneCamera, type Vec3 } from '@modelshot/scene';
+import {
+  cameraBasis,
+  fitClipPlanes,
+  orbitDirection,
+  type SceneBounds,
+  type SceneCamera,
+  type Vec3,
+} from '@modelshot/scene';
 
 /** Share of the half-width and half-height the outline of the points may take. */
 export const DEFAULT_FILL = 0.9;
@@ -35,11 +42,7 @@ export function fitCameraToPoints(
   const zs = new Float64Array(n);
   let nearest = -Infinity;
   for (let i = 0; i < n; i++) {
-    const v: Vec3 = [
-      (points[3 * i] ?? 0) - c[0],
-      (points[3 * i + 1] ?? 0) - c[1],
-      (points[3 * i + 2] ?? 0) - c[2],
-    ];
+    const v: Vec3 = [(points[3 * i] ?? 0) - c[0], (points[3 * i + 1] ?? 0) - c[1], (points[3 * i + 2] ?? 0) - c[2]];
     xs[i] = v[0] * right[0] + v[1] * right[1] + v[2] * right[2];
     ys[i] = v[0] * up[0] + v[1] * up[1] + v[2] * up[2];
     zs[i] = v[0] * toCamera[0] + v[1] * toCamera[1] + v[2] * toCamera[2];

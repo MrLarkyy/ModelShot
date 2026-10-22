@@ -119,11 +119,11 @@ grading share baked light.
 
 ## Presets
 
-| preset      | key                                 | accents                                    | dome, backdrop                             | grade                                  |
-| ----------- | ----------------------------------- | ------------------------------------------ | ------------------------------------------ | -------------------------------------- |
-| Studio      | v0: above, behind right, warm white | none (black)                               | v0 grey dome, flat grey (0.14, 0.15, 0.17) | neutral                                |
-| Marketplace | front, above, warm                  | bright rim behind right; dim blue fill     | dim blue dome; navy gradient, lighter low  | exposure 0, power 1.1, saturation 1.15 |
-| Rim         | weak, front                         | strong white rim from behind, above        | low dome; dark grey gradient               | power 1.25                             |
+| preset      | key                                 | accents                                | dome, backdrop                             | grade                                  |
+| ----------- | ----------------------------------- | -------------------------------------- | ------------------------------------------ | -------------------------------------- |
+| Studio      | v0: above, behind right, warm white | none (black)                           | v0 grey dome, flat grey (0.14, 0.15, 0.17) | neutral                                |
+| Marketplace | front, above, warm                  | bright rim behind right; dim blue fill | dim blue dome; navy gradient, lighter low  | exposure 0, power 1.1, saturation 1.15 |
+| Rim         | weak, front                         | strong white rim from behind, above    | low dome; dark grey gradient               | power 1.25                             |
 
 Studio is the v0 look number for number (`LIGHT_RIG_V0`, `EDGE_LOOK_V0`; tested), so every golden from before look
 presets holds unregenerated. Every preset rounds edges at 30°, so switching presets never detects sharp edges again.
