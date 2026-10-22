@@ -1,9 +1,14 @@
+import { LOOK_UNIFORM_NAMES, type LookUniformName } from '@modelshot/looks';
 import type { DepthKeyMode } from './depthKeyMode';
 import { createGlProgram } from './glProgram';
 import { shaderProgramSource, type ShaderProgramName } from './shaderSources';
 
+/** A program's locations of the look uniforms (`uploadLookUniforms`); `null` for one it does not use. */
+export type LookLocations = Readonly<Record<LookUniformName, WebGLUniformLocation | null>>;
+
 export interface MeshProgram {
   readonly program: WebGLProgram;
+  readonly look: LookLocations;
   readonly model: WebGLUniformLocation | null;
   readonly normalMatrix: WebGLUniformLocation | null;
   readonly view: WebGLUniformLocation | null;
@@ -26,11 +31,12 @@ export interface MeshProgram {
 export interface FullscreenProgram {
   readonly program: WebGLProgram;
   readonly uniforms: Readonly<Record<string, WebGLUniformLocation | null>>;
+  readonly look: LookLocations;
 }
 
 export type MeshPassName = 'opaque' | 'oitAccum' | 'fallback';
 
-/** The programs of one path: float (opaque, OIT, composite, present) or no-float (fallback, backdrop). */
+/** The programs of one path: float (opaque, OIT, composite, present, backdrop) or no-float (fallback, backdrop). */
 export interface RendererPrograms {
   /** Mesh passes in both depth-key variants; a frame uses one variant for all of them. */
   readonly meshPasses: Readonly<Record<DepthKeyMode, Readonly<Partial<Record<MeshPassName, MeshProgram>>>>>;
@@ -43,8 +49,8 @@ export interface RendererPrograms {
 const FULLSCREEN_UNIFORMS: Readonly<Record<'oitComposite' | 'present' | 'backdrop' | 'catcher', readonly string[]>> = {
   oitComposite: ['u_accum', 'u_weight'],
   present: ['u_hdr'],
-  backdrop: ['u_background'],
-  catcher: ['u_viewProjection', 'u_catcherLight', 'u_catcherRect', 'u_catcherSize', 'u_background', 'u_toneMap'],
+  backdrop: ['u_toneMap'],
+  catcher: ['u_viewProjection', 'u_catcherLight', 'u_catcherRect', 'u_catcherSize', 'u_toneMap'],
 };
 
 const DEPTH_KEY_MODES: readonly DepthKeyMode[] = ['raster', 'exact'];
@@ -57,12 +63,18 @@ export function createRendererPrograms(gl: WebGL2RenderingContext, floatPath: bo
     all.push(program);
     return program;
   };
+  const lookLocations = (program: WebGLProgram): LookLocations =>
+    Object.fromEntries(LOOK_UNIFORM_NAMES.map((name) => [name, gl.getUniformLocation(program, name)])) as Record<
+      LookUniformName,
+      WebGLUniformLocation | null
+    >;
   try {
     const meshProgram = (name: MeshPassName, depthKey: DepthKeyMode): MeshProgram => {
       const program = build(name, depthKey);
       const at = (uniform: string) => gl.getUniformLocation(program, uniform);
       return {
         program,
+        look: lookLocations(program),
         model: at('u_model'),
         normalMatrix: at('u_normalMatrix'),
         view: at('u_view'),
@@ -87,7 +99,7 @@ export function createRendererPrograms(gl: WebGL2RenderingContext, floatPath: bo
       const uniforms = Object.fromEntries(
         FULLSCREEN_UNIFORMS[name].map((uniform) => [uniform, gl.getUniformLocation(program, uniform)]),
       );
-      return { program, uniforms };
+      return { program, uniforms, look: lookLocations(program) };
     };
     const passes = (names: readonly MeshPassName[]): RendererPrograms['meshPasses'] => {
       const variant = (depthKey: DepthKeyMode) =>
@@ -98,7 +110,11 @@ export function createRendererPrograms(gl: WebGL2RenderingContext, floatPath: bo
     if (floatPath) {
       return {
         meshPasses: passes(['opaque', 'oitAccum']),
-        fullscreen: { oitComposite: fullscreenProgram('oitComposite'), present: fullscreenProgram('present') },
+        fullscreen: {
+          oitComposite: fullscreenProgram('oitComposite'),
+          present: fullscreenProgram('present'),
+          backdrop: fullscreenProgram('backdrop'),
+        },
         catcher: fullscreenProgram('catcher'),
         all,
       };

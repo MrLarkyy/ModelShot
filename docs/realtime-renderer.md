@@ -5,7 +5,7 @@ view transform. It draws only when `render()` is called; `needsRender` tells the
 scene, camera or size change is waiting.
 
 ```ts
-const renderer = RealtimeRenderer.create(canvas, { background: [0.14, 0.15, 0.17] });
+const renderer = RealtimeRenderer.create(canvas, { look: LOOK_PRESETS['marketplace'] });
 const controller = new OrbitController();
 const { warnings } = await renderer.setScene(doc);
 controller.setAspect(canvas.width / canvas.height);
@@ -49,7 +49,9 @@ per element (thousands for a large Blockbench model) draws in a few calls per pa
 
 `setLighting(lighting)` shades the scene with light baked off the main thread by `LightBaker` of
 `@modelshot/pathtracer` ([path-tracer.md](path-tracer.md#light-baker)) and draws its shadow catcher;
-`setLighting(null)` goes back to the unbaked image, byte for byte. Without lighting nothing changes.
+`setLighting(null)` goes back to the unbaked image, byte for byte. Without lighting nothing changes. Light is baked
+under a look (`BakeOptions.look`) and carries its `lightingKey`: `setLighting` refuses light of another key than the
+current look's, and `setLook` to a look of another key drops the shown light ([look-presets.md](look-presets.md#baked-light-and-lightingkey)).
 
 ```ts
 const baker = LightBaker.create();
@@ -71,7 +73,9 @@ if (lighting) renderer.setLighting(lighting);
 - **Values.** RGBA16F (`BakedLighting`): rgb the fill as a multiple of the unoccluded fill `hemisphereFill(n)`, a the
   key's visibility. Texels of no chart and vertices of no triangle hold 1, so an anti-aliasing tap outside a face, or
   a degenerate triangle, never darkens. `shadeBaked` (`shading.glsl`) is `albedo × (hemisphereFill(n) × rgb +
-KEY_COLOR × max(n·KEY, 0) × a)`; value 1 gives the unbaked expression exactly.
+u_lookKeyColor × max(n·u_lookKeyDirection, 0) × a + fillLight(n)) + rimLight(n, v, albedo)`, v toward the eye
+  (`towardEye(v_worldPosition)`): the accents cast no shadow and stay whole; value 1 gives the unbaked expression
+  exactly.
 - **Sampling.** Texel charts are read with the albedo's own seam taps (`seamTaps` of `texelSample.glsl`): the same
   2 × 2 texels and weights, clamped to the chart, so light and albedo change at the same pixels and the bake adds no
   shimmer of its own. Vertex charts are fetched in `mesh.vert.glsl` and interpolated; the back pass reads the back
@@ -83,7 +87,7 @@ KEY_COLOR × max(n·KEY, 0) × a)`; value 1 gives the unbaked expression exactly
   the renderer keeps only what it reads of a layout (`LightmapLayoutSummary`: sizes, downscale, per-vertex data,
   finest texel, key), not its charts. `setLighting`
   refuses (returns `false`, changes nothing) lighting whose layout key, size or data length does not match the current
-  layout, or whose catcher is malformed (`checkLighting`).
+  layout, whose `lightingKey` is not the current look's, or whose catcher is malformed (`checkLighting`).
 - **Upload in bands.** `setLighting` uploads nothing itself: each `render()` (or `advanceLighting()`, which uploads
   without drawing and returns `true` while more remains) writes the next `UPLOAD_FRAME_BYTES` (1 MiB) in
   texSubImage2D bands of at most `UPLOAD_BAND_BYTES` (256 KiB) into back textures, and frames draw the previous complete
@@ -94,7 +98,7 @@ KEY_COLOR × max(n·KEY, 0) × a)`; value 1 gives the unbaked expression exactly
 
 **Shadow catcher.** A horizontal plane at the visible geometry's lowest point (`shadowCatcherPlane`, shared with the
 path tracer), covering the footprint, the bounds' shadow along the key and half the largest extent around it, one-sided
-from above. It only darkens the backdrop: pixel = background × `catcherShade(fill, keyT, xz, rect)` of the look
+from above. It only darkens the backdrop: pixel = the look's backdrop at the pixel × `catcherShade(fill, keyT, xz, rect)` of the look
 (`shadowCatcher.glsl`), with its own lightmap of 4 texels per finest model texel (at most `MAX_CATCHER_SIDE` 512 per
 side), read bilinearly. Every model point a camera ray meets lies on or above the plane, so drawing the catcher first
 without depth test lets the model cover it in either depth-key variant. A scene without geometry has no catcher.
@@ -174,14 +178,23 @@ The rules are the scene format's ([scene-format.md](scene-format.md): `SceneMate
 
 ## Lighting and tone mapping
 
-Lighting v0 is a sky/ground hemisphere fill plus one directional key, unoccluded without baked lighting and occluded
-per texel with it (see Baked lighting): the `lightRig` chunk of
-`@modelshot/looks` (`SKY_FILL`, `GROUND_FILL`, `KEY_DIRECTION`, `KEY_COLOR`, `hemisphereFill`), which the path tracer
-reads too, so an unoccluded surface converges there to the preview's value ([path-tracer.md](path-tracer.md#lighting));
-`shaders/shading.glsl` applies it. The default backdrop is `LIGHT_RIG_V0.background` of the same package. Light rigs
-become look presets later (MS-19). The HDR result goes through AgX (`#include "agx"` from `@modelshot/looks`, mirrored by
-`agxToneMap` for tests), whose output is already display-encoded and is written as is. The backdrop colour (option
-`background`, scene-linear) goes through the same transform on both paths.
+Lights, environment, backdrop, catcher strength, edges and tone mapping come from a look preset
+([look-presets.md](look-presets.md)): option `look` (default `DEFAULT_LOOK`, Studio, the v0 look), `setLook(look)` and
+the `look` getter. The options `background` (a flat backdrop, three finite channels in 0..16, else a `RangeError`) and `edges` override the initial look's; `setLook`
+replaces both with the new look's (`setEdges` still changes the edges alone). An invalid look throws
+`LookPresetError` naming the field and changes nothing. A look of another `lightingKey` drops the baked light (see
+Baked lighting); a new sharp angle detects edges again as `setEdges` does.
+
+Shading is the look's sky/ground dome (`hemisphereFill`) plus its directional key, unoccluded without baked lighting and
+occluded per texel with it, plus the unshadowed accents in both cases, the world-space fill (`fillLight`) and the
+view-relative grazing rim (`rimLight`, its direction turned into world space from the frame's camera): the `lightRig`
+chunk of `@modelshot/looks`, which the path tracer reads too, so an unoccluded surface converges there to the
+preview's value ([path-tracer.md](path-tracer.md#lighting)); `shaders/shading.glsl` applies it. The look's values are
+uniforms (`uploadLookUniforms`), uploaded once per program per frame. The backdrop is a pass on both paths
+(`backdrop.frag`, the `backdrop` chunk): the look's gradient in screen y over the frame height, scene-linear into the
+float path's HDR target, tone-mapped in place on the no-float path; the catcher multiplies the backdrop of its pixel.
+The HDR result goes through AgX with the look's exposure and grade (`#include "agx"` from `@modelshot/looks`,
+mirrored by `agxToneMap` for tests), whose output is already display-encoded and is written as is.
 
 ## Edge rounding
 

@@ -36,6 +36,7 @@ Docs: [scene format](https://github.com/MrLarkyy/ModelShot/wiki/Scene-format) (w
 [player skins and posing](https://github.com/MrLarkyy/ModelShot/wiki/Player-skins-and-posing) (the player model from a skin, poses, held models),
 [realtime renderer](https://github.com/MrLarkyy/ModelShot/wiki/Realtime-renderer) (passes, pixel-art sampling, transparency, context loss),
 [path tracer](https://github.com/MrLarkyy/ModelShot/wiki/Path-tracer) (API, determinism, alpha, sides and order on every ray, lighting),
+[look presets](https://github.com/MrLarkyy/ModelShot/wiki/Look-presets) (the shared look parameters both renderers read),
 [camera](https://github.com/MrLarkyy/ModelShot/wiki/Camera) (the shared camera, frame-to-fit, controls),
 [brand](https://github.com/MrLarkyy/ModelShot/wiki/Brand) (tokens, contrast rules, fonts, logo and icons, licences),
 [landing page](https://github.com/MrLarkyy/ModelShot/wiki/Landing-page) (layout, hosting at `/` and `/app/`, the local file handoff, motion, tests),

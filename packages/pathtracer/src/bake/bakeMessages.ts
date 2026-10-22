@@ -1,3 +1,4 @@
+import type { LookPreset } from '@modelshot/looks';
 import type { BakedLighting } from '@modelshot/renderer-rt';
 import type { SceneDocument } from '@modelshot/scene';
 import type { PathTracerWarning } from '../PathTracerWarning';
@@ -20,6 +21,8 @@ export type BakeRequest =
       readonly seed: number;
       readonly samples: number;
       readonly shadowCatcher: boolean;
+      /** The look the light is baked under, checked on the main thread (`checkLookPreset`). */
+      readonly look: LookPreset;
       readonly tileSize: number;
       readonly maxTriangles: number;
       /** Test hook: each texel sums the traversals its rays stopped at the node cap instead of light. */

@@ -4,7 +4,7 @@ import { encodeRgbaPng } from './encodeRgbaPng';
 
 type Point = [number, number, number];
 
-const KEY = LIGHT_RIG_V0.keyDirection;
+const KEY = LIGHT_RIG_V0.lights.key.direction;
 const KEY_XZ = Math.hypot(KEY[0], KEY[2]);
 /** The plane faces the key's horizontal direction, so its texel columns cast straight-back shadows. */
 export const CHECKER_NORMAL: Point = [KEY[0] / KEY_XZ, 0, KEY[2] / KEY_XZ];

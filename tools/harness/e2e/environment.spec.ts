@@ -14,6 +14,26 @@ test('every fixture renders WebGL2 on SwiftShader and stays on the fixture origi
   expect([...origins]).toEqual([new URL(baseURL!).origin]);
 });
 
+test('the look review page renders the harness player under a preset and fetches nothing off origin', async ({
+  page,
+  baseURL,
+}) => {
+  test.setTimeout(120_000);
+  const origins = new Set<string>();
+  page.on('request', (request) => origins.add(new URL(request.url()).origin));
+  await page.goto('/review.html?preset=marketplace&samples=4&size=128');
+  await page.waitForFunction(
+    () => document.body.dataset['state'] === 'done' || document.body.dataset['state'] === 'failed',
+    null,
+    {
+      timeout: 110_000,
+    },
+  );
+  expect(await page.locator('#status').textContent()).toMatch(/under Marketplace: preview baked/);
+  expect(await page.locator('#render-download').getAttribute('download')).toBe('player-hold-marketplace-s1-n4.png');
+  expect([...origins]).toEqual([new URL(baseURL!).origin]);
+});
+
 test.fail('a request off the fixture origin fails the test', async ({ page }) => {
   await openFixture(page, '/gradient.html');
   await page.evaluate(() => fetch('http://example.invalid/x').catch(() => undefined));

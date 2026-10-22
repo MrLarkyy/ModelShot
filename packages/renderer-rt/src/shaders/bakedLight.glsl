@@ -39,5 +39,6 @@ vec4 sampleBakedLight(vec2 uv, vec4 uvRect) {
 
 // The preview's shading: with baked light when the renderer has it, else exactly the unbaked expression.
 vec3 shadeLit(vec3 albedo, vec3 n, vec4 light) {
-  return u_bakeOn ? shadeBaked(albedo, n, light) : shadeSurface(albedo, n);
+  vec3 v = towardEye(v_worldPosition);
+  return u_bakeOn ? shadeBaked(albedo, n, v, light) : shadeSurface(albedo, n, v);
 }

@@ -27,6 +27,16 @@ describe('path tracer shaders', () => {
     expect(pathTracerProgramSource('present').fragment).toContain('vec3 agxToneMap(vec3 linearColor)');
   });
 
+  it('adds the fill and the rim at the camera hit only, the rim seen back along the camera ray; the bake has neither', () => {
+    const trace = pathTracerProgramSource('trace').fragment;
+    expect(trace).toContain(
+      'if (pathVertex == 0) radiance += s.albedo * fillLight(s.normal) + rimLight(s.normal, -direction, s.albedo);',
+    );
+    expect(trace.match(/rimLight\(s\./g)).toHaveLength(1);
+    const bake = pathTracerProgramSource('bake').fragment;
+    expect(bake).not.toMatch(/fillLight\(n|fillLight\(s|rimLight\(s|rimLight\(n/);
+  });
+
   it('lays out data as packSceneData writes it, with a stack deep enough for any BVH', () => {
     const trace = pathTracerProgramSource('trace').fragment;
     expect(trace).toContain(`const int NODE_TEXELS = ${NODE_TEXELS};`);

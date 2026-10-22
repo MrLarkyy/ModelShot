@@ -12,11 +12,11 @@ const shade = (fill: readonly [number, number, number], keyT: number, xz: readon
 
 describe('catcherShade', () => {
   it('is 1 where nothing blocks the light', () => {
-    expect(shade(rig.skyFill, 1)).toBeCloseTo(1, 12);
+    expect(shade(rig.environment.sky, 1)).toBeCloseTo(1, 12);
   });
 
   it('loses the catcher strength where fill and key are fully blocked', () => {
-    expect(shade([0, 0, 0], 0)).toBeCloseTo(1 - rig.catcherStrength, 12);
+    expect(shade([0, 0, 0], 0)).toBeCloseTo(1 - rig.catcher.strength, 12);
   });
 
   it('is affine in fill and key visibility, so per-sample means agree with the shade of means', () => {
@@ -30,8 +30,8 @@ describe('catcherShade', () => {
 
   it('fades to 1 over the outer 10 % of the rectangle', () => {
     expect(shade([0, 0, 0], 0, [-10, 0])).toBeCloseTo(1, 12);
-    expect(shade([0, 0, 0], 0, [-9, 0])).toBeCloseTo(1 - rig.catcherStrength * 0.5, 12);
-    expect(shade([0, 0, 0], 0, [-8, 0])).toBeCloseTo(1 - rig.catcherStrength, 12);
+    expect(shade([0, 0, 0], 0, [-9, 0])).toBeCloseTo(1 - rig.catcher.strength * 0.5, 12);
+    expect(shade([0, 0, 0], 0, [-8, 0])).toBeCloseTo(1 - rig.catcher.strength, 12);
     expect(shade([0, 0, 0], 0, [10, 10])).toBeCloseTo(1, 12);
   });
 
@@ -39,7 +39,7 @@ describe('catcherShade', () => {
     expect(shadowCatcherSource).toContain('float catcherShade(vec3 fill, float keyT, vec2 xz, vec4 rect)');
     expect(shadowCatcherSource).toContain('vec3(0.2126, 0.7152, 0.0722)');
     const linked = linkShader('#include "shadowCatcher"', lookShaderChunks);
-    expect(linked).toContain('const float CATCHER_STRENGTH');
+    expect(linked).toContain('uniform float u_lookCatcherStrength;');
     expect(linked).toContain('float catcherShade(');
   });
 });

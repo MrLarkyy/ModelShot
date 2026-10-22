@@ -9,6 +9,7 @@ precision highp sampler2DArray;
 #include "pathSampling"
 #include "keyLight"
 #include "shadowCatcher"
+#include "backdrop"
 #include "primaryRay"
 #include "bvhTraverse"
 
@@ -17,7 +18,6 @@ uniform highp sampler2D u_previous;
 uniform uint u_seed;
 uniform uint u_sample;
 uniform int u_maxBounces;
-uniform vec3 u_background;
 // Shadow catcher (shadowCatcherPlane.ts of the realtime renderer): a plane at height u_catcherY over the rectangle
 // u_catcherRect = [minX, minZ, maxX, maxZ], seen only by camera rays from above.
 uniform bool u_catcherOn;
@@ -61,13 +61,14 @@ vec3 shadeCatcher(uint key, uint dimension, vec3 point) {
   Hit blocker;
   vec3 fill = closestHit(origin, d, 0.0, 3.0e38, 1.0, -1, key, dimension + 2u, blocker) ? vec3(0.0)
                                                                                         : environmentRadiance(d);
-  return u_background * catcherShade(fill, keyT, point.xz, u_catcherRect);
+  return backdropHere() * catcherShade(fill, keyT, point.xz, u_catcherRect);
 }
 
 // One path: the camera ray through a jittered point of the pixel (a box filter: texel edges come out area-averaged),
-// then Lambert bounces. At every hit: emission, the key light through a shadow ray in its cone, and on escape the
-// environment (lightRig), whose cosine integral is the preview's fill. A camera ray that escapes shows the background,
-// or the shadow catcher under the model.
+// then Lambert bounces. At every hit: emission and the key light through a shadow ray in its cone; at the camera hit also
+// the unshadowed fill and rim accents, the rim seen back along the camera ray (no ray, so no random dimension of their
+// own); on escape the environment (lightRig), whose cosine integral is the preview's fill. A camera ray that escapes
+// shows the backdrop at its pixel, or the shadow catcher.
 vec3 tracePath(uint key, vec2 pixel) {
   vec3 origin;
   vec3 direction;
@@ -88,19 +89,22 @@ vec3 tracePath(uint key, vec2 pixel) {
       if (catcherHit(origin, direction, tMin, tMax, found, hit.t, point)) return shadeCatcher(key, dimension, point);
     }
     if (!found) {
-      radiance += throughput * (pathVertex == 0 ? u_background : environmentRadiance(direction));
+      radiance += throughput * (pathVertex == 0 ? backdropHere() : environmentRadiance(direction));
       break;
     }
     Surface s = surfaceAt(hit);
     radiance += throughput * s.emission;
-    // The key is a light of irradiance pi * KEY_COLOR: Lambert albedo / pi times that is the preview's term, times the
+    // The key is a light of irradiance pi * u_lookKeyColor: Lambert albedo / pi times that is the preview's term, times the
     // share of its disc the shadow ray sees.
-    float cosKey = dot(s.normal, KEY_DIRECTION);
-    if (cosKey > 0.0 && dot(s.side, KEY_DIRECTION) > 0.0) {
+    float cosKey = dot(s.normal, u_lookKeyDirection);
+    if (cosKey > 0.0 && dot(s.side, u_lookKeyDirection) > 0.0) {
       vec3 cone = keyConeDirection(unitRandom(key, dimension + 4u, 0u), unitRandom(key, dimension + 5u, 0u));
       float visible = shadowTransmittance(leave(s.position, s.side), cone, hit.triangle);
-      radiance += throughput * s.albedo * KEY_COLOR * (cosKey * visible);
+      radiance += throughput * s.albedo * u_lookKeyColor * (cosKey * visible);
     }
+    // Only where the camera sees the surface: unshadowed, it would light faces the rig hides and bounce out of them; the
+    // preview has no accent bounce either.
+    if (pathVertex == 0) radiance += s.albedo * fillLight(s.normal) + rimLight(s.normal, -direction, s.albedo);
     if (pathVertex >= u_maxBounces) break;
     vec3 next = aboveSurface(
       cosineDirection(s.normal, unitRandom(key, dimension, 0u), unitRandom(key, dimension + 1u, 0u)), s.side);

@@ -2,11 +2,13 @@
  * Light baked for one lightmap layout (`lightmapLayout`), as `LightBaker` of `@modelshot/pathtracer` produces it and
  * `RealtimeRenderer.setLighting` takes it. Texel (x, y) is element `(y × width + x) × 4` of `data`, RGBA as IEEE half
  * floats: rgb the fill light as a multiple of the unoccluded fill `hemisphereFill(n)` (1 where nothing blocks the sky),
- * a the key light's visibility 0..1. Texels of no chart hold 1.
+ * a the key light's visibility 0..1. Texels of no chart hold 1. Valid only under looks of the same `lightingKey`.
  */
 export interface BakedLighting {
   /** `LightmapLayout.layoutKey` of the document it was baked for. */
   readonly layoutKey: string;
+  /** `lightingKey` (@modelshot/looks) of the look it was baked under: its key light and dome. */
+  readonly lightingKey: string;
   readonly width: number;
   readonly height: number;
   readonly data: Uint16Array;

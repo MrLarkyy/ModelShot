@@ -36,3 +36,46 @@ describe('agxToneMap', () => {
     }
   });
 });
+
+describe('agxToneMap with a look', () => {
+  const neutral = {
+    exposure: 0,
+    grade: { slope: [1, 1, 1], offset: [0, 0, 0], power: [1, 1, 1], saturation: 1 },
+  } as const;
+  const samples: [number, number, number][] = [
+    [0, 0, 0],
+    [0.18, 0.18, 0.18],
+    [0.9, 0.3, 0.05],
+    [12, 3, 0.4],
+  ];
+
+  it('a neutral look gives exactly the plain transform', () => {
+    for (const s of samples) expect(agxToneMap(s, neutral)).toEqual(agxToneMap(s));
+  });
+
+  it('exposure +1 equals twice the input', () => {
+    for (const s of samples) {
+      expect(agxToneMap(s, { ...neutral, exposure: 1 })).toEqual(agxToneMap([s[0] * 2, s[1] * 2, s[2] * 2]));
+    }
+  });
+
+  // Grey up to the outset matrix, whose rows sum to 1 within 2e-4.
+  it('saturation 0 gives grey', () => {
+    const [r, g, b] = agxToneMap([0.9, 0.3, 0.05], { ...neutral, grade: { ...neutral.grade, saturation: 0 } });
+    expect(g).toBeCloseTo(r, 3);
+    expect(b).toBeCloseTo(r, 3);
+  });
+
+  it('a power above 1 darkens the mid tones', () => {
+    const [plain] = agxToneMap(grey(0.18));
+    const [graded] = agxToneMap(grey(0.18), { ...neutral, grade: { ...neutral.grade, power: [1.2, 1.2, 1.2] } });
+    expect(graded).toBeLessThan(plain);
+  });
+
+  it('the GLSL chunk grades after the contrast curve, skipping a neutral grade', () => {
+    expect(agxGlsl).toContain('vec3 v = AGX_INSET * max(linearColor * u_lookExposureScale, vec3(0.0));');
+    expect(agxGlsl).toContain('if (u_lookGraded) v = agxGrade(v);');
+    expect(agxGlsl).toContain('v = pow(max(v * u_lookSlope + u_lookOffset, vec3(0.0)), u_lookPower);');
+    expect(agxGlsl).toContain('return luma + u_lookSaturation * (v - luma);');
+  });
+});

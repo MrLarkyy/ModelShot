@@ -1,3 +1,4 @@
+import { DEFAULT_LOOK, LOOK_PRESETS, LookPresetError } from '@modelshot/looks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BakeReply, BakeRequest } from '../src/bake/bakeMessages';
 import { progressSamples } from '../src/bake/bakeMessages';
@@ -41,7 +42,15 @@ const flush = () => vi.runAllTimersAsync();
 const bakes = (worker: FakeWorker) => worker.posted.filter((m) => m.type === 'bake');
 
 const doc = sceneOf([triangleMesh([0, 0, 0, 1, 0, 0, 0, 1, 0])]);
-const lighting = { layoutKey: 'k', width: 1, height: 1, data: new Uint16Array(4), samples: 1, catcher: null };
+const lighting = {
+  layoutKey: 'k',
+  lightingKey: 'l',
+  width: 1,
+  height: 1,
+  data: new Uint16Array(4),
+  samples: 1,
+  catcher: null,
+};
 
 function baker(): { baker: LightBaker; worker: FakeWorker } {
   vi.stubGlobal('Worker', FakeWorker);
@@ -150,6 +159,21 @@ describe('LightBaker', () => {
     const next = b.bake(doc);
     worker.reply({ type: 'done', id: 2, lighting, warnings: [] });
     expect(await next).toMatchObject({ applied: true });
+  });
+
+  it('posts the checked look, Studio by default; an invalid look rejects before anything is posted', async () => {
+    const { baker: b, worker } = baker();
+    const marketplace = LOOK_PRESETS['marketplace'];
+    if (!marketplace) throw new Error('no marketplace preset');
+    void b.bake(doc);
+    await flush();
+    void b.bake(doc, { look: marketplace });
+    await flush();
+    expect(bakes(worker).map((m) => m.look)).toEqual([DEFAULT_LOOK, marketplace]);
+    const posted = worker.posted.length;
+    await expect(b.bake(doc, { look: { ...marketplace, version: 2 as 1 } })).rejects.toBeInstanceOf(LookPresetError);
+    await flush();
+    expect(worker.posted).toHaveLength(posted);
   });
 
   it('keeps the test hooks behind testHooks', async () => {

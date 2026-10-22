@@ -1,4 +1,5 @@
 import { loadBbmodel, loadGltf, loadObj } from '@modelshot/formats';
+import { DEFAULT_LOOK, LOOK_PRESETS, type LookPreset } from '@modelshot/looks';
 import { OrbitController } from '@modelshot/renderer-rt';
 import { sceneBounds, type SceneCamera, type SceneDocument, type SceneMesh } from '@modelshot/scene';
 import alphaPlaneSource from '../../../../packages/formats/test/fixtures/bbmodel/alpha-plane.bbmodel?raw';
@@ -108,8 +109,12 @@ export interface RtView {
   readonly bake: number;
   /** The shadow catcher: baked with the light in the realtime fixture, traced by the path tracer. */
   readonly catcher: boolean;
-  /** Rounded-edge width (`EdgeLook.width`, `edges=<width>`, 0 none); null keeps the renderers' default look. */
+  /** Rounded-edge width (`EdgeLook.width`, `edges=<width>`, 0 none); null keeps the look's edges. */
   readonly edges: number | null;
+  /** The look preset by id (`preset=<id>`, `LOOK_PRESETS`), shared by the preview, the bake and the render. */
+  readonly preset: string;
+  /** `rim=0`: the preset with its rim light black, to see what the rim adds. */
+  readonly rim: boolean;
 }
 
 export type RtLook =
@@ -171,6 +176,8 @@ export const DEFAULT_RT_VIEW: RtView = {
   bake: 0,
   catcher: true,
   edges: null,
+  preset: DEFAULT_LOOK.id,
+  rim: true,
 };
 
 /** Golden presets, selected by the `variant` URL parameter. */
@@ -210,9 +217,30 @@ export const RT_VARIANTS: Readonly<Record<string, Partial<RtView>>> = {
   'bake-turntable-y030': { yawDeg: 30, bake: 64 },
   // Edge rounding (MS-15): sharp-edged cube and wedge beside a plane, a card and a smooth sphere.
   edges: { scene: 'edges', yawDeg: 30, pitchDeg: 35 },
+  // Look presets (MS-19) on the held-cube player, baked; paired with the path tracer's renders of the same look.
+  'preset-marketplace': { scene: 'player-hold', yawDeg: 210, pitchDeg: 20, preset: 'marketplace', bake: 64 },
+  'preset-rim': { scene: 'player-hold', yawDeg: 210, pitchDeg: 20, preset: 'rim', bake: 64 },
+  // The app's default orbit yaw: the view-relative rim lights the screen-left silhouettes from here too.
+  'preset-marketplace-yaw30': { scene: 'player-hold', yawDeg: 30, pitchDeg: 20, preset: 'marketplace', bake: 64 },
+  'preset-marketplace-fallback': {
+    scene: 'player-hold',
+    yawDeg: 210,
+    pitchDeg: 20,
+    preset: 'marketplace',
+    bake: 64,
+    fallback: true,
+  },
   // MS-50: a board inside an inverted-hull outline (a Blockbench cube with from > to), seen from above its side.
   'outline-hull': { scene: 'outline-hull', yawDeg: 30, pitchDeg: 30 },
 };
+
+/** The look of a view: its preset, with the rim light black under `rim=0`. */
+export function rtLook(view: RtView): LookPreset {
+  const look = Object.hasOwn(LOOK_PRESETS, view.preset) ? LOOK_PRESETS[view.preset] : undefined;
+  if (!look) throw new Error(`unknown preset "${view.preset}"`);
+  if (view.rim) return look;
+  return { ...look, lights: { ...look.lights, rim: { ...look.lights.rim, color: [0, 0, 0] } } };
+}
 
 function load(source: string): SceneDocument {
   return loadBbmodel(source).scene;
@@ -493,6 +521,12 @@ export function parseRtView(params: URLSearchParams): RtView {
   view.isometric = flag('iso') ?? view.isometric;
   view.catcher = flag('catcher') ?? view.catcher;
   view.edges = number('edges', 0, 4) ?? view.edges;
+  view.rim = flag('rim') ?? view.rim;
+  const preset = params.get('preset');
+  if (preset !== null) {
+    if (!Object.hasOwn(LOOK_PRESETS, preset)) throw new Error(`unknown preset "${preset}"`);
+    view.preset = preset;
+  }
   const bake = params.get('bake');
   if (bake !== null) {
     if (!/^\d{1,4}$/.test(bake) || Number(bake) > 1024)

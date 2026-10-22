@@ -4,13 +4,13 @@ precision highp int;
 
 #include "lightRig"
 #include "shadowCatcher"
+#include "backdrop"
 #include "agx"
 
 // The shadow catcher's baked light (BakedCatcher), its rectangle and lightmap size.
 uniform highp sampler2D u_catcherLight;
 uniform vec4 u_catcherRect;
 uniform vec2 u_catcherSize;
-uniform vec3 u_background;
 // The no-float path draws straight into the default framebuffer: tone-map here.
 uniform bool u_toneMap;
 
@@ -33,6 +33,6 @@ void main() {
     mix(catcherTexel(base + ivec2(0, 1)), catcherTexel(base + ivec2(1, 1)), f.x),
     f.y);
   vec3 fill = light.rgb * hemisphereFill(vec3(0.0, 1.0, 0.0));
-  vec3 color = u_background * catcherShade(fill, light.a, v_xz, u_catcherRect);
+  vec3 color = backdropHere() * catcherShade(fill, light.a, v_xz, u_catcherRect);
   outColor = vec4(u_toneMap ? agxToneMap(color) : color, 1.0);
 }

@@ -1,13 +1,17 @@
 #version 300 es
 precision highp float;
 
+#include "backdrop"
 #include "agx"
 
-uniform vec3 u_background;
+// The float path writes the scene-linear backdrop into its HDR target (present tone-maps it); the no-float path draws
+// straight into the default framebuffer and tone-maps here, with the same AgX.
+uniform bool u_toneMap;
 
 out vec4 outColor;
 
-// The backdrop of the no-float path, tone-mapped by the same AgX as the float path's clear colour.
+// The look's backdrop gradient, behind everything, on both paths.
 void main() {
-  outColor = vec4(agxToneMap(u_background), 1.0);
+  vec3 color = backdropHere();
+  outColor = vec4(u_toneMap ? agxToneMap(color) : color, 1.0);
 }
