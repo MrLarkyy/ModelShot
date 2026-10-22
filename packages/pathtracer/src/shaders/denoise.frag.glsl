@@ -127,6 +127,8 @@ void main() {
         float expected = SIGMA_DEPTH * dot(slope, abs(vec2(dx, dy))) * float(u_step) + DEPTH_SHARE * depth + 1.0e-6;
         float wDepth = backdrop ? 1.0 : exp(-abs(depth - depthAt(q, size)) / expected);
         w *= wNormal * wAlbedo * wLuminance * wDepth;
+        // A tap that does not count must not add 0 * Inf (NaN) either.
+        if (!(w > 0.0)) continue;
       }
       filtered += w * c.rgb;
       weights += w;

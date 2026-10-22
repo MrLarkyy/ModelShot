@@ -8,7 +8,7 @@ interface ColorTarget {
   readonly framebuffer: WebGLFramebuffer;
 }
 
-/** The denoiser's guides: mean albedo (floored) and mean shading normal of the first samples' camera rays. */
+/** The denoiser's guides (guide.frag): mean albedo (floored), shading normal and view depth of stratified camera rays. */
 interface GuideTarget {
   readonly albedo: WebGLTexture;
   readonly normal: WebGLTexture;
@@ -32,8 +32,9 @@ export interface ResolveLayout {
 
 /**
  * The quality path's targets, allocated only when a request needs them: the guides and two filter images in turn at
- * the traced size (RGBA16F: a level of the final 8-bit image is far coarser than half precision), the resolved
- * canvas-size image (RGBA32F, the mean as exact as the accumulation's), and one RGBA32F texel per noise block.
+ * the traced size (guides RGBA16F: a level of the final 8-bit image is far coarser than half precision; filter images
+ * RGBA32F, as the variance of one sample over a floored albedo overflows half precision), the resolved canvas-size
+ * image (RGBA32F, the mean as exact as the accumulation's), and one RGBA32F texel per noise block.
  */
 export class ResolveTargets {
   readonly guide: GuideTarget | null = null;
@@ -57,7 +58,7 @@ export class ResolveTargets {
         const albedo = this.texture(gl.RGBA16F, width, height);
         const normal = this.texture(gl.RGBA16F, width, height);
         this.guide = { albedo, normal, framebuffer: this.framebuffer([albedo, normal]) };
-        this.filtered = [this.colorTarget(gl.RGBA16F, width, height), this.colorTarget(gl.RGBA16F, width, height)];
+        this.filtered = [this.colorTarget(gl.RGBA32F, width, height), this.colorTarget(gl.RGBA32F, width, height)];
       }
       if (layout.resolve) this.resolved = this.colorTarget(gl.RGBA32F, layout.outputWidth, layout.outputHeight);
       if (layout.noise) this.noise = this.colorTarget(gl.RGBA32F, this.noiseWidth, this.noiseHeight);

@@ -1,8 +1,8 @@
 /** Largest `RenderRequest.supersample`. */
 export const MAX_SUPERSAMPLE = 4;
 /**
- * Accumulation pixels (supersampled width × height) a render may use: about 72 bytes each with denoising, so 2^22 keeps
- * the targets near 300 MB. A larger request falls back to a smaller scale.
+ * Accumulation pixels (supersampled width × height) a render may use: about 88 bytes each with denoising, so 2^22 keeps
+ * the targets near 370 MB. A larger request falls back to a smaller scale.
  */
 export const MAX_SUPERSAMPLED_PIXELS = 2 ** 22;
 
