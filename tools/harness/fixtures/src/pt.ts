@@ -260,6 +260,7 @@ async function start(): Promise<void> {
       render();
       return results.map((r) => r.applied);
     },
+    accumulationLength: () => tracer.readAccumulation()?.length ?? null,
     capped: () => {
       const sums = tracer.readAccumulation();
       if (!sums) throw new Error('no accumulation to read');

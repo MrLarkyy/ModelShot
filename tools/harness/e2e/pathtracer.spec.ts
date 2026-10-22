@@ -478,6 +478,22 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
     expect(result).toEqual({ drawn: 2, converged: false, noise: null });
   });
 
+  test('readAccumulation gives null from the moment the context is lost, before its event', async ({ page }) => {
+    await openFixture(page, '/pt.html?variant=turntable-y030&seed=1&samples=2&size=64');
+    const lengths = await page.evaluate(async () => {
+      const ptc = window.__msFixture!.pt!;
+      const before = ptc.accumulationLength();
+      // `lose` loses the context at once; its promise resolves only after the event.
+      const lost = ptc.lose();
+      const during = ptc.accumulationLength();
+      await lost;
+      const after = ptc.accumulationLength();
+      await ptc.restore();
+      return { before, during, after };
+    });
+    expect(lengths).toEqual({ before: 64 * 64 * 4, during: null, after: null });
+  });
+
   test('a plain request links only trace and present; a quality request and a restore link only what it needs', async ({
     page,
   }) => {
