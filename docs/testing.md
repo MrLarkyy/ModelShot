@@ -648,8 +648,9 @@ decoder (bitwise CRC, the platform's inflate, all filters), GIF against a textbo
 structure parsed back, codec levels by size and rate (720p60, 1080p60), the fallback chains, the video path with a
 stubbed WebCodecs encoder, one catcher for every pose of an animation and the `SUPERSAMPLE_LOWERED` warning against a
 fake renderer, the path tracer's `catcherBounds` (`catcherBounds.test.ts`), a scan of the sources for network calls,
-`gif.test.ts`'s cost bound: the palette and LZW of a 4096 x 4096 frame of 2^24 distinct colours within 3 000 ms (330 to
-440 ms measured locally; the sort-based median cut it replaced took 36.7 s), and `bundleSize.test.ts`: the entry chunk
+`gif.test.ts`'s cost bound: the palette and LZW of a 4096 x 4096 frame of 2^24 distinct colours within 3 000 ms of
+thread CPU time (`expectCpuBelow`, as the other packages bound work; 453 ms measured locally, the sort-based median cut
+it replaced took 36.7 s), and `bundleSize.test.ts`: the entry chunk
 and its static imports at most 7 299 gzip bytes (5 839 measured, times 1.25) with no encoder in them. Those bounds live
 in the tests until `budgets.json` takes them (MS-41).
 

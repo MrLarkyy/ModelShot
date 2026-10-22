@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { GifEncoder, MIN_GIF_DELAY_CS } from '../src/gif/GifEncoder';
 import { lzwEncode } from '../src/gif/lzwEncode';
 import { GIF_ALPHA_CUTOFF, quantizePalette, TRANSPARENT_INDEX } from '../src/gif/quantizePalette';
+import { expectCpuBelow } from './expectCpuBelow';
 import { blobBytes } from './support';
 import { decodeGif } from './decodeGif';
 
@@ -30,8 +31,8 @@ const TWO_COLOURS = imageOf(16, 8, (x, y) =>
 const GRADIENT = imageOf(64, 64, (x, y) => [x * 4, y * 4, 128, 255]);
 // The documented bound for the gradient (docs/export.md): 14 levels measured, times 1.25.
 const GRADIENT_TOLERANCE = 18;
-// Milliseconds for the palette and LZW of a 4096 x 4096 frame of distinct colours (docs/testing.md): 330-440 measured
-// locally (the sort-based median cut took 36.7 s), about 7x for a slow shared runner under load.
+// Thread CPU milliseconds for the palette and LZW of a 4096 x 4096 frame of distinct colours (docs/testing.md): 453
+// measured locally (the sort-based median cut took 36.7 s of wall time), about 6.6x for a slower runner's core.
 const GIF_FRAME_MS_MAX = 3000;
 
 describe('GIF encoding', () => {
@@ -145,15 +146,11 @@ describe('GIF encoding cost', () => {
       data[i * 4 + 2] = (i >> 16) & 0xff;
       data[i * 4 + 3] = 255;
     }
-    const started = performance.now();
-    const frame = quantizePalette({ width: side, height: side, data });
-    const quantized = performance.now();
-    const lzw = lzwEncode(frame.indices, 8);
-    const done = performance.now();
-    console.log(
-      `[export] GIF 4096 x 4096 distinct colours: quantize ${(quantized - started).toFixed(0)} ms, LZW ${(done - quantized).toFixed(0)} ms, ${lzw.length} bytes`,
-    );
+    const frame = expectCpuBelow(GIF_FRAME_MS_MAX, () => {
+      const paletted = quantizePalette({ width: side, height: side, data });
+      lzwEncode(paletted.indices, 8);
+      return paletted;
+    });
     expect(frame.colours).toBe(255);
-    expect(done - started).toBeLessThanOrEqual(GIF_FRAME_MS_MAX);
   }, 60_000);
 });
