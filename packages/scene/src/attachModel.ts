@@ -104,10 +104,14 @@ export function attachModel(host: SceneDocument, item: SceneDocument, options: A
     meshes: [...host.meshes, ...itemMeshes],
     materials: [
       ...host.materials,
-      ...item.materials.map((material) => ({
-        ...material,
-        texture: material.texture < 0 ? material.texture : material.texture + textureBase,
-      })),
+      ...item.materials.map((material) => {
+        const shift = (texture: number) => (texture < 0 ? texture : texture + textureBase);
+        return {
+          ...material,
+          texture: shift(material.texture),
+          ...(material.layers ? { layers: material.layers.map(shift) } : {}),
+        };
+      }),
     ],
     textures: [...host.textures, ...item.textures],
     attachments: [...(host.attachments ?? []), record, ...itemRecords],

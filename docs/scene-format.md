@@ -258,7 +258,8 @@ animated frame is a pose-only change for them (`poseOnlyChange`): the lightmap l
 `attachModel(host, item, { bone, name?, offset?, rotation?, scale? })` returns `host` with `item` merged under the
 node `bone` (an index, or the first node with that name). It appends an attachment node (child of `bone`, `pivot` =
 the bone's pivot, rest rotation `rotation`, no meshes but the item's root meshes), then the item's nodes, meshes,
-materials and textures with every index remapped (the item's root nodes become children of the attachment node). The
+materials and textures with every index remapped (material `texture` and each `layers` entry, −1 kept; the item's
+root nodes become children of the attachment node). The
 item's positions, pivots and translations become `scale · x + offset + pivot`, so an attached vertex lands at
 
 ```
