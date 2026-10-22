@@ -24,11 +24,18 @@ out vec4 outFiltered;
 
 // The 5-tap B3 spline, by distance from the centre.
 const float KERNEL[3] = float[3](0.375, 0.25, 0.0625);
-const float SIGMA_LUMINANCE = 4.0;
+const float SIGMA_LUMINANCE = 2.0;
+// Added to the luminance scale: where no sample found the light (inside a cavity) the variance is 0, yet the mean is
+// not exact; without it those pixels take nothing from the neighbours that did, and the cavity comes out too dark.
+const float LUMINANCE_FLOOR = 0.02;
 const float NORMAL_POWER = 128.0;
 // Linear albedo distance at which the weight falls to 1/e: neighbouring texels of one material shade alike, a
 // different surface does not.
-const float SIGMA_ALBEDO = 0.1;
+const float SIGMA_ALBEDO = 0.5;
+// Depth (SVGF): a neighbour weighs exp(-|dz| / (SIGMA_DEPTH * the change the centre's plane predicts + a share of z)),
+// so a surface seen through a cut-out never blends with the face in front of it.
+const float SIGMA_DEPTH = 1.0;
+const float DEPTH_SHARE = 0.005;
 
 ivec2 frameSize() {
   return textureSize(u_albedo, 0);
@@ -57,6 +64,21 @@ bool inside(ivec2 p, ivec2 size) {
   return p.x >= 0 && p.y >= 0 && p.x < size.x && p.y < size.y;
 }
 
+float depthAt(ivec2 p, ivec2 size) {
+  return texelFetch(u_normal, clamp(p, ivec2(0), size - 1), 0).w;
+}
+
+// The centre's depth change per pixel in x and y, the smaller one-sided difference, so a pixel beside a silhouette
+// takes the slope of its own surface.
+vec2 depthSlope(ivec2 p, ivec2 size, float z) {
+  vec2 slope;
+  for (int axis = 0; axis < 2; axis++) {
+    ivec2 d = axis == 0 ? ivec2(1, 0) : ivec2(0, 1);
+    slope[axis] = min(abs(depthAt(p + d, size) - z), abs(z - depthAt(p - d, size)));
+  }
+  return slope;
+}
+
 // The centre's luminance variance through a 3 x 3 Gaussian, so one lucky sample count does not pin the weight.
 float centreVariance(ivec2 p, ivec2 size) {
   float sum = 0.0;
@@ -80,8 +102,10 @@ void main() {
   vec3 albedo = texelFetch(u_albedo, p, 0).rgb;
   vec3 normal = normalAt(p);
   bool backdrop = normal == vec3(0.0);
+  float depth = depthAt(p, size);
+  vec2 slope = depthSlope(p, size, depth);
   float luminance = radianceLuminance(centre.rgb);
-  float luminanceScale = SIGMA_LUMINANCE * sqrt(max(centreVariance(p, size), 0.0)) + 1.0e-6;
+  float luminanceScale = SIGMA_LUMINANCE * sqrt(max(centreVariance(p, size), 0.0)) + LUMINANCE_FLOOR;
   vec3 filtered = vec3(0.0);
   float weights = 0.0;
   float variance = 0.0;
@@ -100,7 +124,9 @@ void main() {
         vec3 da = albedo - texelFetch(u_albedo, q, 0).rgb;
         float wAlbedo = exp(-dot(da, da) / (SIGMA_ALBEDO * SIGMA_ALBEDO));
         float wLuminance = exp(-abs(luminance - radianceLuminance(c.rgb)) / luminanceScale);
-        w *= wNormal * wAlbedo * wLuminance;
+        float expected = SIGMA_DEPTH * dot(slope, abs(vec2(dx, dy))) * float(u_step) + DEPTH_SHARE * depth + 1.0e-6;
+        float wDepth = backdrop ? 1.0 : exp(-abs(depth - depthAt(q, size)) / expected);
+        w *= wNormal * wAlbedo * wLuminance * wDepth;
       }
       filtered += w * c.rgb;
       weights += w;

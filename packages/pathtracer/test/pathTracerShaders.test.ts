@@ -116,28 +116,32 @@ describe('path tracer shaders', () => {
     expect(trace).toContain('outSum = vec4(sum.rgb + radiance, sum.a + float(cappedTraversals));');
   });
 
-  it('replays the camera rays of the first samples in the guide: same keys, jitter and alpha dimension', () => {
+  it('takes the guide through stratified points with the alpha rule and keys of the trace, more at partial texels', () => {
     const guide = pathTracerProgramSource('guide').fragment;
     expect(guide).toContain('uint key = sampleHash(u_seed, i, uvec2(pixel));');
-    expect(guide).toContain(
-      'primaryRay(vec2(pixel) + vec2(unitRandom(key, 0u, 0u), unitRandom(key, 1u, 0u)), origin, direction);',
-    );
+    expect(guide).toContain('vec2 point = fract(vec2(vanDerCorput(i), sobol(i)) + rotation);');
     expect(guide).toContain(
       'closestHit(origin, direction, tMin, tMax, depthScale, -1, key, FIRST_VERTEX_DIMENSION + 3u, hit)',
     );
+    expect(guide).toContain('if (i + 1u == rays && partial) rays = max(rays, u_partialGuideRays);');
+    // The trace's camera ray accepts partial texels in the same dimension.
     const trace = pathTracerProgramSource('trace').fragment;
-    expect(trace).toContain(
-      'primaryRay(pixel + vec2(unitRandom(key, 0u, 0u), unitRandom(key, 1u, 0u)), origin, direction);',
-    );
     expect(trace).toContain('uint dimension = FIRST_VERTEX_DIMENSION + uint(pathVertex) * DIMENSIONS_PER_VERTEX;');
     expect(trace).toContain('closestHit(origin, direction, tMin, tMax, depthScale, skip, key, dimension + 3u, hit)');
+  });
+
+  it('stops the filter at albedo, normal, depth and luminance edges; the first pass reads the accumulation', () => {
+    const denoise = pathTracerProgramSource('denoise').fragment;
+    expect(denoise).toContain('w *= wNormal * wAlbedo * wLuminance * wDepth;');
+    expect(denoise).toContain('if (!u_first) return texelFetch(u_source, p, 0);');
+    expect(denoise).toContain('const float KERNEL[3] = float[3](0.375, 0.25, 0.0625);');
   });
 
   it('filters demodulated radiance and multiplies the same floored albedo back', () => {
     const denoise = pathTracerProgramSource('denoise').fragment;
     expect(denoise).toContain('sum / u_samples / texelFetch(u_albedo, p, 0).rgb');
     expect(pathTracerProgramSource('resolve').fragment).toContain('c * texelFetch(u_albedo, p, 0).rgb');
-    expect(pathTracerProgramSource('guide').fragment).toContain('max(albedo / rays, vec3(ALBEDO_FLOOR))');
+    expect(pathTracerProgramSource('guide').fragment).toContain('max(albedo / count, vec3(ALBEDO_FLOOR))');
   });
 
   it('measures noise in the blocks the CPU sizes the noise target by', () => {

@@ -67,6 +67,9 @@ export const MAX_SEED = 2 ** 32 - 1;
 const DEFAULT_QUALITY: RenderQuality = { supersample: 1, denoise: false, noiseThreshold: null };
 // Iterations of the à-trous filter: taps 1, 2, 4, 8 and 16 pixels apart, a footprint of 125 pixels.
 const DENOISE_ITERATIONS = 5;
+// Camera rays per pixel of the denoiser's guides, and where one meets a partial texel (guide.frag).
+const GUIDE_RAYS = 64;
+const PARTIAL_GUIDE_RAYS = 1024;
 // Texture units: the scene data takes 1..5 in the trace and the guide.
 const UNIT_SUM = 0;
 const UNIT_MOMENTS = 6;
@@ -462,6 +465,8 @@ export class PathTracer {
     const gl = this.gl;
     if (extra?.guide && !this.guided) {
       this.bindScene(gpu, gpu.programs.guide, camera, request.seed, targets);
+      gl.uniform1ui(gpu.programs.guide.uniform('u_guideRays'), GUIDE_RAYS);
+      gl.uniform1ui(gpu.programs.guide.uniform('u_partialGuideRays'), PARTIAL_GUIDE_RAYS);
       gl.bindFramebuffer(gl.FRAMEBUFFER, extra.guide.framebuffer);
       this.drawTiles(tiles);
       this.guided = true;
