@@ -14,6 +14,7 @@ const context: ConverterContext = {
   boxUv: false,
   boxUvFloatSize: false,
   textureDoubleSided: [true],
+  textureSidesAuto: [false],
   untexturedDoubleSided: true,
   maxStringChars: 1024,
   maxVertices: 400_000,
@@ -426,5 +427,57 @@ describe('cubeToMesh: reversed axes (Blockbench setShape)', () => {
     expect(angles(meshOf(swapped([1])))).toEqual([-quarter]);
     expect(angles(meshOf(swapped([0, 2])))).toEqual([quarter]);
     expect(angles(plain)).toEqual([quarter]);
+  });
+});
+
+describe('cubeToMesh: sidedness of an inverted cube (outline hull)', () => {
+  const textures = [
+    { name: 'auto', render_sides: 'auto' },
+    { name: 'double', render_sides: 'double' },
+    { name: 'front', render_sides: 'front' },
+  ];
+  /** Groups of a cube FROM..TO swapped on `axes`, its faces on textures 0 (north, south), 1 (east, west), 2 (up), blank (down). */
+  const groupsOf = (axes: readonly number[], modelFormat = 'free') => {
+    const faces = {
+      north: textured([0, 0, 1, 1]),
+      south: textured([0, 0, 1, 1]),
+      east: textured([0, 0, 1, 1], { texture: 1 }),
+      west: textured([0, 0, 1, 1], { texture: 1 }),
+      up: textured([0, 0, 1, 1], { texture: 2 }),
+      down: { uv: [0, 0, 1, 1] },
+    };
+    const meta = { format_version: '4.5', model_format: modelFormat, box_uv: false };
+    const text = JSON.stringify(model({ meta, textures, elements: [swapped(axes, { faces })] }));
+    return loadBbmodel(text).scene.meshes[0]?.groups.map(({ material, doubleSided }) => [material, doubleSided]);
+  };
+
+  it('an odd count draws auto and untextured faces single-sided whatever the format; double stays double', () => {
+    for (const axes of [[0], [0, 1, 2]]) {
+      for (const format of ['free', 'java_block']) {
+        expect(groupsOf(axes, format)).toEqual([
+          [-1, false],
+          [0, false],
+          [1, true],
+          [2, false],
+        ]);
+      }
+    }
+  });
+
+  it('an even count and a plain cube keep the format rule for auto', () => {
+    for (const axes of [[], [0, 2]]) {
+      expect(groupsOf(axes)).toEqual([
+        [-1, true],
+        [0, true],
+        [1, true],
+        [2, false],
+      ]);
+      expect(groupsOf(axes, 'java_block')).toEqual([
+        [-1, false],
+        [0, false],
+        [1, true],
+        [2, false],
+      ]);
+    }
   });
 });

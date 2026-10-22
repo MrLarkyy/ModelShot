@@ -27,7 +27,7 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
 - **Planes**: Blockbench has no plane element; a plane is a mesh quad (the plane primitive) or a cube flat on one
   axis. Both load as above.
 - **Render sides** (texture `render_sides`: `auto`, `front`, `double`) set `SceneMeshGroup.doubleSided` of every face
-  with that texture; untextured faces follow the format.
+  with that texture; untextured faces follow the format, except on an inverted cube (Conversion, cube box).
 - **Per-texel alpha**: every texture material is `alphaMode: "blend"` with `alphaCutoff: 0.01`, as Blockbench draws
   textures (see the [scene format](scene-format.md#scenematerial) for what each pass does with a texel), except an
   `emissive` texture's (`mask`, 0.01); a layer composite is `blend` with `alphaCutoff: 0.05` (below).
@@ -102,10 +102,12 @@ scale (played as the smallest positive scale).
   An axis with e < 0 is reversed: from > to, a negative stretch, or a negative inflate larger than half a side (a
   positive inflate shrinks a reversed axis and, past zero, turns it back; e = 0 is a flat axis, not reversed). On a
   reversed axis every face is mirrored about the box centre and keeps its uv, so the east face of a cube reversed in
-  x lies on the −X side. An odd number of reversed axes turns every face inward: an inverted hull. Single-sided it
-  shows only from inside or as a rim around what it encloses (the outline technique); double-sided (`render_sides`
-  `double`, or `auto` outside `java_block`) its outer side covers what it encloses, as in Blockbench with its default
-  Render Sides setting. An even number leaves an
+  x lies on the −X side. An odd number of reversed axes turns every face inward: an inverted hull, which shows only
+  from inside or as a rim around what it encloses (the outline technique). Its faces whose texture has `render_sides`
+  `auto`, and its untextured faces, draw single-sided in every format; `double` stays double-sided. This deviates on
+  purpose from Blockbench, which sides `auto` by its Render Sides setting: with the default setting it draws them
+  double-sided outside `java_block`, so the hull's outer side covers what it encloses; with the setting on Outside it
+  draws the rim, as ModelShot does. An even number leaves an
   outward box, each face's texture on the opposite side turned 180°. The normal is each face's geometric front;
   Blockbench keeps the fixed normal of the face's key, which disagrees with the winding where exactly one other axis
   is reversed, so ModelShot lights those faces as their winding says. The 0.001 Blockbench adds to a flat axis is not
@@ -463,7 +465,7 @@ Reload affected models; scene documents need no migration.
 MS-50 reads reversed cube axes as Blockbench draws them, a behaviour change for files that loaded before: a cube
 with from > to on an axis, a negative stretch or a negative inflate larger than half a side used to load as an
 outward box (or, for the inflate, collapsed flat) and now loads mirrored on that axis, an inverted hull when an odd
-number of axes is reversed (Conversion). Every other cube loads exactly as before; no file that loaded before fails.
+number of axes is reversed, whose `auto`-sided and untextured faces are single-sided (Conversion). Every other cube loads exactly as before; no file that loaded before fails.
 Reload affected models; scene documents need no migration.
 
 ## Local-first

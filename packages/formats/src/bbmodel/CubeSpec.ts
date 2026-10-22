@@ -61,6 +61,11 @@ const NORMAL_AXIS: Readonly<Record<FaceDirection, 0 | 1 | 2>> = {
 };
 
 /**
+ * An inverted cube (an odd number of reversed axes, see `inflatedBox`) draws its faces whose texture's `render_sides` is
+ * `auto` single-sided in every format, so it shows as the rim of an outline hull; explicit `double` stays double-sided.
+ * Blockbench sides `auto` by its Render Sides setting, double-sided by default outside `java_block`, where such a
+ * hull's outer side would cover what it encloses; outline hulls are made to be seen with back faces culled.
+ *
  * A face lying in the plane of a zero-thickness axis whose opposite face is drawn too stays single-sided whatever its
  * texture says: the two are coincident, face opposite ways and have their own UVs, so each side shows exactly one of
  * them, with no depth fight. A lone face there (its opposite removed or absent) keeps its texture's sidedness, so a
@@ -85,9 +90,12 @@ export function readCube(element: JsonObject, path: string, context: ConverterCo
   }
   const flatFaces = specs.filter((face) => max[NORMAL_AXIS[face.direction]] - min[NORMAL_AXIS[face.direction]] <= 0);
   const paired = flatFaces.length === 2;
-  const drawn = paired
-    ? specs.map((face) => (flatFaces.includes(face) ? { ...face, doubleSided: false } : face))
-    : specs;
+  const inverted = reversed.filter(Boolean).length % 2 === 1;
+  const drawn = specs.map((face) => {
+    const flatPair = paired && flatFaces.includes(face);
+    const hullAuto = inverted && (context.textureSidesAuto[face.material] ?? true);
+    return face.doubleSided && (flatPair || hullAuto) ? { ...face, doubleSided: false } : face;
+  });
   return {
     name: readOptionalString(element, 'name', path, context.maxStringChars, 'cube'),
     sourceId: readOptionalString(element, 'uuid', path, context.maxStringChars, ''),
