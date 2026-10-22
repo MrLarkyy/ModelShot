@@ -23,8 +23,8 @@ limits work is written in this order:
    for L leaves pins that the tree is binary). Structure says nothing about cost, so the two BVH builds also carry a
    thread CPU bound (200 ms coincident, 400 ms chain; idle 16 and 31 ms), which pins the build cost.
 2. Where the cost of a hostile input itself is the claim, `expectCpuBelow(maxMs, work)`
-   (`packages/formats/test/support/expectCpuBelow.ts`, a copy in `packages/scene/test/` because scene cannot import formats
-   tests). It runs `work` synchronously, reads `process.threadCpuUsage()` (Node 22.19 or later) around it, and asserts
+   (`packages/formats/test/support/expectCpuBelow.ts`, a copy in `packages/scene/test/` and one in `packages/renderer-rt/test/`
+   because those packages cannot import formats tests). It runs `work` synchronously, reads `process.threadCpuUsage()` (Node 22.19 or later) around it, and asserts
    the CPU time of the current thread: blocked or descheduled time is not counted, a promise-returning callback throws.
    Build the fixture outside `work`; the clock ticks in steps of about 15.6 ms on Windows, so bounds under 50 ms are
    only for work that measures 0 ms. A bound keeps its old number, now in CPU milliseconds; one is never widened to
@@ -912,7 +912,7 @@ with no two triangles coplanar, so every triangle is its own world chart and eve
 and 7 edge fans, 4096 triangles on one edge (small book pages, so the first frame draws no deep overdraw). Round 1's
 chart search walked every triangle of a shared edge: quadratic on a fan (230 ms per such mesh, 11.3 s for 49 in one
 `setScene`, again in the bake worker); it now joins only across an edge of exactly two triangles, pinned in
-`worldCharts.test.ts` (49 fans: about 0.5 s in Node, at most 3 s). Local SwiftShader 1335, 1433 and 1448 ms
+`worldCharts.test.ts` (49 fans: about 0.5 s in Node; the bound is thread CPU time via `expectCpuBelow`, 3000 ms). Local SwiftShader 1335, 1433 and 1448 ms
 (`large-order` 1572 ms and `edges-200k` 1700 ms in the same run; round 1, height fields only: 1111-1224 ms; the layout
 alone 0.6-0.9 s in Node); max 3500 ms as for the other load budgets.
 
