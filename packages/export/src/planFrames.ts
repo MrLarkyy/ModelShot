@@ -1,5 +1,6 @@
 import {
   animateScene,
+  animationFrameTimes,
   frameToFit,
   sceneBounds,
   type SceneBounds,
@@ -66,8 +67,9 @@ function fitted(camera: SceneCamera, bounds: SceneBounds, aspect: number, yawOff
  * The frames of a checked export. A still: the camera as given. A turntable of N frames: yaw steps of 360° / N from
  * the camera's, the last one a step short of the first so the loop is seamless; `fit` frames the document's bounds at
  * one distance (the bounding sphere's, which no turn changes) with the camera's pitch and projection, `camera` orbits
- * the camera's own position around its target. An animation: playback times i / fps, each pose from the rest pose
- * (`animateScene`); with `fit` one camera for every frame, framing the union of the bounds of all planned poses, so
+ * the camera's own position around its target. An animation: playback times i / fps as `animationFrameTimes` counts
+ * them for `seconds` (a loop leaves out the frame equal to frame 0, `hold` and `once` end on the last), each pose
+ * from the rest pose (`animateScene`); with `fit` one camera for every frame, framing the union of the bounds of all planned poses, so
  * the view never jumps and no pose leaves the frame. Every frame renders with the same seed.
  */
 export function planFrames(doc: SceneDocument, options: CheckedExportOptions): PlannedFrame[] {
@@ -89,14 +91,10 @@ export function planFrames(doc: SceneDocument, options: CheckedExportOptions): P
     });
   }
   const poses: { document: SceneDocument; time: number }[] = [];
-  for (let index = 0; index < options.frames; index++) {
-    const time = index / options.fps;
+  const times = animationFrameTimes({ length: options.seconds, loop: options.loop }, options.fps);
+  for (const time of times) {
     try {
-      const pose = animateScene(doc, {
-        animation: options.animation,
-        time,
-        ...(options.loop ? { loop: options.loop } : {}),
-      });
+      const pose = animateScene(doc, { animation: options.animation, time, loop: options.loop });
       poses.push({ document: pose.document, time });
     } catch (error) {
       throw new ExportError(

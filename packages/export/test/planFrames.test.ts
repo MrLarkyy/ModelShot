@@ -81,6 +81,12 @@ describe('planFrames', () => {
     expect(frames[0]?.document).not.toBe(doc);
   });
 
+  it('ends a hold clip on its last frame, as animationFrameTimes counts export frames', () => {
+    const frames = plan({ kind: 'animation', format: 'apng', fps: 2, animation: 0, loop: 'hold' });
+    expect(frames.map((f) => f.time)).toEqual([0, 0.5, 1, 1.5, 2]);
+    expect(sceneBounds(frames.at(-1)!.document)!.center[0]).toBeCloseTo(4, 6);
+  });
+
   it('keeps the given camera for an animation with camera framing', () => {
     const frames = plan({ kind: 'animation', format: 'apng', fps: 2, animation: 0, framing: 'camera', seconds: 1 });
     expect(frames).toHaveLength(2);

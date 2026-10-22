@@ -46,7 +46,8 @@ export interface CheckedAnimationOptions extends CheckedRenderSettings {
   /** Index into `SceneDocument.animations`. */
   readonly animation: number;
   readonly seconds: number;
-  readonly loop?: SceneAnimationLoop;
+  /** The loop mode played: the option, else the animation's. */
+  readonly loop: SceneAnimationLoop;
 }
 
 export type CheckedClipOptions = CheckedTurntableOptions | CheckedAnimationOptions;
@@ -227,8 +228,12 @@ export function checkExportOptions(doc: SceneDocument, options: unknown): Checke
     checked = { ...clip, kind, frames: integer('frames', fields['frames'], 2, MAX_CLIP_FRAMES, true) };
   } else {
     const animation = animationIndex(fields['animation'], doc);
-    const loop = fields['loop'] === undefined ? undefined : oneOf('loop', fields['loop'], LOOPS);
-    const length = doc.animations?.[animation]?.length ?? 0;
+    const own = doc.animations?.[animation];
+    const length = own?.length;
+    if (typeof length !== 'number' || !Number.isFinite(length) || length < 0) {
+      throw invalid('animation', `has no usable length: ${describe(length)}`);
+    }
+    const loop = fields['loop'] === undefined ? (own?.loop ?? 'loop') : oneOf('loop', fields['loop'], LOOPS);
     let seconds: number;
     if (fields['seconds'] === undefined) {
       seconds = length;
@@ -250,7 +255,7 @@ export function checkExportOptions(doc: SceneDocument, options: unknown): Checke
       }
       if (!(seconds > 0)) throw invalid('seconds', `must be over 0, got ${seconds}`);
     }
-    const frames = Math.max(1, Math.round(seconds * fps));
+    const frames = clipFrameCount(seconds, fps, loop);
     if (frames > MAX_CLIP_FRAMES) {
       throw new ExportError(
         'LIMIT_EXCEEDED',
@@ -258,7 +263,7 @@ export function checkExportOptions(doc: SceneDocument, options: unknown): Checke
         'seconds',
       );
     }
-    checked = { ...clip, kind: 'animation', animation, seconds, frames, ...(loop ? { loop } : {}) };
+    checked = { ...clip, kind: 'animation', animation, seconds, frames, loop };
   }
   if (turntableSeconds(checked) > MAX_CLIP_SECONDS) {
     throw new ExportError(
@@ -276,6 +281,16 @@ export function checkExportOptions(doc: SceneDocument, options: unknown): Checke
     );
   }
   return checked;
+}
+
+/**
+ * Frames of `seconds` of playback at `fps`, as `animationFrameTimes` of @modelshot/scene counts them for export: a loop
+ * leaves out the frame equal to frame 0 (`max(1, round(seconds · fps))`), `hold` and `once` end on the frame at
+ * `seconds` (`floor(seconds · fps) + 1`).
+ */
+function clipFrameCount(seconds: number, fps: number, loop: SceneAnimationLoop): number {
+  const frames = seconds * fps;
+  return loop === 'loop' ? Math.max(1, Math.round(frames)) : Math.floor(frames + 1e-9) + 1;
 }
 
 function turntableSeconds(options: CheckedClipOptions): number {

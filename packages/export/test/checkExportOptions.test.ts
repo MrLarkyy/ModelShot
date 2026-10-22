@@ -39,7 +39,11 @@ describe('checkExportOptions', () => {
     expect(checkExportOptions(doc, { ...ANIMATION, animation: 'slide', seconds: 0.25 })).toMatchObject({
       frames: 3,
       animation: 0,
+      loop: 'loop',
     });
+    // Counted as animationFrameTimes counts export frames: hold and once end on the frame at the last second.
+    expect(checkExportOptions(doc, { ...ANIMATION, loop: 'hold' })).toMatchObject({ frames: 21, loop: 'hold' });
+    expect(checkExportOptions(doc, { ...ANIMATION, loop: 'once', seconds: 0.25 })).toMatchObject({ frames: 3 });
   });
 
   it('rejects options that are not an object or have no known kind', () => {
@@ -136,6 +140,12 @@ describe('checkExportOptions', () => {
         code: 'INVALID_OPTION',
         field: 'animation',
       });
+    }
+    for (const length of [NaN, -1, Infinity]) {
+      const broken = { ...doc, animations: [{ ...doc.animations![0]!, length }] };
+      expect(() => checkExportOptions(broken, ANIMATION), String(length)).toThrow(
+        expect.objectContaining({ code: 'INVALID_OPTION', field: 'animation' }),
+      );
     }
     for (const seconds of [0, -1, NaN, '2']) {
       expect(failure({ ...ANIMATION, seconds }), String(seconds)).toEqual({ code: 'INVALID_OPTION', field: 'seconds' });

@@ -77,7 +77,7 @@ the field:
 | limit                                  | value       | checked                                                                                                                               |
 | -------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `MAX_EXPORT_SIDE`, `MAX_EXPORT_PIXELS` | 4096, 4096² | before rendering; a GPU that renders less (its target limits, the tracer's `maxPixels`) is `LIMIT_EXCEEDED` on `width` after `resize` |
-| `MAX_CLIP_FRAMES`                      | 1200        | before rendering (a turntable's `frames`, an animation's `round(seconds × fps)`)                                                      |
+| `MAX_CLIP_FRAMES`                      | 1200        | before rendering (a turntable's `frames`, an animation's frame count, Frames and framing)                                             |
 | `MAX_CLIP_SECONDS`                     | 60          | before rendering (`frames / fps`, `seconds`, an animation's own length without `seconds`)                                             |
 | `MAX_CLIP_RAW_BYTES`                   | 2 GiB       | before rendering: `width × height × 4 × frames`                                                                                       |
 | `MAX_OUTPUT_BYTES`                     | 512 MiB     | while encoding, before each piece is kept                                                                                             |
@@ -90,8 +90,11 @@ is one step short of the first, so the clip loops without a repeated frame. With
 distance for every frame (the bounding sphere's, which no turn changes). With `camera` the camera's position orbits
 its target around the vertical axis at its own distance. The lights stay in the world, as the look defines them.
 
-An animation renders playback times `i / fps` for `i < max(1, round(seconds × fps))`, each pose computed from the rest
-pose by `animateScene` (so frame i is what a seek to that time shows). With `fit` one camera serves every frame: it
+An animation renders playback times `i / fps` as `animationFrameTimes` of the scene format counts them
+([scene-format.md](scene-format.md)) for `seconds`: a `loop` clip has `max(1, round(seconds × fps))` frames (the frame
+equal to frame 0 left out, so it loops seamlessly), `hold` and `once` `floor(seconds × fps) + 1` (ending on the frame
+at `seconds`). Each pose is computed from the rest pose by `animateScene`, so frame i is what a seek to that time
+shows. With `fit` one camera serves every frame: it
 frames the union of the bounds of all planned poses at the camera's angles and projection, so the view never jumps
 and no pose leaves the frame (framing each pose would move the camera every frame; framing the rest pose crops a
 model that walks out of it). With `camera` the camera is used as given. Each pose is a `setScene` of its own: the path
