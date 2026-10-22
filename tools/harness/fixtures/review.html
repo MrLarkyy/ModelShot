@@ -44,7 +44,7 @@
     </style>
   </head>
   <body>
-    <form id="controls">
+    <form id="controls" novalidate>
       <label>
         Model (.bbmodel, read locally; empty: the harness player with a held cube)
         <input id="model" type="file" accept=".bbmodel" />
@@ -59,7 +59,7 @@
       </label>
       <label>
         Pitch (degrees)
-        <input id="pitch" type="number" value="20" min="-89" max="89" step="5" />
+        <input id="pitch" type="number" value="20" min="-89" max="89" step="1" />
       </label>
       <button id="render" type="submit">Render</button>
     </form>

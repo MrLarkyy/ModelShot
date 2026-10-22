@@ -131,6 +131,13 @@ async function run(): Promise<void> {
 
 form.addEventListener('submit', (event) => {
   event.preventDefault();
+  const bad = [yawInput, pitchInput].find((input) => !input.checkValidity());
+  if (bad) {
+    status.textContent = `Not rendered: ${bad.id} ${bad.validationMessage}`;
+    document.body.dataset['state'] = 'failed';
+    bad.focus();
+    return;
+  }
   void run();
 });
 void run();
