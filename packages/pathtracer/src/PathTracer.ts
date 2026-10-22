@@ -46,7 +46,13 @@ import {
   type PackedGeometry,
 } from './packSceneData';
 import { PathTracerError } from './PathTracerError';
-import type { PathTracerOptions, RenderRequest, SetSceneOptions, SetSceneResult } from './PathTracerOptions';
+import type {
+  PathTracerOptions,
+  RenderedImage,
+  RenderRequest,
+  SetSceneOptions,
+  SetSceneResult,
+} from './PathTracerOptions';
 import type { PathTracerWarning } from './PathTracerWarning';
 import { isCheckpoint, sampleTiles, samplesToDraw, type Tile } from './sampleSchedule';
 import { noiseQuantile } from './noiseQuantile';
@@ -76,6 +82,7 @@ const GUIDE_TILE_DIVISOR = 8;
 // Texture units: the scene data takes 1..5 in the trace and the guide.
 const UNIT_SUM = 0;
 const UNIT_MOMENTS = 6;
+const UNIT_COVERAGE = 7;
 
 const EMPTY_SCENE: SceneDocument = {
   formatVersion: SCENE_FORMAT_VERSION,
@@ -154,6 +161,8 @@ export class PathTracer {
   private camera: SceneCamera | null = null;
   private request: RenderRequest | null = null;
   private quality: RenderQuality = DEFAULT_QUALITY;
+  /** `RenderRequest.transparent` of the current request. */
+  private transparent = false;
   /** The supersampling scale the current request traces at: set by `start`, `resize` and a restore, never on a read. */
   private scale = 1;
   private done = 0;
@@ -439,14 +448,19 @@ export class PathTracer {
   /**
    * Starts a render of exactly `samples` samples per pixel from `seed` (with `noiseThreshold` at most that many),
    * discarding what was accumulated. `seed` must be an integer in 0..2^32 − 1, `samples` in 1..65536, `supersample` in
-   * 1..4, `denoise` a boolean and `noiseThreshold` in (0, 1], else a `RangeError` naming the field.
+   * 1..4, `denoise` and `transparent` booleans and `noiseThreshold` in (0, 1], else a `RangeError` naming the field.
    */
   start(request: RenderRequest): void {
     const seed = checkInteger('seed', request.seed, 0, MAX_SEED);
     const samples = checkInteger('samples', request.samples, 1, MAX_SAMPLES);
     const quality = checkRenderQuality(request);
+    const transparent: unknown = request.transparent === undefined ? false : request.transparent;
+    if (typeof transparent !== 'boolean') {
+      throw new RangeError(`transparent must be a boolean, got ${String(transparent)}`);
+    }
     this.request = { seed, samples };
     this.quality = quality;
+    this.transparent = transparent;
     this.updateScale();
     this.cancelled = false;
     this.restart();
@@ -495,6 +509,8 @@ export class PathTracer {
       gl.bindTexture(gl.TEXTURE_2D, targets.sum.texture);
       gl.activeTexture(gl.TEXTURE0 + UNIT_MOMENTS);
       gl.bindTexture(gl.TEXTURE_2D, targets.sum.moments);
+      gl.activeTexture(gl.TEXTURE0 + UNIT_COVERAGE);
+      gl.bindTexture(gl.TEXTURE_2D, targets.sum.coverage);
       this.drawTiles(tiles);
       targets.swap();
       this.done++;
@@ -513,7 +529,7 @@ export class PathTracer {
         this.bindTrace(gpu, camera, request.seed, targets);
       }
     }
-    this.unbindTextures(UNIT_MOMENTS + 1);
+    this.unbindTextures(UNIT_COVERAGE + 1);
     const finished = this.converged || this.done >= request.samples;
     if (extra?.resolved && (checkpoint || finished)) this.resolveImage(gpu, targets, extra, tiles);
     this.present(gpu);
@@ -538,6 +554,43 @@ export class PathTracer {
     const targets = this.gpu?.targets;
     if (!targets || this.lost || this.gl.isContextLost() || this.done === 0) return null;
     return targets.read();
+  }
+
+  /**
+   * The image presented now as 8-bit sRGB with straight alpha, rows top to bottom: a transparent request's alpha is its
+   * coverage (0 where camera rays left the scene, black with alpha 1 − shade on the shadow catcher), any other request's
+   * is 255 and its pixels are the canvas's. Supersampled or denoised, the image resolved at the latest checkpoint.
+   * `null` while the context is lost (also when it went during the read), after `dispose()` or before a sample.
+   */
+  readImage(): RenderedImage | null {
+    const gpu = this.gpu;
+    if (!gpu?.targets || this.lost || this.disposed || this.gl.isContextLost() || this.done === 0) return null;
+    const gl = this.gl;
+    const { width, height } = this.canvas;
+    // A transient RGBA8 target: the canvas stays opaque (no compositing change), and nothing lives past the call.
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, width, height);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    const framebuffer = gl.createFramebuffer();
+    const pixels = new Uint8Array(width * height * 4);
+    try {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+      this.present(gpu, framebuffer);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+      gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    } finally {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.deleteFramebuffer(framebuffer);
+      gl.deleteTexture(texture);
+    }
+    // A context lost during the read leaves zeros, which must not pass for a transparent image.
+    if (gl.isContextLost()) return null;
+    const data = new Uint8ClampedArray(pixels.length);
+    const row = width * 4;
+    for (let y = 0; y < height; y++) data.set(pixels.subarray(y * row, (y + 1) * row), (height - 1 - y) * row);
+    return { width, height, data };
   }
 
   /** Called after the context came back and was rebuilt. Returns a function that removes the listener. */
@@ -651,6 +704,7 @@ export class PathTracer {
     const height = this.canvas.height * scale;
     const { denoise, noiseThreshold } = this.quality;
     const moments = denoise || noiseThreshold !== null;
+    const transparent = this.transparent;
     // The programs first: a shader failure throws before any target is made, freed or cleared.
     const programs: QualityProgramName[] = [];
     if (denoise) programs.push('guide', 'denoise');
@@ -658,10 +712,16 @@ export class PathTracer {
     if (moments) programs.push('noise');
     gpu.programs.require(programs);
     let targets = gpu.targets;
-    if (!targets || targets.width !== width || targets.height !== height || targets.moments !== moments) {
+    if (
+      !targets ||
+      targets.width !== width ||
+      targets.height !== height ||
+      targets.moments !== moments ||
+      targets.transparent !== transparent
+    ) {
       targets?.dispose();
       gpu.targets = null;
-      targets = new AccumulationTargets(this.gl, width, height, moments);
+      targets = new AccumulationTargets(this.gl, width, height, moments, transparent);
       gpu.targets = targets;
       this.resetAccumulation();
     }
@@ -729,6 +789,8 @@ export class PathTracer {
     gl.uniform1i(uniform('u_previous'), UNIT_SUM);
     gl.uniform1i(uniform('u_previousMoments'), UNIT_MOMENTS);
     gl.uniform1i(uniform('u_moments'), targets.moments ? 1 : 0);
+    gl.uniform1i(uniform('u_previousCoverage'), UNIT_COVERAGE);
+    gl.uniform1i(uniform('u_transparent'), targets.transparent ? 1 : 0);
     gl.uniform1i(uniform('u_maxBounces'), this.maxBounces);
   }
 
@@ -880,33 +942,47 @@ export class PathTracer {
     gl.bindTexture(gl.TEXTURE_2D, source);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, extra.guide?.albedo ?? null);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, targets.sum.coverage);
     gl.uniform1i(uniform('u_source'), 0);
     gl.uniform1i(uniform('u_albedo'), 1);
+    gl.uniform1i(uniform('u_coverage'), 2);
+    gl.uniform1i(uniform('u_transparent'), targets.transparent ? 1 : 0);
     gl.uniform1i(uniform('u_denoised'), denoised ? 1 : 0);
     gl.uniform1f(uniform('u_samples'), this.done);
     gl.uniform1i(uniform('u_scale'), targets.width / this.canvas.width);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    this.unbindTextures(2);
+    this.unbindTextures(3);
   }
 
-  /** The mean so far, or on the quality path the image resolved at the latest checkpoint, through AgX. */
-  private present(gpu: Gpu): void {
+  /**
+   * The mean so far, or on the quality path the image resolved at the latest checkpoint, through AgX: to the canvas,
+   * or with straight alpha into `readback` (`readImage`).
+   */
+  private present(gpu: Gpu, readback: WebGLFramebuffer | null = null): void {
     const gl = this.gl;
     const { program, uniform } = gpu.programs.present;
     const resolved = this.done > 0 ? gpu.resolve?.resolved : undefined;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const targets = gpu.targets;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, readback);
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.useProgram(program);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, resolved ? null : (targets?.sum.coverage ?? null));
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, resolved?.texture ?? gpu.targets?.sum.texture ?? null);
+    gl.bindTexture(gl.TEXTURE_2D, resolved?.texture ?? targets?.sum.texture ?? null);
     gl.uniform1i(uniform('u_sum'), 0);
-    gl.uniform1f(uniform('u_samples'), resolved ? 1 : gpu.targets ? this.done : 0);
+    gl.uniform1i(uniform('u_coverage'), 1);
+    gl.uniform1i(uniform('u_transparent'), targets?.transparent ? 1 : 0);
+    gl.uniform1i(uniform('u_coverageInSum'), resolved ? 1 : 0);
+    gl.uniform1i(uniform('u_readback'), readback ? 1 : 0);
+    gl.uniform1f(uniform('u_samples'), resolved ? 1 : targets ? this.done : 0);
     // Backdrop and tone mapping only: no rim, so no camera.
     uploadLookUniforms(gl, uniform, this.lookPreset, this.canvas.height, LOOK_VIEW_NONE);
     gl.bindVertexArray(gpu.vao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
-    gl.bindTexture(gl.TEXTURE_2D, null);
+    this.unbindTextures(2);
   }
 
   private releaseScene(): void {
