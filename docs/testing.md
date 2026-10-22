@@ -510,15 +510,20 @@ widened.
   their texture whose texels are sRGB 2, so the albedo floor 0.01 makes one sample's luminance variance about 1e6,
   over half precision) at 1 sample, denoised against plain: of the 7 019 pixels above 150 levels in the plain render
   none falls under 30 denoised, and no pixel over 30 turns black (under 2). SwiftShader did not show the NaN with the
-  half-float filter images either (its conversion does not yield Inf here); the test pins the outcome, the RGBA32F
-  filter and the skipped zero-weight taps remove the cause.
+  half-float filter images either (its conversion does not yield Inf here), so this browser test pins the outcome.
+  The cause is pinned by two unit tests: `pathTracerShaders.test.ts` checks that the zero-weight skip in
+  `denoise.frag` comes after the weight line and before the tap is added to the sums, and `resolveTargets.test.ts`
+  (a recording stub of WebGL2) checks that the filter images are allocated as RGBA32F and the guides as RGBA16F.
 - **Lost context**: a threshold request (0.01) whose context is lost inside the first noise readback (the fixture's
   `loseDuringNoise`) stops after 2 samples with `converged` false and `noise` null; without the guard it reported
-  converged.
+  converged. `readAccumulation` gives null from the moment the context is lost, before its event, as after it
+  (browser test, the fixture's `lose`); without the check it returned zeros.
 - **Programs**: with `track=1`, a plain request leaves 2 live programs (trace, present); a threshold request adds
   `noise` (3), a denoised 2x one `guide`, `denoise`, `resolve` (6); after a loss and restore only trace and present
   are linked again, a plain render adds none, a threshold request `noise` again. The scale survives a loss:
-  `progress.supersample` 2 and `accumulationSize` 128 x 128 while the context is lost.
+  `progress.supersample` 2 and `accumulationSize` 128 x 128 while the context is lost. `tracerPrograms.test.ts` (stub
+  WebGL2): a program that fails to compile is compiled once, a second `require` throws the same error without
+  compiling again, other programs still link, and a rebuilt context starts over.
 
 Times on the local machine: the denoised 64-sample closeup page about 8-9 s against 5 s plain (most of the difference
 is the guide's 1024 rays at partial texels); the determinism test about 47 s.
