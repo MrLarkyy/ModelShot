@@ -17,7 +17,7 @@ test('a 32x32 block change fails with actual, expected and diff images', async (
   const before = sha256(goldenPath(gradient));
   const broken: RasterGoldenSpec = { ...gradient, variant: 'broken' };
 
-  await expect(expectGolden(page, testInfo, broken, { compareAgainst: gradient, allowUpdate: false })).rejects.toThrow(
+  await expect(expectGolden(page, testInfo, broken, { compareAgainst: gradient })).rejects.toThrow(
     /1024 pixels differ.*gradient-diff\.png/s,
   );
 

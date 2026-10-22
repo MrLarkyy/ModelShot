@@ -84,8 +84,12 @@ image code uses no clock or random source (lint rule; timing lives in `fixtures/
   comparison by themselves, with 0 differing pixels but a mean delta of 1.40..1.42 levels against the limit of 1 (seed 8:
   12.8, 32 samples: 9.0). The 63/65 margin is small; do not raise `maxMeanDelta` without a replacement check.
 - A missing golden fails the test, and the message names the spec file of the failing test as the update pattern. Goldens are written only by `pnpm golden:update [spec file pattern]`, for
-  example `pnpm golden:update golden.spec` (Playwright `--update-snapshots=changed`; the pattern selects spec files, not
-  golden names); the command is refused when `CI` is set. Review every changed image as an image before
+  example `pnpm golden:update golden.spec` (Playwright `--update-snapshots=all`; the pattern selects spec files, not
+  golden names); every golden of the selected spec files is rewritten, a change inside the tolerance too. On the
+  OS and SwiftShader build that rendered the committed goldens an unchanged render gives a byte-identical PNG, so git
+  shows only real changes; on another platform an update may rewrite unchanged goldens with last-bit differences (CI on
+  Linux passes the Windows-made goldens by tolerance), so commit only the goldens you meant to change. A pair
+  comparison (`compareAgainst`) never writes the golden it compares against. The command is refused when `CI` is set. Review every changed image as an image before
   committing.
 - Data goldens (JSON file snapshots of loader output, `__goldens__/*.json` next to the Vitest tests) are written only by
   `pnpm golden:update:data [test file pattern]` (`vitest run --update`); review the JSON diff before committing.

@@ -3,7 +3,7 @@ import { basename, join } from 'node:path';
 import { expect, type Page, type TestInfo } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { compareImages } from './compareImages';
-import { resolveGolden } from './goldenStore';
+import { mayWriteGolden, resolveGolden } from './goldenStore';
 import { assertSampleCount } from './sampleCount';
 import { fixtureUrl, validateSpec, type GoldenSpec } from './goldenSpec';
 
@@ -78,24 +78,15 @@ export async function expectGolden(
     ...(spec.tolerance?.maxDiffRatio !== undefined ? { maxDiffRatio: spec.tolerance.maxDiffRatio } : {}),
     ...(spec.tolerance?.maxMeanDelta !== undefined ? { maxMeanDelta: spec.tolerance.maxMeanDelta } : {}),
   };
-  let result: ReturnType<typeof compareImages> | undefined;
-  const resolution = resolveGolden(
-    goldenSpec,
-    png,
-    {
-      updateMode: testInfo.config.updateSnapshots,
-      ci: Boolean(process.env['CI']),
-      allowUpdate: options.allowUpdate ?? true,
-      specFile: basename(testInfo.file).replace(/\.ts$/, ''),
-    },
-    (expected) => {
-      result = compareImages(png, expected, compareOptions);
-      return !result.pass;
-    },
-  );
+  const resolution = resolveGolden(goldenSpec, png, {
+    updateMode: testInfo.config.updateSnapshots,
+    ci: Boolean(process.env['CI']),
+    allowUpdate: mayWriteGolden(options),
+    specFile: basename(testInfo.file).replace(/\.ts$/, ''),
+  });
   if (resolution.written) return;
 
-  result ??= compareImages(png, resolution.expected, compareOptions);
+  const result = compareImages(png, resolution.expected, compareOptions);
   if (result.pass) return;
 
   const base = testInfo.outputDir;

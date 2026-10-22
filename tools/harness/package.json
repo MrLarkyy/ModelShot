@@ -6,7 +6,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test:browser": "playwright test",
-    "golden:update": "playwright test --update-snapshots=changed",
+    "golden:update": "playwright test --update-snapshots=all",
     "browsers": "playwright install --only-shell chromium"
   },
   "dependencies": {
