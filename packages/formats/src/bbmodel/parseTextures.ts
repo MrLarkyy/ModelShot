@@ -39,8 +39,8 @@ export interface UvSize {
 }
 
 /**
- * Reads texture metadata and checks the texture count; decodes nothing. With `perTextureUvSize` (Blockbench's `free`
- * format) a texture's `uv_width`/`uv_height` set its UV space; otherwise every texture uses the project resolution.
+ * Reads texture metadata and checks the texture count; decodes nothing. With `perTextureUvSize` (`formatPerTextureUvSize`)
+ * a texture's `uv_width`/`uv_height` set its UV space; otherwise every texture uses the project resolution.
  * `modelFormat` decides whether frame-strip fields are read.
  */
 export function readTextureEntries(
@@ -96,9 +96,12 @@ function readTextureEntry(
     .map((key) => readOptionalString(texture, key, path, limits.maxStringChars, ''))
     .map(baseName)
     .filter((key) => key !== '');
+  // `free` has always read the UV size and fails on a bad one; the formats read since MS-29 only warn, so no file that
+  // loaded before fails.
+  const strict = modelFormat === 'free';
   const uvSize = fixedUvSize ?? {
-    width: readOptionalPositive(texture, 'uv_width', path, resolution.width),
-    height: readOptionalPositive(texture, 'uv_height', path, resolution.height),
+    width: readOptionalPositive(texture, 'uv_width', path, resolution.width, strict, warnings),
+    height: readOptionalPositive(texture, 'uv_height', path, resolution.height, strict, warnings),
   };
   return {
     path,
@@ -170,9 +173,25 @@ function readLenientBoolean(
   return fallback;
 }
 
-function readOptionalPositive(texture: JsonObject, key: string, path: string, fallback: number): number {
+function readOptionalPositive(
+  texture: JsonObject,
+  key: string,
+  path: string,
+  fallback: number,
+  strict: boolean,
+  warnings: BbmodelWarningList,
+): number {
   const value = field(texture, key);
-  return value === undefined ? fallback : readPositiveNumber(value, childPath(path, key));
+  if (value === undefined) return fallback;
+  if (strict || (typeof value === 'number' && Number.isFinite(value) && value > 0)) {
+    return readPositiveNumber(value, childPath(path, key));
+  }
+  warnings.add(
+    'UNSUPPORTED_VALUE',
+    childPath(path, key),
+    `expected a positive number, got ${quoteValue(value)}; using ${fallback}`,
+  );
+  return fallback;
 }
 
 function baseName(fileName: string): string {

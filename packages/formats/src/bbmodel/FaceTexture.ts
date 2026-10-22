@@ -45,10 +45,10 @@ export interface FaceMaterial {
 }
 
 /**
- * Applies Blockbench's `Face.getTexture` to `stored` (`readFaceTexture`; `null` only reaches here from a mesh, which
- * draws such a face untextured): a parent group texture wins in per-group formats; `single` formats show the default
- * texture on every face, `singleDefault` formats on blank faces (on every face with per-group textures). With a layer
- * composite every face draws with it, sided as the model format's default (`Canvas.getRenderSide`).
+ * Applies Blockbench's `Face.getTexture` to `stored` (`readFaceTexture`; `null` only reaches here from a mesh): a
+ * parent group texture wins in per-group formats; `single` formats show the default texture on every face but a
+ * `null` one, `singleDefault` formats on blank faces (on every face with per-group textures). With a layer composite
+ * every face draws with it, sided as the model format's default (`Canvas.getRenderSide`).
  */
 export function faceMaterial(
   stored: number | null,
@@ -63,18 +63,22 @@ export function faceMaterial(
     | 'layeredMaterial'
   >,
 ): FaceMaterial {
-  const texture = stored === null ? -1 : shownTexture(stored, context);
+  const texture = shownTexture(stored, context);
   if (context.layeredMaterial !== undefined) {
     return { material: context.layeredMaterial, texture, doubleSided: context.untexturedDoubleSided };
   }
-  return { material: texture, texture, doubleSided: faceDoubleSided(texture, context) };
+  // Blockbench's mesh controller gives a whole mesh in a `single` format the default texture's material, so a `null`
+  // face draws with it too, while its UVs keep the project resolution (`getTexture` is null there).
+  const material = stored === null && context.textureRule === 'single' ? (context.defaultTexture ?? -1) : texture;
+  return { material, texture, doubleSided: faceDoubleSided(material, context) };
 }
 
 function shownTexture(
-  stored: number,
+  stored: number | null,
   context: Pick<ConverterContext, 'textureRule' | 'perGroupTexture' | 'defaultTexture' | 'groupTexture'>,
 ): number {
-  if (context.groupTexture !== undefined && context.groupTexture >= 0) return context.groupTexture;
+  if (context.groupTexture !== undefined) return context.groupTexture;
+  if (stored === null) return -1;
   const rule = context.textureRule ?? 'perFace';
   const useDefault =
     rule === 'single' || (rule === 'singleDefault' && (context.perGroupTexture === true || stored < 0));

@@ -34,6 +34,40 @@ describe('per-texture UV size (Blockbench per_texture_uv_size)', () => {
     },
   );
 
+  it.each(['image', 'optifine_entity', 'optifine_part'])('applies uv_width/uv_height in %s too', (format) => {
+    const { scene } = loadBbmodel(json(model({ meta: meta(format), textures })));
+    expect(scene.textures[0]).toMatchObject({ uvWidth: 32, uvHeight: 64 });
+  });
+
+  it.each(['image', 'optifine_entity'])(
+    '%s: a bad uv size warns and uses the resolution (read since MS-29)',
+    (format) => {
+      const bad = [{ name: 't', uv_width: 0, uv_height: 'x' }];
+      const { scene, warnings } = loadBbmodel(
+        json(model({ meta: meta(format), textures: bad, resolution: { width: 64, height: 32 } })),
+      );
+      expect(scene.textures[0]).toMatchObject({ uvWidth: 64, uvHeight: 32 });
+      expect(warnings.filter((w) => w.code === 'UNSUPPORTED_VALUE').map((w) => w.path)).toEqual([
+        '$.textures[0].uv_width',
+        '$.textures[0].uv_height',
+      ]);
+    },
+  );
+
+  it('optifine: face UVs use the UV size of the texture shown (group texture), not the stored one', () => {
+    const list = [
+      { name: 'a', uuid: 't-a', uv_width: 16, uv_height: 16 },
+      { name: 'b', uuid: 't-b', uv_width: 64, uv_height: 32 },
+    ];
+    const north = { uv: [0, 0, 16, 16], texture: 0 };
+    const outliner = [{ name: 'g', uuid: 'g0', texture: 't-b', children: ['c0'] }];
+    const text = json(
+      model({ meta: meta('optifine_entity'), textures: list, elements: [cube({ faces: { north } })], outliner }),
+    );
+    expect(northRect(text, 64, 32)).toEqual([0, 0, 16, 16]);
+    expect(loadBbmodel(text).scene.meshes[0]?.groups[0]?.material).toBe(1);
+  });
+
   it('uses the project resolution when the format is missing', () => {
     const { scene } = loadBbmodel(json(model({ meta: { format_version: '4.5' }, textures })));
     expect(scene.textures[0]).toMatchObject({ uvWidth: 16, uvHeight: 16 });
@@ -510,9 +544,9 @@ describe('default texture (Blockbench Face.getTexture, Texture.getDefault)', () 
     },
   );
 
-  it('optifine: an unknown group texture warns and is ignored', () => {
+  it('optifine: a group texture naming no texture warns and leaves its faces untextured', () => {
     const { groups, warnings } = load('optifine_entity', textures(), grouped('nope'));
-    expect(groups).toEqual([[[0, 3]]]);
+    expect(groups).toEqual([[[-1, 3]]]);
     expect(warnings.map((w) => [w.code, w.path])).toContainEqual(['UNKNOWN_REFERENCE', '$.outliner[0].texture']);
   });
 
@@ -542,12 +576,56 @@ describe('default texture (Blockbench Face.getTexture, Texture.getDefault)', () 
     expect(loadBbmodel(text).scene.meshes[0]?.groups.map((g) => g.material)).toEqual([-1]);
   });
 
-  it('a mesh face with texture null stays untextured', () => {
+  it('a mesh face with texture null draws with the default texture in single formats, untextured elsewhere', () => {
     const element = mesh({
       faces: { f: meshFace(['a', 'b', 'c'], { texture: null }), g: meshFace(['a', 'c', 'd'], { texture: 1 }) },
     });
-    const text = json(model({ meta: meta('bedrock'), textures: textures(), elements: [element] }));
-    expect(loadBbmodel(text).scene.meshes[0]?.groups.map((g) => g.material)).toEqual([-1, 0]);
+    const materials = (format: string) => {
+      const text = json(model({ meta: meta(format), textures: textures(), elements: [element] }));
+      return loadBbmodel(text).scene.meshes[0]?.groups.map((g) => [g.material, g.count / 3]);
+    };
+    expect(materials('bedrock')).toEqual([[0, 2]]);
+    expect(materials('bedrock_block')).toEqual([
+      [-1, 1],
+      [1, 1],
+    ]);
+    expect(materials('free')).toEqual([
+      [-1, 1],
+      [1, 1],
+    ]);
+  });
+
+  it('a mesh face with texture null keeps project-resolution UVs and no frame division in single formats', () => {
+    const list = [{ name: 'strip', source: pngDataUri(16, 64) }];
+    const face = meshFace(['a', 'b', 'c'], { texture: null, uv: { a: [0, 0], b: [16, 0], c: [16, 16] } });
+    const text = json(model({ meta: meta('bedrock'), textures: list, elements: [mesh({ faces: { f: face } })] }));
+    const sceneMesh = loadBbmodel(text).scene.meshes[0];
+    expect(sceneMesh?.groups[0]?.material).toBe(0);
+    expect([...(sceneMesh?.uvRects.slice(0, 4) ?? [])]).toEqual([0, 0, 1, 1]);
+  });
+
+  it('optifine: a mesh face with texture null shows its group texture', () => {
+    const element = mesh({ faces: { f: meshFace(['a', 'b', 'c'], { texture: null }) } });
+    const outliner = [{ name: 'g', uuid: 'g0', texture: 't-1', children: ['c0'] }];
+    const text = json(model({ meta: meta('optifine_entity'), textures: textures(), elements: [element], outliner }));
+    expect(loadBbmodel(text).scene.meshes[0]?.groups.map((g) => g.material)).toEqual([1]);
+  });
+
+  it('a non-boolean use_as_default warns and counts as false', () => {
+    const { groups, warnings } = load('bedrock_block', textures([{}, { use_as_default: 'yes' }]));
+    expect(groups).toEqual([
+      [
+        [0, 2],
+        [1, 1],
+      ],
+    ]);
+    expect(warnings.filter((w) => w.code === 'UNSUPPORTED_VALUE').map((w) => w.path)).toEqual([
+      '$.textures[1].use_as_default',
+    ]);
+  });
+
+  it('use_as_default is ignored in single_texture formats', () => {
+    expect(load('bedrock', textures([{}, { use_as_default: true }])).groups).toEqual([[[0, 3]]]);
   });
 
   it('frames follow the default texture', () => {

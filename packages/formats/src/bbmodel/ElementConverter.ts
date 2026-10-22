@@ -20,7 +20,10 @@ export interface ConverterContext {
   readonly perGroupTexture?: boolean;
   /** Blockbench's default texture (`defaultTexture`); absent or −1 for none. */
   readonly defaultTexture?: number;
-  /** Texture of the element's parent group in a per-group-texture format; absent or −1 for none. */
+  /**
+   * Texture of the element's parent group in a per-group-texture format; absent when the group sets none, −1 when it
+   * names a texture that does not exist (Blockbench then draws the face untextured).
+   */
   readonly groupTexture?: number;
   /** Material of the layer composite that every drawn face uses; absent when no texture is layered. */
   readonly layeredMaterial?: number;

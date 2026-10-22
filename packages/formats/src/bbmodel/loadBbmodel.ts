@@ -22,7 +22,7 @@ import { readTextureEntries, resolveTextures, textureIdIndex, type UvSize } from
 import { quoteValue } from '../text/quoteValue';
 import { readJson } from './readJson';
 import { formatDoubleSided, isDoubleSided } from './RenderSides';
-import { defaultTexture, formatPerGroupTexture, formatTextureRule } from './TextureRule';
+import { defaultTexture, formatPerGroupTexture, formatPerTextureUvSize, formatTextureRule } from './TextureRule';
 
 const SUPPORTED_MAJOR_VERSIONS = [3, 4, 5];
 const DEFAULT_RESOLUTION: UvSize = { width: 16, height: 16 };
@@ -59,8 +59,14 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
           what: 'elements',
         });
   const resolution = readResolution(root);
-  // Blockbench formats with per-texture UV size: only `free` (bedrock's multi-file ruleset is runtime-only state).
-  const textureEntries = readTextureEntries(root, resolution, modelFormat === 'free', modelFormat, limits, warnings);
+  const textureEntries = readTextureEntries(
+    root,
+    resolution,
+    formatPerTextureUvSize(modelFormat),
+    modelFormat,
+    limits,
+    warnings,
+  );
   const formatDefaultSides = formatDoubleSided(modelFormat);
   const elementObjects = elements.map((item, index) => readObject(item, childPath('$.elements', index)));
   // Before 3.2 Blockbench stored group z rotations with the opposite sign and negates them on import.
@@ -154,16 +160,20 @@ function readResolution(root: JsonObject): UvSize {
   };
 }
 
-/** A group texture uuid as a texture index; −1 when unset or unknown (warned and ignored). */
+/** A group texture uuid as a texture index; `undefined` when unset, −1 (warned) when it names no texture. */
 function groupTextureIndex(
   texture: GroupTexture | undefined,
   textureIds: ReadonlyMap<string, number>,
   warnings: BbmodelWarningList,
-): number {
-  if (texture === undefined) return -1;
+): number | undefined {
+  if (texture === undefined) return undefined;
   const index = textureIds.get(texture.uuid);
   if (index !== undefined) return index;
-  warnings.add('UNKNOWN_REFERENCE', texture.path, `no texture with uuid ${quoteValue(texture.uuid)}`);
+  warnings.add(
+    'UNKNOWN_REFERENCE',
+    texture.path,
+    `no texture with uuid ${quoteValue(texture.uuid)}; its faces are untextured`,
+  );
   return -1;
 }
 
@@ -185,7 +195,7 @@ function elementIds(elements: readonly JsonObject[], limits: BbmodelLimits): Map
 function prepareElements(
   elements: readonly JsonObject[],
   placements: readonly ElementPlacement[],
-  nodeTextures: readonly number[],
+  nodeTextures: readonly (number | undefined)[],
   context: ConverterContext,
   limits: BbmodelLimits,
   warnings: BbmodelWarningList,
@@ -203,8 +213,12 @@ function prepareElements(
       warnings.add('UNSUPPORTED_ELEMENT', path, `type ${quoteValue(type)} is not supported yet`);
       continue;
     }
-    const groupTexture = node >= 0 ? (nodeTextures[node] ?? -1) : -1;
-    const prepared = converter.prepare(element, path, groupTexture >= 0 ? { ...context, groupTexture } : context);
+    const groupTexture = node >= 0 ? nodeTextures[node] : undefined;
+    const prepared = converter.prepare(
+      element,
+      path,
+      groupTexture === undefined ? context : { ...context, groupTexture },
+    );
     triangles += prepared.triangleCount;
     if (triangles > limits.maxTriangles) {
       throw new BbmodelError('TOO_MANY_TRIANGLES', path, `more than ${limits.maxTriangles} triangles`);
