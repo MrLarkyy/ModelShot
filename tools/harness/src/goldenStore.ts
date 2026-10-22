@@ -21,6 +21,10 @@ export function goldenPath(spec: GoldenSpec, goldenDir: string = GOLDEN_DIR): st
   return join(goldenDir, goldenFileName(spec));
 }
 
+export function mayWriteGolden(options: { allowUpdate?: boolean; compareAgainst?: GoldenSpec }): boolean {
+  return options.compareAgainst === undefined && (options.allowUpdate ?? true);
+}
+
 function isUpdateRequest(mode: UpdateMode): boolean {
   return mode === 'all' || mode === 'changed';
 }

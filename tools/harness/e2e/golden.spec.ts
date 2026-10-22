@@ -16,12 +16,7 @@ test('gradient matches its golden', async ({ page }, testInfo) => {
 });
 
 test('a change of at most 10 pixels by 1 LSB passes', async ({ page }, testInfo) => {
-  await expectGolden(
-    page,
-    testInfo,
-    { ...gradient, variant: 'nudge' },
-    { compareAgainst: gradient, allowUpdate: false },
-  );
+  await expectGolden(page, testInfo, { ...gradient, variant: 'nudge' }, { compareAgainst: gradient });
 });
 
 test('path-traced render at seed 7 and 64 samples matches its golden', async ({ page }, testInfo) => {
@@ -42,9 +37,9 @@ test.describe('another seed or sample count fails the comparison', () => {
   ];
   for (const [label, spec] of variants) {
     test(label, async ({ page }, testInfo) => {
-      await expect(
-        expectGolden(page, testInfo, spec, { compareAgainst: progressive, allowUpdate: false }),
-      ).rejects.toThrow(/pixels differ/);
+      await expect(expectGolden(page, testInfo, spec, { compareAgainst: progressive })).rejects.toThrow(
+        /pixels differ/,
+      );
     });
   }
 });

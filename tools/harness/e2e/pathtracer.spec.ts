@@ -160,9 +160,9 @@ test.describe('determinism', () => {
       ['65 samples', { ...TURNTABLE, samples: 65 }],
     ] as const) {
       test(label, async ({ page }, testInfo) => {
-        await expect(
-          expectGolden(page, testInfo, spec, { compareAgainst: TURNTABLE, allowUpdate: false }),
-        ).rejects.toThrow(/pixels differ/);
+        await expect(expectGolden(page, testInfo, spec, { compareAgainst: TURNTABLE })).rejects.toThrow(
+          /pixels differ/,
+        );
       });
     }
   });

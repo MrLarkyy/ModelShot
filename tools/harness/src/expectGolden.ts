@@ -3,7 +3,7 @@ import { basename, join } from 'node:path';
 import { expect, type Page, type TestInfo } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { compareImages } from './compareImages';
-import { resolveGolden } from './goldenStore';
+import { mayWriteGolden, resolveGolden } from './goldenStore';
 import { assertSampleCount } from './sampleCount';
 import { fixtureUrl, validateSpec, type GoldenSpec } from './goldenSpec';
 
@@ -81,7 +81,7 @@ export async function expectGolden(
   const resolution = resolveGolden(goldenSpec, png, {
     updateMode: testInfo.config.updateSnapshots,
     ci: Boolean(process.env['CI']),
-    allowUpdate: options.allowUpdate ?? options.compareAgainst === undefined,
+    allowUpdate: mayWriteGolden(options),
     specFile: basename(testInfo.file).replace(/\.ts$/, ''),
   });
   if (resolution.written) return;

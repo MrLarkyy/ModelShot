@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { PNG } from 'pngjs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { compareImages } from '../src/compareImages';
-import { goldenPath, resolveGolden, type ResolveOptions } from '../src/goldenStore';
+import { goldenPath, mayWriteGolden, resolveGolden, type ResolveOptions } from '../src/goldenStore';
 import type { RasterGoldenSpec } from '../src/goldenSpec';
 
 const spec: RasterGoldenSpec = { kind: 'raster', fixture: 'gradient', name: 'gradient' };
@@ -25,6 +25,18 @@ const options = (patch: Partial<ResolveOptions>): ResolveOptions => ({
   specFile: 'my.spec',
   goldenDir: dir,
   ...patch,
+});
+
+describe('mayWriteGolden', () => {
+  it('never lets a pair comparison write the golden it compares against', () => {
+    expect(mayWriteGolden({ compareAgainst: spec })).toBe(false);
+    expect(mayWriteGolden({ compareAgainst: spec, allowUpdate: true })).toBe(false);
+  });
+
+  it('lets a plain comparison write unless it opts out', () => {
+    expect(mayWriteGolden({})).toBe(true);
+    expect(mayWriteGolden({ allowUpdate: false })).toBe(false);
+  });
 });
 
 describe('resolveGolden', () => {
