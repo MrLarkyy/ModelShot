@@ -40,6 +40,8 @@ export interface CubeSpec {
   readonly visible: boolean;
   readonly min: Vec3;
   readonly max: Vec3;
+  /** Axes whose signed extent is negative (see `inflatedBox`): the box is drawn mirrored about its centre on them. */
+  readonly reversed: readonly [boolean, boolean, boolean];
   readonly origin: Vec3;
   readonly rotation: Vec3;
   /** `SceneMesh.renderOrder`. */
@@ -69,7 +71,7 @@ export function readCube(element: JsonObject, path: string, context: ConverterCo
   const to = readVec3(field(element, 'to'), childPath(path, 'to'));
   const inflate = readOptionalNumber(element, 'inflate', path, 0);
   const stretch = readOptionalVec3(element, 'stretch', path, ONE);
-  const [min, max] = inflatedBox(from, to, inflate, stretch);
+  const { min, max, reversed } = inflatedBox(from, to, inflate, stretch);
   const boxUv = readOptionalBoolean(element, 'box_uv', path, context.boxUv);
   const side = (axis: 0 | 1 | 2): number => boxSide(from[axis], to[axis], context.boxUvFloatSize);
   const boxSize: Vec3 = [side(0), side(1), side(2)];
@@ -92,6 +94,7 @@ export function readCube(element: JsonObject, path: string, context: ConverterCo
     visible: readOptionalBoolean(element, 'visibility', path, true),
     min,
     max,
+    reversed,
     origin: readOptionalVec3(element, 'origin', path, ZERO),
     rotation: readOptionalVec3(element, 'rotation', path, ZERO),
     renderOrder: readRenderOrder(element, path, context.warnings),
@@ -110,30 +113,36 @@ export function cubeTriangleCount(cube: CubeSpec): number {
 }
 
 /**
- * Blockbench's geometry: `centre ∓ (half + inflate) · stretch` per axis. A negative inflate larger than half a side
- * collapses that axis to its centre instead of turning the box inside out. A negative stretch counts as its
- * magnitude: Blockbench swaps that axis (the east face and its texture end up mirrored on the −X side), ModelShot does
- * not mirror the cube.
+ * Blockbench's geometry (cube.js `adjustFromAndToForInflateAndStretch`, then `setShape`, which is linear in the two
+ * corners): per axis the signed extent e = ((to − from) / 2 + inflate) · stretch about the centre (from + to) / 2, the
+ * box running from centre − e to centre + e. A negative e reverses that axis: from > to, a negative stretch or an
+ * inflate below −half a side (a positive inflate shrinks a reversed axis and past zero turns it back). `min` and `max`
+ * stay sorted and `reversed` marks the axis, which `cubeToMesh` mirrors the faces on. e = 0 is not reversed.
  */
-function inflatedBox(from: Vec3, to: Vec3, inflate: number, stretch: Vec3): [Vec3, Vec3] {
-  const [x0, x1] = inflatedAxis(from[0], to[0], inflate, stretch[0]);
-  const [y0, y1] = inflatedAxis(from[1], to[1], inflate, stretch[1]);
-  const [z0, z1] = inflatedAxis(from[2], to[2], inflate, stretch[2]);
-  return [
-    [x0, y0, z0],
-    [x1, y1, z1],
-  ];
+function inflatedBox(
+  from: Vec3,
+  to: Vec3,
+  inflate: number,
+  stretch: Vec3,
+): { min: Vec3; max: Vec3; reversed: [boolean, boolean, boolean] } {
+  const x = inflatedAxis(from[0], to[0], inflate, stretch[0]);
+  const y = inflatedAxis(from[1], to[1], inflate, stretch[1]);
+  const z = inflatedAxis(from[2], to[2], inflate, stretch[2]);
+  return {
+    min: [x.centre - Math.abs(x.extent), y.centre - Math.abs(y.extent), z.centre - Math.abs(z.extent)],
+    max: [x.centre + Math.abs(x.extent), y.centre + Math.abs(y.extent), z.centre + Math.abs(z.extent)],
+    reversed: [x.extent < 0, y.extent < 0, z.extent < 0],
+  };
 }
 
-function inflatedAxis(a: number, b: number, inflate: number, stretch: number): [number, number] {
-  const centre = (a + b) / 2;
-  const extent = Math.max(0, Math.abs(b - a) / 2 + inflate) * Math.abs(stretch);
-  return [centre - extent, centre + extent];
+function inflatedAxis(a: number, b: number, inflate: number, stretch: number): { centre: number; extent: number } {
+  return { centre: (a + b) / 2, extent: ((b - a) / 2 + inflate) * stretch };
 }
 
 /**
  * Box-UV size of one axis from the un-inflated, un-stretched cube, as Blockbench's `size()`: floored to whole units
- * with a 1e-7 epsilon, except in formats with float box-UV sizes (`modded_entity`).
+ * with a 1e-7 epsilon, except in formats with float box-UV sizes (`modded_entity`). Signed: where from > to it is
+ * negative and `boxUvLayout` lays the faces out with it as Blockbench's `updateUV` does.
  */
 function boxSide(from: number, to: number, floatSize: boolean): number {
   return floatSize ? to - from : Math.floor(to - from + 1e-7);
