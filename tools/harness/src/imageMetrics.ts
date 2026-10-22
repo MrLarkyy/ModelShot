@@ -79,7 +79,9 @@ export function backdropMask(image: Image, backdropRow?: BackdropRow): Uint8Arra
 /**
  * Framing check of a preview and a render of the same view: pixels where one shows the backdrop and the other does
  * not, leaving out silhouette pixels (whose 3 x 3 neighbourhood in `reference` holds both classes), where box-filtered
- * and multisampled coverage may round either way. `backdropRow`: the backdrop of a gradient (`backdropMask`).
+ * and multisampled coverage may round either way, and pixels both images draw within 2 levels of each other (a dark
+ * texel close to the backdrop colour falls on either side of the backdrop test; the two views agree there). `backdropRow`:
+ * the backdrop of a gradient (`backdropMask`).
  */
 export function silhouetteMismatches(
   reference: Image,
@@ -106,7 +108,9 @@ export function silhouetteMismatches(
         }
       }
       if (mixed) silhouette++;
-      else if (a[y * width + x] !== b[y * width + x]) mismatches++;
+      else if (a[y * width + x] !== b[y * width + x] && !near(pixel(reference, x, y), pixel(other, x, y), 2)) {
+        mismatches++;
+      }
     }
   }
   return { mismatches, silhouette };

@@ -45,6 +45,14 @@ describe('image metrics', () => {
     // A hole inside the model off the silhouette.
     const holed = image(16, 16, (x, y) => (x === 7 && y === 7 ? null : square(4, 4, 6, [120, 90, 60])(x, y)));
     expect(silhouetteMismatches(reference, holed).mismatches).toBe(1);
+    // A model texel 3 levels off the backdrop in one image, 1 level off in the other: the same colour in both views.
+    const texel = (colour: number[]) => (x: number, y: number) =>
+      x === 7 && y === 7 ? colour : square(4, 4, 6, [120, 90, 60])(x, y);
+    const darkA = image(16, 16, texel([20, 22, 29]));
+    const darkB = image(16, 16, texel([20, 22, 27]));
+    expect(silhouetteMismatches(darkA, darkB).mismatches).toBe(0);
+    // The hole against a model texel 3 levels off the backdrop still counts: the colours differ by 3.
+    expect(silhouetteMismatches(darkA, holed).mismatches).toBe(1);
   });
 
   it('takes a gradient backdrop row by row', () => {
