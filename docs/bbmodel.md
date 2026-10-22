@@ -27,7 +27,8 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
 - **Planes**: Blockbench has no plane element; a plane is a mesh quad (the plane primitive) or a cube flat on one
   axis. Both load as above.
 - **Render sides** (texture `render_sides`: `auto`, `front`, `double`) set `SceneMeshGroup.doubleSided` of every face
-  with that texture; untextured faces follow the format, except on an inverted cube (Conversion, cube box).
+  with that texture; untextured faces follow the format, except on an outline hull (an inverted cube with volume on
+  every axis; Conversion, cube box).
 - **Per-texel alpha**: every texture material is `alphaMode: "blend"` with `alphaCutoff: 0.01`, as Blockbench draws
   textures (see the [scene format](scene-format.md#scenematerial) for what each pass does with a texel), except an
   `emissive` texture's (`mask`, 0.01); a layer composite is `blend` with `alphaCutoff: 0.05` (below).
@@ -467,9 +468,9 @@ Reload affected models; scene documents need no migration.
 
 MS-50 reads reversed cube axes as Blockbench draws them, a behaviour change for files that loaded before: a cube
 with from > to on an axis, a negative stretch or a negative inflate larger than half a side used to load as an
-outward box (or, for the inflate, collapsed flat) and now loads mirrored on that axis, an inverted hull when an odd
-number of axes is reversed, whose `auto`-sided and untextured faces are single-sided and its single-sided faces
-`cameraOnly` (Conversion). Every other cube loads exactly as before; no file that loaded before fails.
+outward box (or, for the inflate, collapsed flat) and now loads mirrored on that axis, inverted when an odd number of
+axes is reversed. On an outline hull (an inverted cube with volume on every axis) `auto`-sided and untextured faces
+are single-sided and its single-sided faces `cameraOnly` (Conversion). Every other cube loads exactly as before; no file that loaded before fails.
 Reload affected models; scene documents need no migration.
 
 ## Local-first
