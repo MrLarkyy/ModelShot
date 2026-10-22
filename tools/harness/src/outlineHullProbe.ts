@@ -1,5 +1,11 @@
 import { luminance, pixel, type Image } from './imageMetrics';
 
+/**
+ * Largest change (levels) of the board centre the hull may cause: camera-only faces neither shadow nor occlude, so the
+ * board renders as without them; this leaves room for the bake's noise, within the mean delta of the rt-vs-pt pairs.
+ */
+export const OUTLINE_HULL_BOARD_LEVELS = 2;
+
 export interface OutlineHullProbe {
   /** Luminance (3 x 3 mean) at the image centre, which shows the board, with the hull and without it. */
   readonly boardWithHull: number;

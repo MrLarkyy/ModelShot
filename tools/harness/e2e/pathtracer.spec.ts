@@ -20,7 +20,7 @@ import {
   type Image,
 } from '../src/imageMetrics';
 import { shadowStep } from '../src/shadowStep';
-import { outlineHullProbe } from '../src/outlineHullProbe';
+import { OUTLINE_HULL_BOARD_LEVELS, outlineHullProbe } from '../src/outlineHullProbe';
 import { differenceMask, maskedPng } from '../src/edgeProbes';
 
 /**
@@ -621,7 +621,7 @@ test.describe('outline hull', () => {
     const alone = await render(page, 'variant=outline-hull&scene=outline-hull-board&seed=1&samples=64');
     const probe = outlineHullProbe(withHull.image, alone.image);
     console.log(`[pt probe] outline hull: ${JSON.stringify(probe)}`);
-    expect(probe.boardWithHull).toBeGreaterThanOrEqual(0.6 * probe.boardAlone);
+    expect(Math.abs(probe.boardWithHull - probe.boardAlone)).toBeLessThanOrEqual(OUTLINE_HULL_BOARD_LEVELS);
     expect(probe.rimPixels).toBeGreaterThan(200);
   });
 });

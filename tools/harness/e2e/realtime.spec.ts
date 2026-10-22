@@ -9,7 +9,7 @@ import { differenceMask, pixelsFarFrom } from '../src/edgeProbes';
 import { decodePng, hueMatch, luminance, modelBox, near, pixel, sentinelPixels, type Image } from '../src/imageMetrics';
 import { traceMainThread } from '../src/mainThreadTrace';
 import { shadowStep } from '../src/shadowStep';
-import { outlineHullProbe } from '../src/outlineHullProbe';
+import { OUTLINE_HULL_BOARD_LEVELS, outlineHullProbe } from '../src/outlineHullProbe';
 import { edgesSceneSharpEdges } from '../fixtures/src/edgesScene';
 import type { ModelViewProbe, PtProbe, RtBakeOutcome, RtBakeRequest } from '../fixtures/src/fixtureApi';
 
@@ -1254,7 +1254,17 @@ test.describe('outline hull', () => {
     const alone = await render(page, 'variant=outline-hull&scene=outline-hull-board');
     const probe = outlineHullProbe(withHull.image, alone.image);
     console.log(`[rt probe] outline hull: ${JSON.stringify(probe)}`);
-    expect(probe.boardWithHull).toBeGreaterThanOrEqual(0.6 * probe.boardAlone);
+    expect(Math.abs(probe.boardWithHull - probe.boardAlone)).toBeLessThanOrEqual(OUTLINE_HULL_BOARD_LEVELS);
+    expect(probe.rimPixels).toBeGreaterThan(200);
+  });
+
+  test('baked: the hull neither shadows nor occludes the board, the rim stays', async ({ page }) => {
+    test.setTimeout(180_000);
+    const withHull = await render(page, 'variant=outline-hull&bake=16');
+    const alone = await render(page, 'variant=outline-hull&scene=outline-hull-board&bake=16');
+    const probe = outlineHullProbe(withHull.image, alone.image);
+    console.log(`[rt probe] outline hull baked: ${JSON.stringify(probe)}`);
+    expect(Math.abs(probe.boardWithHull - probe.boardAlone)).toBeLessThanOrEqual(OUTLINE_HULL_BOARD_LEVELS);
     expect(probe.rimPixels).toBeGreaterThan(200);
   });
 });
