@@ -1,3 +1,4 @@
+import { effectiveModelFormat } from './effectiveModelFormat';
 import { SCENE_FORMAT_VERSION, type SceneMesh, type SceneNode } from '@modelshot/scene';
 import { BbmodelError } from './BbmodelError';
 import { resolveBbmodelLimits, type BbmodelLimits, type BbmodelLoadOptions } from './BbmodelLoadOptions';
@@ -47,7 +48,8 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
   if (!isJsonObject(meta))
     throw new BbmodelError('NOT_BBMODEL', '$.meta', `expected an object, got ${quoteValue(meta)}`);
   const formatVersion = readFormatVersion(meta);
-  const modelFormat = readOptionalString(meta, 'model_format', '$.meta', limits.maxStringChars, 'unknown');
+  const declaredFormat = readOptionalString(meta, 'model_format', '$.meta', limits.maxStringChars, '');
+  const modelFormat = effectiveModelFormat(meta, declaredFormat);
 
   const elementsValue = field(root, 'elements');
   const elements =
@@ -123,7 +125,7 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
   return {
     scene: {
       formatVersion: SCENE_FORMAT_VERSION,
-      source: { format: 'bbmodel', formatVersion, modelFormat },
+      source: { format: 'bbmodel', formatVersion, modelFormat: declaredFormat || 'unknown' },
       nodes,
       meshes,
       materials: bbmodelMaterials(textures, textureEntries, stack),
