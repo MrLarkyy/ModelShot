@@ -1,11 +1,12 @@
 import { lightmapLayout } from '@modelshot/renderer-rt';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_RT_VIEW, RT_VARIANTS, rtScene } from '../fixtures/src/rtScenes';
+import { PT_PAIR_TOLERANCE } from '../src/ptPairTolerance';
 
 /**
  * Which meshes of every baked fixture view get world-density charts (MS-41), so a baked golden or a preview-vs-render
  * pair cannot change by a chart mode unnoticed: the variants that bake themselves and the views the pair tests bake
- * (`bake=64`, pathtracer.spec.ts PT_PAIR_TOLERANCE). A view without one lays out exactly as before world charts: its
+ * (`bake=64`, src/ptPairTolerance.ts). A view without one lays out exactly as before world charts: its
  * key was recorded on origin/main 086af35.
  */
 const CENSUS: Readonly<Record<string, { world: readonly string[]; key?: string }>> = {
@@ -34,6 +35,10 @@ describe('lightmap chart census of the baked fixture views', () => {
   it('lists every variant that bakes', () => {
     const baked = Object.entries(RT_VARIANTS).filter(([, variant]) => (variant.bake ?? DEFAULT_RT_VIEW.bake) > 0);
     for (const [name] of baked) expect(Object.keys(CENSUS), name).toContain(name);
+  });
+
+  it('has an entry for every preview-vs-render pair view', () => {
+    for (const name of Object.keys(PT_PAIR_TOLERANCE)) expect(Object.keys(CENSUS), name).toContain(name);
   });
 
   for (const [name, expected] of Object.entries(CENSUS)) {
