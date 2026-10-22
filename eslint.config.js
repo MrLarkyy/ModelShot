@@ -46,7 +46,7 @@ export default defineConfig(
     files: [
       'packages/*/test/**/*.ts',
       'packages/*/src/**/*.test.ts',
-      'tools/harness/test/**/*.test.ts',
+      'tools/harness/test/**/*.ts',
       'tools/wiki/test/**/*.test.mjs',
     ],
     rules: {

@@ -14,7 +14,7 @@ to an exact version in `tools/harness/package.json`, which pins the Chromium rev
 
 No Vitest test reads the wall clock (`performance.now`, `Date.now`; ESLint refuses both, and `process.hrtime`, in `packages/*/test`, `*.test.ts`, `tools/harness/test` and `tools/wiki/test`).
 Wall time also counts the time the OS does not run the thread, so a test that passes on an idle machine failed under load
-(MS-42: three loader tests and the 10 000 coincident-triangle BVH build timed out beside about 30 busy cores). A test that
+(MS-42: three loader tests and the 10 000 coincident-triangle BVH test, which spent its time in about 400 000 per-triangle `expect` calls of the invariant checker, not in the 16 ms build, timed out beside about 30 busy cores). A test that
 limits work is written in this order:
 
 1. A deterministic work check: output sizes, an early refusal with the right error code, a spy proving a stage never ran
