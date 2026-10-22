@@ -1,0 +1,182 @@
+{
+  "meta": {
+    "format_version": "4.10",
+    "model_format": "bedrock",
+    "box_uv": false
+  },
+  "name": "layered",
+  "resolution": {
+    "width": 16,
+    "height": 16
+  },
+  "elements": [
+    {
+      "name": "body",
+      "type": "cube",
+      "uuid": "c-body",
+      "from": [
+        -4,
+        0,
+        -4
+      ],
+      "to": [
+        4,
+        8,
+        4
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 1
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 3
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": false
+        },
+        "down": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": null
+        }
+      }
+    },
+    {
+      "name": "fin",
+      "type": "mesh",
+      "uuid": "m-fin",
+      "origin": [
+        0,
+        8,
+        0
+      ],
+      "vertices": {
+        "a": [
+          0,
+          0,
+          -4
+        ],
+        "b": [
+          0,
+          0,
+          4
+        ],
+        "c": [
+          0,
+          6,
+          0
+        ]
+      },
+      "faces": {
+        "f": {
+          "vertices": [
+            "a",
+            "b",
+            "c"
+          ],
+          "uv": {
+            "a": [
+              0,
+              16
+            ],
+            "b": [
+              16,
+              16
+            ],
+            "c": [
+              8,
+              0
+            ]
+          },
+          "texture": 2
+        }
+      }
+    }
+  ],
+  "outliner": [
+    {
+      "name": "root",
+      "uuid": "g-root",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "children": [
+        "c-body",
+        "m-fin"
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "name": "base.png",
+      "uuid": "t-base",
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR42mOoiLL5D8IMMAYARvgINfhVRh0AAAAASUVORK5CYII="
+    },
+    {
+      "name": "stripes.png",
+      "uuid": "t-stripes",
+      "render_mode": "layered",
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR42mP4////fwYQgDEAV7oH+dEt+wwAAAAASUVORK5CYII="
+    },
+    {
+      "name": "hidden.png",
+      "uuid": "t-hidden",
+      "render_mode": "layered",
+      "visible": false,
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR42mP4z8DwH4QZYAwAR8oH+Rq28akAAAAASUVORK5CYII="
+    },
+    {
+      "name": "spots.png",
+      "uuid": "t-spots",
+      "render_mode": "layered",
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEElEQVR42mNgQAYaGif+AwADuQIYlqhzugAAAABJRU5ErkJggg=="
+    }
+  ]
+}

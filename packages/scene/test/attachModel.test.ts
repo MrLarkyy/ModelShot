@@ -165,6 +165,13 @@ describe('attachModel', () => {
     expect(merged.attachments).toEqual([{ name: 'stick', bone, node: attach, ...OPTIONS, source: item().source }]);
   });
 
+  it('remaps the layer stack of an item material like its texture, keeping −1', () => {
+    const layered = { ...item(), materials: [{ name: 'composite', texture: 0, layers: [0, -1, 0] }] };
+    const merged = attachModel(host(), layered, { bone: 'right_hand', ...OPTIONS });
+    expect(merged.materials[1]).toEqual({ name: 'composite', texture: 1, layers: [1, -1, 1] });
+    expect(merged.materials[0]).toEqual({ name: 'skin', texture: 0 });
+  });
+
   it('places every item vertex at world(hand) · T(anchor) · R · (s · x + offset), in every pose', () => {
     const itemDoc = item();
     const attached = attachModel(host(), itemDoc, { bone: 'right_hand', ...OPTIONS });

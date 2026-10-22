@@ -15,6 +15,11 @@ describe('@modelshot/scene', () => {
     expect(scene.MAX_ABS_RENDER_ORDER).toBe(1024);
   });
 
+  it('exports the material render mode rule', () => {
+    expect(typeof scene.resolveMaterialRenderMode).toBe('function');
+    expect(scene.MAX_MATERIAL_LAYERS).toBe(3);
+  });
+
   it('exports the texture frame default, one Minecraft tick', () => {
     expect(scene.DEFAULT_TEXTURE_FRAME_TIME).toBe(0.05);
     const frames: scene.SceneTextureFrames = { count: 4 };

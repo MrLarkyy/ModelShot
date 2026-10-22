@@ -16,7 +16,7 @@ const NO_TRANSLATION = [0, 0, 0] as const;
  * Triangles of a Blockbench mesh: every face gets its own vertices, placed at `origin + v` rotated about `origin` (as
  * a cube's), and faces are grouped by material and sidedness. Flat shading gives each vertex its face's normal; smooth
  * shading the vertex key's normal (see `smoothNormals`). Faces that triangulate to nothing (zero area) are left out.
- * A face on a texture of `textureFrameCounts[material]` frames (absent: 1) maps into frame 0, v divided by the count
+ * A face on a texture of `textureFrameCounts[frameTexture ?? material]` frames (absent: 1) maps into frame 0, v divided by the count
  * after normalising, as Blockbench's mesh `updateUV` does.
  */
 export function meshElementToMesh(mesh: MeshSpec, node: number, textureFrameCounts: readonly number[] = []): SceneMesh {
@@ -41,7 +41,7 @@ export function meshElementToMesh(mesh: MeshSpec, node: number, textureFrameCoun
     const faceNormal = mat4TransformDirection(transform, triangulation.normal);
     const us = face.uvs.map(([u]) => u);
     const vs = face.uvs.map(([, v]) => v);
-    const frames = textureFrameCounts[face.material] ?? 1;
+    const frames = textureFrameCounts[face.frameTexture ?? face.material] ?? 1;
     const rect = [
       Math.min(...us) / face.uvWidth,
       Math.min(...vs) / face.uvHeight / frames,

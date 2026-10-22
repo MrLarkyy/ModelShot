@@ -1,0 +1,130 @@
+{
+  "meta": {
+    "format_version": "4.10",
+    "model_format": "free",
+    "box_uv": false
+  },
+  "name": "render-modes",
+  "resolution": {
+    "width": 16,
+    "height": 16
+  },
+  "elements": [
+    {
+      "name": "modes",
+      "type": "cube",
+      "uuid": "c-modes",
+      "from": [
+        -4,
+        0,
+        -4
+      ],
+      "to": [
+        4,
+        8,
+        4
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 1
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 2
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 3
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 4
+        },
+        "down": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 5
+        }
+      }
+    }
+  ],
+  "outliner": [
+    "c-modes"
+  ],
+  "textures": [
+    {
+      "name": "plain.png",
+      "uuid": "t-plain",
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR42mM4ceLEfxBmgDEAdwQNXSHUukEAAAAASUVORK5CYII="
+    },
+    {
+      "name": "glow-mask.png",
+      "uuid": "t-emissive",
+      "render_mode": "emissive",
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mP4f4Kh4f8Jhv8MMAAARMoFDmjcQXIAAAAASUVORK5CYII="
+    },
+    {
+      "name": "sparkle.png",
+      "uuid": "t-additive",
+      "render_mode": "additive",
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEElEQVR42mNgqPi/AIxhDABGgAhdEcMn4wAAAABJRU5ErkJggg=="
+    },
+    {
+      "name": "layer.png",
+      "uuid": "t-layered",
+      "render_mode": "layered",
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEElEQVR42mNgWGDzH4xhDAA9rAdt7U0HEgAAAABJRU5ErkJggg=="
+    },
+    {
+      "name": "unknown.png",
+      "uuid": "t-unknown",
+      "render_mode": "glow",
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR42mNYwLDgPwgzwBgATXQI/aGDAMcAAAAASUVORK5CYII="
+    },
+    {
+      "name": "numeric.png",
+      "uuid": "t-numeric",
+      "render_mode": 3,
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR42mOIspH7D8IMMAYAOZwGzW6zgZMAAAAASUVORK5CYII="
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import type { SceneMesh } from '@modelshot/scene';
 import type { BbmodelWarningList } from './BbmodelWarning';
 import type { JsonObject } from '../json/JsonObject';
 import type { UvSize } from './parseTextures';
+import type { TextureRule } from './TextureRule';
 
 /** What an element converter may know about the model besides the element itself. */
 export interface ConverterContext {
@@ -13,6 +14,19 @@ export interface ConverterContext {
   readonly textureDoubleSided: readonly boolean[];
   /** Whether untextured faces show their back (the model format's rule). */
   readonly untexturedDoubleSided: boolean;
+  /** The model format's face texture rule (Blockbench `Face.getTexture`); absent: `perFace`. */
+  readonly textureRule?: TextureRule;
+  /** `Format.per_group_texture`: under `singleDefault` every face, not only a blank one, shows the default texture. */
+  readonly perGroupTexture?: boolean;
+  /** Blockbench's default texture (`defaultTexture`); absent or −1 for none. */
+  readonly defaultTexture?: number;
+  /**
+   * Texture of the element's parent group in a per-group-texture format; absent when the group sets none, −1 when it
+   * names a texture that does not exist (Blockbench then draws the face untextured).
+   */
+  readonly groupTexture?: number;
+  /** Material of the layer composite that every drawn face uses; absent when no texture is layered. */
+  readonly layeredMaterial?: number;
   /** Project UV size, used for faces without a texture. */
   readonly resolution: UvSize;
   /** Project-wide box UV (`meta.box_uv`); an element may override it. */
