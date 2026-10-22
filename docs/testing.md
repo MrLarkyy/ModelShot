@@ -66,7 +66,7 @@ CPU ms per converted test, the maximum of 3 runs on an idle machine (Windows, No
 
 - `check`: install, typecheck, lint, format check, `pnpm -r build`, `pnpm run test:unit` (Vitest, bundle size
   included).
-- `e2e`: a matrix of 10 shards (golden 1-5 of `--project=golden --shard=<k>/5`, pair 1-2 of `--project=pair --shard=<k>/2`, bake 1-3 of `--project=bake --shard=<k>/3`) (`fail-fast: false`), each on its own VM: install, the pinned Chromium, `pnpm -r build`,
+- `e2e`: a matrix of 11 shards (golden 1-5 of `--project=golden --shard=<k>/5`, pair 1-3 of `--project=pair --shard=<k>/3`, bake 1-3 of `--project=bake --shard=<k>/3`) (`fail-fast: false`), each on its own VM: install, the pinned Chromium, `pnpm -r build`,
   then `playwright test --project=<project> --shard=<k>/<n>`, then on golden shard 1 only `pnpm --filter @modelshot/site run test:browser` (it runs even when the harness tests failed), uploading `tools/harness/test-results/` and `packages/site/test-results/` as `browser-test-results-<golden-k|pair-k|bake-k>`.
 - `bench`: its own VM, same install and build, `playwright test --project=bench` (the one budget test), uploading
   `browser-test-results-bench`; the budgets are measured on a machine that runs nothing else.
@@ -83,9 +83,9 @@ none). The `golden` project excludes the tests titled `baked lighting` or `like 
 `bake` project runs only the first, the `pair` project (the 13 preview-vs-render pairing tests of `pathtracer.spec.ts`)
 only the second: shards are contiguous ranges, so a block of slow tests always landed in one or two shards. Listed locally
 (`--list`, MS-19): `golden` 241 tests in 5 shards, 49 / 48 / 48 / 48 / 48 (MS-39; 60 in shard 2 of 4 ran 16.3 and 17.4 minutes on main, against the 20-minute limit,
-so a fifth shard); `pair` 13 tests, 7 / 6; `bake` 25 tests; `bench` 1 test; 280 in all, each once, as the plain `playwright test` (and so `pnpm test`) runs every project. By the times of
+so a fifth shard); `pair` 13 tests, 5 / 4 / 4; `bake` 25 tests; `bench` 1 test; 280 in all, each once, as the plain `playwright test` (and so `pnpm test`) runs every project. By the times of
 run 39624802150 (normal VM) the heaviest golden shard took about 5 minutes with 52 tests (the numbers of that run; by 2026-10 about 13-14 minutes with 48, the pathtracer goldens being the long ones), a pair shard 3.8 (1.1-1.3 minutes per test; 7.6 on a 2x
-slow VM; with the three look-preset pairs of MS-19 a pair shard now holds up to 7 tests, about 9 minutes, 18 on a slow VM: the next pair joins a third pair shard),
+slow VM; with the three look-preset pairs of MS-19 a pair shard holds up to 5 tests, about 6 minutes, 12 on a slow VM; MS-39's thirteen pairs are three shards),
 against the 20-minute limit.
 
 Why: the shard holding the baked tests ran into the 20-minute job limit with 4 shards (cancelled in runs 39612706830 and
