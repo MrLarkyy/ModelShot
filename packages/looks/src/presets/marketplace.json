@@ -6,7 +6,7 @@
   "lights": {
     "key": { "direction": [0.5, 0.65, -0.55], "color": [1.6, 1.5, 1.4], "angularRadius": 0.06 },
     "fill": { "direction": [-0.6, 0.2, -0.77], "color": [0.15, 0.18, 0.3] },
-    "rim": { "direction": [-0.8, 0.6, 0], "color": [8, 8.6, 10], "exponent": 4, "albedoShare": 0.15 }
+    "rim": { "direction": [-0.9, 0.12, -0.42], "color": [12, 13, 15], "exponent": 6, "albedoShare": 0.15 }
   },
   "environment": { "kind": "dome", "sky": [0.2, 0.24, 0.4], "ground": [0.07, 0.07, 0.11] },
   "backdrop": { "top": [0.012, 0.018, 0.04], "bottom": [0.018, 0.026, 0.058] },
