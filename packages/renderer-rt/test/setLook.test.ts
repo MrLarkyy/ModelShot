@@ -1,4 +1,12 @@
-import { DEFAULT_LOOK, LOOK_PRESETS, LookPresetError, lightingKey, type LookPreset } from '@modelshot/looks';
+import {
+  DEFAULT_LOOK,
+  LOOK_PRESETS,
+  LookPresetError,
+  MAX_LOOK_COLOR,
+  checkLookPreset,
+  lightingKey,
+  type LookPreset,
+} from '@modelshot/looks';
 import type { SceneCamera } from '@modelshot/scene';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BakedLighting } from '../src/BakedLighting';
@@ -64,6 +72,11 @@ describe('RealtimeRenderer look', () => {
     expect(renderer.look.backdrop).toEqual({ top: [0.2, 0.3, 0.4], bottom: [0.2, 0.3, 0.4] });
     expect(renderer.look.edges).toEqual({ width: 0, sharpAngleDeg: 30 });
     expect(renderer.look.lights).toEqual(preset('marketplace').lights);
+  });
+
+  it('hands out a background at the limit as a look checkLookPreset accepts (render and bake take it back)', () => {
+    const renderer = RealtimeRenderer.create(fake.canvas, { background: [MAX_LOOK_COLOR, 0, 0] });
+    expect(checkLookPreset(renderer.look)).toEqual(renderer.look);
   });
 
   it('a background out of range or not finite throws a RangeError and builds nothing', () => {

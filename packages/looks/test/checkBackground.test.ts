@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { checkBackground } from '../src/checkBackground';
+import { MAX_LOOK_COLOR, checkLookPreset } from '../src/checkLookPreset';
+import { DEFAULT_LOOK } from '../src/lookPresets';
 
 describe('checkBackground', () => {
   it('returns a frozen copy of three finite channels in 0..16', () => {
@@ -17,4 +19,12 @@ describe('checkBackground', () => {
       expect(() => checkBackground(value)).toThrow(/^background must be/);
     },
   );
+
+  it('accepts exactly the channels a look backdrop colour accepts', () => {
+    const top = checkBackground([MAX_LOOK_COLOR, 0, 0]);
+    expect(() => checkLookPreset({ ...DEFAULT_LOOK, backdrop: { top, bottom: top } })).not.toThrow();
+    const over = [MAX_LOOK_COLOR + 0.001, 0, 0] as const;
+    expect(() => checkBackground(over)).toThrow(RangeError);
+    expect(() => checkLookPreset({ ...DEFAULT_LOOK, backdrop: { top: over, bottom: over } })).toThrow();
+  });
 });

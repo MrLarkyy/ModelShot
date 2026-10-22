@@ -3,7 +3,7 @@ export const packageName = '@modelshot/looks';
 export { agxToneMap, isNeutralGrade, type Rgb } from './agxToneMap';
 export { backdropColor } from './backdropColor';
 export { catcherShade } from './catcherShade';
-export { checkLookPreset } from './checkLookPreset';
+export { MAX_LOOK_COLOR, checkLookPreset } from './checkLookPreset';
 export { EDGE_LOOK_V0, MAX_EDGE_WIDTH, checkEdgeLook, type EdgeLook } from './EdgeLook';
 export { checkBackground } from './checkBackground';
 export { edgeRamp, roundedNormal } from './edgeRounding';

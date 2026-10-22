@@ -78,7 +78,7 @@ export interface LookPreset {
   readonly version: typeof LOOK_FORMAT_VERSION;
   /** `[a-z0-9-]{1,32}`. */
   readonly id: string;
-  /** Display name, 1..64 characters, no control characters. */
+  /** Display name, 1..64 code points, well-formed UTF-16, no C0, DEL or C1 control characters. */
   readonly name: string;
   readonly lights: LookLights;
   readonly environment: LookEnvironment;

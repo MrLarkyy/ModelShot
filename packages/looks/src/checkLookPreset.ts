@@ -9,7 +9,8 @@ import {
 } from './LookPreset';
 import { LookPresetError, type LookPresetErrorCode } from './LookPresetError';
 
-const MAX_COLOR = 16;
+/** The largest scene-linear channel of a look colour, and of the renderers' `background` option (`checkBackground`). */
+export const MAX_LOOK_COLOR = 16;
 /** The shadow catcher's plane assumes a key above the horizon (`shadowCatcherPlane` of the realtime renderer). */
 const MIN_KEY_Y = Math.sin((5 * Math.PI) / 180);
 /** A direction this close to unit length is kept as written, so hand-written unit vectors stay bit-exact. */
@@ -61,7 +62,7 @@ function triple(value: unknown, path: string, min: number, max: number): [number
   ];
 }
 
-const color = (value: unknown, path: string): Rgb => triple(value, path, 0, MAX_COLOR);
+const color = (value: unknown, path: string): Rgb => triple(value, path, 0, MAX_LOOK_COLOR);
 
 function direction(value: unknown, path: string): Direction {
   const v = triple(value, path, -1e3, 1e3);
