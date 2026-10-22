@@ -23,8 +23,8 @@ limits work is written in this order:
    for L leaves pins that the tree is binary). Structure says nothing about cost, so the two BVH builds also carry a
    thread CPU bound (200 ms coincident, 400 ms chain; idle 16 and 31 ms), which pins the build cost.
 2. Where the cost of a hostile input itself is the claim, `expectCpuBelow(maxMs, work)`
-   (`packages/formats/test/support/expectCpuBelow.ts`, a copy in `packages/scene/test/` because scene cannot import formats
-   tests). It runs `work` synchronously, reads `process.threadCpuUsage()` (Node 22.19 or later) around it, and asserts
+   (`packages/formats/test/support/expectCpuBelow.ts`, copies in `packages/scene/test/` and `packages/export/test/`
+   because those packages cannot import formats tests; each copy has its own self-test). It runs `work` synchronously, reads `process.threadCpuUsage()` (Node 22.19 or later) around it, and asserts
    the CPU time of the current thread: blocked or descheduled time is not counted, a promise-returning callback throws.
    Build the fixture outside `work`; the clock ticks in steps of about 15.6 ms on Windows, so bounds under 50 ms are
    only for work that measures 0 ms. A bound keeps its old number, now in CPU milliseconds; one is never widened to
