@@ -7,10 +7,8 @@ export interface TracerProgram {
   readonly uniform: (name: string) => WebGLUniformLocation | null;
 }
 
-/** The render's programs: the trace and present of every render, the quality path's guide, denoise, resolve, noise. */
-const RENDER_PROGRAMS = ['trace', 'present', 'guide', 'denoise', 'resolve', 'noise'] as const;
-
-export type TracerPrograms = Readonly<Record<(typeof RENDER_PROGRAMS)[number], TracerProgram>>;
+/** The quality path's programs, linked the first time a request needs them. */
+export type QualityProgramName = 'guide' | 'denoise' | 'resolve' | 'noise';
 
 function compile(gl: WebGL2RenderingContext, type: number, source: string, label: string): WebGLShader {
   const shader = gl.createShader(type);
@@ -55,18 +53,42 @@ export function linkTracerProgram(gl: WebGL2RenderingContext, name: PathTracerPr
   return { program, uniform };
 }
 
-/** Compiles and links every render program; a failure deletes those linked and throws `PathTracerError`. */
-export function createTracerPrograms(gl: WebGL2RenderingContext): TracerPrograms {
-  const linked: Partial<Record<(typeof RENDER_PROGRAMS)[number], TracerProgram>> = {};
-  try {
-    for (const name of RENDER_PROGRAMS) linked[name] = linkTracerProgram(gl, name);
-  } catch (error) {
-    for (const program of Object.values(linked)) gl.deleteProgram(program.program);
-    throw error;
-  }
-  return linked as TracerPrograms;
-}
+/**
+ * The render's programs: the trace and present, linked with the context (a failure throws `PathTracerError`), and the
+ * quality path's guide, denoise, resolve and noise, linked only when a request first needs them (`require`), so a
+ * plain render never compiles them, nor does a restore before a quality request comes.
+ */
+export class TracerPrograms {
+  readonly trace: TracerProgram;
+  readonly present: TracerProgram;
+  private readonly quality = new Map<QualityProgramName, TracerProgram>();
 
-export function disposeTracerPrograms(gl: WebGL2RenderingContext, programs: TracerPrograms): void {
-  for (const name of RENDER_PROGRAMS) gl.deleteProgram(programs[name].program);
+  constructor(private readonly gl: WebGL2RenderingContext) {
+    this.trace = linkTracerProgram(gl, 'trace');
+    try {
+      this.present = linkTracerProgram(gl, 'present');
+    } catch (error) {
+      gl.deleteProgram(this.trace.program);
+      throw error;
+    }
+  }
+
+  /** Links those of `names` not linked yet; a failure throws `PathTracerError` and keeps the ones linked before. */
+  require(names: readonly QualityProgramName[]): void {
+    for (const name of names) if (!this.quality.has(name)) this.quality.set(name, linkTracerProgram(this.gl, name));
+  }
+
+  /** A quality program `require` linked. */
+  get(name: QualityProgramName): TracerProgram {
+    const program = this.quality.get(name);
+    if (!program) throw new Error(`the ${name} program is not linked`);
+    return program;
+  }
+
+  dispose(): void {
+    this.gl.deleteProgram(this.trace.program);
+    this.gl.deleteProgram(this.present.program);
+    for (const program of this.quality.values()) this.gl.deleteProgram(program.program);
+    this.quality.clear();
+  }
 }

@@ -56,7 +56,7 @@ import { ResolveTargets, type ResolveLayout } from './resolveTargets';
 import { requireExactAccumulation } from './requireExactAccumulation';
 import { layoutTextures } from './layoutTextures';
 import type { TextureLayerPlan } from './textureLayers';
-import { createTracerPrograms, disposeTracerPrograms, type TracerProgram, type TracerPrograms } from './tracerPrograms';
+import { TracerPrograms, type QualityProgramName, type TracerProgram } from './tracerPrograms';
 
 const DEFAULT_MAX_BOUNCES = 4;
 const MAX_BOUNCES = 16;
@@ -126,6 +126,8 @@ interface Gpu {
   targets: AccumulationTargets | null;
   /** The quality path's guides, filter, resolved image and noise blocks; `null` for a plain request. */
   resolve: ResolveTargets | null;
+  /** The largest render target on each axis, queried with the context. */
+  readonly targetLimits: TargetLimits;
 }
 
 function positiveInt(value: unknown, fallback: number): number {
@@ -152,6 +154,8 @@ export class PathTracer {
   private camera: SceneCamera | null = null;
   private request: RenderRequest | null = null;
   private quality: RenderQuality = DEFAULT_QUALITY;
+  /** The supersampling scale the current request traces at: set by `start`, `resize` and a restore, never on a read. */
+  private scale = 1;
   private done = 0;
   /** The denoiser's guides are drawn for the current request. */
   private guided = false;
@@ -256,7 +260,7 @@ export class PathTracer {
     return {
       samplesDone,
       targetSamples,
-      supersample: this.effectiveScale(),
+      supersample: this.scale,
       noise: this.noise,
       converged: this.converged,
       elapsedMs,
@@ -274,11 +278,11 @@ export class PathTracer {
 
   /** Width of the traced image, `readAccumulation`'s: the canvas width times `progress.supersample`. */
   get accumulationWidth(): number {
-    return this.canvas.width * this.effectiveScale();
+    return this.canvas.width * this.scale;
   }
 
   get accumulationHeight(): number {
-    return this.canvas.height * this.effectiveScale();
+    return this.canvas.height * this.scale;
   }
 
   /**
@@ -426,6 +430,7 @@ export class PathTracer {
     if (this.canvas.width !== result.width || this.canvas.height !== result.height) {
       this.canvas.width = result.width;
       this.canvas.height = result.height;
+      this.updateScale();
       this.restart();
     }
     return result;
@@ -442,6 +447,7 @@ export class PathTracer {
     const quality = checkRenderQuality(request);
     this.request = { seed, samples };
     this.quality = quality;
+    this.updateScale();
     this.cancelled = false;
     this.restart();
   }
@@ -450,7 +456,8 @@ export class PathTracer {
    * Draws up to `maxSamples` more samples of the current request (never past its count, nor past the checkpoint where
    * it converged), presents the image and returns how many it drew. Supersampled or denoised, the image shown is the
    * one resolved at the latest checkpoint or at the end. A no-op returning 0 without a camera, when complete,
-   * converged, cancelled, while the context is lost or after `dispose()`.
+   * converged, cancelled, while the context is lost or after `dispose()`. The first step of a request that needs a
+   * quality program links it: a shader failure there throws `PathTracerError` `SHADER_COMPILE` or `SHADER_LINK`.
    */
   step(maxSamples = 1): number {
     const gpu = this.gpu;
@@ -467,9 +474,10 @@ export class PathTracer {
     const tiles = sampleTiles(targets.width, targets.height, this.tileSize);
     const gl = this.gl;
     if (extra?.guide && !this.guided) {
-      this.bindScene(gpu, gpu.programs.guide, camera, request.seed, targets);
-      gl.uniform1ui(gpu.programs.guide.uniform('u_guideRays'), GUIDE_RAYS);
-      gl.uniform1ui(gpu.programs.guide.uniform('u_partialGuideRays'), PARTIAL_GUIDE_RAYS);
+      const guide = gpu.programs.get('guide');
+      this.bindScene(gpu, guide, camera, request.seed, targets);
+      gl.uniform1ui(guide.uniform('u_guideRays'), GUIDE_RAYS);
+      gl.uniform1ui(guide.uniform('u_partialGuideRays'), PARTIAL_GUIDE_RAYS);
       gl.bindFramebuffer(gl.FRAMEBUFFER, extra.guide.framebuffer);
       const guideTile = Math.max(16, Math.floor(this.tileSize / GUIDE_TILE_DIVISOR));
       this.drawTiles(sampleTiles(targets.width, targets.height, guideTile));
@@ -496,6 +504,8 @@ export class PathTracer {
       // Checkpoints are sample counts, so the stop and the image do not depend on how the samples were batched.
       if (extra?.noise && this.done >= 2) {
         this.measureNoise(gpu, targets, extra);
+        // Lost while drawing: the readback holds nothing, and the restore restarts the request anyway.
+        if (gl.isContextLost()) break;
         if (threshold !== null && this.noise !== null && this.noise <= threshold) {
           this.converged = true;
           break;
@@ -511,7 +521,10 @@ export class PathTracer {
     return drawn;
   }
 
-  /** Stops the current request: `step()` draws nothing more until `start`; the image of the samples done stays. */
+  /**
+   * Stops the current request: `step()` draws nothing more until `start`; the image shown stays (supersampled or
+   * denoised, the one resolved at the latest step that crossed a checkpoint).
+   */
   cancel(): void {
     this.cancelled = true;
   }
@@ -586,13 +599,25 @@ export class PathTracer {
     const gl = this.gl;
     requireExactAccumulation(gl);
     const capabilities = this.queryCapabilities();
-    const programs = createTracerPrograms(gl);
-    return { capabilities, programs, vao: gl.createVertexArray(), scene: null, targets: null, resolve: null };
+    const programs = new TracerPrograms(gl);
+    return {
+      capabilities,
+      programs,
+      vao: gl.createVertexArray(),
+      scene: null,
+      targets: null,
+      resolve: null,
+      targetLimits: this.queryTargetLimits(capabilities),
+    };
+  }
+
+  /** The largest render target on each axis, from the context's `Gpu` (queried once) or queried now without one. */
+  private targetLimits(): TargetLimits {
+    return this.gpu?.targetLimits ?? this.queryTargetLimits(this.capabilities ?? this.queryCapabilities());
   }
 
   /** The largest render target side on each axis: min of MAX_TEXTURE_SIZE, MAX_RENDERBUFFER_SIZE, MAX_VIEWPORT_DIMS. */
-  private targetLimits(): TargetLimits {
-    const capabilities = this.capabilities ?? this.queryCapabilities();
+  private queryTargetLimits(capabilities: PathTracerCapabilities): TargetLimits {
     const gl = this.gl;
     const viewport: unknown = gl.getParameter(gl.MAX_VIEWPORT_DIMS);
     const dims = viewport instanceof Int32Array ? viewport : new Int32Array([4096, 4096]);
@@ -603,11 +628,11 @@ export class PathTracer {
     };
   }
 
-  /** The supersampling scale the current request traces at on this canvas. */
-  private effectiveScale(): number {
+  /** The supersampling scale of the current request on this canvas, within the target limits. */
+  private updateScale(): void {
     const requested = this.quality.supersample;
-    if (requested === 1) return 1;
-    return supersampledScale(requested, this.canvas.width, this.canvas.height, this.targetLimits());
+    this.scale =
+      requested === 1 ? 1 : supersampledScale(requested, this.canvas.width, this.canvas.height, this.targetLimits());
   }
 
   private uploadLoaded(gpu: Gpu): void {
@@ -621,7 +646,7 @@ export class PathTracer {
    * each allocated only when needed; anything new restarts at sample 0.
    */
   private ensureTargets(gpu: Gpu): AccumulationTargets {
-    const scale = this.effectiveScale();
+    const scale = this.scale;
     const width = this.canvas.width * scale;
     const height = this.canvas.height * scale;
     const { denoise, noiseThreshold } = this.quality;
@@ -643,6 +668,11 @@ export class PathTracer {
       resolve: scale > 1 || denoise,
       noise: moments,
     };
+    const programs: QualityProgramName[] = [];
+    if (layout.denoise) programs.push('guide', 'denoise');
+    if (layout.resolve) programs.push('resolve');
+    if (layout.noise) programs.push('noise');
+    gpu.programs.require(programs);
     if (!layout.resolve && !layout.noise) {
       gpu.resolve?.dispose();
       gpu.resolve = null;
@@ -776,7 +806,7 @@ export class PathTracer {
     const gl = this.gl;
     const noise = extra.noise;
     if (!noise) return;
-    const { program, uniform } = gpu.programs.noise;
+    const { program, uniform } = gpu.programs.get('noise');
     gl.useProgram(program);
     gl.bindFramebuffer(gl.FRAMEBUFFER, noise.framebuffer);
     gl.viewport(0, 0, extra.noiseWidth, extra.noiseHeight);
@@ -791,7 +821,10 @@ export class PathTracer {
     gl.uniform2i(uniform('u_outputSize'), this.canvas.width, this.canvas.height);
     gl.bindVertexArray(gpu.vao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    this.noise = noiseQuantile(extra.readNoise());
+    const blocks = extra.readNoise();
+    // A lost context reads zeros, which would pass any threshold.
+    if (gl.isContextLost()) return;
+    this.noise = noiseQuantile(blocks);
     this.noiseSamples = this.done;
   }
 
@@ -808,7 +841,7 @@ export class PathTracer {
     let source = targets.sum.texture;
     const denoised = extra.guide !== null && extra.filtered !== null;
     if (extra.guide && extra.filtered) {
-      const { program, uniform } = gpu.programs.denoise;
+      const { program, uniform } = gpu.programs.get('denoise');
       gl.useProgram(program);
       gl.viewport(0, 0, targets.width, targets.height);
       const inputs: [string, WebGLTexture | null][] = [
@@ -838,7 +871,7 @@ export class PathTracer {
       }
       this.unbindTextures(sourceUnit + 1);
     }
-    const { program, uniform } = gpu.programs.resolve;
+    const { program, uniform } = gpu.programs.get('resolve');
     gl.useProgram(program);
     gl.bindFramebuffer(gl.FRAMEBUFFER, resolved.framebuffer);
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -888,7 +921,7 @@ export class PathTracer {
     if (gpu.scene) disposeGpuScene(gl, gpu.scene);
     gpu.targets?.dispose();
     gpu.resolve?.dispose();
-    disposeTracerPrograms(gl, gpu.programs);
+    gpu.programs.dispose();
     gl.deleteVertexArray(gpu.vao);
   }
 
@@ -906,6 +939,7 @@ export class PathTracer {
     try {
       this.gpu = this.createGpu();
       this.uploadLoaded(this.gpu);
+      this.updateScale();
     } catch {
       this.gpu = null;
       return;

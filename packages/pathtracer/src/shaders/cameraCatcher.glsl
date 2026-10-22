@@ -1,5 +1,5 @@
 // What the trace's camera rays and the denoiser's guide rays share: the random dimensions of a path vertex and the
-// shadow catcher. The guide replays the first samples' camera rays with the same dimensions, so it sees their hits.
+// shadow catcher. The guide accepts partial texels in the camera ray's dimension, so it sees them as often as the trace.
 
 // Shadow catcher (shadowCatcherPlane.ts of the realtime renderer): a plane at height u_catcherY over the rectangle
 // u_catcherRect = [minX, minZ, maxX, maxZ], seen only by camera rays from above.
