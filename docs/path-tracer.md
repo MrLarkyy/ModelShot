@@ -42,15 +42,25 @@ requestAnimationFrame(frame);
 - `setLook(look)`, `look`: the look (an invalid one throws `LookPresetError` naming the field and changes nothing). The
   shadow catcher moves under the new key; edges as `setEdges`; a scene whose `setScene` is still decoding gets the
   look too (its catcher is placed when it is swapped in).
-- `start({ seed, samples })`: a request for exactly `samples` samples per pixel (1..65 536) from `seed`
-  (0..2^32 − 1); anything else throws a `RangeError`.
+- `start({ seed, samples, supersample, denoise, noiseThreshold })`: a request for exactly `samples` samples per pixel
+  (1..65 536) from `seed` (0..2^32 − 1). The quality fields (Render quality, below) are optional: `supersample` an
+  integer 1..4 (default 1), `denoise` a boolean (default `false`), `noiseThreshold` a number in (0, 1] (default none),
+  with which `samples` is the maximum. Left out, the render is byte for byte the one without them. Anything else throws
+  a `RangeError` naming the field.
 - `step(maxSamples = 1)`: draws up to `maxSamples` more samples, never past the request, presents the mean and returns
   how many it drew. The caller paces it (there is no clock or animation loop inside); a no-op returning 0 without a
   camera, when complete, cancelled, while the context is lost or after `dispose()`.
-- `samplesDone`, `targetSamples`, `running`; `cancel()` stops the request and keeps the image of the samples done.
-- `readAccumulation()`: the RGBA32F accumulation per pixel (rows bottom to top), for the denoiser and supersampling
-  of MS-18 and for tests: rgb the radiance sums (divide by `samplesDone`), alpha the count of traversals stopped by
-  the per-ray node cap (not divided; 0 in ordinary scenes, see Limits and errors).
+- `samplesDone`, `targetSamples`, `running` (false once complete, converged or cancelled); `cancel()` stops the
+  request and keeps the image of the samples done.
+- `progress`: `RenderProgress` `{ samplesDone, targetSamples, supersample, noise, converged, elapsedMs, remainingMs }`.
+  `supersample` is the scale traced at, `noise` the 0.99 quantile of the noise estimate at the last checkpoint (`null`
+  without denoise or threshold, and before sample 2), `elapsedMs` from the request's first `step` to the end of its
+  latest, `remainingMs` the time left at that pace (with a threshold, to the checkpoint where the noise, falling as
+  1/√n, is predicted to reach it), `null` before the first sample and 0 when done. The clock is read for this alone.
+- `accumulationWidth`, `accumulationHeight`: the traced size, the canvas size times `progress.supersample`.
+- `readAccumulation()`: the RGBA32F accumulation per pixel at the traced size (rows bottom to top), for tests: rgb the
+  radiance sums (divide by `samplesDone`), alpha the count of traversals stopped by the per-ray node cap (not
+  divided; 0 in ordinary scenes, see Limits and errors).
 - `onContextRestored(listener)`, `dispose()` (every GL object, decoded image and listener).
 
 `setScene`, `setCamera`, `resize`, `setEdges`, `setLook` and `start` restart the accumulation at sample 0.
@@ -90,7 +100,60 @@ context loss.
    `PLACEHOLDER_IMAGE`).
 6. Per sample, a trace pass per tile (scissor, at most `tileSize` square, so no draw call runs long enough to trip a
    driver watchdog) reads the running sum from one RGBA32F target and writes sum + sample into the other; then they
-   swap. A present pass divides by the sample count and applies AgX.
+   swap. A present pass divides by the sample count and applies AgX. The quality path (Render quality) traces at the
+   supersampled size, adds a second output to the trace, and at checkpoints runs the noise, denoise and resolve
+   passes; present then shows the resolved image.
+
+## Render quality
+
+`supersample`, `denoise` and `noiseThreshold` on `RenderRequest` (MS-18; MS-22's export passes them per image). The
+default request (none of them) runs none of the passes below and allocates none of their targets.
+
+1. **Supersampling**: the trace runs at s·width × s·height (`u_viewportSize` and the backdrop's frame height scaled, so
+   the view and the gradient are the same) with the jitter of every traced pixel, and resolve takes the box mean of
+   each s × s block: the image of s² samples per canvas pixel, framed like scale 1. The scale is the largest
+   s ≤ `supersample` whose targets fit min(`MAX_TEXTURE_SIZE`, `MAX_RENDERBUFFER_SIZE`, `MAX_VIEWPORT_DIMS`) on both
+   axes and `MAX_SUPERSAMPLED_PIXELS` (2^22) traced pixels; a larger request is lowered, never refused
+   (`supersampledScale`, reported in `progress.supersample`).
+2. **Moments** (denoise or a threshold): the trace writes a second target (`layout(location = 1)`, R32F, ping-pong like
+   the sum, gated by `u_moments`) with the running sum of each sample's squared Rec. 709 luminance, so each pixel has
+   the variance of its mean. Exact float adds in sample order, as the radiance sum.
+3. **Guides** (denoise), once per request on its first step (`guide.frag`, tiled like the trace): the mean albedo
+   (floored at 0.01), shading normal and view depth of 64 camera rays per pixel through the points of a
+   (0,2)-sequence (Van der Corput by Sobol', rotated per pixel), into two RGBA16F targets. Each ray accepts partial
+   texels with the trace's rule and the key of sample i, so a cut-out texel is never seen; a pixel whose rays met a
+   partial texel goes on to 1024 rays, so its alpha mix converges too. The guide is the converged coverage of the
+   pixel's texels, not the coverage the request's samples happened to draw: what the samples got wrong at a texel
+   edge or a partial texel becomes noise in the quotient below, which the filter removes, and resolve multiplies the
+   right mix back in. An escaped ray gives the backdrop colour, normal 0 and no depth, a ray on the shadow catcher the
+   backdrop colour, normal up and its depth.
+4. **Denoise** (`denoise.frag`, 5 iterations, taps 1, 2, 4, 8, 16 pixels apart): an edge-avoiding à-trous filter
+   (Dammertz et al. 2010) with SVGF's edge-stopping (Schied et al. 2017) and none of its temporal part, on the
+   demodulated radiance (the mean over the guide albedo). Weights: the 5-tap B3 spline, times exp(−|Δalbedo|²/0.5²),
+   times the cosine of the normals to the power 128 (backdrop pixels only with backdrop pixels), times
+   exp(−|Δdepth| / (the change the centre's depth slope predicts + 0.5 % of its depth)), times
+   exp(−|Δluminance| / (2·σ + 0.02)) with σ the standard deviation of the centre's mean (3 × 3 prefiltered,
+   propagated through the iterations; the 0.02 keeps a cavity no sample lit from taking nothing from its neighbours).
+   Only the light is smoothed: resolve multiplies the guide albedo in again, so texels keep their colour and their
+   edges, and the filter stops at a silhouette (normal, depth), at a surface seen through a cut-out (depth) and at a
+   shadow edge beyond the noise. RGBA16F ping-pong at the traced size. The constants are measured against the
+   2048-sample reference ([testing.md](testing.md#render-quality)).
+5. **Resolve** (`resolve.frag`): box-downsamples the denoised radiance times the albedo (or the mean, undenoised) into
+   a canvas-size RGBA32F image; present reads it with a sample count of 1.
+6. **Noise** (`noise.frag`, denoise or a threshold): per canvas pixel the relative standard error of its mean
+   luminance (the mean floored at 0.05, so near-black never holds a render back; a supersampled pixel's variance is
+   that of the mean of its s² traced pixels), the worst in each 4 × 4 block, into one RGBA32F texel per block; the CPU
+   reads them back and takes the 0.99 quantile (`noiseQuantile`, so a few firefly blocks cannot hold a render back
+   for good).
+
+Checkpoints are the sample counts 1, 2, 4, 8, 16 and then every 16. At each, noise is measured (from 2 samples on);
+with `noiseThreshold` the render stops there once the quantile is at or under it (`converged`, `running` false). At
+the end of a `step` that crossed a checkpoint or finished, resolve runs (with the denoiser) on the sums so far; between
+checkpoints the image shown is the last resolved one. So denoising never runs per sample, and a readback is 1/16 of
+the canvas.
+
+Memory: about 72 bytes per traced pixel with denoising (32 the sums, 8 the moments, 16 the guides, 16 the filter
+images), so the 2^22 cap is about 300 MB, plus 16 bytes per canvas pixel for the resolved image.
 
 ## Determinism
 
@@ -98,7 +161,11 @@ The image is a pure function of scene, camera, size, seed and sample count. Rand
 (`rng.glsl`, mirrored by `pcgHash.ts` and its test vectors) chained over seed, sample index and pixel, then over a
 dimension; there is no clock and no `Math.random`. Accumulation adds exact floats in sample order without blending
 (no `EXT_float_blend`, no RGBA16F rounding), and every pixel's value depends only on its own coordinates, so batching
-and tiling change no byte (tested: one pass of 64, batches of 1 and 7, tiles of 64).
+and tiling change no byte (tested: one pass of 64, batches of 1 and 7, tiles of 64). With the quality fields the final
+image is a function of the final sums and the guides (both depending on the samples only), and checkpoints are sample
+counts, so a denoised 2x render gives the same bytes in batches of 7 and 3, tiles of 64 and after a context restore
+(tested). Where a threshold stops depends on the noise, hence on the GPU's floats: goldens and MS-22's exports use a
+fixed sample count.
 
 ## Scene-format rules on every ray
 
@@ -198,8 +265,9 @@ with lower caps, the benchmark scene needs at most 128 to 256 visits and the pla
 leaves at least twice the worst measured need; the coincident cubes reach it (one capped camera ray per pixel they
 cover).
 
-Shaders are static `.glsl` files under `src/shaders/` (`trace.frag`, `bake.frag`, `present.frag`, `fullscreen.vert`
-and the chunks `rng`, `sceneData`, `primaryRay`, `surfaceHit`, `bvhTraverse`, `pathSampling`, `keyLight`) composed by
+Shaders are static `.glsl` files under `src/shaders/` (`trace.frag`, `bake.frag`, `present.frag`, `guide.frag`,
+`denoise.frag`, `resolve.frag`, `noise.frag`, `fullscreen.vert` and the chunks `rng`, `sceneData`, `primaryRay`,
+`surfaceHit`, `bvhTraverse`, `pathSampling`, `keyLight`, `cameraCatcher`, `luminanceMoments`) composed by
 `linkShader` with the shared look chunks (`agx`, `texelAlpha`, `faceTexels`, `lightRig`, `shadowCatcher`,
 `edgeRounding`); no shader text is built from user input. The shading normal is computed in one place (`surfaceAt` in
 `surfaceHit.glsl`), rounded at sharp edges there (Lighting).
@@ -263,12 +331,16 @@ DEFAULT_LOOK, onProgress })` resolves `{ applied, warnings, lighting }`. The loo
 
 Drawing pauses (`step` returns 0) while the context is lost. On restore every GPU resource is rebuilt from the
 retained CPU data (packed geometry, material table, layer plan and decoded images) and the current request restarts at
-sample 0; rendering it again gives the same bytes (tested against the golden).
+sample 0; rendering it again gives the same bytes (tested against the golden). The quality path's targets (moments,
+guides, filter, resolved image, noise blocks) are recreated on the first step after the restore and the guides drawn
+again, so a denoised 2x render also gives its bytes again (tested); `dispose()` deletes them with the rest.
 
 ## Budgets
 
-`timeToSamplesMs.pt-bench-128-n256` (the benchmark scene, 24 576 triangles, 256 samples at 128 × 128) and
-`frameTimeMs.pt-load-200k` (`setScene` of the 200 000-triangle scene plus its first sample); numbers in
+`timeToSamplesMs.pt-bench-128-n256` (the benchmark scene, 24 576 triangles, 256 samples at 128 × 128),
+`frameTimeMs.pt-load-200k` (`setScene` of the 200 000-triangle scene plus its first sample), and for the final-render
+path `timeToSamplesMs.pt-bench-128-n64-x2-denoised` (64 samples at 2x with the guides, noise checkpoints and the
+denoised resolve; MS-18); numbers in
 [testing.md](testing.md#budgets). On real hardware (RTX 3080, ANGLE D3D11, Windows) 256 samples of the benchmark scene
 take about 234 ms at 512 × 512 and 88 ms at 128 × 128 (`pt.html?scene=bench&size=512&samples=256&timing=1` shows
 the paced manual readout).
@@ -281,7 +353,7 @@ measured on real hardware yet.
 
 ## What v0 lacks
 
-Denoising and supersampling (MS-18), emission from the scene format (MS-32), user lights (MS-33; the look's key,
+Temporal (video) denoising, emission from the scene format (MS-32), user lights (MS-33; the look's key,
 accents and dome here), an image-based environment (the dome is analytic), geometric
 bevels (edges are rounded in shading only), a Web Worker or WASM build of the render's BVH (the bake builds its own in its worker), glossy or
 transmissive materials, textured environments, and WebGPU. The bake has no interreflection, no animated GI, and bakes
