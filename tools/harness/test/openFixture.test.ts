@@ -17,13 +17,13 @@ function stubPage(bootFailures: number): { page: Page; calls: string[] } {
   const page = {
     on: () => page,
     off: () => page,
-    goto: async () => void calls.push('goto'),
-    reload: async () => void calls.push('reload'),
-    waitForFunction: async () => {
+    goto: () => Promise.resolve(void calls.push('goto')),
+    reload: () => Promise.resolve(void calls.push('reload')),
+    waitForFunction: () => {
       calls.push('wait');
-      if (failures-- > 0) throw new Error('timeout');
+      return failures-- > 0 ? Promise.reject(new Error('timeout')) : Promise.resolve();
     },
-    evaluate: async () => info,
+    evaluate: () => Promise.resolve(info),
   };
   return { page: page as unknown as Page, calls };
 }
