@@ -109,7 +109,8 @@ scale (played as the smallest positive scale).
   double-sided outside `java_block`, so the hull's outer side covers what it encloses; with the setting on Outside it
   draws the rim, as ModelShot does. Those single-sided faces are also `SceneMeshGroup.cameraOnly`: Blockbench has no
   global illumination, so a hull is only a rim the camera sees; in the path tracer and the light bake it neither
-  shadows nor occludes what it encloses. An even number leaves an
+  shadows nor occludes what it encloses. Only a cube with volume on every axis, as authored and after inflate, is such
+  a hull: a pane (flat as authored, or flattened by inflate) mirrored in its plane keeps its texture's sidedness. An even number leaves an
   outward box, each face's texture on the opposite side turned 180°. The normal is each face's geometric front;
   Blockbench keeps the fixed normal of the face's key, which disagrees with the winding where exactly one other axis
   is reversed, so ModelShot lights those faces as their winding says. The 0.001 Blockbench adds to a flat axis is not

@@ -516,3 +516,37 @@ describe('cubeToMesh: camera-only faces of an inverted cube', () => {
     ).toBeLessThan(0);
   });
 });
+
+describe('cubeToMesh: a mirrored pane is not an outline hull', () => {
+  const textures = [{ name: 'auto', render_sides: 'auto' }];
+  const groupsOf = (element: Record<string, unknown>, modelFormat: string) => {
+    const meta = { format_version: '4.5', model_format: modelFormat, box_uv: false };
+    const text = JSON.stringify(model({ meta, textures, elements: [element] }));
+    return loadBbmodel(text).scene.meshes[0]?.groups;
+  };
+  const face = textured([0, 0, 1, 1]);
+
+  it('a lone pane reversed in its plane keeps its texture sidedness, no camera-only', () => {
+    const pane = cube({ from: [4, 0, 0], to: [0, 0, 4], faces: { up: face } });
+    expect(readCube(pane, '$', context).reversed).toEqual([true, false, false]);
+    for (const format of ['free', 'bedrock']) {
+      expect(groupsOf(pane, format)).toEqual([{ material: 0, start: 0, count: 6, doubleSided: true }]);
+    }
+  });
+
+  it('a paired pane reversed in its plane stays single-sided by the flat-pair rule, no camera-only', () => {
+    const pane = cube({ from: [4, 0, 0], to: [0, 0, 4], faces: { up: face, down: face } });
+    expect(groupsOf(pane, 'free')).toEqual([{ material: 0, start: 0, count: 12, doubleSided: false }]);
+  });
+
+  it('a pane given thickness by a negative inflate, or a box flattened by one, is not a hull', () => {
+    // y: (0 − 0.1) reversed, 0.2 thick; authored flat.
+    const thick = cube({ from: [0, 0, 0], to: [4, 0, 4], inflate: -0.1, faces: allFaces(face) });
+    expect(readCube(thick, '$', context).reversed).toEqual([false, true, false]);
+    expect(groupsOf(thick, 'free')).toEqual([{ material: 0, start: 0, count: 36, doubleSided: true }]);
+    // x reversed; y: (0.5 − 0.5) = 0, flattened.
+    const flattened = cube({ from: [4, 0, 0], to: [0, 1, 4], inflate: -0.5, faces: allFaces(face) });
+    expect(readCube(flattened, '$', context).reversed).toEqual([true, false, false]);
+    expect(groupsOf(flattened, 'free')).toEqual([{ material: 0, start: 0, count: 12, doubleSided: false }]);
+  });
+});

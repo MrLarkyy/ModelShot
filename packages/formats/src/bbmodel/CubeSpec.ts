@@ -63,12 +63,13 @@ const NORMAL_AXIS: Readonly<Record<FaceDirection, 0 | 1 | 2>> = {
 };
 
 /**
- * An inverted cube (an odd number of reversed axes, see `inflatedBox`) draws its faces whose texture's `render_sides` is
- * `auto` single-sided in every format, so it shows as the rim of an outline hull; explicit `double` stays double-sided.
- * Blockbench sides `auto` by its Render Sides setting, double-sided by default outside `java_block`, where such a
- * hull's outer side would cover what it encloses; outline hulls are made to be seen with back faces culled. Every
- * single-sided face of an inverted cube is `cameraOnly`: Blockbench has no global illumination, so the hull is only a
- * rim the camera sees and must not shadow or occlude what it encloses; a double-sided one stays an ordinary box.
+ * An inverted cube (an odd number of reversed axes, see `inflatedBox`) with volume on every axis, as authored and as
+ * inflated, is an outline hull: its faces whose texture's `render_sides` is `auto` draw single-sided in every format,
+ * so it shows as a rim; explicit `double` stays double-sided. Blockbench sides `auto` by its Render Sides setting,
+ * double-sided by default outside `java_block`, where such a hull's outer side would cover what it encloses; outline
+ * hulls are made to be seen with back faces culled. Every single-sided face of a hull is `cameraOnly`: Blockbench has
+ * no global illumination, so the hull is only a rim the camera sees and must not shadow or occlude what it encloses; a
+ * double-sided one stays an ordinary box. A pane mirrored in its plane keeps its texture's sidedness.
  *
  * A face lying in the plane of a zero-thickness axis whose opposite face is drawn too stays single-sided whatever its
  * texture says: the two are coincident, face opposite ways and have their own UVs, so each side shows exactly one of
@@ -94,12 +95,14 @@ export function readCube(element: JsonObject, path: string, context: ConverterCo
   }
   const flatFaces = specs.filter((face) => max[NORMAL_AXIS[face.direction]] - min[NORMAL_AXIS[face.direction]] <= 0);
   const paired = flatFaces.length === 2;
-  const inverted = reversed.filter(Boolean).length % 2 === 1;
+  // A pane (flat as authored, or flattened by inflate) mirrored in its plane is a mirrored pane, not a hull.
+  const solid = [0, 1, 2].every((k) => from[k] !== to[k] && (max[k] ?? 0) > (min[k] ?? 0));
+  const hull = solid && reversed.filter(Boolean).length % 2 === 1;
   const drawn = specs.map((face) => {
     const flatPair = paired && flatFaces.includes(face);
-    const hullAuto = inverted && (context.textureSidesAuto[face.material] ?? true);
+    const hullAuto = hull && (context.textureSidesAuto[face.material] ?? true);
     const doubleSided = face.doubleSided && !flatPair && !hullAuto;
-    if (inverted && !doubleSided) return { ...face, doubleSided, cameraOnly: true };
+    if (hull && !doubleSided) return { ...face, doubleSided, cameraOnly: true };
     return doubleSided === face.doubleSided ? face : { ...face, doubleSided };
   });
   return {
