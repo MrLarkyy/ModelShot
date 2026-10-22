@@ -45,6 +45,7 @@ export default defineConfig({
         'modelView.spec.ts',
         'realtime.spec.ts',
         'pathtracer.spec.ts',
+        'export.spec.ts',
       ],
     },
     { name: 'bake', fullyParallel: true, testMatch: 'realtime.spec.ts', grep: /baked lighting/ },
