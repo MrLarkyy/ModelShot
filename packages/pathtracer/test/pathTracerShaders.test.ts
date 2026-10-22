@@ -152,7 +152,7 @@ describe('path tracer shaders', () => {
   it('denoises coverage with the radiance weights and measures its noise, the opaque arithmetic unchanged', () => {
     const denoise = pathTracerProgramSource('denoise').fragment;
     const weighted = denoise.indexOf('w *= wNormal * wAlbedo * wLuminance * wDepth;');
-    const coverage = denoise.indexOf('if (u_transparent) coverage += w * coverageAt(q);');
+    const coverage = denoise.indexOf('float wc = w * exp(-abs(c - coverageCentre) / coverageStop);');
     expect(coverage).toBeGreaterThan(weighted);
     expect(denoise).toContain('outFiltered = vec4(filtered / weights, variance / (weights * weights));');
     expect(denoise).toContain('layout(location = 1) out float outCoverage;');
