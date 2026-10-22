@@ -31,7 +31,7 @@ async function videoChoice(
   fps: number,
 ): Promise<VideoChoice | null> {
   if (typeof VideoEncoder !== 'function' || typeof VideoFrame !== 'function') return null;
-  for (const codec of videoCodecCandidates(container, width, height)) {
+  for (const codec of videoCodecCandidates(container, width, height, fps)) {
     const config: VideoEncoderConfig = {
       codec: codec.codec,
       width,

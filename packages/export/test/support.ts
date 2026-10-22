@@ -75,6 +75,8 @@ export interface FakeRendererOptions {
   readonly nullImage?: boolean;
   /** Most pixels `resize` grants. */
   readonly maxPixels?: number;
+  /** Largest supersampling scale traced (the path tracer lowers a larger one). Default 4. */
+  readonly maxSupersample?: number;
 }
 
 /**
@@ -86,10 +88,13 @@ export class FakeRenderer implements FrameRenderer {
   height = 1;
   samplesDone = 0;
   contextLost = false;
+  /** The traced width: `width` times the scale the request runs at (at most `maxSupersample`). */
+  accumulationWidth = 1;
   readonly calls: string[] = [];
   readonly cameras: SceneCamera[] = [];
   readonly requests: RenderRequest[] = [];
   readonly scenes: SceneDocument[] = [];
+  readonly sceneOptions: (SetSceneOptions | undefined)[] = [];
   private request: RenderRequest | null = null;
   private camera: SceneCamera | null = null;
   private cancelled = false;
@@ -97,9 +102,9 @@ export class FakeRenderer implements FrameRenderer {
   constructor(private readonly options: FakeRendererOptions = {}) {}
 
   setScene(doc: SceneDocument, options?: SetSceneOptions): Promise<{ applied: boolean }> {
-    void options;
     this.calls.push('setScene');
     this.scenes.push(doc);
+    this.sceneOptions.push(options);
     return Promise.resolve({ applied: true });
   }
 
@@ -122,6 +127,7 @@ export class FakeRenderer implements FrameRenderer {
     this.requests.push(request);
     this.request = request;
     this.samplesDone = 0;
+    this.accumulationWidth = this.width * Math.min(request.supersample ?? 1, this.options.maxSupersample ?? 4);
     this.cancelled = false;
   }
 

@@ -4,7 +4,8 @@ import { ExportError } from '../ExportError';
 import { frameDurations } from '../frameDurations';
 import { OutputParts } from '../OutputParts';
 import { encodeWebpFrame } from './encodeWebpFrame';
-import { muxAnimatedWebp, readWebpFrame, type WebpFrameData } from './muxAnimatedWebp';
+import { muxAnimatedWebp } from './muxAnimatedWebp';
+import { readWebpFrame, type WebpFrameData } from './readWebpFrame';
 
 /** Animated WebP: each frame encoded by the browser (`encodeWebpFrame`), muxed with durations in milliseconds. */
 export class WebpEncoder implements ClipEncoder {

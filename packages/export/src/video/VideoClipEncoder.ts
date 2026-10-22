@@ -61,7 +61,7 @@ export class VideoClipEncoder implements ClipEncoder {
     this.check();
     const timestamp = Math.round((this.frame * 1e6) / fps);
     const next = Math.round(((this.frame + 1) * 1e6) / fps);
-    const frame = new VideoFrame(new Uint8Array(image.data), {
+    const frame = new VideoFrame(image.data, {
       format: 'RGBX',
       codedWidth: width,
       codedHeight: height,

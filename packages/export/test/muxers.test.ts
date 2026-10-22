@@ -4,7 +4,8 @@ import type { EncodedFrame } from '../src/video/EncodedFrame';
 import { muxMp4 } from '../src/video/muxMp4';
 import { muxWebm } from '../src/video/muxWebm';
 import { videoCodecCandidates } from '../src/video/videoCodecs';
-import { muxAnimatedWebp, readWebpFrame } from '../src/webp/muxAnimatedWebp';
+import { muxAnimatedWebp } from '../src/webp/muxAnimatedWebp';
+import { readWebpFrame } from '../src/webp/readWebpFrame';
 
 const concat = (parts: readonly Uint8Array[]): Uint8Array => {
   const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
@@ -274,14 +275,29 @@ describe('MP4 muxing', () => {
 
 describe('video codec choice', () => {
   it('picks the smallest VP9 and H.264 level that holds the frame, best profile first', () => {
-    expect(videoCodecCandidates('webm', 64, 64).map((c) => c.codec)).toEqual(['vp09.00.10.08', 'vp09.00.11.08', 'vp8']);
-    expect(videoCodecCandidates('webm', 1920, 1080)[0]?.codec).toBe('vp09.00.40.08');
-    expect(videoCodecCandidates('mp4', 64, 64).map((c) => c.codec)).toEqual([
+    expect(videoCodecCandidates('webm', 64, 64, 30).map((c) => c.codec)).toEqual([
+      'vp09.00.10.08',
+      'vp09.00.11.08',
+      'vp8',
+    ]);
+    expect(videoCodecCandidates('webm', 1920, 1080, 30)[0]?.codec).toBe('vp09.00.40.08');
+    expect(videoCodecCandidates('mp4', 64, 64, 30).map((c) => c.codec)).toEqual([
       'avc1.64001f',
       'avc1.4d001f',
       'avc1.42e01f',
     ]);
-    expect(videoCodecCandidates('mp4', 1920, 1080)[0]?.codec).toBe('avc1.640028');
-    expect(videoCodecCandidates('mp4', 4096, 4096)[0]?.codec).toBe('avc1.64003c');
+    expect(videoCodecCandidates('mp4', 1920, 1080, 30)[0]?.codec).toBe('avc1.640028');
+    expect(videoCodecCandidates('mp4', 4096, 4096, 30)[0]?.codec).toBe('avc1.64003c');
+  });
+
+  it('takes the frame rate into the level: 720p60 and 1080p60 need more than their size alone', () => {
+    // H.264: 3 600 macroblocks x 60 = 216 000/s, over level 3.1 (108 000): 3.2; 8 160 x 60 = 489 600/s: 4.2.
+    expect(videoCodecCandidates('mp4', 1280, 720, 30)[0]?.codec).toBe('avc1.64001f');
+    expect(videoCodecCandidates('mp4', 1280, 720, 60)[0]?.codec).toBe('avc1.640020');
+    expect(videoCodecCandidates('mp4', 1920, 1080, 60)[0]?.codec).toBe('avc1.64002a');
+    // VP9: 921 600 x 60 = 55.3 M luma samples/s, over level 3.1 (36.9 M): 4.0; 1080p60 = 124.4 M, over 4.0: 4.1.
+    expect(videoCodecCandidates('webm', 1280, 720, 30)[0]?.codec).toBe('vp09.00.31.08');
+    expect(videoCodecCandidates('webm', 1280, 720, 60)[0]?.codec).toBe('vp09.00.40.08');
+    expect(videoCodecCandidates('webm', 1920, 1080, 60)[0]?.codec).toBe('vp09.00.41.08');
   });
 });

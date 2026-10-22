@@ -4,7 +4,10 @@ import { ExportError } from './ExportError';
 import type { ExportResult, ExportRunOptions, StillExportOptions } from './ExportOptions';
 import type { FrameRenderer } from './FrameRenderer';
 import { ProgressReporter } from './ProgressReporter';
-import { renderFrame, showScene, sizeRenderer, throwIfCancelled } from './renderFrame';
+import { showScene, sizeRenderer } from './prepareRenderer';
+import { renderFrame } from './renderFrame';
+import { supersampleWarning } from './supersampleWarning';
+import { throwIfCancelled } from './throwIfCancelled';
 
 /**
  * Renders `doc` once with `renderer` and encodes a PNG: exactly the bytes of `readImage()`, with alpha for a
@@ -40,6 +43,7 @@ export async function exportStill(
     signal,
     (samplesDone) => progress.render(0, samplesDone),
   );
+  const lowered = supersampleWarning(renderer, checked.supersample);
   const { encodePng } = await import('./png/encodePng');
   const blob = await encodePng(image);
   throwIfCancelled(signal);
@@ -53,6 +57,6 @@ export async function exportStill(
     width: checked.width,
     height: checked.height,
     frames: 1,
-    warnings: [],
+    warnings: lowered ? [lowered] : [],
   };
 }

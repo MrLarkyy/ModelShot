@@ -1,6 +1,7 @@
 import type { RenderedImage } from '@modelshot/pathtracer';
 import { deflateZlib } from './deflateZlib';
-import { filterScanlines, ihdr, PNG_SIGNATURE, pngChunk } from './pngChunks';
+import { filterScanlines } from './filterScanlines';
+import { ihdr, PNG_SIGNATURE, pngChunk } from './pngChunks';
 
 /** The image as an 8-bit RGBA PNG (straight alpha, as `readImage` gives it): lossless, never resampled. */
 export async function encodePng(

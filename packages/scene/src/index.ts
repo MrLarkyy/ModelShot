@@ -79,7 +79,13 @@ export type {
   ScenePlayback,
 } from './SceneAnimation';
 export type { AnimationPlaybackOptions } from './AnimationPlaybackOptions';
-export { MAX_ANIMATION_FRAMES, MAX_PLAYBACK_FPS, animationFrameTimes, animationTime } from './animationTime';
+export {
+  MAX_ANIMATION_FRAMES,
+  MAX_PLAYBACK_FPS,
+  animationFrameCount,
+  animationFrameTimes,
+  animationTime,
+} from './animationTime';
 export {
   MAX_ANIMATION_SCALE,
   MAX_ANIMATION_VALUE,

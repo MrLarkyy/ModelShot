@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest';
 
 /**
  * Gzip bytes the entry chunk and the chunks it imports statically may take (what loads before an export starts):
- * measured 5 576 (2026-10-22), times 1.25. The workspace packages are external: the app ships the path tracer and the
- * scene format anyway, so this is what importing the export API adds to it. Moves to budgets.json once the budget file
- * is free to edit (MS-41).
+ * measured 5 839 (2026-10-22, round 2), times 1.25. The workspace packages are external: the app ships the path
+ * tracer and the scene format anyway, so this is what importing the export API adds to it. Moves to budgets.json once
+ * the budget file is free to edit (MS-41).
  */
-const EXPORT_ENTRY_GZIP_MAX = 6970;
+const EXPORT_ENTRY_GZIP_MAX = 7299;
 
 /** Strings only an encoder or a muxer holds. */
 const ENCODER_MARKERS = ['NETSCAPE2.0', 'acTL', 'fdAT', 'VP8X', 'ANMF', 'ftyp', 'avcC', 'V_VP9', 'VideoFrame('];

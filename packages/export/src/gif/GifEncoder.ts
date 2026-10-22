@@ -4,6 +4,7 @@ import type { ClipEncoder, ClipEncoderSettings } from '../ClipEncoder';
 import { ExportError } from '../ExportError';
 import { frameDurations } from '../frameDurations';
 import { OutputParts } from '../OutputParts';
+import { yieldToEventLoop } from '../yieldToEventLoop';
 import { lzwEncode } from './lzwEncode';
 import { quantizePalette, TRANSPARENT_INDEX } from './quantizePalette';
 
@@ -42,12 +43,14 @@ export class GifEncoder implements ClipEncoder {
     this.output.push(header.toBytes());
   }
 
-  addFrame(image: RenderedImage): Promise<void> {
+  async addFrame(image: RenderedImage): Promise<void> {
     const { width, height, frames } = this.settings;
     if (image.width !== width || image.height !== height || this.frame >= frames) {
-      return Promise.reject(new ExportError('ENCODER_FAILED', `GIF frame ${this.frame} does not fit the clip`));
+      throw new ExportError('ENCODER_FAILED', `GIF frame ${this.frame} does not fit the clip`);
     }
     const { palette, indices, transparent } = quantizePalette(image);
+    // The page gets a turn between the palette and the compression of a large frame.
+    await yieldToEventLoop();
     const head = new ByteWriter()
       .u8(0x21)
       .u8(0xf9)
@@ -79,7 +82,6 @@ export class GifEncoder implements ClipEncoder {
     this.output.push(head.toBytes());
     this.output.push(body);
     this.frame++;
-    return Promise.resolve();
   }
 
   finish(): Promise<Blob> {

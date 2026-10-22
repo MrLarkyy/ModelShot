@@ -9,6 +9,8 @@ export interface FrameRenderer {
   readonly width: number;
   readonly height: number;
   readonly samplesDone: number;
+  /** Width of the traced image: `width` times the supersampling scale the current request runs at. */
+  readonly accumulationWidth: number;
   readonly contextLost: boolean;
   setScene(doc: SceneDocument, options?: SetSceneOptions): Promise<{ readonly applied: boolean }>;
   setCamera(camera: SceneCamera): void;

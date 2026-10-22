@@ -38,7 +38,8 @@ export type {
 export { exportClip } from './exportClip';
 export { exportStill } from './exportStill';
 export type { FrameRenderer } from './FrameRenderer';
-export { planFrames, type PlannedFrame } from './planFrames';
+export { framePose } from './framePose';
+export { planFrames, type FramePlan, type PlannedFrame } from './planFrames';
 export {
   FORMAT_FALLBACKS,
   FORMAT_NAMES,

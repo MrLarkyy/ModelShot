@@ -71,6 +71,17 @@ describe('exportStill', () => {
     expect(renderer.calls).toEqual([]);
   });
 
+  it('warns when the GPU traces a lower supersample than asked for', async () => {
+    const lowered = await exportStill(new FakeRenderer({ maxSupersample: 2 }), doc, { ...STILL, supersample: 3 });
+    expect(lowered.warnings).toEqual([
+      { code: 'SUPERSAMPLE_LOWERED', message: expect.stringMatching(/2 × 2/) as string },
+    ]);
+    const kept = await exportStill(new FakeRenderer({ maxSupersample: 2 }), doc, { ...STILL, supersample: 2 });
+    expect(kept.warnings).toEqual([]);
+    const clip = await exportClip(new FakeRenderer({ maxSupersample: 1 }), doc, { ...TURNTABLE, supersample: 2 });
+    expect(clip.warnings.map((w) => w.code)).toEqual(['SUPERSAMPLE_LOWERED']);
+  });
+
   it('fails with LIMIT_EXCEEDED when the GPU cannot render the size', async () => {
     const renderer = new FakeRenderer({ maxPixels: 100 });
     expect(await codeOf(exportStill(renderer, doc, STILL))).toBe('LIMIT_EXCEEDED');
@@ -109,6 +120,8 @@ describe('exportClip', () => {
     const result = await exportClip(renderer, doc, TURNTABLE, { onProgress: (p) => progress.push(p) });
     expect(result).toMatchObject({ format: 'apng', mimeType: 'image/apng', extension: 'png', frames: 4, warnings: [] });
     expect(renderer.calls.filter((c) => c === 'setScene')).toHaveLength(1);
+    // One document: the tracer places the catcher under it itself.
+    expect(renderer.sceneOptions[0]?.catcherBounds).toBeUndefined();
     expect(new Set(renderer.requests.map((r) => r.seed))).toEqual(new Set([3]));
     const apng = await decodePng(await blobBytes(result.blob));
     expect(apng.frames.map((f) => f.rgba)).toEqual(frames);
@@ -129,10 +142,17 @@ describe('exportClip', () => {
       fps: 4,
       animation: 'slide',
       seconds: 1,
+      scene: { shadowCatcher: false },
     });
     expect(result.frames).toBe(4);
     expect(renderer.scenes).toHaveLength(4);
     expect(new Set(renderer.cameras)).toEqual(new Set([renderer.cameras[0]]));
+    // One shadow catcher for every pose: the union of their bounds (the cube slides 0..1.5 along x).
+    const bounds = renderer.sceneOptions.map((o) => o?.catcherBounds);
+    for (const b of bounds) expect(b).toBe(bounds[0]);
+    expect(bounds[0]?.min).toEqual([-1, -1, -1]);
+    expect(bounds[0]?.max[0]).toBeCloseTo(2.5, 6);
+    expect(renderer.sceneOptions[0]).toMatchObject({ shadowCatcher: false });
     const gif = decodeGif(await blobBytes(result.blob));
     expect(gif.frames).toHaveLength(4);
     expect(gif.frames.map((f) => f.delayCs)).toEqual([25, 25, 25, 25]);

@@ -12,7 +12,7 @@ export async function encodeWebpFrame(image: RenderedImage): Promise<Uint8Array<
   const canvas = new OffscreenCanvas(image.width, image.height);
   const context = canvas.getContext('2d');
   if (!context) throw new ExportError('UNSUPPORTED_FORMAT', 'this browser has no 2D canvas to encode WebP with');
-  context.putImageData(new ImageData(new Uint8ClampedArray(image.data), image.width, image.height), 0, 0);
+  context.putImageData(new ImageData(image.data, image.width, image.height), 0, 0);
   const blob = await canvas.convertToBlob({ type: 'image/webp', quality: 1 });
   if (blob.type !== 'image/webp') {
     throw new ExportError('UNSUPPORTED_FORMAT', `this browser encodes ${blob.type || 'nothing'} instead of WebP`);

@@ -1,5 +1,12 @@
 import { MAX_SAMPLES, MAX_SEED, MAX_SUPERSAMPLE, cameraUniforms, type SetSceneOptions } from '@modelshot/pathtracer';
-import type { SceneAnimationLoop, SceneCamera, SceneDocument, SceneProjection, Vec3 } from '@modelshot/scene';
+import {
+  animationFrameCount,
+  type SceneAnimationLoop,
+  type SceneCamera,
+  type SceneDocument,
+  type SceneProjection,
+  type Vec3,
+} from '@modelshot/scene';
 import { ExportError } from './ExportError';
 import type { ClipFormat, ClipFraming, ExportFormat } from './ExportOptions';
 import {
@@ -255,7 +262,8 @@ export function checkExportOptions(doc: SceneDocument, options: unknown): Checke
       }
       if (!(seconds > 0)) throw invalid('seconds', `must be over 0, got ${seconds}`);
     }
-    const frames = clipFrameCount(seconds, fps, loop);
+    // Counted as the scene format counts export frames: a loop leaves out the frame equal to frame 0.
+    const frames = animationFrameCount({ length: seconds, loop }, fps);
     if (frames > MAX_CLIP_FRAMES) {
       throw new ExportError(
         'LIMIT_EXCEEDED',
@@ -281,16 +289,6 @@ export function checkExportOptions(doc: SceneDocument, options: unknown): Checke
     );
   }
   return checked;
-}
-
-/**
- * Frames of `seconds` of playback at `fps`, as `animationFrameTimes` of @modelshot/scene counts them for export: a loop
- * leaves out the frame equal to frame 0 (`max(1, round(seconds · fps))`), `hold` and `once` end on the frame at
- * `seconds` (`floor(seconds · fps) + 1`).
- */
-function clipFrameCount(seconds: number, fps: number, loop: SceneAnimationLoop): number {
-  const frames = seconds * fps;
-  return loop === 'loop' ? Math.max(1, Math.round(frames)) : Math.floor(frames + 1e-9) + 1;
 }
 
 function turntableSeconds(options: CheckedClipOptions): number {

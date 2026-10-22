@@ -16,143 +16,185 @@ export interface PalettedFrame {
   readonly transparent: boolean;
 }
 
+// The histogram's bins: 5 bits per channel, 32 768 bins.
+const BIN_BITS = 5;
+const BIN_SIDE = 1 << BIN_BITS;
+const BINS = BIN_SIDE ** 3;
+const binOf = (r: number, g: number, b: number): number =>
+  ((r >> 3) << (2 * BIN_BITS)) | ((g >> 3) << BIN_BITS) | (b >> 3);
+// Open addressing for the exact path: room for 256 colours at under half load.
+const EXACT_SLOTS = 1024;
+
+/** A box of bins: inclusive bin coordinates per channel, shrunk to the occupied bins. */
 interface Box {
-  /** Range [start, end) of the sorted unique colours. */
-  readonly start: number;
-  readonly end: number;
-  /** The channel of the widest range and that range, measured once when the box is made. */
-  readonly channel: number;
-  readonly range: number;
-}
-
-const channel = (colour: number, c: number): number => (colour >>> (16 - 8 * c)) & 0xff;
-
-function makeBox(colours: Uint32Array, start: number, end: number): Box {
-  return { start, end, ...extent(colours, start, end) };
-}
-
-function extent(colours: Uint32Array, start: number, end: number): { channel: number; range: number } {
-  const min = [255, 255, 255];
-  const max = [0, 0, 0];
-  for (let i = start; i < end; i++) {
-    for (let c = 0; c < 3; c++) {
-      const v = channel(colours[i] as number, c);
-      if (v < (min[c] as number)) min[c] = v;
-      if (v > (max[c] as number)) max[c] = v;
-    }
-  }
-  let best = 0;
-  for (let c = 1; c < 3; c++)
-    if ((max[c] as number) - (min[c] as number) > (max[best] as number) - (min[best] as number)) best = c;
-  return { channel: best, range: (max[best] as number) - (min[best] as number) };
+  readonly lo: [number, number, number];
+  readonly hi: [number, number, number];
 }
 
 /**
- * A palette of at most 255 colours by median cut over the opaque pixels, deterministic: an image of 255 colours or
- * fewer keeps every one exactly (flat pixel art stays lossless); else the box with the widest channel range splits
- * along that channel (ties: the first box, then r, g, b) at the pixel-weighted median, until 255 boxes or none can
- * split, and every pixel takes its box's weighted mean. No dithering: each colour maps to one index, so pixel art
- * keeps its flat texels. Alpha under `GIF_ALPHA_CUTOFF` takes the transparent index.
+ * Exact palette: every opaque colour its own entry, in order of first appearance, or `null` past 255 colours. Fills
+ * `indices` as it goes.
+ */
+function exactPalette(data: Uint8ClampedArray, indices: Uint8Array, palette: Uint8Array): number | null {
+  const keys = new Int32Array(EXACT_SLOTS).fill(-1);
+  const slots = new Uint8Array(EXACT_SLOTS);
+  let colours = 0;
+  let lastKey = -1;
+  let lastIndex = 0;
+  for (let i = 0, p = 0; p < indices.length; i += 4, p++) {
+    if ((data[i + 3] as number) < GIF_ALPHA_CUTOFF) {
+      indices[p] = TRANSPARENT_INDEX;
+      continue;
+    }
+    const key = ((data[i] as number) << 16) | ((data[i + 1] as number) << 8) | (data[i + 2] as number);
+    if (key !== lastKey) {
+      let slot = Math.imul(key, 0x9e3779b1) >>> 22;
+      while (keys[slot] !== -1 && keys[slot] !== key) slot = (slot + 1) & (EXACT_SLOTS - 1);
+      if (keys[slot] === -1) {
+        if (colours === GIF_COLOURS) return null;
+        keys[slot] = key;
+        slots[slot] = colours;
+        palette.set([key >> 16, (key >> 8) & 0xff, key & 0xff], colours * 3);
+        colours++;
+      }
+      lastKey = key;
+      lastIndex = slots[slot] as number;
+    }
+    indices[p] = lastIndex;
+  }
+  return colours;
+}
+
+function shrink(counts: Uint32Array, lo: number[], hi: number[]): Box | null {
+  const min = [BIN_SIDE, BIN_SIDE, BIN_SIDE];
+  const max = [-1, -1, -1];
+  for (let r = lo[0] as number; r <= (hi[0] as number); r++) {
+    for (let g = lo[1] as number; g <= (hi[1] as number); g++) {
+      const row = (r << (2 * BIN_BITS)) | (g << BIN_BITS);
+      for (let b = lo[2] as number; b <= (hi[2] as number); b++) {
+        if (counts[row | b] === 0) continue;
+        const at = [r, g, b];
+        for (let c = 0; c < 3; c++) {
+          if ((at[c] as number) < (min[c] as number)) min[c] = at[c] as number;
+          if ((at[c] as number) > (max[c] as number)) max[c] = at[c] as number;
+        }
+      }
+    }
+  }
+  if ((max[0] as number) < 0) return null;
+  return { lo: min as [number, number, number], hi: max as [number, number, number] };
+}
+
+function forEachBin(box: Box, visit: (bin: number, r: number, g: number, b: number) => void): void {
+  for (let r = box.lo[0]; r <= box.hi[0]; r++) {
+    for (let g = box.lo[1]; g <= box.hi[1]; g++) {
+      for (let b = box.lo[2]; b <= box.hi[2]; b++) visit((r << (2 * BIN_BITS)) | (g << BIN_BITS) | b, r, g, b);
+    }
+  }
+}
+
+/** Splits the boxes by median cut over the histogram until 255 boxes or none holds more than one bin. */
+function splitBoxes(counts: Uint32Array, boxes: Box[]): void {
+  const along = new Float64Array(BIN_SIDE);
+  while (boxes.length < GIF_COLOURS) {
+    let pick = -1;
+    let channel = 0;
+    let range = 0;
+    boxes.forEach((box, i) => {
+      for (let c = 0; c < 3; c++) {
+        const extent = (box.hi[c] as number) - (box.lo[c] as number);
+        if (extent > range) {
+          pick = i;
+          channel = c;
+          range = extent;
+        }
+      }
+    });
+    if (pick < 0) return;
+    const box = boxes[pick] as Box;
+    along.fill(0);
+    let total = 0;
+    forEachBin(box, (bin, r, g, b) => {
+      const n = counts[bin] as number;
+      const v = channel === 0 ? r : channel === 1 ? g : b;
+      along[v] = (along[v] as number) + n;
+      total += n;
+    });
+    // The pixel-weighted median along the channel, kept inside the box so both halves hold a bin.
+    const lo = box.lo[channel] as number;
+    const hi = box.hi[channel] as number;
+    let cut = lo;
+    let acc = 0;
+    for (let v = lo; v < hi; v++) {
+      acc += along[v] as number;
+      cut = v;
+      if (acc * 2 >= total) break;
+    }
+    const leftHi = [...box.hi];
+    leftHi[channel] = cut;
+    const rightLo = [...box.lo];
+    rightLo[channel] = cut + 1;
+    const halves = [shrink(counts, box.lo, leftHi), shrink(counts, rightLo, box.hi)].filter((h): h is Box => !!h);
+    boxes.splice(pick, 1, ...halves);
+  }
+}
+
+/**
+ * A palette of at most 255 colours over the opaque pixels, deterministic: a frame of 255 colours or fewer keeps every
+ * one exactly (flat pixel art stays lossless); else median cut over a histogram of 5-bit bins per channel (cost per
+ * pixel O(1), the cuts over 32 768 bins, so a 4096 × 4096 frame takes a fraction of a second): the box with the widest
+ * channel range splits along it (ties: the first box, then r, g, b) at the pixel-weighted median, until 255 boxes or
+ * none can split, and every pixel takes the mean of the pixels in its box. No dithering: a colour maps to one index,
+ * so flat texels stay flat. Alpha under `GIF_ALPHA_CUTOFF` takes the transparent index.
  */
 export function quantizePalette(image: RenderedImage): PalettedFrame {
   const { data } = image;
   const pixels = image.width * image.height;
-  const keys = new Uint32Array(pixels);
-  let opaque = 0;
-  for (let i = 0; i < pixels; i++) {
-    if ((data[i * 4 + 3] as number) < GIF_ALPHA_CUTOFF) continue;
-    keys[opaque++] = ((data[i * 4] as number) << 16) | ((data[i * 4 + 1] as number) << 8) | (data[i * 4 + 2] as number);
-  }
-  const sorted = keys.subarray(0, opaque).sort();
-  // Unique colours with their pixel counts.
-  const unique = new Uint32Array(opaque);
-  const counts = new Uint32Array(opaque);
-  let n = 0;
-  for (let i = 0; i < opaque; i++) {
-    const key = sorted[i] as number;
-    if (n > 0 && unique[n - 1] === key) {
-      counts[n - 1] = (counts[n - 1] as number) + 1;
-    } else {
-      unique[n] = key;
-      counts[n] = 1;
-      n++;
-    }
-  }
-  const colours = unique.subarray(0, n);
-  const weights = counts.subarray(0, n);
-  let boxes: Box[];
-  if (n <= GIF_COLOURS) {
-    boxes = Array.from({ length: n }, (_, i) => ({ start: i, end: i + 1, channel: 0, range: 0 }));
-  } else {
-    boxes = [makeBox(colours, 0, n)];
-    splitBoxes(colours, weights, boxes);
-  }
-  const palette = new Uint8Array(256 * 3);
-  // Colour key -> palette index, from the box each unique colour fell in.
-  const indexOf = new Map<number, number>();
-  boxes.forEach((box, index) => {
-    const sums = [0, 0, 0];
-    let total = 0;
-    for (let i = box.start; i < box.end; i++) {
-      const w = weights[i] as number;
-      for (let c = 0; c < 3; c++) sums[c] = (sums[c] as number) + channel(colours[i] as number, c) * w;
-      total += w;
-      indexOf.set(colours[i] as number, index);
-    }
-    for (let c = 0; c < 3; c++) palette[index * 3 + c] = Math.round((sums[c] as number) / total);
-  });
   const indices = new Uint8Array(pixels);
+  const palette = new Uint8Array(256 * 3);
   let transparent = false;
-  for (let i = 0; i < pixels; i++) {
-    if ((data[i * 4 + 3] as number) < GIF_ALPHA_CUTOFF) {
-      indices[i] = TRANSPARENT_INDEX;
+  for (let i = 3; i < data.length; i += 4) {
+    if ((data[i] as number) < GIF_ALPHA_CUTOFF) {
       transparent = true;
-      continue;
+      break;
     }
-    const key = ((data[i * 4] as number) << 16) | ((data[i * 4 + 1] as number) << 8) | (data[i * 4 + 2] as number);
-    indices[i] = indexOf.get(key) as number;
+  }
+  const exact = exactPalette(data, indices, palette);
+  if (exact !== null) return { palette, indices, colours: exact, transparent };
+  const counts = new Uint32Array(BINS);
+  const sums = new Float64Array(BINS * 3);
+  for (let i = 0; i < data.length; i += 4) {
+    if ((data[i + 3] as number) < GIF_ALPHA_CUTOFF) continue;
+    const r = data[i] as number;
+    const g = data[i + 1] as number;
+    const b = data[i + 2] as number;
+    const bin = binOf(r, g, b);
+    counts[bin] = (counts[bin] as number) + 1;
+    sums[bin * 3] = (sums[bin * 3] as number) + r;
+    sums[bin * 3 + 1] = (sums[bin * 3 + 1] as number) + g;
+    sums[bin * 3 + 2] = (sums[bin * 3 + 2] as number) + b;
+  }
+  const first = shrink(counts, [0, 0, 0], [BIN_SIDE - 1, BIN_SIDE - 1, BIN_SIDE - 1]);
+  const boxes = first ? [first] : [];
+  splitBoxes(counts, boxes);
+  const binIndex = new Uint8Array(BINS);
+  boxes.forEach((box, index) => {
+    const mean = [0, 0, 0];
+    let total = 0;
+    forEachBin(box, (bin) => {
+      const n = counts[bin] as number;
+      if (n === 0) return;
+      for (let c = 0; c < 3; c++) mean[c] = (mean[c] as number) + (sums[bin * 3 + c] as number);
+      total += n;
+      binIndex[bin] = index;
+    });
+    for (let c = 0; c < 3; c++) palette[index * 3 + c] = Math.round((mean[c] as number) / total);
+  });
+  for (let i = 0, p = 0; p < pixels; i += 4, p++) {
+    indices[p] =
+      (data[i + 3] as number) < GIF_ALPHA_CUTOFF
+        ? TRANSPARENT_INDEX
+        : (binIndex[binOf(data[i] as number, data[i + 1] as number, data[i + 2] as number)] as number);
   }
   return { palette, indices, colours: boxes.length, transparent };
-}
-
-function splitBoxes(colours: Uint32Array, weights: Uint32Array, boxes: Box[]): void {
-  // Sorting a box along a channel reorders its colours together with their weights.
-  const order = new Uint32Array(colours.length);
-  while (boxes.length < GIF_COLOURS) {
-    let pick = -1;
-    let pickChannel = 0;
-    let pickRange = 0;
-    boxes.forEach((box, i) => {
-      if (box.end - box.start < 2 || box.range <= pickRange) return;
-      pick = i;
-      pickChannel = box.channel;
-      pickRange = box.range;
-    });
-    if (pick < 0) return;
-    const box = boxes[pick] as Box;
-    const length = box.end - box.start;
-    for (let i = 0; i < length; i++) order[i] = box.start + i;
-    const span = order.subarray(0, length);
-    // Ties on the channel keep the colour order (a stable, deterministic sort).
-    const sortedSpan = Array.from(span).sort(
-      (a, b) =>
-        channel(colours[a] as number, pickChannel) - channel(colours[b] as number, pickChannel) ||
-        (colours[a] as number) - (colours[b] as number),
-    );
-    const sortedColours = sortedSpan.map((i) => colours[i] as number);
-    const sortedWeights = sortedSpan.map((i) => weights[i] as number);
-    colours.set(sortedColours, box.start);
-    weights.set(sortedWeights, box.start);
-    let total = 0;
-    for (const w of sortedWeights) total += w;
-    // The weighted median, kept inside the box so both halves have a colour.
-    let acc = 0;
-    let cut = 1;
-    for (let i = 0; i < length - 1; i++) {
-      acc += sortedWeights[i] as number;
-      cut = i + 1;
-      if (acc * 2 >= total) break;
-    }
-    boxes.splice(pick, 1, makeBox(colours, box.start, box.start + cut), makeBox(colours, box.start + cut, box.end));
-  }
 }

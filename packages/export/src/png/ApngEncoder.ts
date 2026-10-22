@@ -4,7 +4,8 @@ import type { ClipEncoder, ClipEncoderSettings } from '../ClipEncoder';
 import { ExportError } from '../ExportError';
 import { OutputParts } from '../OutputParts';
 import { deflateZlib } from './deflateZlib';
-import { filterScanlines, ihdr, PNG_SIGNATURE, pngChunk } from './pngChunks';
+import { filterScanlines } from './filterScanlines';
+import { ihdr, PNG_SIGNATURE, pngChunk } from './pngChunks';
 
 /**
  * Animated PNG, lossless with full alpha: acTL (the frame count, looping forever), then per frame an fcTL (the whole
@@ -47,7 +48,7 @@ export class ApngEncoder implements ClipEncoder {
     if (this.frame === 0) {
       this.output.push(pngChunk('IDAT', compressed));
     } else {
-      this.output.push(pngChunk('fdAT', new ByteWriter().u32(this.sequence++).bytes(compressed).toBytes()));
+      this.output.push(pngChunk('fdAT', new ByteWriter().u32(this.sequence++).toBytes(), compressed));
     }
     this.frame++;
   }

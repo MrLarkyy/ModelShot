@@ -30,6 +30,9 @@ const TWO_COLOURS = imageOf(16, 8, (x, y) =>
 const GRADIENT = imageOf(64, 64, (x, y) => [x * 4, y * 4, 128, 255]);
 // The documented bound for the gradient (docs/export.md): 14 levels measured, times 1.25.
 const GRADIENT_TOLERANCE = 18;
+// Milliseconds for the palette and LZW of a 4096 x 4096 frame of distinct colours (docs/testing.md): 330-440 measured
+// locally (the sort-based median cut took 36.7 s), about 7x for a slow shared runner under load.
+const GIF_FRAME_MS_MAX = 3000;
 
 describe('GIF encoding', () => {
   it('keeps an image of 255 colours or fewer exact: flat pixel art stays lossless', () => {
@@ -48,6 +51,7 @@ describe('GIF encoding', () => {
     frame.indices.forEach((index, i) => {
       rgba.set(frame.palette.subarray(index * 3, index * 3 + 3), i * 4);
     });
+    console.log(`[export] GIF gradient max error ${maxError(GRADIENT, rgba)}`);
     expect(maxError(GRADIENT, rgba)).toBeLessThanOrEqual(GRADIENT_TOLERANCE);
   });
 
@@ -129,3 +133,27 @@ function gifOf(width: number, height: number, lzw: Uint8Array): Uint8Array {
   bytes.push(0, 0x3b);
   return new Uint8Array(bytes);
 }
+
+describe('GIF encoding cost', () => {
+  it('quantizes and compresses a 4096 x 4096 frame of distinct colours within its time bound', () => {
+    // 2^24 pixels, every one a colour of its own: the histogram path at the largest export size.
+    const side = 4096;
+    const data = new Uint8ClampedArray(side * side * 4);
+    for (let i = 0; i < side * side; i++) {
+      data[i * 4] = i & 0xff;
+      data[i * 4 + 1] = (i >> 8) & 0xff;
+      data[i * 4 + 2] = (i >> 16) & 0xff;
+      data[i * 4 + 3] = 255;
+    }
+    const started = performance.now();
+    const frame = quantizePalette({ width: side, height: side, data });
+    const quantized = performance.now();
+    const lzw = lzwEncode(frame.indices, 8);
+    const done = performance.now();
+    console.log(
+      `[export] GIF 4096 x 4096 distinct colours: quantize ${(quantized - started).toFixed(0)} ms, LZW ${(done - quantized).toFixed(0)} ms, ${lzw.length} bytes`,
+    );
+    expect(frame.colours).toBe(255);
+    expect(done - started).toBeLessThanOrEqual(GIF_FRAME_MS_MAX);
+  }, 60_000);
+});

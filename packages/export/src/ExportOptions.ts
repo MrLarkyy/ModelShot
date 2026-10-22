@@ -18,7 +18,11 @@ export interface RenderSettings {
   readonly samples: number;
   /** Integer 0..2^32 − 1; every frame of a clip uses it, so the noise stands still instead of shimmering. */
   readonly seed: number;
-  /** Integer 1..4, default 1 (`RenderRequest.supersample`). */
+  /**
+   * Integer 1..4, default 1 (`RenderRequest.supersample`). The path tracer lowers it where the traced image would not
+   * fit the GPU or `MAX_SUPERSAMPLED_PIXELS` (a 4096 × 4096 export traces at 1); the result then carries a
+   * `SUPERSAMPLE_LOWERED` warning.
+   */
   readonly supersample?: number;
   /** Default `false` (`RenderRequest.denoise`). */
   readonly denoise?: boolean;
@@ -94,7 +98,7 @@ export interface ExportRunOptions {
   readonly onProgress?: (progress: ExportProgress) => void;
 }
 
-export type ExportWarningCode = 'FORMAT_FALLBACK' | 'ALPHA_DROPPED';
+export type ExportWarningCode = 'FORMAT_FALLBACK' | 'ALPHA_DROPPED' | 'SUPERSAMPLE_LOWERED';
 
 export interface ExportWarning {
   readonly code: ExportWarningCode;

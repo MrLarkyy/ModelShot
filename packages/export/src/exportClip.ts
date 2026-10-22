@@ -5,10 +5,14 @@ import { createClipEncoder } from './createClipEncoder';
 import { ExportError } from './ExportError';
 import type { ClipExportOptions, ClipFormat, ExportResult, ExportRunOptions, ExportWarning } from './ExportOptions';
 import type { FrameRenderer } from './FrameRenderer';
+import { framePose } from './framePose';
 import { planFrames } from './planFrames';
+import { showScene, sizeRenderer } from './prepareRenderer';
 import { ProgressReporter } from './ProgressReporter';
-import { renderFrame, showScene, sizeRenderer, throwIfCancelled } from './renderFrame';
+import { renderFrame } from './renderFrame';
 import { selectFormat } from './selectFormat';
+import { supersampleWarning } from './supersampleWarning';
+import { throwIfCancelled } from './throwIfCancelled';
 
 const FILE_TYPES: Readonly<Record<ClipFormat, { mimeType: string; extension: string }>> = {
   apng: { mimeType: 'image/apng', extension: 'png' },
@@ -23,7 +27,8 @@ const FILE_TYPES: Readonly<Record<ClipFormat, { mimeType: string; extension: str
  * is kept). The options are checked before anything else (`checkExportOptions`); the format is probed and falls back
  * along its chain (`selectFormat`: mp4 → webm → apng, webm → apng, webp → apng) with a `FORMAT_FALLBACK` warning;
  * video is opaque, so a transparent request renders opaque there with `ALPHA_DROPPED`. Frames come from `planFrames`
- * and share one seed. Rejects with `ExportError` `CANCELLED` on abort (the tracer stops within one step),
+ * and share one seed; an animation's poses all stand on one shadow catcher (the union of their bounds). A supersample
+ * the GPU cannot trace adds `SUPERSAMPLE_LOWERED`. Rejects with `ExportError` `CANCELLED` on abort (the tracer stops within one step),
  * `CONTEXT_LOST`, `ENCODER_FAILED`, `LIMIT_EXCEEDED` (the encoded file over `MAX_OUTPUT_BYTES`) or
  * `UNSUPPORTED_FORMAT`; a renderer error (`PathTracerError` of `setScene`) passes through. Nothing leaves the page.
  */
@@ -53,8 +58,9 @@ export async function exportClip(
       message: `${format === 'mp4' ? 'MP4' : 'WebM'} video has no alpha here, so the clip was rendered opaque, over the backdrop.`,
     });
   }
-  const frames = planFrames(doc, checked);
+  const { frames, catcherBounds } = await planFrames(doc, checked, signal);
   sizeRenderer(renderer, width, height);
+  const sceneOptions = catcherBounds ? { ...checked.scene, catcherBounds } : checked.scene;
   const progress = new ProgressReporter(frames.length, checked.samples, onProgress);
   const request = {
     seed: checked.seed,
@@ -70,16 +76,21 @@ export async function exportClip(
       { width, height, fps, frames: frames.length },
       video ? probed.video[format] : undefined,
     );
-    let shown: SceneDocument | null = null;
     for (const frame of frames) {
-      if (frame.document !== shown) {
-        await showScene(renderer, frame.document, checked.scene, signal);
-        shown = frame.document;
+      // Each pose is built right before it is shown; a still document is shown once.
+      if (checked.kind === 'animation') {
+        await showScene(renderer, framePose(doc, checked, frame.time), sceneOptions, signal);
+      } else if (frame.index === 0) {
+        await showScene(renderer, doc, sceneOptions, signal);
       }
       renderer.setCamera(frame.camera);
       const image = await renderFrame(renderer, request, signal, (samplesDone) =>
         progress.render(frame.index, samplesDone),
       );
+      if (frame.index === 0) {
+        const lowered = supersampleWarning(renderer, checked.supersample);
+        if (lowered) warnings.push(lowered);
+      }
       await encoder.addFrame(image);
       throwIfCancelled(signal, renderer);
       progress.encoded(frame.index);
