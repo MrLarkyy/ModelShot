@@ -1,0 +1,45 @@
+name: wiki
+
+# docs/ is the source of the GitHub wiki; the wiki is a mirror. A push to main that touches docs/ builds the pages
+# (tools/wiki: checks every link, idempotent, deletions mirrored) and pushes them to <repo>.wiki.git. A wiki that does not
+# exist yet (its first page was never created in the web UI) is a warning, not a failure.
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/**
+      - tools/wiki/**
+      - .github/workflows/wiki.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One publish at a time, in order: a later run mirrors every page anyway, so none is cancelled half way.
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    # Only what main holds is published.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Writing to the wiki repository is a contents: write on this job only.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Check links
+        run: node tools/wiki/build.mjs --check
+      # The token reaches git through environment variables only (tools/wiki/publish.mjs); it is never printed.
+      - name: Publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node tools/wiki/publish.mjs

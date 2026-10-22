@@ -23,6 +23,15 @@ export default defineConfig({
           environment: 'node',
         },
       },
+      {
+        test: {
+          name: 'wiki',
+          root: 'tools/wiki',
+          include: ['test/**/*.test.mjs'],
+          testTimeout: 60_000,
+          environment: 'node',
+        },
+      },
     ],
     passWithNoTests: false,
     // Measured values (bundle size vs budget) are printed by passing tests too, so a build log shows the numbers.
