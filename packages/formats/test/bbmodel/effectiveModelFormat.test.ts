@@ -21,7 +21,14 @@ function load(meta: Record<string, unknown>) {
 }
 
 describe('a missing model_format (Blockbench processCompatibility)', () => {
-  it.each([[{}], [{ model_format: '' }], [{ bone_rig: false }]])('%j reads as java_block', (meta) => {
+  it.each([
+    [{}],
+    [{ model_format: '' }],
+    [{ model_format: null }],
+    [{ model_format: false }],
+    [{ model_format: 0 }],
+    [{ bone_rig: false }],
+  ])('%j reads as java_block', (meta) => {
     const { scene, warnings } = load(meta);
     expect(warnings).toEqual([]);
     expect(scene.textures[0]?.frames?.count).toBe(4);
@@ -30,11 +37,18 @@ describe('a missing model_format (Blockbench processCompatibility)', () => {
     expect(scene.source.modelFormat).toBe('unknown');
   });
 
-  it.each([[{ bone_rig: true }], [{ model_format: '', bone_rig: true }]])('%j reads as bedrock_old', (meta) => {
-    const { scene } = load(meta);
-    expect(scene.textures[0]?.frames?.frameTime).toBeCloseTo(0.05);
-    expect(scene.meshes[0]?.groups.map((g) => [g.material, g.doubleSided])).toEqual([[0, true]]);
-    expect(scene.source.modelFormat).toBe('unknown');
+  it.each([[{ bone_rig: true }], [{ model_format: '', bone_rig: true }], [{ model_format: null, bone_rig: true }]])(
+    '%j reads as bedrock_old',
+    (meta) => {
+      const { scene } = load(meta);
+      expect(scene.textures[0]?.frames?.frameTime).toBeCloseTo(0.05);
+      expect(scene.meshes[0]?.groups.map((g) => [g.material, g.doubleSided])).toEqual([[0, true]]);
+      expect(scene.source.modelFormat).toBe('unknown');
+    },
+  );
+
+  it('a truthy model_format that is no string still fails the load', () => {
+    expect(() => load({ model_format: 5 })).toThrow(/model_format/);
   });
 
   it('a declared format wins over bone_rig and is kept in the source', () => {

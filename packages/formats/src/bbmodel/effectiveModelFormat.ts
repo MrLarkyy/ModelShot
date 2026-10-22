@@ -6,7 +6,6 @@ import { field, type JsonObject } from '../json/JsonObject';
  */
 export function effectiveModelFormat(meta: JsonObject, declared: string): string {
   if (declared) return declared;
-  const boneRig = field(meta, 'bone_rig');
-  const truthy = Array.isArray(boneRig) || (typeof boneRig === 'object' && boneRig !== null) || Boolean(boneRig);
-  return truthy ? 'bedrock_old' : 'java_block';
+  const boneRig = Boolean(field(meta, 'bone_rig'));
+  return boneRig ? 'bedrock_old' : 'java_block';
 }

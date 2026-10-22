@@ -48,7 +48,10 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
   if (!isJsonObject(meta))
     throw new BbmodelError('NOT_BBMODEL', '$.meta', `expected an object, got ${quoteValue(meta)}`);
   const formatVersion = readFormatVersion(meta);
-  const declaredFormat = readOptionalString(meta, 'model_format', '$.meta', limits.maxStringChars, '');
+  // Blockbench tests `!model_format`, so null, false and 0 are as good as absent.
+  const declaredFormat = field(meta, 'model_format')
+    ? readOptionalString(meta, 'model_format', '$.meta', limits.maxStringChars, '')
+    : '';
   const modelFormat = effectiveModelFormat(meta, declaredFormat);
 
   const elementsValue = field(root, 'elements');

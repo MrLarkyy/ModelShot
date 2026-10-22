@@ -371,15 +371,6 @@ squeezed onto the face), and the texture gains `frames`. Such models render diff
 Every other file loads exactly as before, and frame fields only ever warn (wrong types, an over-long `frame_order`),
 so no file that loaded before fails.
 
-MS-45 animates strips in more formats, a behaviour change for files that loaded before: in `image` and the plugin
-formats `geckolib_model`, `animated_entity_model`, `azure_model`, `bamo_model`, `free_rotation`,
-`java_block_sequence` and `cosmic_reach_entity_model`, faces on a strip texture now map into frame 0 and the texture
-gains `frames`; where Blockbench has `texture_mcmeta` (`geckolib_model`, `free_rotation`, `java_block_sequence`) the frame
-time follows `frame_time` ticks. A file with no (or an empty) `meta.model_format` now follows Blockbench's
-compatibility rule: `java_block` rules, or `bedrock_old` when `meta.bone_rig` is truthy, where every rule used to treat
-it as an unknown format; its `source.modelFormat` stays `unknown`. Frame fields only ever warn, so no file that loaded
-before fails.
-
 MS-29 reads texture render modes and Blockbench's default-texture rule, a behaviour change for files that loaded
 before: an `emissive` texture's material becomes `alphaMode: "mask"` with `alphaEmission` (its partly transparent
 texels now draw opaque, as in Blockbench); `additive` gains `blending`; in the single-texture formats a file with a
@@ -391,6 +382,15 @@ texture's `uv_width`/`uv_height` where they differ from the resolution. Files in
 render modes load exactly as before; the new
 fields only ever warn, so no file that loaded before fails. Reload affected models; scene documents need no
 migration (scene format version 1, [Versioning](scene-format.md#versioning)).
+
+MS-45 animates strips in more formats, a behaviour change for files that loaded before: in `image` and the plugin
+formats `geckolib_model`, `animated_entity_model`, `azure_model`, `bamo_model`, `free_rotation`,
+`java_block_sequence` and `cosmic_reach_entity_model`, faces on a strip texture now map into frame 0 and the texture
+gains `frames`; where Blockbench has `texture_mcmeta` (`geckolib_model`, `free_rotation`, `java_block_sequence`) the frame
+time follows `frame_time` ticks. A file with no (or an empty) `meta.model_format` now follows Blockbench's
+compatibility rule: `java_block` rules, or `bedrock_old` when `meta.bone_rig` is truthy, where every rule used to treat
+it as an unknown format; its `source.modelFormat` stays `unknown`. Frame fields only ever warn, so no file that loaded
+before fails.
 
 ## Local-first
 
