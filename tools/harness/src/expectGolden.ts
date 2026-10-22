@@ -78,24 +78,15 @@ export async function expectGolden(
     ...(spec.tolerance?.maxDiffRatio !== undefined ? { maxDiffRatio: spec.tolerance.maxDiffRatio } : {}),
     ...(spec.tolerance?.maxMeanDelta !== undefined ? { maxMeanDelta: spec.tolerance.maxMeanDelta } : {}),
   };
-  let result: ReturnType<typeof compareImages> | undefined;
-  const resolution = resolveGolden(
-    goldenSpec,
-    png,
-    {
-      updateMode: testInfo.config.updateSnapshots,
-      ci: Boolean(process.env['CI']),
-      allowUpdate: options.allowUpdate ?? true,
-      specFile: basename(testInfo.file).replace(/\.ts$/, ''),
-    },
-    (expected) => {
-      result = compareImages(png, expected, compareOptions);
-      return !result.pass;
-    },
-  );
+  const resolution = resolveGolden(goldenSpec, png, {
+    updateMode: testInfo.config.updateSnapshots,
+    ci: Boolean(process.env['CI']),
+    allowUpdate: options.allowUpdate ?? options.compareAgainst === undefined,
+    specFile: basename(testInfo.file).replace(/\.ts$/, ''),
+  });
   if (resolution.written) return;
 
-  result ??= compareImages(png, resolution.expected, compareOptions);
+  const result = compareImages(png, resolution.expected, compareOptions);
   if (result.pass) return;
 
   const base = testInfo.outputDir;

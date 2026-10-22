@@ -25,12 +25,7 @@ function isUpdateRequest(mode: UpdateMode): boolean {
   return mode === 'all' || mode === 'changed';
 }
 
-export function resolveGolden(
-  spec: GoldenSpec,
-  actualPng: Buffer,
-  options: ResolveOptions,
-  differs: (expected: Buffer) => boolean = (expected) => !expected.equals(actualPng),
-): GoldenResolution {
+export function resolveGolden(spec: GoldenSpec, actualPng: Buffer, options: ResolveOptions): GoldenResolution {
   if (isUpdateRequest(options.updateMode) && options.ci) {
     throw new Error(
       'golden update refused: CI is set, goldens change only through pnpm golden:update on a dev machine',
@@ -39,11 +34,9 @@ export function resolveGolden(
   const path = goldenPath(spec, options.goldenDir);
   const expected = existsSync(path) ? readFileSync(path) : null;
   if (options.allowUpdate && isUpdateRequest(options.updateMode)) {
-    if (expected === null || options.updateMode === 'all' || differs(expected)) {
-      mkdirSync(dirname(path), { recursive: true });
-      writeFileSync(path, actualPng);
-      return { written: true };
-    }
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, actualPng);
+    return { written: true };
   }
   if (expected === null) {
     throw new Error(`golden missing: ${path}; run pnpm golden:update ${options.specFile} after checking the render`);
