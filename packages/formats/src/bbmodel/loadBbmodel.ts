@@ -23,7 +23,14 @@ import { readTextureEntries, resolveTextures, textureIdIndex, type UvSize } from
 import { quoteValue } from '../text/quoteValue';
 import { readJson } from './readJson';
 import { formatDoubleSided, isDoubleSided } from './RenderSides';
-import { defaultTexture, formatPerGroupTexture, formatPerTextureUvSize, formatTextureRule } from './TextureRule';
+import {
+  defaultTexture,
+  formatBoxUvFloatSize,
+  formatPerGroupTexture,
+  formatPerTextureUvSize,
+  formatSingleTextureDefault,
+  formatTextureRule,
+} from './TextureRule';
 
 const SUPPORTED_MAJOR_VERSIONS = [3, 4, 5];
 const DEFAULT_RESOLUTION: UvSize = { width: 16, height: 16 };
@@ -53,6 +60,9 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
     ? readOptionalString(meta, 'model_format', '$.meta', limits.maxStringChars, '')
     : '';
   const modelFormat = effectiveModelFormat(meta, declaredFormat);
+  // Blockbench makes one collection per entry of an array and ignores anything else, so only the length matters.
+  const collections = field(root, 'collections');
+  const hasCollections = Array.isArray(collections) && collections.length > 0;
 
   const elementsValue = field(root, 'elements');
   const elements =
@@ -84,7 +94,7 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
   const boxUv = readOptionalBoolean(meta, 'box_uv', '$.meta', false);
 
   const textureIds = textureIdIndex(textureEntries);
-  const textureRule = formatTextureRule(modelFormat);
+  const textureRule = formatTextureRule(modelFormat, hasCollections);
   const stack = layeredStack(textureEntries, modelFormat);
   const context: ConverterContext = {
     textureUvSizes: textureEntries.map((entry) => ({ width: entry.uvWidth, height: entry.uvHeight })),
@@ -94,14 +104,14 @@ export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOpti
     untexturedDoubleSided: formatDefaultSides,
     textureRule,
     perGroupTexture,
-    defaultTexture: defaultTexture(textureRule, textureEntries),
+    defaultTexture: defaultTexture(formatSingleTextureDefault(modelFormat), textureEntries),
     // The composite follows the texture materials, so material i stays texture i.
     ...(stack ? { layeredMaterial: textureEntries.length } : {}),
     boxUv,
     // Before 4.5 a box-UV project kept "mirror UV" in the cube's `shade` flag; Blockbench reads `shade: false` as
     // mirrored on import.
     shadeMirrorsUv: boxUv && formatVersionBefore(formatVersion, '4.5'),
-    boxUvFloatSize: modelFormat === 'modded_entity',
+    boxUvFloatSize: formatBoxUvFloatSize(modelFormat),
     maxStringChars: limits.maxStringChars,
     maxVertices: limits.maxVertices,
     maxFaceVertices: limits.maxFaceVertices,

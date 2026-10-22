@@ -3,6 +3,18 @@ import { loadBbmodel, type BbmodelLimits } from '../../src/index';
 import { cube, mesh, meshFace, model, pngDataUri } from './fixtures';
 
 const json = (value: unknown): string => JSON.stringify(value);
+/** Plugin formats with Blockbench `single_texture` (MS-51, plugin sources of 2026-10-22). */
+const PLUGIN_SINGLE = [
+  'geckolib_model',
+  'animated_entity_model',
+  'azure_model',
+  'cosmic_reach_entity_model',
+  'optifine_player_model',
+];
+/** Plugin formats that set no texture flag: per-face textures and the project resolution. */
+const PLUGIN_PER_FACE = ['bamo_model', 'free_rotation', 'java_block_sequence', 'cosmic_reach_model', 'eme_entity'];
+const HYTALE = ['hytale_character', 'hytale_prop'];
+const COLLECTION = [{ name: 'c', uuid: 'k0', children: [] }];
 const meta = (modelFormat: string, extra: Record<string, unknown> = {}) => ({
   format_version: '4.5',
   model_format: modelFormat,
@@ -23,7 +35,7 @@ describe('per-texture UV size (Blockbench per_texture_uv_size)', () => {
     expect(scene.textures[0]).toMatchObject({ uvWidth: 32, uvHeight: 64 });
   });
 
-  it.each(['bedrock', 'java_block', 'modded_entity', 'unknown-format'])(
+  it.each(['bedrock', 'java_block', 'modded_entity', 'unknown-format', ...PLUGIN_SINGLE, ...PLUGIN_PER_FACE])(
     'uses the project resolution in %s and ignores the per-texture fields',
     (format) => {
       const ignored = [{ name: 't', uv_width: 0, uv_height: 'x' }];
@@ -34,12 +46,15 @@ describe('per-texture UV size (Blockbench per_texture_uv_size)', () => {
     },
   );
 
-  it.each(['image', 'optifine_entity', 'optifine_part'])('applies uv_width/uv_height in %s too', (format) => {
-    const { scene } = loadBbmodel(json(model({ meta: meta(format), textures })));
-    expect(scene.textures[0]).toMatchObject({ uvWidth: 32, uvHeight: 64 });
-  });
+  it.each(['image', 'optifine_entity', 'optifine_part', 'figura', ...HYTALE])(
+    'applies uv_width/uv_height in %s too',
+    (format) => {
+      const { scene } = loadBbmodel(json(model({ meta: meta(format), textures })));
+      expect(scene.textures[0]).toMatchObject({ uvWidth: 32, uvHeight: 64 });
+    },
+  );
 
-  it.each(['image', 'optifine_entity'])(
+  it.each(['image', 'optifine_entity', 'figura', 'hytale_prop'])(
     '%s: a bad uv size warns and uses the resolution (read since MS-29)',
     (format) => {
       const bad = [{ name: 't', uv_width: 0, uv_height: 'x' }];
@@ -68,6 +83,30 @@ describe('per-texture UV size (Blockbench per_texture_uv_size)', () => {
     expect(loadBbmodel(text).scene.meshes[0]?.groups[0]?.material).toBe(1);
   });
 
+  it.each(HYTALE)('%s: face UVs use the UV size of the texture shown, with and without collections', (format) => {
+    const list = [
+      { name: 'a', uuid: 't-a', uv_width: 16, uv_height: 16 },
+      { name: 'b', uuid: 't-b', uv_width: 64, uv_height: 32 },
+    ];
+    const north = { uv: [0, 0, 8, 8], texture: 1 };
+    const text = (extra: Record<string, unknown> = {}) =>
+      json(
+        model({
+          meta: meta(format),
+          resolution: { width: 32, height: 32 },
+          textures: list,
+          elements: [cube({ faces: { north } })],
+          ...extra,
+        }),
+      );
+    // Without collections the face shows the default texture (16x16), neither the stored one nor the resolution.
+    expect(northRect(text(), 16, 16)).toEqual([0, 0, 8, 8]);
+    expect(loadBbmodel(text()).scene.meshes[0]?.groups[0]?.material).toBe(0);
+    const own = text({ collections: COLLECTION });
+    expect(northRect(own, 64, 32)).toEqual([0, 0, 8, 8]);
+    expect(loadBbmodel(own).scene.meshes[0]?.groups[0]?.material).toBe(1);
+  });
+
   it('uses the project resolution when the format is missing', () => {
     const { scene } = loadBbmodel(json(model({ meta: { format_version: '4.5' }, textures })));
     expect(scene.textures[0]).toMatchObject({ uvWidth: 16, uvHeight: 16 });
@@ -90,8 +129,8 @@ describe('box-UV size (Blockbench size(), box_uv_float_size)', () => {
     expect(northRect(boxModel('free', [0.000001, 0, 0], [3, 2, 1]), 64, 64)).toEqual([1, 1, 3, 3]);
   });
 
-  it('keeps fractional sizes in modded_entity', () => {
-    expect(northRect(boxModel('modded_entity', [0, 0, 0], [4.5, 2, 1]), 64, 64)).toEqual([1, 1, 5.5, 3]);
+  it.each(['modded_entity', ...HYTALE])('keeps fractional sizes in %s', (format) => {
+    expect(northRect(boxModel(format, [0, 0, 0], [4.5, 2, 1]), 64, 64)).toEqual([1, 1, 5.5, 3]);
   });
 
   it('ignores stretch and inflate', () => {
@@ -403,6 +442,8 @@ describe('layered textures (Blockbench Canvas.getLayeredMaterial)', () => {
     'bedrock_block',
     'optifine_entity',
     'optifine_part',
+    ...PLUGIN_SINGLE,
+    'hytale_prop',
   ];
   const texture = (name: string, extra: Record<string, unknown> = {}) => ({ name, ...extra });
   const elements = [
@@ -419,12 +460,16 @@ describe('layered textures (Blockbench Canvas.getLayeredMaterial)', () => {
       faces: { f: meshFace(['a', 'b', 'c'], { texture: 0 }), g: meshFace(['a', 'c', 'd'], { texture: null }) },
     }),
   ];
-  const load = (modelFormat: string, textures: unknown[]) =>
-    loadBbmodel(json(model({ meta: meta(modelFormat), textures, elements, outliner: ['c0', 'm0'] })));
+  const load = (modelFormat: string, textures: unknown[], root: Record<string, unknown> = {}) =>
+    loadBbmodel(json(model({ meta: meta(modelFormat), textures, elements, outliner: ['c0', 'm0'], ...root })));
   const two = [texture('base', { render_sides: 'front' }), texture('top', { render_mode: 'layered' })];
+  const layeredCases: [string, Record<string, unknown>][] = [
+    ...LAYERED_FORMATS.map((format): [string, Record<string, unknown>] => [format, {}]),
+    ['hytale_prop', { collections: COLLECTION }],
+  ];
 
-  it.each(LAYERED_FORMATS)('%s: every drawn face uses one appended composite, sided as the format', (format) => {
-    const { scene } = load(format, two);
+  it.each(layeredCases)('%s %j: every drawn face uses one appended composite, sided as the format', (format, root) => {
+    const { scene } = load(format, two, root);
     expect(scene.materials).toHaveLength(3);
     expect(scene.materials[2]).toEqual({
       name: 'layered',
@@ -440,7 +485,7 @@ describe('layered textures (Blockbench Canvas.getLayeredMaterial)', () => {
     ]);
   });
 
-  it.each(['free', 'java_block'])('%s: no composite, faces keep their textures', (format) => {
+  it.each(['free', 'java_block', 'figura', 'eme_entity'])('%s: no composite, faces keep their textures', (format) => {
     const { scene } = load(format, two);
     expect(scene.materials).toHaveLength(2);
     expect(scene.meshes[0]?.groups.map((g) => g.material)).toEqual([-1, 0, 1]);
@@ -511,14 +556,21 @@ describe('default texture (Blockbench Face.getTexture, Texture.getDefault)', () 
   };
   const textures = (fields: Record<string, unknown>[] = [{}, {}]) =>
     fields.map((extra, i) => ({ name: `t${i}`, uuid: `t-${i}`, ...extra }));
-  const load = (modelFormat: string, list = textures(), outliner: unknown[] = ['c0']) => {
-    const text = json(model({ meta: meta(modelFormat), textures: list, elements: [cube({ faces })], outliner }));
+  const load = (
+    modelFormat: string,
+    list = textures(),
+    outliner: unknown[] = ['c0'],
+    root: Record<string, unknown> = {},
+  ) => {
+    const text = json(
+      model({ meta: meta(modelFormat), textures: list, elements: [cube({ faces })], outliner, ...root }),
+    );
     const { scene, warnings } = loadBbmodel(text);
     return { groups: scene.meshes.map((m) => m.groups.map((g) => [g.material, g.count / 6])), warnings };
   };
   const grouped = (texture: unknown) => [{ name: 'g', uuid: 'g0', texture, children: ['c0'] }];
 
-  it.each(['bedrock', 'bedrock_old', 'modded_entity', 'skin', 'image'])(
+  it.each(['bedrock', 'bedrock_old', 'modded_entity', 'skin', 'image', ...PLUGIN_SINGLE])(
     '%s: every non-null face shows the first texture',
     (format) => {
       expect(load(format).groups).toEqual([[[0, 3]]]);
@@ -561,7 +613,7 @@ describe('default texture (Blockbench Face.getTexture, Texture.getDefault)', () 
     expect(load('free', textures(), grouped(7)).warnings).toEqual(load('free').warnings);
   });
 
-  it.each(['free', 'java_block'])('%s: faces keep what they store', (format) => {
+  it.each(['free', 'java_block', ...PLUGIN_PER_FACE, 'figura'])('%s: faces keep what they store', (format) => {
     expect(load(format).groups).toEqual([
       [
         [-1, 2],
@@ -624,9 +676,53 @@ describe('default texture (Blockbench Face.getTexture, Texture.getDefault)', () 
     ]);
   });
 
-  it('use_as_default is ignored in single_texture formats', () => {
-    expect(load('bedrock', textures([{}, { use_as_default: true }])).groups).toEqual([[[0, 3]]]);
+  it.each(['bedrock', ...PLUGIN_SINGLE])('use_as_default is ignored in %s (single_texture only)', (format) => {
+    expect(load(format, textures([{}, { use_as_default: true }])).groups).toEqual([[[0, 3]]]);
   });
+
+  it.each(HYTALE)('%s without collections: every non-null face shows the default texture', (format) => {
+    expect(load(format).groups).toEqual([[[0, 3]]]);
+    // single_texture_default holds as well, so use_as_default picks the default texture.
+    expect(load(format, textures([{}, { use_as_default: true }])).groups).toEqual([[[1, 3]]]);
+  });
+
+  it.each(HYTALE)('%s with collections: only blank faces show the default texture', (format) => {
+    const root = { collections: COLLECTION };
+    expect(load(format, textures(), ['c0'], root).groups).toEqual([
+      [
+        [0, 2],
+        [1, 1],
+      ],
+    ]);
+    expect(load(format, textures([{}, { use_as_default: true }]), ['c0'], root).groups).toEqual([[[1, 3]]]);
+  });
+
+  it.each(HYTALE.flatMap((format) => [[], {}, 'x', null].map((value): [string, unknown] => [format, value])))(
+    '%s: collections %j count as none, without a warning',
+    (format, collections) => {
+      const { groups, warnings } = load(format, textures(), ['c0'], { collections });
+      expect(groups).toEqual([[[0, 3]]]);
+      expect(warnings).toEqual(load(format).warnings);
+    },
+  );
+
+  it.each(HYTALE)(
+    '%s: a mesh face with texture null draws with the default texture only without collections',
+    (format) => {
+      const element = mesh({
+        faces: { f: meshFace(['a', 'b', 'c'], { texture: null }), g: meshFace(['a', 'c', 'd'], { texture: 1 }) },
+      });
+      const materials = (root: Record<string, unknown>) => {
+        const text = json(model({ meta: meta(format), textures: textures(), elements: [element], ...root }));
+        return loadBbmodel(text).scene.meshes[0]?.groups.map((g) => [g.material, g.count / 3]);
+      };
+      expect(materials({})).toEqual([[0, 2]]);
+      expect(materials({ collections: COLLECTION })).toEqual([
+        [-1, 1],
+        [1, 1],
+      ]);
+    },
+  );
 
   it('frames follow the default texture', () => {
     const list = [
