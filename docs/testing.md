@@ -28,12 +28,12 @@ the worker count changed. For the shards to split the suite the `golden` project
 no state; with one worker nothing runs at once, it only lets a shard take part of a file), and `bench` no longer
 depends on `golden` (a dependency put every golden test into the bench's shard: shard 1 had all 219 tests, 2-4
 none). The `golden` project excludes the tests titled `baked lighting` or `like the baked preview` (`grepInvert`); the
-`bake` project runs only the first, the `pair` project (the 8 preview-vs-render pairing tests of `pathtracer.spec.ts`)
+`bake` project runs only the first, the `pair` project (the 9 preview-vs-render pairing tests of `pathtracer.spec.ts`)
 only the second: shards are contiguous ranges, so a block of slow tests always landed in one or two shards. Listed locally
-(`--list`, MS-19): `golden` 205 tests in 4 shards, 52 / 51 / 51 / 51; `pair` 8 tests, 4 / 4; `bake` 24 tests, 8 / 8 / 8;
-`bench` 1 test; 238 in all, each once, as the plain `playwright test` (and so `pnpm test`) runs every project. By the times of
+(`--list`, MS-19): `golden` 208 tests in 4 shards, 52 / 52 / 52 / 52; `pair` 9 tests, 5 / 4; `bake` 24 tests, 8 / 8 / 8;
+`bench` 1 test; 242 in all, each once, as the plain `playwright test` (and so `pnpm test`) runs every project. By the times of
 run 39624802150 (normal VM) the heaviest golden shard (2) takes about 5 minutes (about 10 on a 2x slow VM), a pair shard 3.8 (1.1-1.3 minutes per test; 7.6 on a 2x
-slow VM; with the two look-preset pairs of MS-19 a pair shard holds 4 tests, about 5 minutes, 10 on a slow VM),
+slow VM; with the three look-preset pairs of MS-19 a pair shard holds up to 5 tests, about 6 minutes, 12 on a slow VM),
 against the 20-minute limit.
 
 Why: the shard holding the baked tests ran into the 20-minute job limit with 4 shards (cancelled in runs 39612706830 and
@@ -369,22 +369,26 @@ has interreflection and noise. Logged as `[pt pair] <view>: ...`, values in `tes
 Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with rounded edges and the mirrored bounce
 (MS-16's values in brackets; every limit stayed, none widened, `edges` is new at measured x 1.25):
 
-| view                 | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta           | limit: `maxDiffRatio`, `maxMeanDelta` |
-| -------------------- | ----------------------------------- | --------------------------------------------- | ------------------------------------- |
-| `turntable-y030`     | 0 (1 604)                           | 201, 0.00307, 0.772 (185, 0.00282, 0.762)     | 0.00353, 0.953                        |
-| `iso`                | 0 (1 543)                           | 366, 0.00558, 0.959 (335, 0.00511, 0.942)     | 0.00639, 1.18                         |
-| `alpha-plane`        | 0 (689)                             | 2 083, 0.03178, 2.187 (2 083, 0.03178, 2.189) | 0.0398, 2.48 (2.187 x 1.25 is above)  |
-| `player-hold-34`     | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295) | 0.0232, 1.62                          |
-| `cutout-checker`     | 0 (3 307)                           | 293, 0.00447, 0.731 (275, 0.00420, 0.726)     | 0.00525, 0.908                        |
-| `edges`              | 0 (1 979)                           | 43, 0.00066, 0.397                            | 0.00082, 0.496                        |
-| `preset-marketplace` | 0 (1 322)                           | 1 238, 0.01889, 1.141                         | 0.0236, 1.43                          |
-| `preset-rim`         | 0 (1 322)                           | 1 259, 0.01921, 0.902                         | 0.0241, 1.13                          |
+| view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta           | limit: `maxDiffRatio`, `maxMeanDelta` |
+| -------------------------- | ----------------------------------- | --------------------------------------------- | ------------------------------------- |
+| `turntable-y030`           | 0 (1 604)                           | 201, 0.00307, 0.772 (185, 0.00282, 0.762)     | 0.00353, 0.953                        |
+| `iso`                      | 0 (1 543)                           | 366, 0.00558, 0.959 (335, 0.00511, 0.942)     | 0.00639, 1.18                         |
+| `alpha-plane`              | 0 (689)                             | 2 083, 0.03178, 2.187 (2 083, 0.03178, 2.189) | 0.0398, 2.48 (2.187 x 1.25 is above)  |
+| `player-hold-34`           | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295) | 0.0232, 1.62                          |
+| `cutout-checker`           | 0 (3 307)                           | 293, 0.00447, 0.731 (275, 0.00420, 0.726)     | 0.00525, 0.908                        |
+| `edges`                    | 0 (1 979)                           | 43, 0.00066, 0.397                            | 0.00082, 0.496                        |
+| `preset-marketplace`       | 0 (1 322)                           | 1 168, 0.01782, 1.229                         | 0.0223, 1.43                          |
+| `preset-rim`               | 0 (1 322)                           | 1 300, 0.01984, 1.059                         | 0.0241, 1.13                          |
+| `preset-marketplace-yaw30` | 0 (1 304)                           | 1 396, 0.02130, 1.219                         | 0.0266, 1.52                          |
 
 MS-19 measured the table again with the backdrop mask by rows: every earlier view kept its numbers and limits. The two
 look-preset pairs (`preset-marketplace`, `preset-rim`: the held-cube player baked under its look) are new at measured
 x 1.25, measured again after the preset numbers were tuned against the references and the path tracer's
-accents moved to the camera hit (round 2), and Marketplace once more after its rim moved behind the key side and grew
-(round 3: a different look, so a new baseline above round 2's 0.0222, 1.32; preset-rim unchanged).
+accents moved to the camera hit (round 2), Marketplace once more after its rim moved behind the key side and grew
+(round 3: a different look, so a new baseline above round 2's 0.0222, 1.32), and all of them again with the
+view-relative rim (round 4), where a limit stayed wherever the measurement x 1.25 would have raised it.
+`preset-marketplace-yaw30` (the same player and look from the app's default yaw 30, where the rim follows the camera)
+is new at measured x 1.25.
 
 alpha-plane's large ground is an untextured box, baked per vertex, so its preview shows no ground shadow (world-density
 charts for untextured meshes are not in MS-16); the catcher under it darkens its mean delta a little.
@@ -394,7 +398,7 @@ charts for untextured meshes are not in MS-16); the catcher under it darkens its
 MS-19 ([look-presets.md](look-presets.md)). Both fixtures take `preset=<id>` (a `LOOK_PRESETS` id, default `studio`;
 the realtime fixture bakes under it) and `rim=0` (the preset's rim light black); the variants `preset-marketplace`,
 `preset-rim` and `preset-marketplace-fallback` are the `player-hold-34` view under a look, baked with 64 samples in
-the preview. Studio is the v0 look, so every golden from before holds unregenerated. New goldens: `rt-preset-marketplace`,
+the preview, `preset-marketplace-yaw30` the same from yaw 30 (a pair only). Studio is the v0 look, so every golden from before holds unregenerated. New goldens: `rt-preset-marketplace`,
 `rt-preset-rim`, `rt-preset-marketplace-fallback` (baked, default tolerance), `pt-preset-marketplace.s1.n64`,
 `pt-preset-rim.s1.n64` (path-tracer tolerance); pairs above. Tests (`look presets` describes of `realtime.spec.ts`
 and `pathtracer.spec.ts`, golden project):
@@ -407,13 +411,23 @@ and `pathtracer.spec.ts`, golden project):
 - Marketplace renders the same bytes in batches of 7 and 64-pixel tiles;
 - the rim light, unshadowed: of the pixels it brightens by more than 12 levels in the preview (Rim against `rim=0`,
   unbaked) the render brightens 99.9 % too (3 701 preview, 6 783 render pixels: the render adds interreflected rim);
+- the Marketplace rim's white line (`pathtracer.spec.ts`): the held-cube player at 512 px, pitch 20, yaw 210 and 30,
+  baked preview and render (16 samples). Silhouette pixels (`silhouettePixels` of `imageMetrics.ts`: more than 4
+  levels off the row's backdrop in column 1, a backdrop pixel within 2 px) with every channel above 200
+  (`whiteCount`): at least the measured count / 1.25 in both (896 preview / 826 render at 210, 503 / 520 at 30;
+  floors 660 and 402), preview and render within 25 % of each other; blown-out pixels (every channel 250 or more) at
+  most the measured share x 1.25 (none anywhere) and under 2 % of the model. The saturated test skin is the case a
+  diffuse rim (round 3) never drew white on;
+- the turntable (`realtime.spec.ts`): Marketplace on the same player unbaked (the bake only darkens), 512 px, pitch
+  20, yaws 0 to 330 in steps of 30: no blown-out pixel (measured none), at least 85 white silhouette pixels (the
+  fewest measured: 107, at yaw 0, the player's back);
 - a lost preview context comes back with the look, byte-identical;
 - (bake project) light baked under Marketplace is refused by a Studio renderer and taken once it shows Marketplace.
 
 The look review page `review.html` (harness only, no build ships it) renders a `.bbmodel` the user picks (read from
 the file input, nothing fetched; none: the harness player with a held cube) under a preset, side by side: the baked
 preview (64 samples) and the render (seed 1, `samples`, default 256), `size` CSS pixels (default 512), yaw and pitch
-inputs, a PNG download of each. The camera fits the model's outline (its visible vertices projected from yaw and
+inputs (initial values from the `yaw` and `pitch` URL parameters, defaults 210 and 20), a PNG download of each. The camera fits the model's outline (its visible vertices projected from yaw and
 pitch) to 90 % of the view on the tighter axis, centred (`fitCameraToPoints`, tested); unticking "Fit" uses the
 app's bounding-sphere framing. `environment.spec.ts` opens it at 4 samples and checks it finishes on the fixture
 origin. Step 14 of MS-19 compares its Marketplace output with reference renders kept outside the repository.

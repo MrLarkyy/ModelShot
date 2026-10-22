@@ -149,9 +149,11 @@ dome and two unshadowed accents ([look-presets.md](look-presets.md#lighting-mode
   hemisphere around n is ⅔ n.y, so an unoccluded Lambert surface receives exactly `mix(ground, sky, ½ + ½ n.y)`: the
   preview's `hemisphereFill(n)`. An unoccluded convex surface therefore converges to the preview's value; only
   shadows and interreflection differ (tested in `looks` numerically and by the pair test).
-- Fill and rim accents: `color × max(n · direction, 0)` added at the camera hit only (`accentLight`) without a ray, as
-  the preview adds them without shadow and has no accent bounce: unshadowed at every vertex they would light faces the
-  rig hides and bounce out of them. No random dimension is added, so the sample table and seeds are unchanged.
+- Fill and rim accents, added at the camera hit only without a ray: `albedo × fillLight(n)` and the rim's radiance
+  `rimLight(n, −direction, albedo)`, seen back along the camera ray (the preview's `towardEye`; the rim's direction
+  is turned into world space from the camera, [look-presets.md](look-presets.md#lighting-model)). The preview adds
+  them without shadow and has no accent bounce: unshadowed at every vertex they would light faces the rig hides and
+  bounce out of them. No random dimension is added, so the sample table and seeds are unchanged.
 - Camera rays that escape show the look's backdrop at their pixel (`backdropHere()`: screen y over the full frame
   height, never the tile's), the preview's gradient; before the first sample `present` shows it too.
 - Shadow catcher (`shadowCatcherPlane` of the realtime renderer): a camera ray that meets the plane from above,

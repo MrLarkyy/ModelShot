@@ -73,8 +73,9 @@ if (lighting) renderer.setLighting(lighting);
 - **Values.** RGBA16F (`BakedLighting`): rgb the fill as a multiple of the unoccluded fill `hemisphereFill(n)`, a the
   key's visibility. Texels of no chart and vertices of no triangle hold 1, so an anti-aliasing tap outside a face, or
   a degenerate triangle, never darkens. `shadeBaked` (`shading.glsl`) is `albedo × (hemisphereFill(n) × rgb +
-u_lookKeyColor × max(n·u_lookKeyDirection, 0) × a + accentLight(n))`: the accents cast no shadow and stay whole; value
-  1 gives the unbaked expression exactly.
+u_lookKeyColor × max(n·u_lookKeyDirection, 0) × a + fillLight(n)) + rimLight(n, v, albedo)`, v toward the eye
+  (`towardEye(v_worldPosition)`): the accents cast no shadow and stay whole; value 1 gives the unbaked expression
+  exactly.
 - **Sampling.** Texel charts are read with the albedo's own seam taps (`seamTaps` of `texelSample.glsl`): the same
   2 × 2 texels and weights, clamped to the chart, so light and albedo change at the same pixels and the bake adds no
   shimmer of its own. Vertex charts are fetched in `mesh.vert.glsl` and interpolated; the back pass reads the back
@@ -185,7 +186,8 @@ replaces both with the new look's (`setEdges` still changes the edges alone). An
 Baked lighting); a new sharp angle detects edges again as `setEdges` does.
 
 Shading is the look's sky/ground dome (`hemisphereFill`) plus its directional key, unoccluded without baked lighting and
-occluded per texel with it, plus the unshadowed fill and rim accents (`accentLight`) in both cases: the `lightRig`
+occluded per texel with it, plus the unshadowed accents in both cases, the world-space fill (`fillLight`) and the
+view-relative grazing rim (`rimLight`, its direction turned into world space from the frame's camera): the `lightRig`
 chunk of `@modelshot/looks`, which the path tracer reads too, so an unoccluded surface converges there to the
 preview's value ([path-tracer.md](path-tracer.md#lighting)); `shaders/shading.glsl` applies it. The look's values are
 uniforms (`uploadLookUniforms`), uploaded once per program per frame. The backdrop is a pass on both paths
