@@ -676,9 +676,9 @@ stubbed WebCodecs encoder, one catcher for every pose of an animation and the `S
 fake renderer, the path tracer's `catcherBounds` (`catcherBounds.test.ts`), a scan of the sources for network calls,
 `gif.test.ts`'s cost bound: the palette and LZW of a 4096 x 4096 frame of 2^24 distinct colours within 3 000 ms of
 thread CPU time (`expectCpuBelow`, as the other packages bound work; 453 ms measured locally, the sort-based median cut
-it replaced took 36.7 s), and `bundleSize.test.ts`: the entry chunk
-and its static imports at most 7 299 gzip bytes (5 839 measured, times 1.25) with no encoder in them. Those bounds live
-in the tests until `budgets.json` takes them (MS-41).
+it replaced took 36.7 s), and `bundleSize.test.ts`: no encoder or muxer in the entry chunk and its static imports,
+every one in a chunk loaded on demand. Their gzip size is the budget `bundleGzipBytes.export` and the time of a whole
+export `frameTimeMs.export-turntable-64-f4-n16` (Budgets, below).
 
 ## Model-view fixture
 
@@ -813,7 +813,7 @@ attached vertex formula in four poses, re-posing, nesting, index remapping, ever
 ## Budgets
 
 `budgets.json` (root, `"version": 1`) holds `max` values for frame time, load time, time to N samples and gzip bundle
-size of `app`, `embed`, `site` and `site-assets`. `site` is a plain `vite build` of `packages/site` without the `/app/` copy that `build:with-app` adds; `site-assets` is the same build's woff2 and svg files. `pnpm test` measures them (`bench.spec.ts`; the bundle is built fresh into a temporary directory, so
+size of `app`, `embed`, `site`, `site-assets` and `export`. `site` is a plain `vite build` of `packages/site` without the `/app/` copy that `build:with-app` adds; `site-assets` is the same build's woff2 and svg files; `export` is `@modelshot/export` built as a library (Vite lib mode, the workspace packages external), the entry chunk and the chunks it imports statically, each gzipped, so the encoders, loaded on demand, are not counted. `pnpm test` measures them (`bench.spec.ts`; the bundle is built fresh into a temporary directory, so
 it does not depend on `pnpm -r build`) and fails when a value exceeds its `max`, when a budget has no measurement, or
 a measurement has no budget. The measured values are in `tools/harness/test-results/budgets-measured.json`, and
 every run prints each one against its max (`[budget] <group>.<key>: measured … / max …`, from `bench.spec.ts` and
@@ -968,6 +968,14 @@ probing that matching used before (about two minutes at this size; `sharpEdges` 
 vertices). Matching sorts now: 752 ms local SwiftShader for the whole load (`sharpEdges` alone 0.15 s for 400 000
 vertices), max 3500 ms as for the other load budgets. The same run: `edges-200k` 1158 ms, `edges-hostile` 1194 ms,
 `large-order` 896 ms.
+
+`frameTimeMs.export-turntable-64-f4-n16` (MS-22): `bench.spec.ts` times `window.__msExport.turntable()` of
+`export.html`, a transparent 4-frame APNG turntable of the showcase at 64 x 64 and 16 samples a frame from a fresh
+path tracer (its scene upload, the frames, the encoding; no decoding), median of 3: local SwiftShader 915, 860 and 867
+ms; max 9000 ms, 10x the median rounded up, as budgets are set before a CI measurement. `bundleGzipBytes.export`
+(MS-22): local 6407 and 6433 B (the export package's own `bundleSize.test.ts`, which gzips the chunks as one text,
+measured 5839); max 8041 B, 1.25x the larger. Both moved from the package's test and the e2e log into this file once
+MS-41 freed it.
 
 `frameTimeMs.rt-load-first-frame-200k-world` (MS-41): the same load of `world-200k` (`fixtures/src/worldLoadScene.ts`),
 49 untextured meshes of 4096 triangles each (200 704, every mesh just at the world-chart gate): 42 smooth height fields

@@ -137,6 +137,8 @@ export interface ExportControls {
   lose: () => Promise<ExportLossOutcome>;
   video: (format: 'webm' | 'mp4') => Promise<ExportVideoOutcome>;
   apngTiming: () => Promise<ExportTimingOutcome>;
+  /** The 4-frame transparent APNG turntable alone (a tracer of its own, no decoding): the bench times it. */
+  turntable: () => Promise<number>;
 }
 
 declare global {
@@ -558,7 +560,16 @@ async function apngTiming(): Promise<ExportTimingOutcome> {
   }
 }
 
-window.__msExport = { still, clip, cancel, pair, lose, video, apngTiming };
+async function turntable(): Promise<number> {
+  const tracer = tracerFor(viewOf(TURNTABLE_VIEW));
+  try {
+    return (await exportedClip({ format: 'apng', transparent: true }, tracer)).result.frames;
+  } finally {
+    tracer.dispose();
+  }
+}
+
+window.__msExport = { still, clip, cancel, pair, lose, video, apngTiming, turntable };
 
 const api: MsFixture = {
   ready: Promise.resolve(),

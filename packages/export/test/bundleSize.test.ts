@@ -1,23 +1,13 @@
 import { build } from 'vite';
 import { describe, expect, it } from 'vitest';
 
-/**
- * Gzip bytes the entry chunk and the chunks it imports statically may take (what loads before an export starts):
- * measured 5 839 (2026-10-22, round 2), times 1.25. The workspace packages are external: the app ships the path
- * tracer and the scene format anyway, so this is what importing the export API adds to it. Moves to budgets.json once
- * the budget file is free to edit (MS-41).
- */
-const EXPORT_ENTRY_GZIP_MAX = 7299;
+// The gzip size of what loads before an export starts is a budget (budgets.json bundleGzipBytes.export, measured by
+// the harness); this test pins what that part holds: no encoder.
 
 /** Strings only an encoder or a muxer holds. */
 const ENCODER_MARKERS = ['NETSCAPE2.0', 'acTL', 'fdAT', 'VP8X', 'ANMF', 'ftyp', 'avcC', 'V_VP9', 'VideoFrame('];
 
 const packageRoot = decodeURIComponent(new URL('..', import.meta.url).pathname).replace(/^\/([A-Za-z]:)/, '$1');
-
-async function gzipSize(text: string): Promise<number> {
-  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
-  return (await new Response(stream).arrayBuffer()).byteLength;
-}
 
 interface Chunk {
   readonly type: string;
@@ -45,7 +35,7 @@ function upFront(entry: Chunk, chunks: readonly Chunk[]): Chunk[] {
 }
 
 describe('export bundle', () => {
-  it('keeps the entry chunk small and every encoder in a chunk loaded on demand', async () => {
+  it('keeps every encoder out of the entry and its static imports, in chunks loaded on demand', async () => {
     const output = (await build({
       configFile: false,
       root: packageRoot,
@@ -65,9 +55,6 @@ describe('export bundle', () => {
     if (!entry) throw new Error('no entry chunk');
     const loaded = upFront(entry, chunks);
     const code = loaded.map((c) => c.code ?? '').join(';');
-    const gzip = await gzipSize(code);
-    console.log(`[budget] export entry gzip: measured ${gzip} / max ${EXPORT_ENTRY_GZIP_MAX}`);
-    expect(gzip).toBeLessThanOrEqual(EXPORT_ENTRY_GZIP_MAX);
     for (const marker of ENCODER_MARKERS) expect(code, marker).not.toContain(marker);
     const lazy = chunks.filter((c) => !loaded.includes(c)).map((c) => c.code ?? '');
     for (const marker of ENCODER_MARKERS)
