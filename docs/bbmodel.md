@@ -16,7 +16,7 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
 
 ## Supported
 
-- Format versions 3.x, 4.x and 5.x (`meta.format_version`); any project format (`free`, `bedrock`, `java_block`, …). A file with no or an empty `meta.model_format` is read as Blockbench does: `java_block`, or `bedrock_old` when `meta.bone_rig` is truthy; its scene `source.modelFormat` stays `unknown`.
+- Format versions 3.x, 4.x and 5.x (`meta.format_version`); any project format (`free`, `bedrock`, `java_block`, …). A file whose `meta.model_format` is absent, empty, `null`, `false` or `0` is read as Blockbench does: `java_block`, or `bedrock_old` when `meta.bone_rig` is truthy; its scene `source.modelFormat` stays `unknown`.
 - **Cubes**: `from`/`to` (either order), `origin` (pivot), `rotation` (any angles), `inflate` (also negative),
   `stretch`, per-face `uv` with `rotation` (0, 90, 180, 270) and mirroring (u1 > u2 or v1 > v2), per-face `texture`
   (index or texture uuid), `visibility`, `render_order`.
@@ -387,9 +387,9 @@ MS-45 animates strips in more formats, a behaviour change for files that loaded 
 formats `geckolib_model`, `animated_entity_model`, `azure_model`, `bamo_model`, `free_rotation`,
 `java_block_sequence` and `cosmic_reach_entity_model`, faces on a strip texture now map into frame 0 and the texture
 gains `frames`; where Blockbench has `texture_mcmeta` (`geckolib_model`, `free_rotation`, `java_block_sequence`) the frame
-time follows `frame_time` ticks. A file with no (or an empty) `meta.model_format` now follows Blockbench's
+time follows `frame_time` ticks. A file whose `meta.model_format` is absent, empty, `null`, `false` or `0` now follows Blockbench's
 compatibility rule: `java_block` rules, or `bedrock_old` when `meta.bone_rig` is truthy, where every rule used to treat
-it as an unknown format; its `source.modelFormat` stays `unknown`. Frame fields only ever warn, so no file that loaded
+it as an unknown format; its `source.modelFormat` stays `unknown`. Files with `null`, `false` or `0` there used to fail with `INVALID_FIELD` and now load. Frame fields only ever warn, so no file that loaded
 before fails.
 
 ## Local-first
