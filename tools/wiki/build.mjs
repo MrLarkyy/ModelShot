@@ -143,17 +143,32 @@ export function convert(file, markdown, table, repoUrl, ctx = {}) {
       out.push(line);
       return;
     }
-    const parts = line.split(/(`+[^`]*`+)/);
-    const done = parts.map((part, i) => {
-      if (i % 2 === 1) return part;
-      return part
-        .replace(
-          /(!?)(\[[^\]]*\]\()(<?)([^)\s>]+)(>?)/g,
-          (_m, bang, a, b, t, c) => `${bang}${a}${b}${rewrite(t, index, bang === '!')}${c}`,
-        )
-        .replace(/^(\s{0,3}\[[^\]]+\]:\s*)(\S+)/, (_m, a, t) => `${a}${rewrite(t, index)}`);
-    });
-    out.push(done.join(''));
+    const masked = line.replace(/(`+)[^`]*\1/g, (m) => 'x'.repeat(m.length));
+    /** @type {{ at: number, length: number, text: string }[]} */
+    const edits = [];
+    /**
+     * @param {RegExpMatchArray} m
+     * @param {number} prefixLength
+     * @param {boolean} image
+     */
+    const edit = (m, prefixLength, image) => {
+      const target = m[0].slice(prefixLength).match(/^[^)\s>]+|^\S+/)?.[0] ?? '';
+      const at = (m.index ?? 0) + prefixLength;
+      if (line.slice(at, at + target.length) !== target) return;
+      edits.push({ at, length: target.length, text: rewrite(target, index, image) });
+    };
+    for (const m of masked.matchAll(/\]\(<?[^)\s>]+/g)) {
+      const open = masked.lastIndexOf('[', m.index);
+      const image = open > 0 && masked[open - 1] === '!';
+      edit(m, m[0].startsWith('](<') ? 3 : 2, image);
+    }
+    const ref = /^\s{0,3}\[[^\]]+\]:\s*/.exec(masked);
+    if (ref)
+      edit(/** @type {RegExpMatchArray} */ (Object.assign([masked.slice(0)], { index: 0 })), ref[0].length, false);
+    let text = line;
+    for (const e of edits.sort((x, y) => y.at - x.at))
+      text = text.slice(0, e.at) + e.text + text.slice(e.at + e.length);
+    out.push(text);
   });
   return { text: out.join('\n'), problems };
 }

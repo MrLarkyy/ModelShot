@@ -61,6 +61,15 @@ describe('convert', () => {
     expect(problems).toEqual([]);
   });
 
+  test('rewrites a link whose text contains code', () => {
+    const anchorsByFile = new Map([['camera.md', new Set(['a'])]]);
+    expect(run('[`X`](camera.md#a) and `[a](camera.md)`', { anchorsByFile }).text).toBe(
+      '[`X`](Camera#a) and `[a](camera.md)`',
+    );
+    expect(run('![`x`](../README.md)', { repoRoot: root }).text).toBe('![`x`](' + REPO + '/raw/main/README.md)');
+    expect(run('[`X`](nope.md)').problems).toHaveLength(1);
+  });
+
   test('an image becomes a raw link so it renders', () => {
     expect(run('![i](../README.md) [l](../README.md)', { repoRoot: root }).text).toBe(
       `![i](${REPO}/raw/main/README.md) [l](${REPO}/blob/main/README.md)`,
@@ -103,6 +112,9 @@ describe('buildWiki', () => {
     for (const p of table.values()) {
       expect(home).toContain(`(${p.page})`);
       expect(sidebar).toContain(`(${p.page})`);
+    }
+    for (const f of table.keys()) {
+      for (const [name, text] of files) expect(text, `${name} links ${f}`).not.toContain(`](${f}`);
     }
     expect(files.get('_Footer.md')).toContain(`${REPO}/tree/main/docs`);
   });
