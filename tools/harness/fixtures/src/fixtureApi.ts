@@ -178,6 +178,24 @@ export interface PtControls {
   setLook: (id: string) => string;
   /** Image position (pixels, top-left origin) of a world point under the current camera. */
   project: (x: number, y: number, z: number) => [number, number];
+  /** `PathTracer.progress` and `running` of the current request. */
+  readonly progress: PtProgress;
+  readonly running: boolean;
+  /** `accumulationWidth` × `accumulationHeight`: the traced size. */
+  readonly accumulationSize: [number, number];
+  /** The error `start` throws for the page's seed and samples with these quality fields (`name: message`), or `ok`. */
+  tryQuality: (fields: { supersample?: unknown; denoise?: unknown; noiseThreshold?: unknown }) => string;
+}
+
+/** `RenderProgress` of the path tracer. */
+export interface PtProgress {
+  samplesDone: number;
+  targetSamples: number;
+  supersample: number;
+  noise: number | null;
+  converged: boolean;
+  elapsedMs: number;
+  remainingMs: number | null;
 }
 
 declare global {

@@ -4,6 +4,7 @@ import {
   PathTracer,
   PathTracerError,
   type PathTracerWarning,
+  type RenderRequest,
   type SetSceneOptions,
 } from '@modelshot/pathtracer';
 import { cameraProjection, cameraView, mat4Multiply, type SceneDocument } from '@modelshot/scene';
@@ -19,7 +20,8 @@ import { isRtSceneName, parseRtView, reverseMeshOrder, rtCamera, rtLook, rtScene
 // rtScenes.ts; catcher=0|1 the shadow catcher, default on; edges=<width> the rounded edges, 0 none; preset=<look
 // preset id>, rim=0) plus the path-tracer-only variant `emissive`; seed (default 1), samples (default 64), batch (samples
 // per step, default all), tile (tile side, default 256), size (CSS pixels, default 256), maxTriangles, track=1 (count
-// GL objects), timing=1 (one sample per frame with a time readout, for a manual run on real hardware).
+// GL objects), timing=1 (one sample per frame with a time readout, for a manual run on real hardware); the render
+// quality (RenderRequest): supersample=1..4, denoise=1, noise=<threshold>, which the sample bench uses too.
 const params = new URLSearchParams(location.search);
 
 /** Path-tracer-only presets: a realtime view plus what only the tracer has. */
@@ -35,6 +37,26 @@ function intParam(name: string, fallback: number, min: number, max: number): num
     throw new Error(`query parameter ${name} must be an integer in ${min}..${max}`);
   }
   return Number(raw);
+}
+
+/** A decimal number in the URL (the tracer checks its range). */
+function decimalParam(name: string): number | undefined {
+  const raw = params.get(name);
+  if (raw === null) return undefined;
+  if (!/^\d{1,3}(\.\d{1,12})?$/.test(raw)) throw new Error(`query parameter ${name} must be a decimal number`);
+  return Number(raw);
+}
+
+/** The quality fields of the page's request; none given: none set, as a caller of the plain API. */
+function qualityParams(): Pick<RenderRequest, 'supersample' | 'denoise' | 'noiseThreshold'> {
+  const supersample = params.has('supersample') ? intParam('supersample', 1, 1, 4) : undefined;
+  const denoise = params.has('denoise') ? intParam('denoise', 0, 0, 1) === 1 : undefined;
+  const noiseThreshold = decimalParam('noise');
+  return {
+    ...(supersample !== undefined ? { supersample } : {}),
+    ...(denoise !== undefined ? { denoise } : {}),
+    ...(noiseThreshold !== undefined ? { noiseThreshold } : {}),
+  };
 }
 
 const tracker = params.get('track') === '1' ? installGlTracker() : null;
@@ -66,6 +88,7 @@ async function start(): Promise<void> {
   const tileSize = intParam('tile', 256, 16, 4096);
   const maxTriangles = intParam('maxTriangles', 200_000, 0, 10_000_000);
   const timing = params.get('timing') === '1';
+  const quality = qualityParams();
   const variantName = params.get('variant');
   const ptVariant = variantName !== null && Object.hasOwn(PT_VARIANTS, variantName) ? PT_VARIANTS[variantName] : null;
   const viewParams = new URLSearchParams(params);
@@ -110,7 +133,7 @@ async function start(): Promise<void> {
   };
   const probes = (): PtProbe[] => computePtProbes(doc, sceneProbes(view.scene), (p) => project(...p));
   const render = (): number => {
-    tracer.start({ seed, samples });
+    tracer.start({ seed, samples, ...quality });
     while (tracer.step(batch) > 0);
     return tracer.samplesDone;
   };
@@ -124,7 +147,7 @@ async function start(): Promise<void> {
   if (timing) {
     const output = document.createElement('output');
     document.body.appendChild(output);
-    tracer.start({ seed, samples });
+    tracer.start({ seed, samples, ...quality });
     installSampleReadout(
       gl,
       () => tracer.step(1),
@@ -138,7 +161,7 @@ async function start(): Promise<void> {
   }
 
   installSampleBench(api, gl, (count) => {
-    tracer.start({ seed, samples: count });
+    tracer.start({ seed, samples: count, ...quality });
     while (tracer.step(count) > 0);
   });
   installSceneBench(api, gl, async () => {
@@ -177,7 +200,7 @@ async function start(): Promise<void> {
     render,
     step: (maxSamples) => tracer.step(maxSamples),
     cancelAfter: (count) => {
-      tracer.start({ seed, samples });
+      tracer.start({ seed, samples, ...quality });
       tracer.step(count);
       tracer.cancel();
       const cancelled = tracer.samplesDone;
@@ -293,6 +316,23 @@ async function start(): Promise<void> {
       }
     },
     project,
+    get progress() {
+      return { ...tracer.progress };
+    },
+    get running() {
+      return tracer.running;
+    },
+    get accumulationSize(): [number, number] {
+      return [tracer.accumulationWidth, tracer.accumulationHeight];
+    },
+    tryQuality: (fields) => {
+      try {
+        tracer.start({ seed, samples, ...(fields as Partial<RenderRequest>) });
+        return 'ok';
+      } catch (error) {
+        return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      }
+    },
   };
   api.pt = controls;
 }
