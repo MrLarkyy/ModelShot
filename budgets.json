@@ -8,6 +8,7 @@
     "rt-load-first-frame-200k-edges": { "max": 3500 },
     "rt-load-first-frame-edges-hostile": { "max": 3500 },
     "rt-load-first-frame-edges-weld": { "max": 3500 },
+    "rt-load-first-frame-200k-world": { "max": 3500 },
     "pt-load-200k": { "max": 10000 }
   },
   "timeToSamplesMs": {

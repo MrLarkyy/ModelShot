@@ -75,6 +75,8 @@ const GOLDENS: readonly PathTracedGoldenSpec[] = [
   EDGES,
   MARKETPLACE,
   pt('preset-rim', 'preset-rim', 64),
+  // MS-41: the box's contact shadow on an image-less glTF ground; paired with rt-bake-gltf-contact.
+  pt('gltf-contact', 'gltf-contact', 128),
 ];
 
 /** The look preset of a fixture variant (rtScenes.ts RT_VARIANTS), Studio unless the variant names one. */

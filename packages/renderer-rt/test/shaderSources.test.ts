@@ -78,6 +78,15 @@ describe('shader sources', () => {
         expect(vertex).toContain(depthKey === 'exact' ? 'layout(location = 7)' : 'void passDepthKey(vec4 world) {}');
       }
     }
+    // World charts: read bilinearly at their own grid from the corner point and rectangle in the vertex-light varyings;
+    // only z = -1 means no light.
+    const { vertex, fragment } = shaderProgramSource('opaque', 'exact');
+    expect(vertex).toContain('layout(location = 11) in vec4 a_lightmapChart;');
+    expect(vertex).toContain('v_vertexLightBack = a_lightmapChart;');
+    expect(fragment).toContain('if (chart.z == LIGHTMAP_NONE) return vec4(1.0);');
+    expect(fragment).toContain('if (chart.z == LIGHTMAP_WORLD) {');
+    expect(fragment).toContain('vec2 at = v_vertexLight.xy - rect.xy - 0.5;');
+    expect(fragment).not.toContain('chart.z < 0.0');
     // Light and albedo share the seam taps.
     expect(shaderProgramSource('opaque').fragment.match(/seamTaps\(/g)?.length).toBe(3);
   });
@@ -132,6 +141,7 @@ describe('shader sources', () => {
         expect(Math.max(...locations), `${name} ${depthKey}`).toBeLessThan(16);
         expect(locations).toContain(9);
         expect(locations).toContain(10);
+        expect(locations).toContain(11);
         // Every varying counted as a whole vector, the most it can take after packing.
         const varyings = vertex.match(/^\s*(flat )?out \w+ v_\w+;/gm) ?? [];
         expect(varyings.length, `${name} ${depthKey}`).toBeLessThanOrEqual(15);

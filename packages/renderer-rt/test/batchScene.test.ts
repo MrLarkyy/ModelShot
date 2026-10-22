@@ -124,4 +124,47 @@ describe('batchScene', () => {
     expect(batch?.positions[5 * 3]).toBe(10);
     expect(batch?.lightmap[5 * 4 + 2]).toBe(-1);
   });
+
+  it('draws a world-charted mesh de-indexed per corner, through its edge split, and leaves other meshes as they were', () => {
+    const a = quad(0, 0);
+    const b = quad(0, 10);
+    const lightmapB = Float32Array.from({ length: 16 }, (_, i) => 200 + i);
+    // Per index of quad a: lightmap (x, y, -2, back) and chart (x, y, w, h).
+    const corners = Float32Array.from({ length: 6 * 8 }, (_, i) => (i % 8 === 2 ? -2 : 1000 + i));
+    const edges: SharpEdgeAttributes = {
+      vertexOf: new Uint32Array([0, 1, 2, 3, 0]),
+      indices: new Uint32Array([0, 1, 2, 4, 2, 3]),
+      distances: Float32Array.from({ length: 20 }, (_, i) => i),
+      angles: Float32Array.from({ length: 20 }, (_, i) => -i),
+      edgeCount: 1,
+    };
+    const [batch] = batchScene(doc([a, b]), [], [new Float32Array(16), lightmapB], [edges, null], [corners, null]);
+    // 6 corner vertices of a, then b's 4 vertices as before.
+    expect(batch?.positions.length).toBe(10 * 3);
+    expect([...(batch?.indices ?? [])]).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 6, 8, 9]);
+    a.indices.forEach((v, i) => {
+      expect([...(batch?.positions.subarray(i * 3, i * 3 + 3) ?? [])]).toEqual([
+        ...a.positions.subarray(v * 3, v * 3 + 3),
+      ]);
+      expect([...(batch?.uvs.subarray(i * 2, i * 2 + 2) ?? [])]).toEqual([...a.uvs.subarray(v * 2, v * 2 + 2)]);
+      expect([...(batch?.lightmap.subarray(i * 4, i * 4 + 4) ?? [])]).toEqual([...corners.subarray(i * 8, i * 8 + 4)]);
+      expect([...(batch?.lightmapChart.subarray(i * 4, i * 4 + 4) ?? [])]).toEqual([
+        ...corners.subarray(i * 8 + 4, i * 8 + 8),
+      ]);
+      // Edge rounding: index 3 is split vertex 4, its own distances.
+      const split = edges.indices[i] ?? 0;
+      expect([...(batch?.edgeDistances.subarray(i * 4, i * 4 + 4) ?? [])]).toEqual([
+        ...edges.distances.subarray(split * 4, split * 4 + 4),
+      ]);
+      expect([...(batch?.edgeAngles.subarray(i * 4, i * 4 + 4) ?? [])]).toEqual([
+        ...edges.angles.subarray(split * 4, split * 4 + 4),
+      ]);
+    });
+    expect([...(batch?.edgeDistances.subarray(3 * 4, 4 * 4) ?? [])]).toEqual([16, 17, 18, 19]);
+    // Quad b: its vertex data, no chart.
+    expect([...(batch?.lightmap.subarray(6 * 4) ?? [])]).toEqual([...lightmapB]);
+    expect([...(batch?.lightmapChart.subarray(6 * 4) ?? [])]).toEqual(new Array(16).fill(0));
+    const plain = batchScene(doc([quad(0, 10)]), [], [lightmapB]);
+    expect([...(plain[0]?.positions ?? [])]).toEqual([...(batch?.positions.subarray(6 * 3) ?? [])]);
+  });
 });

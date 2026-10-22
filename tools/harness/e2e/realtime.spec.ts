@@ -70,6 +70,8 @@ const BAKED = [
   'preset-marketplace',
   'preset-rim',
   'preset-marketplace-fallback',
+  // MS-41: world-density charts on an image-less glTF ground and box; pair pt-gltf-contact.
+  'bake-gltf-contact',
 ].map((variant) => spec(variant, variant));
 
 async function render(page: Page, query: string): Promise<{ png: Buffer; image: Image; info: FixtureInfo }> {
@@ -890,6 +892,55 @@ test.describe('baked lighting', () => {
         expect(transition, `${variant} ${surface}: ${values.join(', ')}`).toBeLessThanOrEqual(2);
       }
     }
+  });
+
+  test('world charts put the contact shadow of an image-less glTF box where the path tracer has it', async ({
+    page,
+  }) => {
+    // Ground points (glTF units x 16): in the box's cast shadow 4 units from its west face, and 48 units further west
+    // in the open. Per vertex (one texel per ground corner) the first stayed as light as the second.
+    const points = { contact: [4, 0, -18], open: [-44, 0, -18] } as const;
+    const mean = (image: Image, [x, y]: readonly [number, number]): number => {
+      let sum = 0;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) sum += luminance(pixel(image, x + dx, y + dy));
+      return sum / 25;
+    };
+    const unbaked = await render(page, 'variant=gltf-contact');
+    const baked = await render(page, 'variant=bake-gltf-contact');
+    const at = await page.evaluate(
+      (p) => ({
+        contact: window.__msFixture!.rt!.project(...p.contact),
+        open: window.__msFixture!.rt!.project(...p.open),
+      }),
+      points,
+    );
+    const pt = decodePng(
+      readFileSync(
+        goldenPath({
+          kind: 'pathtraced',
+          fixture: 'pt',
+          name: 'pt-gltf-contact',
+          variant: 'gltf-contact',
+          seed: 1,
+          samples: 128,
+        }),
+      ),
+    );
+    const levels = {
+      unbaked: [mean(unbaked.image, at.contact), mean(unbaked.image, at.open)],
+      baked: [mean(baked.image, at.contact), mean(baked.image, at.open)],
+      pt: [mean(pt, at.contact), mean(pt, at.open)],
+    };
+    console.log(`[rt probe] gltf-contact contact / open: ${JSON.stringify(levels)}`);
+    // Measured (SwiftShader, seed 1): contact 0.70 of unbaked, the path tracer 0.74 of its open ground and 5.5 % from
+    // the preview. Per vertex the ground had only its four corner texels, far from the box: no shadow there.
+    const [contact = 0, open = 0] = levels.baked;
+    const [plainContact = 0, plainOpen = 0] = levels.unbaked;
+    const [ptContact = 0, ptOpen = 0] = levels.pt;
+    expect(contact, 'the contact shadow darkens the ground').toBeLessThanOrEqual(0.8 * plainContact);
+    expect(Math.abs(open - plainOpen), 'the open ground keeps its unbaked light').toBeLessThanOrEqual(0.03 * plainOpen);
+    expect(ptContact, 'the path tracer has the shadow there too').toBeLessThanOrEqual(0.8 * ptOpen);
+    expect(Math.abs(contact - ptContact), 'as dark as the path tracer').toBeLessThanOrEqual(0.1 * ptContact);
   });
 
   test('texel anti-aliasing still halves shimmer against nearest sampling with baked light', async ({ page }) => {

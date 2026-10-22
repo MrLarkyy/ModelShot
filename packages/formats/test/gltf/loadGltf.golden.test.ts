@@ -151,6 +151,35 @@ describe('scene-nodes: hand-checked', () => {
   });
 });
 
+describe('contact-shadow: hand-checked', () => {
+  const { scene, warnings } = load('contact-shadow');
+
+  it('loads an image-less two-triangle ground and a smooth box of 8 shared vertices, times 16', () => {
+    expect(warnings).toEqual([]);
+    // No image: each base colour factor becomes a 1 x 1 swatch, every UV its centre.
+    expect(scene.textures.map((t) => [t.width, t.height])).toEqual([
+      [1, 1],
+      [1, 1],
+    ]);
+    expect(scene.meshes.every((m) => m.uvs.every((x) => x === 0.5))).toBe(true);
+    const [ground, box] = scene.meshes;
+    expect([ground?.name, ground?.positions.length, ground?.indices.length]).toEqual(['ground', 12, 6]);
+    expect([box?.name, box?.positions.length, box?.indices.length]).toEqual(['box', 24, 36]);
+    const ys = Array.from(ground?.positions ?? []).filter((_, i) => i % 3 === 1);
+    expect(ys).toEqual([0, 0, 0, 0]);
+    expect(Math.max(...Array.from(ground?.positions ?? []))).toBe(64);
+    // Smooth: every box vertex is shared by three sides, its normal along the box diagonal.
+    const uses = new Array<number>(8).fill(0);
+    for (const v of box?.indices ?? []) uses[v] = (uses[v] ?? 0) + 1;
+    expect(uses.every((n) => n >= 3)).toBe(true);
+    expect(Math.abs(box?.normals[0] ?? 0)).toBeCloseTo(1 / Math.sqrt(3), 5);
+    // Resting on the ground, off its centre.
+    const boxYs = Array.from(box?.positions ?? []).filter((_, i) => i % 3 === 1);
+    expect(Math.min(...boxYs)).toBe(0);
+    expect(Math.min(...Array.from(box?.positions ?? []).filter((_, i) => i % 3 === 0))).toBe(8);
+  });
+});
+
 describe('external: buffers and images from picked files', () => {
   it('reads ./external.bin and textures/External.PNG from the map by path and base name', () => {
     const { scene, warnings } = load('external');

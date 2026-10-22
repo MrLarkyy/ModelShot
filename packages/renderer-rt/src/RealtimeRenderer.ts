@@ -696,6 +696,7 @@ export class RealtimeRenderer {
       loaded.closedOpaque ?? [],
       loaded.layout.vertexData,
       edges,
+      loaded.layout.cornerData,
     );
   }
 
@@ -995,8 +996,8 @@ export class RealtimeRenderer {
 }
 
 function summarize(layout: LightmapLayoutSummary): LightmapLayoutSummary {
-  const { width, height, downscale, vertexData, finestTexel, layoutKey } = layout;
-  return { width, height, downscale, vertexData, finestTexel, layoutKey };
+  const { width, height, downscale, vertexData, cornerData, finestTexel, layoutKey } = layout;
+  return { width, height, downscale, vertexData, cornerData, finestTexel, layoutKey };
 }
 
 /** Same lightmap size and the same catcher plane and size: the GPU textures and the catcher quad still fit. */

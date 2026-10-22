@@ -217,6 +217,19 @@ opaque texels 1 unit each, bottom row 1 unit above the catcher, facing the key, 
 textures generated in code, `look=checker` from behind the plane), `rt-bake-alpha-plane` (model-view camera) and
 `rt-bake-turntable-y030`.
 
+World-density charts (MS-41): `rt-bake-gltf-contact` (new, catcher off: the ground is the scene's lowest surface) bakes
+`packages/formats/test/fixtures/gltf/contact-shadow.gltf` (generated, CC0 by the directory's LICENSE: an 8 x 8 ground
+of two triangles and a smooth 2 x 2 x 2 box of 8 shared vertices on it, base colours only), seen from the shadow side
+(`look=contact`); its pair is `pt-gltf-contact.s1.n128`. `rt-bake-alpha-plane` was regenerated on purpose: its
+untextured ground box is world-charted now and shows the plane's shadows the render has (it had none per vertex). The
+chart census (`test/lightmapCensus.test.ts`, unit) lists the world-charted meshes of every baked variant (only those
+two scenes have any) and pins the layout keys of the others to their origin/main values, so no other baked golden
+changes by a chart mode. The probe test projects two ground points of the contact scene: 4 units out from the box in
+its cast shadow and 48 units further in the open. Measured (SwiftShader): baked contact 144.5 levels of luminance
+against 207 unbaked (0.70; per vertex the ground had only its four corner texels, all far from the box), the open point 206.8 against 207; the
+path-traced golden 152.9 against its open 206.9 (0.74). Limits: contact at most 0.8 of unbaked, open within 3 %, the
+render's contact at most 0.8 of its open point, preview and render contact within 10 % of each other.
+
 - Pixel-shaped shadows (probes of `ptProbes.ts` projected along the key from the document, as for the path tracer):
   hole and opaque texel shadows on the catcher 48.8 levels apart with a 0.99 px step, on the box top 54.0 levels with
   1.47 px (at least 40, at most 2; float path and fallback alike). The box top first sat 6.3 units below its
@@ -321,6 +334,7 @@ put in the URL, not in the file name).
 | `pt-preset-marketplace.s1.n64` | `player-hold-34` under Marketplace (MS-19)      | golden; tile/batch determinism; pair         |
 | `pt-preset-rim.s1.n64`         | `player-hold-34` under Rim (MS-19)              | golden; pair                                 |
 | `pt-outline-hull.s1.n64`       | outline-hull.bbmodel, board in an inverted hull | golden; board and rim probes; pair (MS-50)   |
+| `pt-gltf-contact.s1.n128`      | contact-shadow.gltf, `contact`, no catcher      | golden; contact probes; pair (MS-41)         |
 
 All eight earlier `pt-*` goldens were regenerated in MS-16 on purpose (same seeds, samples and size): the key became
 a 0.04 rad cone, the shadow catcher appeared under every model, and the random dimensions per path vertex grew from
@@ -392,6 +406,10 @@ Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with r
 | `preset-rim`               | 0 (1 322)                           | 1 407, 0.02147, 1.109                         | 0.0241, 1.13                          |
 | `preset-marketplace-yaw30` | 0 (1 304)                           | 1 387, 0.02116, 1.281                         | 0.0265, 1.52                          |
 | `outline-hull`             | 0 (1 456)                           | 1 076, 0.01642, 0.912 (MS-50, new)            | 0.0205, 1.14                          |
+
+MS-41 (world-density charts) measured the two views it changes: `alpha-plane` 682 px, 0.01041, 1.567 (its ground is
+world-charted and shows the render's shadows; before 2 083, 0.03178, 2.187), `edges` 40, 0.00061, 0.390 (its smooth
+sphere is world-charted). Both limits stay as they are.
 
 MS-19 measured the table again with the backdrop mask by rows: every earlier view kept its numbers and limits. The two
 look-preset pairs (`preset-marketplace`, `preset-rim`: the held-cube player baked under its look) are new at measured
@@ -746,6 +764,12 @@ probing that matching used before (about two minutes at this size; `sharpEdges` 
 vertices). Matching sorts now: 752 ms local SwiftShader for the whole load (`sharpEdges` alone 0.15 s for 400 000
 vertices), max 3500 ms as for the other load budgets. The same run: `edges-200k` 1158 ms, `edges-hostile` 1194 ms,
 `large-order` 896 ms.
+
+`frameTimeMs.rt-load-first-frame-200k-world` (MS-41): the same load of `world-200k` (`fixtures/src/worldLoadScene.ts`),
+49 untextured height fields of 4096 triangles each (200 704, every mesh just at the world-chart gate, no two triangles
+coplanar): every triangle its own world chart, every mesh drawn de-indexed per corner, the worst case of the chart
+unwrap and the per-corner upload. Local SwiftShader 1164, 1111 and 1224 ms (`large-order` 1410 ms and `edges-200k`
+1458 ms in the same run; the layout alone 0.7 s in Node); max 3500 ms as for the other load budgets.
 
 Memory of detection at the loaders' vertex limit (MS-15 round 4): `sharpEdges` of the `edges-weld` mesh (400 000
 vertices, 200 000 triangles, input 11.4 MB) in Node 22 with `--expose-gc`, a fresh Vitest worker, collected before:

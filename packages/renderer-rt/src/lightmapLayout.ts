@@ -1,22 +1,40 @@
 import { meshVisible, nodeVisibility, type SceneDocument, type SceneMesh } from '@modelshot/scene';
 import { RendererError } from './RendererError';
+import {
+  MAX_WORLD_MESH_TRIANGLES,
+  WORLD_TEXELS_PER_EXTENT,
+  worldChartTexels,
+  worldCharts,
+  type WorldChart,
+} from './worldCharts';
 
 /** Texels per lightmap row. */
 export const LIGHTMAP_WIDTH = 2048;
 /** Most texels a scene's model lightmap may have (2048 × 1024); the shadow catcher has its own. */
 export const MAX_LIGHTMAP_TEXELS = 2 ** 21;
-/** Most triangles one texel chart may have; the bake searches them per texel. More: the mesh is baked per vertex. */
+/**
+ * Most triangles one texel or world chart may have; the bake searches them per texel. More in a texel chart: the mesh
+ * gets world charts (per-vertex light above MAX_WORLD_MESH_TRIANGLES); a larger coplanar region splits into several.
+ */
 export const MAX_CHART_TRIANGLES = 32;
 /** Largest texture texels per lightmap texel tried before a scene is rejected. */
 const MAX_DOWNSCALE = 4096;
+/** Largest factor world charts are coarsened by before their meshes fall back to per-vertex light. */
+const MAX_WORLD_COARSENING = 256;
 /** Two triangles lie on one chart when their UV-to-position maps agree to this (relative) tolerance. */
 const AFFINE_TOLERANCE = 1e-5;
 
-/** One chart: a face on its texture's texel grid, or one vertex of a mesh baked per vertex. */
+/**
+ * One chart: a face on its texture's texel grid, coplanar triangles of an untextured or smooth mesh at one world-space
+ * density, or one vertex of a mesh baked per vertex.
+ */
 export interface LightmapChart {
   readonly mesh: number;
-  /** `texel`: a lightmap texel per `downscale` × `downscale` texels of the face's texture; `vertex`: one texel. */
-  readonly mode: 'texel' | 'vertex';
+  /**
+   * `texel`: a lightmap texel per `downscale` × `downscale` texels of the face's texture; `world`: a lightmap texel per
+   * square of the layout's world texel in the chart's plane; `vertex`: one texel.
+   */
+  readonly mode: 'texel' | 'world' | 'vertex';
   /** The chart's first lightmap texel and its size; a double-sided chart's back side follows at `x + width`. */
   readonly x: number;
   readonly y: number;
@@ -31,6 +49,8 @@ export interface LightmapChart {
   readonly triangles: readonly number[];
   /** Vertex mode: the vertex's corner 0..2 in that triangle. */
   readonly corner: number;
+  /** World mode: 6 per triangle, its corners 0, 1, 2 in chart-local texels (the bake's point space); else empty. */
+  readonly corners: Float32Array;
 }
 
 /**
@@ -46,9 +66,15 @@ export interface LightmapLayout {
   /**
    * Per mesh, 4 floats per vertex for the preview's `a_lightmap`: texel mode (chart x, chart y, downscale, back
    * offset), vertex mode (texel x, texel y, 0, back offset), (0, 0, −1, 0) for a vertex without light (drawn
-   * unoccluded); `null` for a hidden mesh.
+   * unoccluded), also for every vertex of a world-charted mesh; `null` for a hidden mesh.
    */
   readonly vertexData: readonly (Float32Array | null)[];
+  /**
+   * Per mesh with world charts, 8 floats per index (the preview draws such a mesh de-indexed, a vertex per triangle
+   * corner): `a_lightmap` (lightmap x, lightmap y of the corner, −2, back offset) and `a_lightmapChart` (chart x, chart
+   * y, width, height); (0, 0, −1, 0, 0, 0, 0, 0) for a corner of a triangle without light. `null` for other meshes.
+   */
+  readonly cornerData: readonly (Float32Array | null)[];
   /**
    * Size of the finest texture texel of any texel chart in mesh units, which are world units at rest (the layout is
    * pose-independent; an animated node scale stretches the texels with the mesh); Infinity without one.
@@ -61,7 +87,7 @@ export interface LightmapLayout {
 /** What of a layout the preview keeps: no charts (one per vertex in vertex mode), which only the bake reads. */
 export type LightmapLayoutSummary = Pick<
   LightmapLayout,
-  'width' | 'height' | 'downscale' | 'vertexData' | 'finestTexel' | 'layoutKey'
+  'width' | 'height' | 'downscale' | 'vertexData' | 'cornerData' | 'finestTexel' | 'layoutKey'
 >;
 
 /** Inclusive texel range of a UV rectangle, as `faceTexelRange` of the look's GLSL computes it. */
@@ -75,16 +101,19 @@ function faceTexelRange(rect: ArrayLike<number>, at: number, width: number, heig
 
 interface ProtoChart {
   readonly mesh: number;
-  readonly mode: 'texel' | 'vertex';
-  /** Texels across at downscale 1. */
+  readonly mode: LightmapChart['mode'];
+  /** Texels across at downscale 1 (world mode: at every downscale). */
   readonly texels: readonly [number, number];
   readonly back: boolean;
   readonly texelLo: readonly [number, number];
   readonly textureSize: readonly [number, number];
   readonly triangles: readonly number[];
   readonly corner: number;
+  readonly corners: Float32Array;
   readonly vertices: readonly number[];
 }
+
+const NO_CORNERS = new Float32Array(0);
 
 /** A triangle's UV-to-position map p = A·(u, v) + b as [A00, A10, A20, A01, A11, A21, b0, b1, b2], or null. */
 function affineMap(mesh: SceneMesh, v: readonly number[]): number[] | null {
@@ -250,6 +279,7 @@ function texelCharts(
         textureSize: [width, height],
         triangles: chart.triangles,
         corner: 0,
+        corners: NO_CORNERS,
         vertices: vertices[i] ?? [],
       };
     }),
@@ -276,11 +306,62 @@ function vertexCharts(m: number, mesh: SceneMesh, triangles: readonly MeshTriang
         textureSize: [0, 0],
         triangles: [first],
         corner,
+        corners: NO_CORNERS,
         vertices: [v],
       });
     });
   }
   return charts;
+}
+
+/** The world charts of mesh `m` at `texel` mesh units per lightmap texel. */
+function worldProtos(m: number, charts: readonly WorldChart[], texel: number): ProtoChart[] {
+  return charts.map((chart) => {
+    const { texels, corners } = worldChartTexels(chart, texel);
+    return {
+      mesh: m,
+      mode: 'world',
+      texels,
+      back: chart.back,
+      texelLo: [0, 0],
+      textureSize: [0, 0],
+      triangles: chart.triangles,
+      corner: 0,
+      corners,
+      vertices: [],
+    };
+  });
+}
+
+/** Diagonal of the bounds of the visible meshes' rest positions, in mesh units; 0 without a finite position. */
+function sceneDiagonal(doc: SceneDocument, visible: readonly boolean[]): number {
+  const lo = [Infinity, Infinity, Infinity];
+  const hi = [-Infinity, -Infinity, -Infinity];
+  doc.meshes.forEach((mesh, m) => {
+    if (!visible[m]) return;
+    const p = mesh.positions;
+    for (let i = 0; i + 2 < p.length; i += 3) {
+      const x = p[i] ?? NaN;
+      const y = p[i + 1] ?? NaN;
+      const z = p[i + 2] ?? NaN;
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+      lo[0] = Math.min(lo[0] ?? 0, x);
+      lo[1] = Math.min(lo[1] ?? 0, y);
+      lo[2] = Math.min(lo[2] ?? 0, z);
+      hi[0] = Math.max(hi[0] ?? 0, x);
+      hi[1] = Math.max(hi[1] ?? 0, y);
+      hi[2] = Math.max(hi[2] ?? 0, z);
+    }
+  });
+  const d = Math.hypot((hi[0] ?? 0) - (lo[0] ?? 0), (hi[1] ?? 0) - (lo[1] ?? 0), (hi[2] ?? 0) - (lo[2] ?? 0));
+  return Number.isFinite(d) ? d : 0;
+}
+
+/** Texels a chart covers at `downscale`, its back block included. */
+function chartArea(proto: ProtoChart, downscale: number): number {
+  const [w, h] = proto.texels;
+  const texels = proto.mode === 'texel' ? Math.ceil(w / downscale) * Math.ceil(h / downscale) : w * h;
+  return texels * (proto.back ? 2 : 1);
 }
 
 interface Packing {
@@ -291,7 +372,9 @@ interface Packing {
 /** Shelf packing, tallest first then by chart order, so the result depends on the charts only. */
 function pack(protos: readonly ProtoChart[], downscale: number): Packing | null {
   const sizes = protos.map((proto): [number, number] =>
-    proto.mode === 'texel' ? [Math.ceil(proto.texels[0] / downscale), Math.ceil(proto.texels[1] / downscale)] : [1, 1],
+    proto.mode === 'texel'
+      ? [Math.ceil(proto.texels[0] / downscale), Math.ceil(proto.texels[1] / downscale)]
+      : [proto.texels[0], proto.texels[1]],
   );
   const order = protos.map((_, i) => i);
   order.sort((a, b) => (sizes[b]?.[1] ?? 0) - (sizes[a]?.[1] ?? 0) || a - b);
@@ -376,36 +459,73 @@ function hashDocument(hash: LayoutHash, doc: SceneDocument, visible: readonly bo
  * Lays out the lightmap of a validated document's visible meshes. A mesh whose faces each map one texture rectangle
  * affinely (every Blockbench element) gets a chart per face at its own texel grid, so light changes per texel like the
  * albedo; faces sharing atlas cells each get their own chart and a double-sided face a second one for its back. Other
- * meshes (shared smooth vertices, untextured faces) get one texel per vertex, interpolated. If the charts do not fit
- * MAX_LIGHTMAP_TEXELS, texel charts take 2, 4, … texture texels per lightmap texel; when even that fails it throws
- * `RendererError` `SCENE_TOO_LARGE` before allocating any lightmap.
+ * meshes (shared smooth vertices, untextured faces) of at most MAX_WORLD_MESH_TRIANGLES triangles get world charts:
+ * edge-connected coplanar triangles at one world texel, the scene's rest diagonal / WORLD_TEXELS_PER_EXTENT but never
+ * finer than the finest texture texel; denser meshes get one texel per vertex, interpolated. If the charts do not fit
+ * MAX_LIGHTMAP_TEXELS, the world texel doubles (up to MAX_WORLD_COARSENING times), then world-charted meshes fall back
+ * to one texel per vertex, then texel charts take 2, 4, … texture texels per lightmap texel; when even that fails it
+ * throws `RendererError` `SCENE_TOO_LARGE` before allocating any lightmap. Without a world-charted mesh it packs
+ * exactly as before world charts existed.
  */
 export function lightmapLayout(doc: SceneDocument): LightmapLayout {
   const visibility = nodeVisibility(doc);
   const visible = doc.meshes.map((_, m) => meshVisible(doc, m, visibility));
-  const protos: ProtoChart[] = [];
+  // Per mesh its texel or vertex charts, or its world charts (set when the fit falls back to per-vertex light).
+  const fixed: (ProtoChart[] | null)[] = doc.meshes.map(() => null);
+  const world = new Map<number, { charts: WorldChart[]; triangles: MeshTriangle[] }>();
   let finestTexel = Infinity;
   doc.meshes.forEach((mesh, m) => {
     if (!visible[m]) return;
     const triangles = meshTriangles(mesh);
     const texel = texelCharts(doc, m, mesh, triangles);
-    if (texel) finestTexel = Math.min(finestTexel, texel.finest);
-    // A loop, not a spread: a mesh may have hundreds of thousands of charts.
-    for (const chart of texel?.charts ?? vertexCharts(m, mesh, triangles)) protos.push(chart);
+    if (texel) {
+      finestTexel = Math.min(finestTexel, texel.finest);
+      fixed[m] = texel.charts;
+    } else if (triangles.length > 0 && triangles.length <= MAX_WORLD_MESH_TRIANGLES) {
+      world.set(m, { charts: worldCharts(mesh, triangles, MAX_CHART_TRIANGLES), triangles });
+    } else {
+      fixed[m] = vertexCharts(m, mesh, triangles);
+    }
   });
+  // In mesh order, world meshes at `worldTexel` (null: per vertex).
+  const assemble = (worldTexel: number | null): ProtoChart[] => {
+    const protos: ProtoChart[] = [];
+    doc.meshes.forEach((mesh, m) => {
+      const charts = world.get(m);
+      let list = fixed[m];
+      if (charts && worldTexel !== null) list = worldProtos(m, charts.charts, worldTexel);
+      else if (charts) list = vertexCharts(m, mesh, charts.triangles);
+      // A loop, not a spread: a mesh may have hundreds of thousands of charts.
+      for (const chart of list ?? []) protos.push(chart);
+    });
+    return protos;
+  };
+  const area = (protos: readonly ProtoChart[], k: number) =>
+    protos.reduce((sum, proto) => sum + chartArea(proto, k), 0);
 
-  // No packing fits fewer texels than the charts hold: start at the first downscale whose area could fit.
+  let protos: ProtoChart[] = [];
+  let packing: Packing | null = null;
   let downscale = 1;
-  const area = (k: number) =>
-    protos.reduce((sum, proto) => {
-      const texels = proto.mode === 'texel' ? Math.ceil(proto.texels[0] / k) * Math.ceil(proto.texels[1] / k) : 1;
-      return sum + texels * (proto.back ? 2 : 1);
-    }, 0);
-  while (downscale < MAX_DOWNSCALE && area(downscale) > MAX_LIGHTMAP_TEXELS) downscale *= 2;
-  let packing = pack(protos, downscale);
-  while (!packing && downscale < MAX_DOWNSCALE) {
-    downscale *= 2;
+  const baseTexel = Math.max(
+    sceneDiagonal(doc, visible) / WORLD_TEXELS_PER_EXTENT,
+    Number.isFinite(finestTexel) ? finestTexel : 0,
+  );
+  if (world.size > 0 && baseTexel > 0 && Number.isFinite(baseTexel)) {
+    // World light never costs a textured face its resolution: coarsen it first, at downscale 1.
+    for (let scale = 1; scale <= MAX_WORLD_COARSENING && !packing; scale *= 2) {
+      protos = assemble(baseTexel * scale);
+      if (area(protos, 1) <= MAX_LIGHTMAP_TEXELS) packing = pack(protos, 1);
+    }
+  }
+  if (!packing) {
+    protos = assemble(null);
+    // No packing fits fewer texels than the charts hold: start at the first downscale whose area could fit.
+    while (downscale < MAX_DOWNSCALE && area(protos, downscale) > MAX_LIGHTMAP_TEXELS) downscale *= 2;
     packing = pack(protos, downscale);
+    while (!packing && downscale < MAX_DOWNSCALE) {
+      downscale *= 2;
+      packing = pack(protos, downscale);
+    }
   }
   if (!packing) {
     throw new RendererError(
@@ -421,19 +541,37 @@ export function lightmapLayout(doc: SceneDocument): LightmapLayout {
     for (let v = 0; v < data.length; v += 4) data[v + 2] = -1;
     return data;
   });
+  const worldMeshes = new Set<number>();
+  for (const proto of protos) if (proto.mode === 'world') worldMeshes.add(proto.mesh);
+  const cornerData = doc.meshes.map((mesh, m) => {
+    if (!worldMeshes.has(m)) return null;
+    const data = new Float32Array(mesh.indices.length * 8);
+    for (let i = 0; i < data.length; i += 8) data[i + 2] = -1;
+    return data;
+  });
   const places = packing.places;
   const charts = protos.map((proto, i): LightmapChart => {
     const [x = 0, y = 0, width = 1, height = 1] = places[i] ?? [];
+    const back = proto.back ? width : 0;
     const data = vertexData[proto.mesh];
     if (data) {
       const k = proto.mode === 'texel' ? downscale : 0;
-      const back = proto.back ? width : 0;
       for (const v of proto.vertices) {
         data[v * 4] = x;
         data[v * 4 + 1] = y;
         data[v * 4 + 2] = k;
         data[v * 4 + 3] = back;
       }
+    }
+    const corners = cornerData[proto.mesh];
+    if (corners && proto.mode === 'world') {
+      proto.triangles.forEach((first, j) => {
+        for (let c = 0; c < 3; c++) {
+          const s = proto.corners[j * 6 + c * 2] ?? 0;
+          const t = proto.corners[j * 6 + c * 2 + 1] ?? 0;
+          corners.set([x + s, y + t, -2, back, x, y, width, height], (first + c) * 8);
+        }
+      });
     }
     return {
       mesh: proto.mesh,
@@ -447,6 +585,7 @@ export function lightmapLayout(doc: SceneDocument): LightmapLayout {
       textureSize: proto.textureSize,
       triangles: proto.triangles,
       corner: proto.corner,
+      corners: proto.corners,
     };
   });
 
@@ -457,10 +596,20 @@ export function lightmapLayout(doc: SceneDocument): LightmapLayout {
   hash.word(downscale);
   for (const chart of charts) {
     for (const value of [chart.mesh, chart.x, chart.y, chart.width, chart.height, chart.corner]) hash.word(value);
-    hash.word(chart.mode === 'texel' ? 1 : 0);
+    hash.word(chart.mode === 'texel' ? 1 : chart.mode === 'world' ? 2 : 0);
     hash.word(chart.back ? 1 : 0);
     for (const value of chart.triangles) hash.word(value);
+    if (chart.mode === 'world') hash.array(chart.corners);
   }
   hashDocument(hash, doc, visible);
-  return { width: LIGHTMAP_WIDTH, height, downscale, charts, vertexData, finestTexel, layoutKey: hash.hex() };
+  return {
+    width: LIGHTMAP_WIDTH,
+    height,
+    downscale,
+    charts,
+    vertexData,
+    cornerData,
+    finestTexel,
+    layoutKey: hash.hex(),
+  };
 }

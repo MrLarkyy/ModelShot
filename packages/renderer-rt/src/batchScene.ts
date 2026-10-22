@@ -38,8 +38,13 @@ export interface SceneBatch {
   readonly normals: Float32Array;
   readonly uvs: Float32Array;
   readonly uvRects: Float32Array;
-  /** 4 per vertex: where its baked light lies (`LightmapLayout.vertexData`); (0, 0, −1, 0) without a layout. */
+  /**
+   * 4 per vertex: where its baked light lies (`LightmapLayout.vertexData`, or the first 4 of `cornerData` for a
+   * world-charted mesh); (0, 0, −1, 0) without a layout.
+   */
   readonly lightmap: Float32Array;
+  /** 4 per vertex: its world chart's rectangle (the last 4 of `LightmapLayout.cornerData`); 0 for other meshes. */
+  readonly lightmapChart: Float32Array;
   /** 4 per vertex: distances to its sharp-edge slots (`SharpEdgeAttributes.distances`); `NO_EDGE` without them. */
   readonly edgeDistances: Float32Array;
   /** 4 per vertex: the slots' signed angles (`SharpEdgeAttributes.angles`); 0 without them. */
@@ -83,11 +88,25 @@ function gather(to: Float32Array, from: Float32Array, size: number, base: number
   }
 }
 
+/**
+ * A world-charted mesh drawn de-indexed: per index of the mesh, the source vertex its attributes come from and the
+ * sharp-edge split vertex its edge attributes come from.
+ */
+function cornerSources(
+  mesh: SceneMesh,
+  edges: SharpEdgeAttributes | null,
+): { vertexOf: Uint32Array; splitOf: Uint32Array } {
+  const splitOf = Uint32Array.from(edges?.indices ?? mesh.indices);
+  const vertexOf = edges ? Uint32Array.from(splitOf, (split) => edges.vertexOf[split] ?? 0) : splitOf;
+  return { vertexOf, splitOf };
+}
+
 function merge(
   key: BatchKey,
   parts: readonly Part[],
   lightmapOf: (mesh: SceneMesh) => Float32Array | null,
   edgesOf: (mesh: SceneMesh) => SharpEdgeAttributes | null,
+  cornersOf: (mesh: SceneMesh) => Float32Array | null,
 ): SceneBatch {
   const bases = new Map<SceneMesh, number>();
   let vertices = 0;
@@ -95,7 +114,7 @@ function merge(
   for (const { mesh, group } of parts) {
     if (!bases.has(mesh)) {
       bases.set(mesh, vertices);
-      vertices += edgesOf(mesh)?.vertexOf.length ?? mesh.positions.length / 3;
+      vertices += cornersOf(mesh) ? mesh.indices.length : (edgesOf(mesh)?.vertexOf.length ?? mesh.positions.length / 3);
     }
     indexCount += group.count;
   }
@@ -106,12 +125,32 @@ function merge(
     uvs: new Float32Array(vertices * 2),
     uvRects: new Float32Array(vertices * 4),
     lightmap: new Float32Array(vertices * 4),
+    lightmapChart: new Float32Array(vertices * 4),
     edgeDistances: new Float32Array(vertices * EDGE_SLOTS).fill(NO_EDGE),
     edgeAngles: new Float32Array(vertices * EDGE_SLOTS),
     indices: new Uint32Array(indexCount),
   };
   for (const [mesh, base] of bases) {
     const edges = edgesOf(mesh);
+    const corners = cornersOf(mesh);
+    if (corners) {
+      const { vertexOf, splitOf } = cornerSources(mesh, edges);
+      gather(batch.positions, mesh.positions, 3, base, vertexOf);
+      gather(batch.normals, mesh.normals, 3, base, vertexOf);
+      gather(batch.uvs, mesh.uvs, 2, base, vertexOf);
+      gather(batch.uvRects, mesh.uvRects, 4, base, vertexOf);
+      for (let i = 0; i < vertexOf.length; i++) {
+        for (let k = 0; k < 4; k++) {
+          batch.lightmap[(base + i) * 4 + k] = corners[i * 8 + k] ?? 0;
+          batch.lightmapChart[(base + i) * 4 + k] = corners[i * 8 + 4 + k] ?? 0;
+        }
+      }
+      if (edges) {
+        gather(batch.edgeDistances, edges.distances, EDGE_SLOTS, base, splitOf);
+        gather(batch.edgeAngles, edges.angles, EDGE_SLOTS, base, splitOf);
+      }
+      continue;
+    }
     // A vertex split by the sharp edges copies every attribute of its source vertex.
     const vertexOf = edges?.vertexOf ?? null;
     gather(batch.positions, mesh.positions, 3, base, vertexOf);
@@ -130,6 +169,11 @@ function merge(
   let at = 0;
   for (const { mesh, group } of parts) {
     const base = bases.get(mesh) ?? 0;
+    if (cornersOf(mesh)) {
+      for (let i = 0; i < group.count; i++) batch.indices[at + i] = base + group.start + i;
+      at += group.count;
+      continue;
+    }
     const indices = edgesOf(mesh)?.indices ?? mesh.indices;
     const source = indices.subarray(group.start, group.start + group.count);
     for (let i = 0; i < source.length; i++) batch.indices[at + i] = (source[i] ?? 0) + base;
@@ -143,15 +187,19 @@ function merge(
  * order, closed and opaque), in order of first appearance; within a batch triangles keep the document's mesh and group
  * order. `closedOpaque[m]` marks mesh `m` closed and opaque on every face (`closedOpaqueMeshes`; default none);
  * `lightmap[m]` holds mesh `m`'s per-vertex lightmap data (`LightmapLayout.vertexData`; default none); `edges[m]` its
- * sharp-edge attributes (`sceneSharpEdges`; default none), whose split vertices replace the mesh's.
+ * sharp-edge attributes (`sceneSharpEdges`; default none), whose split vertices replace the mesh's; `corners[m]` its
+ * per-index world chart data (`LightmapLayout.cornerData`; default none), which draws the mesh de-indexed, one batch
+ * vertex per index, so corners shared across charts keep their own chart coordinates.
  */
 export function batchScene(
   doc: SceneDocument,
   closedOpaque: readonly boolean[] = [],
   lightmap: readonly (Float32Array | null)[] = [],
   edges: readonly (SharpEdgeAttributes | null)[] = [],
+  corners: readonly (Float32Array | null)[] = [],
 ): SceneBatch[] {
   const meshIndex = new Map(doc.meshes.map((mesh, m) => [mesh, m]));
+  const cornersOf = (mesh: SceneMesh) => corners[meshIndex.get(mesh) ?? -1] ?? null;
   const lightmapOf = (mesh: SceneMesh) => lightmap[meshIndex.get(mesh) ?? -1] ?? null;
   const edgesOf = (mesh: SceneMesh) => edges[meshIndex.get(mesh) ?? -1] ?? null;
   const visibility = nodeVisibility(doc);
@@ -187,5 +235,5 @@ export function batchScene(
       entry.parts.push({ mesh, group });
     }
   });
-  return [...parts.values()].map((entry) => merge(entry.key, entry.parts, lightmapOf, edgesOf));
+  return [...parts.values()].map((entry) => merge(entry.key, entry.parts, lightmapOf, edgesOf, cornersOf));
 }
