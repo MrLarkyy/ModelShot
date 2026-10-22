@@ -16,7 +16,7 @@ import type { UploadedTextures } from './sceneUpload';
 /**
  * Rasterises the scene into the default framebuffer: a depth-only pass from the light, alpha-tested, culling back
  * faces of single-sided runs as seen from the light (so only the opaque texels of a face whose front faces the light
- * cast a shadow); then the camera pass with the same per-run culling, alpha discard, a hard shadow-map lookup from
+ * cast a shadow; camera-only runs are skipped); then the camera pass with the same per-run culling, alpha discard, a hard shadow-map lookup from
  * the receiver moved along its normal, and a depth of its own: the ray distance minus `renderOrder ·
  * RENDER_ORDER_TIE_DISTANCE`, the key the raycast compares, so both resolve render order identically.
  */
@@ -47,6 +47,7 @@ export function renderRaster(
   gl.uniformMatrix4fv(gl.getUniformLocation(shadowProgram, 'u_viewProjection'), false, light);
   setMaterialUniforms(gl, shadowProgram, textures, 0);
   for (const run of triangles.runs) {
+    if (run.cameraOnly) continue;
     setCulling(gl, run.doubleSided);
     gl.drawArrays(gl.TRIANGLES, run.first * 3, run.count * 3);
   }

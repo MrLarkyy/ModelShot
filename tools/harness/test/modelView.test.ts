@@ -155,6 +155,18 @@ describe('sceneTriangles', () => {
     expect(new Set(triangles.materials)).toEqual(new Set([0, 1]));
   });
 
+  it('camera-only groups form their own runs and are flagged per triangle', () => {
+    const { scene } = loadBbmodel(alphaPlane);
+    const mesh = scene.meshes[0];
+    if (!mesh) throw new Error('no mesh');
+    const groups = mesh.groups.map((g, i) => (i === 0 ? { ...g, cameraOnly: true } : g));
+    const marked = { ...scene, meshes: [{ ...mesh, groups }, ...scene.meshes.slice(1)] };
+    const triangles = sceneTriangles(marked);
+    expect(triangles.cameraOnly.reduce((a, b) => a + b, 0)).toBe((mesh.groups[0]?.count ?? 0) / 3);
+    expect(triangles.runs.some((r) => r.cameraOnly)).toBe(true);
+    expect(triangles.runs.every((r) => r.cameraOnly === (triangles.cameraOnly[r.first] === 1))).toBe(true);
+  });
+
   it('a hidden parent hides the meshes of its child nodes', () => {
     const { scene } = loadBbmodel(meshShapes);
     const tilt = scene.nodes.findIndex((n) => n.name === 'tilt');

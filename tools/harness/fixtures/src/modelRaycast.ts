@@ -19,7 +19,7 @@ const ROWS_PER_TRIANGLE = 9;
 /**
  * One camera ray through each pixel centre to the nearest hit whose texel passes the alpha test (single-sided faces
  * only from the front; coincident hits by render order), shaded with the interpolated vertex normal, then one shadow
- * ray toward the light blocked by any alpha-passing hit, single-sided faces only when their front faces the light.
+ * ray toward the light blocked by any alpha-passing hit except a camera-only one, single-sided faces only when their front faces the light.
  * Deterministic: no samples, no seed.
  */
 export function renderRaycast(
@@ -76,7 +76,7 @@ function createTriangleTexture(gl: WebGL2RenderingContext, triangles: SceneTrian
     rows.set([...p(1), triangles.doubleSided[t] ?? 0], base + 4);
     rows.set([...p(2), triangles.renderOrders[t] ?? 0], base + 8);
     rows.set([...uv(0), ...uv(1)], base + 12);
-    rows.set([...uv(2), 0, 0], base + 16);
+    rows.set([...uv(2), triangles.cameraOnly[t] ?? 0, 0], base + 16);
     rows.set(triangles.rects.subarray(t * 4, t * 4 + 4), base + 20);
     for (let c = 0; c < 3; c++)
       rows.set([...triangles.normals.subarray(t * 9 + c * 3, t * 9 + c * 3 + 3), 0], base + 24 + c * 4);
