@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { expect, type Page, type TestInfo } from '@playwright/test';
+import { expect, type ConsoleMessage, type Page, type Request, type Response, type TestInfo } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { compareImages } from './compareImages';
 import { mayWriteGolden, resolveGolden } from './goldenStore';
@@ -24,16 +24,45 @@ export interface FixtureInfo {
 /** The fixture module sets `__msFixture` as it evaluates, before any scene work: a page without it after this long never ran it. */
 const FIXTURE_BOOT_MS = 20_000;
 
+interface BootTrace {
+  pageErrors: string[];
+  failedRequests: string[];
+  errorResponses: string[];
+  consoleErrors: string[];
+}
+
+function describeBoot(trace: BootTrace): string {
+  const list = (items: string[]): string => items.join(' | ') || 'none';
+  return (
+    `page errors: ${list(trace.pageErrors)}; failed requests: ${list(trace.failedRequests)}; ` +
+    `responses >= 400: ${list(trace.errorResponses)}; console errors: ${list(trace.consoleErrors)}`
+  );
+}
+
 /**
- * Opens a fixture page. Its module graph is served by Vite on demand; a module request that failed (Vite's
- * "Outdated Optimize Dep" after it re-optimised its dependencies mid-run) leaves the page loaded without `__msFixture`,
- * and a plain wait would sit there until the test timeout (pt-gltf-contact, 120 s, in a full pathtracer.spec run). One
- * reload gets the settled graph; a second failure names the page's errors.
+ * Opens a fixture page. Once (pt-gltf-contact in a full pathtracer.spec run) a page loaded but its fixture module never
+ * ran, and the wait sat until the 120 s test timeout. The cause is unknown: no dependency is pre-bundled, so it is not
+ * a stale Vite optimised dep; a module request that failed after `goto` returned fits it. So the page's failed
+ * requests, error responses and console errors are collected with its page errors from before `goto`, and printed
+ * under `[fixture reload]` at the first boot timeout, so the flake leaves a trace with `retries: 0`. A page error means
+ * the fixture's own code threw, which a reload would not fix: that fails at once. Otherwise the page reloads once, and
+ * a second timeout fails with everything collected.
  */
 export async function openFixture(page: Page, url: string): Promise<FixtureInfo> {
-  const errors: string[] = [];
-  const onError = (error: Error): void => void errors.push(error.message);
-  page.on('pageerror', onError);
+  const trace: BootTrace = { pageErrors: [], failedRequests: [], errorResponses: [], consoleErrors: [] };
+  const onPageError = (error: Error): void => void trace.pageErrors.push(error.message);
+  const onRequestFailed = (request: Request): void =>
+    void trace.failedRequests.push(`${request.url()} (${request.failure()?.errorText ?? 'no reason'})`);
+  const onResponse = (response: Response): void => {
+    if (response.status() >= 400) trace.errorResponses.push(`${response.status()} ${response.url()}`);
+  };
+  const onConsole = (message: ConsoleMessage): void => {
+    if (message.type() === 'error') trace.consoleErrors.push(message.text());
+  };
+  page.on('pageerror', onPageError);
+  page.on('requestfailed', onRequestFailed);
+  page.on('response', onResponse);
+  page.on('console', onConsole);
   try {
     await page.goto(url);
     const booted = () =>
@@ -41,13 +70,21 @@ export async function openFixture(page: Page, url: string): Promise<FixtureInfo>
     try {
       await booted();
     } catch {
+      const seen = describeBoot(trace);
+      if (trace.pageErrors.length > 0) {
+        throw new Error(`fixture ${url} did not boot in ${FIXTURE_BOOT_MS} ms after a page error; ${seen}`);
+      }
+      console.warn(`[fixture reload] ${url} did not boot in ${FIXTURE_BOOT_MS} ms, reloading once; ${seen}`);
       await page.reload();
       await booted().catch(() => {
-        throw new Error(`fixture ${url} did not boot after a reload; page errors: ${errors.join(' | ') || 'none'}`);
+        throw new Error(`fixture ${url} did not boot after a reload; ${describeBoot(trace)}`);
       });
     }
   } finally {
-    page.off('pageerror', onError);
+    page.off('pageerror', onPageError);
+    page.off('requestfailed', onRequestFailed);
+    page.off('response', onResponse);
+    page.off('console', onConsole);
   }
   const info = await page.evaluate(async () => {
     const fixture = window.__msFixture;

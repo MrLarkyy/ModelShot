@@ -66,8 +66,10 @@ CPU ms per converted test, the maximum of 3 runs on an idle machine (Windows, No
 
 - `check`: install, typecheck, lint, format check, `pnpm -r build`, `pnpm run test:unit` (Vitest, bundle size
   included).
-- `e2e`: a matrix of 11 shards (golden 1-5 of `--project=golden --shard=<k>/5`, pair 1-3 of `--project=pair --shard=<k>/3`, bake 1-3 of `--project=bake --shard=<k>/3`) (`fail-fast: false`), each on its own VM: install, the pinned Chromium, `pnpm -r build`,
-  then `playwright test --project=<project> --shard=<k>/<n>`, then on golden shard 1 only `pnpm --filter @modelshot/site run test:browser` (it runs even when the harness tests failed), uploading `tools/harness/test-results/` and `packages/site/test-results/` as `browser-test-results-<golden-k|pair-k|bake-k>`.
+- `e2e`: a matrix of 14 shards (golden 1-2 of `--project=golden --shard=<k>/2`, golden-pt 1-6 of
+  `--project=golden-pt --shard=<k>/6`, pair 1-3 of `--project=pair --shard=<k>/3`, bake 1-3 of
+  `--project=bake --shard=<k>/3`) (`fail-fast: false`), each on its own VM: install, the pinned Chromium, `pnpm -r build`,
+  then `playwright test --project=<project> --shard=<k>/<n>`, then on golden shard 1 only `pnpm --filter @modelshot/site run test:browser` (it runs even when the harness tests failed), uploading `tools/harness/test-results/` and `packages/site/test-results/` as `browser-test-results-<golden-k|golden-pt-k|pair-k|bake-k>`.
 - `bench`: its own VM, same install and build, `playwright test --project=bench` (the one budget test), uploading
   `browser-test-results-bench`; the budgets are measured on a machine that runs nothing else.
 
@@ -79,14 +81,31 @@ separate VMs, so each keeps one worker and the budgets measure an otherwise idle
 the worker count changed. For the shards to split the suite the `golden` project is `fullyParallel` (its tests share
 no state; with one worker nothing runs at once, it only lets a shard take part of a file), and `bench` no longer
 depends on `golden` (a dependency put every golden test into the bench's shard: shard 1 had all 219 tests, 2-4
-none). The `golden` project excludes the tests titled `baked lighting` or `like the baked preview` (`grepInvert`); the
-`bake` project runs only the first, the `pair` project (the 13 preview-vs-render pairing tests of `pathtracer.spec.ts`)
-only the second: shards are contiguous ranges, so a block of slow tests always landed in one or two shards. Listed locally
-(`--list`, MS-19): `golden` 241 tests in 5 shards, 49 / 48 / 48 / 48 / 48 (MS-39; 60 in shard 2 of 4 ran 16.3 and 17.4 minutes on main, against the 20-minute limit,
-so a fifth shard); `pair` 13 tests, 5 / 4 / 4; `bake` 25 tests; `bench` 1 test; 280 in all, each once, as the plain `playwright test` (and so `pnpm test`) runs every project. By the times of
-run 39624802150 (normal VM) the heaviest golden shard took about 5 minutes with 52 tests (the numbers of that run; by 2026-10 about 13-14 minutes with 48, the pathtracer goldens being the long ones), a pair shard 3.8 (1.1-1.3 minutes per test; 7.6 on a 2x
-slow VM; with the three look-preset pairs of MS-19 a pair shard holds up to 5 tests, about 6 minutes, 12 on a slow VM; MS-39's thirteen pairs are three shards),
-against the 20-minute limit.
+none). Playwright shards a project into contiguous ranges by test count, not by time, so a block of slow tests
+lands in one or two shards; each block is its own project with its own shards. `golden` runs `environment`, `golden*`,
+`modelView` and `realtime.spec.ts` without the tests titled `baked lighting` (`grepInvert`), which `bake` runs;
+`golden-pt` runs `pathtracer.spec.ts` without the tests titled `like the baked preview`, which `pair` runs (the 13
+preview-vs-render pairing tests). Each test is in exactly one project, and the plain `playwright test` (and so
+`pnpm test`) runs every project.
+
+Shard sizes (MS-39, `--list --project <p> --shard <k>/<n>`), each with the sum of its tests' CI times: the per-test
+times of main's run 39855838515, plus local times for MS-39's six new tests (four path-tracer tests, 29 s, and two
+pairs, 47 s). These are sums of test times, not job times; a job adds about a minute of install and build, and the VMs
+differ by up to 2x.
+
+| Project     | Tests | Shards | Tests per shard             | Minutes per shard (sum)           |
+| ----------- | ----: | -----: | --------------------------- | --------------------------------- |
+| `golden`    |   163 |      2 | 82 / 81                     | 7.7 / 3.0                         |
+| `golden-pt` |    78 |      6 | 13 / 13 / 13 / 13 / 13 / 13 | 2.6 / 4.4 / 7.0 / 3.9 / 1.1 / 1.6 |
+| `pair`      |    13 |      3 | 5 / 4 / 4                   | 5.1 / 3.6 / 3.0                   |
+| `bake`      |    25 |      3 | 9 / 8 / 8                   | 8.5 / 3.1 / 3.2                   |
+| `bench`     |     1 |      1 | 1                           | its own job                       |
+
+280 tests in all. The path-tracer tests had been part of `golden` (241 tests in 5 shards of 48-49): the shard that held
+48 of them summed to 16.0 minutes, the others 1.8-7.2, and the same block in shard 2 of 4 ran 16.3 and 17.4 minute jobs
+on main. `golden-pt` has 6 shards because its two longest tests (a denoised 2x render in batches, 3.0 minutes, and a
+denoised 2x render paired with the preview, 1.9 minutes) are four tests apart in the file: with 3, 4 or 5 shards one
+shard holds both and sums to 10.0-10.8 minutes, with 6 the largest is 7.0.
 
 Why: the shard holding the baked tests ran into the 20-minute job limit with 4 shards (cancelled in runs 39612706830 and
 39624802150; the 23 baked lighting tests alone took 13-15 minutes on the slow VM of the second), and the 6 pairing tests
@@ -115,8 +134,11 @@ Fixtures in `tools/harness/fixtures` are self-contained WebGL2 pages served by a
 directory, so two worktrees can test at once; a server already on that port is never reused. A fixture publishes `window.__msFixture`; the spec waits for `ready`, reads the drawing buffer with
 `gl.readPixels`, flips it, and encodes a PNG in Node. Every golden render asserts a SwiftShader renderer, so a local GPU
 never produces or checks a golden. Every spec uses the shared `test` from `src/harnessTest.ts`, which fails any request off the fixture origin on any page,
-and every `openFixture` asserts SwiftShader. Fixture
-image code uses no clock or random source (lint rule; timing lives in `fixtures/src/bench.ts` only).
+and every `openFixture` asserts SwiftShader. `openFixture` waits 20 s for `__msFixture` (the module sets it as it
+evaluates). On a timeout it prints the page's failed requests, responses >= 400, console errors and page errors under
+`[fixture reload]`. If the page threw (a page error), it fails at once; otherwise it reloads once, and a second timeout
+fails with that list. A page once loaded without running its module (pt-gltf-contact in a full `pathtracer.spec.ts`
+run); the cause is unknown, so the reload is a guard and the printed list is the trace to find it. Fixture image code uses no clock or random source (lint rule; timing lives in `fixtures/src/bench.ts` only).
 
 ## Goldens
 

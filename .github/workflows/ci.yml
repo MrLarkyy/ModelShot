@@ -31,10 +31,12 @@ jobs:
       - run: pnpm -r build
       - run: pnpm run test:unit
 
-  # The browser tests in 11 shards, each on its own VM with one Playwright worker (docs/testing.md, CI): 5 of the golden
-  # project, 3 of the pair project (the preview-vs-render pairing tests, about 17 minutes together) and 3 of the bake
-  # project (the baked lighting tests, 13-15 minutes together on a slow VM); either block would fill a
-  # contiguous shard. One runner ran past the 20-minute limit with the whole suite.
+  # The browser tests in 14 shards, each on its own VM with one Playwright worker (docs/testing.md, CI). Playwright
+  # shards a project into contiguous ranges by test count, not time, so each block of slow tests is its own project:
+  # golden 2 shards (the raster goldens, about 11 minutes together), golden-pt 6 (the path-tracer tests, about 20
+  # minutes; its two longest tests, 3.0 and 1.9 minutes, are four tests apart and fit one 7-minute shard only with
+  # 6), pair 3 (the preview-vs-render pairing tests, about 12 minutes) and bake 3 (the baked lighting tests, 13-15
+  # minutes on a slow VM). One runner ran past the 20-minute limit with the whole suite.
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -42,11 +44,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: golden-1, project: golden, shard: '1/5' }
-          - { name: golden-2, project: golden, shard: '2/5' }
-          - { name: golden-3, project: golden, shard: '3/5' }
-          - { name: golden-4, project: golden, shard: '4/5' }
-          - { name: golden-5, project: golden, shard: '5/5' }
+          - { name: golden-1, project: golden, shard: '1/2' }
+          - { name: golden-2, project: golden, shard: '2/2' }
+          - { name: golden-pt-1, project: golden-pt, shard: '1/6' }
+          - { name: golden-pt-2, project: golden-pt, shard: '2/6' }
+          - { name: golden-pt-3, project: golden-pt, shard: '3/6' }
+          - { name: golden-pt-4, project: golden-pt, shard: '4/6' }
+          - { name: golden-pt-5, project: golden-pt, shard: '5/6' }
+          - { name: golden-pt-6, project: golden-pt, shard: '6/6' }
           - { name: pair-1, project: pair, shard: '1/3' }
           - { name: pair-2, project: pair, shard: '2/3' }
           - { name: pair-3, project: pair, shard: '3/3' }
