@@ -51,14 +51,15 @@ browser and opens the app, which takes them:
    On every landing page load, before any of this, `src/cleanUpHandoff.ts` asks `indexedDB.databases()`; only when
    it lists `modelshot-handoff` does it open the database and call `discardStaleHandoff` (details below).
 
-4. The app (`packages/app/src/showHandoff.ts`) calls `takeHandoffFiles`, which reads and deletes the record in one
-   transaction, then validates it as untrusted (`readHandoffRecord`): own data properties only, `v === 1`, a finite
+4. The app (`packages/app/src/App.ts`, on `?open=handoff`) calls `takeHandoffFiles`, which reads and deletes the record in
+   one transaction, then validates it as untrusted (`readHandoffRecord`): own data properties only, `v === 1`, a finite
    `createdAt` at most 60 s in the future (clock skew between tabs), real `File` objects only, the same limits
    again. A record older than 10 minutes is discarded. The validation never throws; its result is `files`, `none`,
    `expired` or `invalid` with a reason code. `takeHandoffFiles` itself rejects when IndexedDB is missing, fails
-   or does not answer within 5 s; the app then shows that error instead of a list.
-5. The app lists the file names and sizes as text in its `role="status"` element. Parsing the files is the editor's
-   job (MS-23 wires `takeHandoffFiles` into its loader).
+   or does not answer within 5 s; the app then shows that error in its `role="alert"` element.
+5. The app opens the files like a drop ([app.md](app.md)) and removes `?open=handoff` from the address with
+   `history.replaceState`, so a reload reopens the app's own session instead of looking for a record that is gone.
+   A missing, expired or invalid record is reported in the `role="status"` element (`describeHandoff`).
 
 Every IndexedDB step gives up after its timeout (5 s; a write at the limit 21 s) with an error naming the step (the
 transaction is aborted), so a stuck database never hangs either page. On load the landing page deletes a record the
