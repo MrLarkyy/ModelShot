@@ -71,6 +71,8 @@ jobs:
       - run: pnpm --filter @modelshot/harness exec playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}
       - run: pnpm --filter @modelshot/site run test:browser
         if: ${{ matrix.name == 'golden-1' && !cancelled() }}
+      - run: pnpm --filter @modelshot/app run test:browser
+        if: ${{ matrix.name == 'golden-1' && !cancelled() }}
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
@@ -78,6 +80,7 @@ jobs:
           path: |
             tools/harness/test-results/
             packages/site/test-results/
+            packages/app/test-results/
           retention-days: 14
           if-no-files-found: ignore
 

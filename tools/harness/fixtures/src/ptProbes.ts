@@ -4,7 +4,10 @@ import type { PtProbe } from './fixtureApi';
 
 type Point = [number, number, number];
 
-/** A texel of a mesh (texture UV units) or, with `groundY`, where the key light's ray through it meets that height. */
+/**
+ * A texel of a mesh (texture UV units, of frame 0 for a frame strip) or, with `groundY`, where the key light's ray
+ * through it meets that height.
+ */
 export interface PtProbeRequest {
   readonly name: string;
   readonly mesh: string;
@@ -75,7 +78,7 @@ export function locateProbe(doc: SceneDocument, request: PtProbeRequest): Point 
     for (const group of mesh.groups) {
       const texture = doc.textures[doc.materials[group.material]?.texture ?? -1];
       if (!texture) continue;
-      const target = [request.uv[0] / texture.uvWidth, request.uv[1] / texture.uvHeight];
+      const target = [request.uv[0] / texture.uvWidth, request.uv[1] / texture.uvHeight / (texture.frames?.count ?? 1)];
       for (let i = group.start; i < group.start + group.count; i += 3) {
         const v = [mesh.indices[i] ?? 0, mesh.indices[i + 1] ?? 0, mesh.indices[i + 2] ?? 0];
         const [a, b, c] = v.map(corner) as [Point, Point, Point];
