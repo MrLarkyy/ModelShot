@@ -153,6 +153,55 @@ describe('setScene with the geometry worker', () => {
     expect(calls.slice(before).filter((c) => c.name === 'deleteTexture')).toHaveLength(10);
   });
 
+  it('a context lost and restored while a later build is pending: the finished upload is dropped and the scene uploads fresh', async () => {
+    const started: { b?: Promise<SetSceneResult> } = {};
+    let startB: (() => void) | null = null;
+    const {
+      tracer: pt,
+      worker,
+      calls,
+      internals,
+    } = tracer({}, (call) => {
+      if (call.name === 'texSubImage2D') startB?.();
+    });
+    expect((await pt.setScene(scene(20))).applied).toBe(true);
+    worker.holdReplies = true;
+    const a = scene(21);
+    // B starts while A's first band is written; its reply is held, so A waits for it after its last band.
+    startB = () => {
+      startB = null;
+      started.b = pt.setScene(scene(22));
+    };
+    const first = applied(pt.setScene(a));
+    await until(() => worker.held.length === 1);
+    worker.release();
+    await until(() => worker.held.length === 1 && started.b !== undefined);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const hooks = pt as unknown as { handleContextLost: (e: Event) => void; handleContextRestored: () => void };
+    hooks.handleContextLost({ preventDefault: () => undefined } as Event);
+    hooks.handleContextRestored();
+    const at = calls.length;
+    const rejected = worker.held[0];
+    if (rejected?.type !== 'prepared') throw new Error('no reply');
+    worker.release([
+      { type: 'error', id: rejected.id, name: 'PathTracerError', code: 'SCENE_TOO_LARGE', message: 'rows', path: '' },
+    ]);
+    await expect(started.b).rejects.toMatchObject({ code: 'SCENE_TOO_LARGE' });
+    expect(await first).toBe(true);
+    expect(internals.loaded?.doc).toBe(a);
+    const deleted = new Set(
+      calls
+        .slice(at)
+        .filter((c) => c.name === 'deleteTexture')
+        .map((c) => c.args[0]),
+    );
+    const final = Object.values(internals.gpu?.scene as Record<string, unknown>).filter((v) => typeof v === 'object');
+    // The banded upload's five textures and the restore's five, which the swap releases.
+    expect(deleted.size).toBe(10);
+    expect(final).toHaveLength(5);
+    expect(final.some((texture) => deleted.has(texture))).toBe(false);
+  });
+
   it('dispose during a pending setScene resolves it unapplied and terminates the worker', async () => {
     const { tracer: pt, worker, internals } = tracer();
     worker.holdReplies = true;

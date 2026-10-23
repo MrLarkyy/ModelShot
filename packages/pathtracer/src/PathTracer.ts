@@ -345,6 +345,8 @@ export class PathTracer {
    * sample 0. Nothing reaches the GPU before every check passed, and a failing call keeps the current scene. A later
    * call that passes every limit (whenever its geometry arrives) or `dispose()` supersedes a pending one: it resolves
    * with `applied: false` and closes what it decoded. A later call rejected for a limit supersedes nothing.
+   * Meshes are compared by object identity: a `SceneMesh` mutated in place between calls is not posted again, so
+   * change one by passing a new object.
    */
   async setScene(doc: SceneDocument, options: SetSceneOptions = {}): Promise<SetSceneResult> {
     if (this.disposed) return NOT_APPLIED;
@@ -459,6 +461,11 @@ export class PathTracer {
       () => this.isCurrent(generation) && this.contextEpoch === epoch && this.gpu === gpu,
     );
     await this.buildsSettled();
+    // A context lost and restored while waiting: the textures belong to the dead one, the restore uploads instead.
+    if (uploaded && (this.contextEpoch !== epoch || this.gpu !== gpu)) {
+      disposeGpuScene(this.gl, uploaded);
+      return null;
+    }
     return uploaded;
   }
 

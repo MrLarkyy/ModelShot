@@ -84,6 +84,36 @@ export function writeLayerImages(
   gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
 }
 
+/**
+ * Rows `from .. from + count` of `image` into its place. A RawImage by a view of its rows; an ImageBitmap by
+ * UNPACK_SKIP_ROWS, which WebGL2 applies to a TexImageSource upload (reset to 0 after).
+ */
+export function writeLayerImageRows(
+  gl: WebGL2RenderingContext,
+  handle: WebGLTexture,
+  place: TexturePlacement,
+  image: ImageBitmap | RawImage,
+  from: number,
+  count: number,
+): void {
+  const { layer, x, y, width } = place;
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY, handle);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+  gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  if ('data' in image) {
+    const rows = image.data.subarray(from * width * 4, (from + count) * width * 4);
+    gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, x, y + from, layer, width, count, 1, gl.RGBA, gl.UNSIGNED_BYTE, rows);
+  } else {
+    gl.pixelStorei(gl.UNPACK_SKIP_ROWS, from);
+    gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, x, y + from, layer, width, count, 1, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    gl.pixelStorei(gl.UNPACK_SKIP_ROWS, 0);
+  }
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
+}
+
 /** Each image with its place in `plan`; an image without one is left out. */
 export function placedImages(
   plan: TextureLayerPlan,

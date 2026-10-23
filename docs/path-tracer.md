@@ -102,7 +102,7 @@ floor does not ride with a jump.
    With edge options (the render; the bake passes none) each triangle also carries its corners' four sharp-edge
    distances and the slots' angles (`flatEdges`, from `sceneSharpEdges` of the document, looked up once).
 3. `buildBvh`: binned SAH (12 bins per axis), leaves of at most 4 triangles, in JavaScript (with upload and a first
-   sample about 1 s for 200 000 triangles on the dev machine, `pt-load-200k`). Deterministic: ties go to the lower axis
+   sample about 1-2 s for 200 000 triangles under software WebGL, `pt-load-200k`, see testing.md). Deterministic: ties go to the lower axis
    and bin, partitions are stable. Depth is at most 31 for any input: a node whose triangles would need every remaining
    level if split at the median, or whose centroids coincide, is split at its index median instead; the shader's
    32-entry traversal stack therefore never overflows.
@@ -118,7 +118,9 @@ floor does not ride with a jump.
    chunks, a yield every 2 MiB; never texture bytes) and the worker transfers the packed buffers back. Without Worker
    support, with `geometryWorker: false`, or once the worker could not start or failed (its pending builds then run
    again on the main thread, in call order), the main thread runs the same function. No timeout: the work is bounded
-   by `maxTriangles` and the row limits, and `dispose()` terminates the worker.5. Textures are decoded by the realtime renderer's `decodeTextures` (the same header checks, limits, placeholders and
+   by `maxTriangles` and the row limits, and `dispose()` terminates the worker.
+
+5. Textures are decoded by the realtime renderer's `decodeTextures` (the same header checks, limits, placeholders and
    warnings; bytes go through a Blob, nothing is fetched) and shelf-packed into one SRGB8_ALPHA8 `TEXTURE_2D_ARRAY`
    (GLSL ES 3.00 cannot pick a sampler by a dynamic index): one layer of the smallest power-of-two width that holds
    everything, else layers of min(`MAX_TEXTURE_SIZE`, 4096); more layers than `MAX_ARRAY_TEXTURE_LAYERS` throw
@@ -126,11 +128,10 @@ floor does not ride with a jump.
    `PLACEHOLDER_IMAGE`).
    The data textures and the images upload over several tasks while the current scene keeps drawing: at most
    `BAND_ROWS` (128) rows, 4 MiB, of a data texture per task, and images in groups of at most 4 MiB per task (a larger
-   image alone). A superseded upload, or one whose context was lost, deletes what it made; the swap then releases the
+   image in row bands of 4 MiB: a `RawImage` by a view of its rows, an `ImageBitmap` by `UNPACK_SKIP_ROWS`). A superseded upload, or one whose context was lost, deletes what it made; the swap then releases the
    old scene's textures, so for that moment both scenes' data are on the GPU (about 2 × 40 MB at 200 000 triangles).
    After a context restore, after `setEdges` of a new angle, and for the empty scene the upload is still one task.
-
-5. Per sample, a trace pass per tile (scissor, at most `tileSize` square, so no draw call runs long enough to trip a
+6. Per sample, a trace pass per tile (scissor, at most `tileSize` square, so no draw call runs long enough to trip a
    driver watchdog) reads the running sum from one RGBA32F target and writes sum + sample into the other; then they
    swap. A present pass divides by the sample count and applies AgX. The quality path (Render quality) traces at the
    supersampled size, adds a second output to the trace, and at checkpoints runs the noise, denoise and resolve

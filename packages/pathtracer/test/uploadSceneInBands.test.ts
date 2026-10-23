@@ -114,6 +114,79 @@ describe('uploadSceneInBands', () => {
     ]);
   });
 
+  it('splits an image larger than IMAGE_TASK_BYTES into row bands whose bytes equal the whole image', async () => {
+    const side = 2048;
+    const big: RawImage = { width: side, height: side, data: new Uint8Array(side * side * 4) };
+    big.data.forEach((_, i) => (big.data[i] = (i * 7) % 251));
+    const bigPlan: TextureLayerPlan = {
+      width: side,
+      height: side,
+      layers: 1,
+      placements: [{ layer: 0, x: 0, y: 0, width: side, height: side }],
+    };
+    const { gl, calls } = stubGl();
+    const scene = await uploadSceneInBands(gl, geometry, materials, bigPlan, [big], () => true);
+    expect(scene).not.toBeNull();
+    const writes = calls.filter((c) => c.name === 'texSubImage3D');
+    expect(writes).toHaveLength(4);
+    expect(writes.map((c) => c.args[3])).toEqual([0, 512, 1024, 1536]);
+    expect(writes.every((c) => c.args[6] === 512)).toBe(true);
+    const joined = new Uint8Array(side * side * 4);
+    writes.forEach((c, i) => joined.set(c.args[10] as Uint8Array, i * 512 * side * 4));
+    expect(sameBytes(joined, big.data)).toBe(true);
+  });
+
+  it('an ImageBitmap larger than IMAGE_TASK_BYTES goes by UNPACK_SKIP_ROWS, reset after each band', async () => {
+    const side = 2048;
+    const bitmap = { width: side, height: side } as unknown as ImageBitmap;
+    const bigPlan: TextureLayerPlan = {
+      width: side,
+      height: side,
+      layers: 1,
+      placements: [{ layer: 0, x: 0, y: 0, width: side, height: side }],
+    };
+    const { gl, calls } = stubGl();
+    await uploadSceneInBands(gl, geometry, materials, bigPlan, [bitmap], () => true);
+    const skip = gl.UNPACK_SKIP_ROWS;
+    const sequence = calls
+      .filter((c) => c.name === 'texSubImage3D' || (c.name === 'pixelStorei' && c.args[0] === skip))
+      .map((c) =>
+        c.name === 'texSubImage3D' ? `w${String(c.args[3])}:${String(c.args[6])}` : `s${String(c.args[1])}`,
+      );
+    expect(sequence).toEqual([
+      's0',
+      'w0:512',
+      's0',
+      's512',
+      'w512:512',
+      's0',
+      's1024',
+      'w1024:512',
+      's0',
+      's1536',
+      'w1536:512',
+      's0',
+    ]);
+  });
+
+  it('a superseded upload mid-image deletes every texture it made', async () => {
+    const side = 2048;
+    const big: RawImage = { width: side, height: side, data: new Uint8Array(side * side * 4) };
+    const bigPlan: TextureLayerPlan = {
+      width: side,
+      height: side,
+      layers: 1,
+      placements: [{ layer: 0, x: 0, y: 0, width: side, height: side }],
+    };
+    const { gl, calls } = stubGl();
+    let checks = 0;
+    // After the data bands (1 + 3 + 2 + 1 = 7 tasks) and two image bands.
+    const scene = await uploadSceneInBands(gl, geometry, materials, bigPlan, [big], () => ++checks < 10);
+    expect(scene).toBeNull();
+    expect(calls.filter((c) => c.name === 'texSubImage3D')).toHaveLength(2);
+    expect(calls.filter((c) => c.name === 'deleteTexture')).toHaveLength(5);
+  });
+
   it('a superseded upload stops, deletes every texture it made and gives null', async () => {
     const { gl, calls } = stubGl();
     let checks = 0;
