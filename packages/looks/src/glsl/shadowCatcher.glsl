@@ -11,9 +11,11 @@ float catcherKeyWeight() {
   return catcherLuminance(u_lookKeyColor) * u_lookKeyDirection.y;
 }
 
-// Everything an unshadowed point receives, the dome's fill and the key, in luminance; never 0.
+// Everything an unshadowed point receives, the dome's fill and the key, in luminance. At most CATCHER_NO_LIGHT (a
+// lightless look): nothing to take away, so both shades below are exactly 1, in the preview and the render alike.
+const float CATCHER_NO_LIGHT = 1.0e-6;
 float catcherLightWeight() {
-  return max(catcherLuminance(hemisphereFill(vec3(0.0, 1.0, 0.0))) + catcherKeyWeight(), 1.0e-6);
+  return catcherLuminance(hemisphereFill(vec3(0.0, 1.0, 0.0))) + catcherKeyWeight();
 }
 
 // rect: the catcher's [minX, minZ, maxX, maxZ]. 1 inside, falling to 0 over the outer 10 % so the catcher has no
@@ -30,7 +32,9 @@ float catcherFade(vec2 xz, vec4 rect) {
 // the path tracer may average it over samples and the preview may evaluate it once on baked means: both give the same
 // value. 1 where nothing blocks the light (up to rounding), fading to 1 at the edge.
 float catcherShade(vec3 fill, float keyT, vec2 xz, vec4 rect) {
-  float lit = (catcherLuminance(fill) + catcherKeyWeight() * keyT) / catcherLightWeight();
+  float weight = catcherLightWeight();
+  if (weight <= CATCHER_NO_LIGHT) return 1.0;
+  float lit = (catcherLuminance(fill) + catcherKeyWeight() * keyT) / weight;
   return 1.0 - u_lookCatcherStrength * (1.0 - lit) * catcherFade(xz, rect);
 }
 
@@ -38,6 +42,8 @@ float catcherShade(vec3 fill, float keyT, vec2 xz, vec4 rect) {
 // both are 0, whatever the division rounds (its numerator is 0), so an unshadowed catcher sample is the bare backdrop
 // and has coverage 0; affine in both, as catcherShade.
 float catcherShadeOfLoss(vec3 fillLost, float keyLost, vec2 xz, vec4 rect) {
-  float lost = (catcherLuminance(fillLost) + catcherKeyWeight() * keyLost) / catcherLightWeight();
+  float weight = catcherLightWeight();
+  if (weight <= CATCHER_NO_LIGHT) return 1.0;
+  float lost = (catcherLuminance(fillLost) + catcherKeyWeight() * keyLost) / weight;
   return 1.0 - u_lookCatcherStrength * lost * catcherFade(xz, rect);
 }

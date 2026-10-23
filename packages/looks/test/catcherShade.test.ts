@@ -44,7 +44,7 @@ describe('catcherShade', () => {
     expect(shadowCatcherSource).toContain('vec3(0.2126, 0.7152, 0.0722)');
     // The loss form's numerator is the losses alone, so zero losses give exactly 1 on any GPU.
     expect(shadowCatcherSource).toContain(
-      'float lost = (catcherLuminance(fillLost) + catcherKeyWeight() * keyLost) / catcherLightWeight();',
+      'float lost = (catcherLuminance(fillLost) + catcherKeyWeight() * keyLost) / weight;',
     );
     expect(shadowCatcherSource).toContain('return 1.0 - u_lookCatcherStrength * lost * catcherFade(xz, rect);');
     const linked = linkShader('#include "shadowCatcher"', lookShaderChunks);
@@ -95,6 +95,25 @@ describe('catcherShadeOfLoss', () => {
         );
       }
     }
+  });
+
+  it('a lightless look (sky, ground and key 0) has no catcher: both shades are exactly 1 whatever blocks', () => {
+    const dark: LightRig = {
+      ...rig,
+      environment: { ...rig.environment, sky: [0, 0, 0], ground: [0, 0, 0] },
+      lights: { ...rig.lights, key: { ...rig.lights.key, color: [0, 0, 0] } },
+    };
+    for (const xz of POINTS) {
+      for (const [fill, keyT] of [
+        [[0, 0, 0], 0],
+        [[0, 0, 0], 1],
+        [[0.2, 0.1, 0], 0.5],
+      ] as const) {
+        expect(catcherShade(dark, fill, keyT, xz, RECT)).toBe(1);
+        expect(catcherShadeOfLoss(dark, [-fill[0], -fill[1], -fill[2]], 1 - keyT, xz, RECT)).toBe(1);
+      }
+    }
+    expect(shadowCatcherSource.match(/if \(weight <= CATCHER_NO_LIGHT\) return 1\.0;/g)).toHaveLength(2);
   });
 
   it('is never above 1: no loss is negative', () => {
