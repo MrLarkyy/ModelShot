@@ -199,6 +199,46 @@ importers:
       '@modelshot/brand':
         specifier: workspace:*
         version: link:../brand
+      '@modelshot/export':
+        specifier: workspace:*
+        version: link:../export
+      '@modelshot/formats':
+        specifier: workspace:*
+        version: link:../formats
+      '@modelshot/looks':
+        specifier: workspace:*
+        version: link:../looks
+      '@modelshot/pathtracer':
+        specifier: workspace:*
+        version: link:../pathtracer
+      '@modelshot/renderer-rt':
+        specifier: workspace:*
+        version: link:../renderer-rt
+      '@modelshot/scene':
+        specifier: workspace:*
+        version: link:../scene
+    devDependencies:
+      '@axe-core/playwright':
+        specifier: 4.14.0
+        version: 4.14.0(playwright-core@1.64.1)
+      '@playwright/test':
+        specifier: 1.64.1
+        version: 1.64.1
+      '@types/node':
+        specifier: 22.20.5
+        version: 22.20.5
+      '@types/pngjs':
+        specifier: ^6.0.5
+        version: 6.0.5
+      pixelmatch:
+        specifier: ^8.0.0
+        version: 8.0.0
+      pngjs:
+        specifier: ^7.0.0
+        version: 7.0.0
+      vite:
+        specifier: 8.3.4
+        version: 8.3.4(@types/node@22.20.5)
 
   packages/brand:
     devDependencies:
