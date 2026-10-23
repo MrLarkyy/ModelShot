@@ -311,3 +311,18 @@ function expectSameCamera(actual: OrbitController, expected: OrbitController): v
   a.target.forEach((v, i) => expect(v).toBeCloseTo(e.target[i] ?? 0, 9));
   expect(a.projection.kind).toBe(e.projection.kind);
 }
+
+describe('OrbitController initial angles', () => {
+  it('resets to the angles set later, clamped, and ignores a non-finite pair', () => {
+    const c = controller();
+    c.reset(bounds);
+    c.setInitialAngles(180, -120);
+    c.rotate(33, 5);
+    c.reset(bounds);
+    expect(c.angles).toEqual({ yawDeg: 180, pitchDeg: MIN_PITCH_DEG });
+    c.setInitialAngles(Number.NaN, 10);
+    c.rotate(33, 5);
+    c.reset(bounds);
+    expect(c.angles).toEqual({ yawDeg: 180, pitchDeg: MIN_PITCH_DEG });
+  });
+});
