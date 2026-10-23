@@ -178,7 +178,10 @@ format is chosen from it before the download.
 When the download fails without any response, the browser does not say whether the server refused CORS or was never
 reached. The frame then sends one `HEAD` request to the same URL in `no-cors` mode (no credentials, no referrer, 10 s
 limit): if the server answers it, the error is `MODEL_CORS_BLOCKED`, naming the model origin, the embed origin and the
-header to add; if not, `MODEL_UNREACHABLE`. That probe is the only second request the embed ever makes.
+header to add; if not, `MODEL_UNREACHABLE`. That probe is the only second request the embed ever makes. Some browsers
+fail the `no-cors` probe too when the server sends `X-Content-Type-Options: nosniff` with a type they block for opaque
+responses (such as `application/json`), so a server without the header can also end in `MODEL_UNREACHABLE`: its message
+names a missing `Access-Control-Allow-Origin` as a possible cause.
 
 ## Limits
 

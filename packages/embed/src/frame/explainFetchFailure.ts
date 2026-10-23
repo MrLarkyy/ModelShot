@@ -13,6 +13,7 @@ export interface ExplainOptions {
  * Why a model request failed without a response. The browser hides whether the server refused the CORS check or was
  * never reached, so one HEAD request in no-cors mode (no credentials, no referrer, same URL) tells them apart: an
  * answer means the server is there and withholds the header (`MODEL_CORS_BLOCKED`), none means `MODEL_UNREACHABLE`.
+ * Some browsers block the probe's opaque answer under `nosniff`, so the unreachable message names the header too.
  */
 export async function explainFetchFailure(url: string, options: ExplainOptions): Promise<EmbedError> {
   const modelOrigin = new URL(url).origin;
@@ -35,7 +36,9 @@ export async function explainFetchFailure(url: string, options: ExplainOptions):
   } catch {
     return new EmbedError(
       'MODEL_UNREACHABLE',
-      `${modelOrigin} could not be reached: the browser is offline, the address is wrong or the server refused the connection.`,
+      `${modelOrigin} could not be reached: the browser is offline, the address is wrong or the server refused the ` +
+        `connection; or it answered without Access-Control-Allow-Origin: * (or ${options.frameOrigin}), which some ` +
+        `browsers also hide from this check.`,
     );
   } finally {
     clearTimeout(timer);

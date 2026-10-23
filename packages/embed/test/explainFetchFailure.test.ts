@@ -23,6 +23,8 @@ describe('explainFetchFailure', () => {
     const error = await explainFetchFailure(URL_MODEL, { fetch, frameOrigin: FRAME });
     expect(error.code).toBe('MODEL_UNREACHABLE');
     expect(error.message).toContain('https://models.example');
+    // A browser that blocks the probe's opaque answer under nosniff lands here for a server without the header.
+    expect(error.message).toContain(`Access-Control-Allow-Origin: * (or ${FRAME})`);
   });
 
   it('says unreachable when the probe hangs past its timeout', async () => {
