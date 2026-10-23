@@ -162,7 +162,7 @@ reads them yet.
 
 ### `SceneTexture`
 
-`{ name, mimeType: 'image/png', bytes, width, height, uvWidth, uvHeight, missing, frames? }`
+`{ name, mimeType: 'image/png', bytes, width, height, uvWidth, uvHeight, missing, frames?, wrap? }`
 
 `bytes` is the encoded PNG as the file had it; model loaders only check its header, and `loadSkin` decodes a legacy
 skin's pixels once to set `legacyHatOpaque` ([player.md](player.md#legacy-hat)). `width` × `height` is the pixel size
@@ -181,6 +181,14 @@ of 13.33 px). `frameTime` is the seconds each played frame shows, finite and abo
 false). Loaders store `count` only; the frame size follows from `width`/`height`. UVs of every face using the texture
 are already normalised into frame 0, v in [0, 1/`count`] of the whole image; frame k is the same UV plus k/`count` in
 v, so a consumer that ignores `frames` draws frame 0, the still.
+
+`wrap` (`SceneTextureWrap`, optional: `'clamp'` or `'repeat'`; absent: `DEFAULT_TEXTURE_WRAP`, `'clamp'`) says what a
+texel lookup past the image reads. Every renderer first keeps a lookup inside the face's texel rectangle (from its
+`uvRects` entry), so only a face whose UVs pass the texture reaches beyond it; there `clamp` reads the edge texel and
+`repeat` the texture repeated (texel coordinates modulo `width` and `height`). `textureSampling(texture)` resolves the
+field with its default; renderers read it only through that function. The bbmodel loader stores `'repeat'` for a
+texture whose `wrap_mode` is `repeat` and leaves the key out otherwise ([bbmodel.md](bbmodel.md)); the glTF and OBJ
+loaders leave it out (their images clamp).
 
 ## Poses
 
@@ -359,6 +367,11 @@ documents are unchanged; no migration.
 Added within version 1 (MS-50), optional: `SceneMeshGroup.cameraOnly` (absent: `false`). A consumer that ignores it
 lets the faces shadow and occlude as ordinary faces, which only darkens what an outline hull encloses; loaders leave
 the key out everywhere else, so those documents are unchanged; no migration.
+Added within version 1 (MS-52), optional: `SceneTexture.wrap` (absent: `'clamp'`), with the type `SceneTextureWrap`,
+the exports `DEFAULT_TEXTURE_WRAP`, `SCENE_TEXTURE_WRAPS` and `textureSampling` (type `TextureSampling`). A document
+without it means what renderers now draw for every texture: the edge texel past the image (before MS-52 such a lookup
+was undefined in the realtime renderer and read a neighbouring image in the path tracer, so no defined meaning
+changes). Loaders leave the key out except for a repeating bbmodel texture; no migration.
 
 ## Loaders
 

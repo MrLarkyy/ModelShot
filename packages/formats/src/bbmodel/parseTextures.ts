@@ -1,4 +1,4 @@
-import type { SceneTexture } from '@modelshot/scene';
+import type { SceneTexture, SceneTextureWrap } from '@modelshot/scene';
 import { decodeDataUri } from '../dataUri/decodeDataUri';
 import { readPngSize } from '../png/readPngSize';
 import { BbmodelError } from './BbmodelError';
@@ -10,6 +10,7 @@ import { quoteValue } from '../text/quoteValue';
 import { RENDER_MODES, type RenderMode } from './RenderMode';
 import { RENDER_SIDES, type RenderSides } from './RenderSides';
 import { readTextureFrameSettings, textureFrames, type TextureFrameSettings } from './textureFrames';
+import { TEXTURE_WRAPS, drawnTextureWrap, formatTextureWrapDefault } from './TextureWrap';
 
 /** What the loader knows about a texture before any bytes are decoded. */
 export interface TextureEntry {
@@ -31,6 +32,8 @@ export interface TextureEntry {
   readonly useAsDefault: boolean;
   /** Animation fields; `undefined` in a format without animated textures. */
   readonly frameSettings: TextureFrameSettings | undefined;
+  /** How Blockbench draws its `wrap_mode` (`drawnTextureWrap`), the format's default when absent. */
+  readonly wrap: SceneTextureWrap;
 }
 
 export interface UvSize {
@@ -116,7 +119,33 @@ function readTextureEntry(
     visible: readLenientBoolean(texture, 'visible', path, true, warnings),
     useAsDefault: readLenientBoolean(texture, 'use_as_default', path, false, warnings),
     frameSettings: readTextureFrameSettings(texture, path, modelFormat, warnings),
+    wrap: readWrapMode(texture, path, modelFormat, warnings),
   };
+}
+
+/**
+ * Absent: the format's `texture_wrap_default`. A stored `wrap_mode` counts in every format (Blockbench merges it on
+ * load like any texture property). Anything but `limited`, `repeat` or `clamp` warns and draws clamped, as Blockbench
+ * draws every mode but `repeat`; the field was ignored before MS-52, so no value fails the file.
+ */
+function readWrapMode(
+  texture: JsonObject,
+  path: string,
+  modelFormat: string,
+  warnings: BbmodelWarningList,
+): SceneTextureWrap {
+  const value = field(texture, 'wrap_mode');
+  if (value === undefined) return drawnTextureWrap(formatTextureWrapDefault(modelFormat));
+  const mode = TEXTURE_WRAPS.find((candidate) => candidate === value);
+  if (mode === undefined) {
+    warnings.add(
+      'UNSUPPORTED_VALUE',
+      childPath(path, 'wrap_mode'),
+      `${quoteValue(value)} is not limited, repeat or clamp; using clamp`,
+    );
+    return 'clamp';
+  }
+  return drawnTextureWrap(mode);
 }
 
 /** Absent: `auto`; an unknown string warns and counts as `auto`. */
@@ -243,6 +272,8 @@ function resolveTexture(
     mimeType: 'image/png' as const,
     uvWidth: entry.uvWidth,
     uvHeight: entry.uvHeight,
+    // Only repeat is stored: clamp is the default, so a clamped texture serialises exactly as before wrap was read.
+    ...(entry.wrap === 'repeat' ? { wrap: entry.wrap } : {}),
   };
   if (!bytes) {
     const wanted = entry.fileKeys[0];

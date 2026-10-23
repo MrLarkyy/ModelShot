@@ -36,6 +36,12 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
   optional [`SceneMaterial`](scene-format.md#scenematerial) fields `alphaMode`, `blending`, `alphaEmission` and
   `layers` (Conversion); an unknown value warns and loads as `default`. In the single-texture formats a face shows
   the format's default texture, as Blockbench draws it (Conversion, Blockbench conventions 15).
+- **Texture wrap** (MS-52, texture `wrap_mode`: `limited`, `repeat`, `clamp`): a face whose UVs pass its texture
+  reads the texture repeated when `wrap_mode` is `repeat`, in any format, and the edge texel otherwise, as Blockbench
+  draws it (Blockbench conventions 16). Absent, `wrap_mode` takes the format's `texture_wrap_default` (`clamp` in
+  `hytale_character` and `hytale_prop`, `limited` everywhere else), which draws clamped either way. A `repeat`
+  texture gets [`SceneTexture.wrap`](scene-format.md#scenetexture) `"repeat"`; a clamped one no `wrap` key. Any
+  other value warns and clamps.
 - **Box UV** (`meta.box_uv` or the cube's `box_uv`): faces without a `uv` get Blockbench's box layout from
   `uv_offset`, the cube size and `mirror_uv`. The size is `to − from` of the plain cube (signed, so negative on a
   reversed axis, as Blockbench lays it out; inflate and stretch ignored),
@@ -78,7 +84,7 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
 Skipped with an `UNSUPPORTED_ELEMENT` warning: `locator`, `null_object`, `texture_mesh`, `billboard`, `spline_mesh`,
 armatures and any other element type except `cube` and `mesh`. Render modes load into material fields (Supported)
 that no renderer draws yet (MS-32): emissive textures draw plainly lit, additive ones blended normally and a layer
-composite as its bottom texture. A texture's `pbr_channel`, `wrap_mode` and per-layer paint data (`layers`) are not
+composite as its bottom texture. A texture's `pbr_channel` and per-layer paint data (`layers`) are not
 read. Frame-strip textures load with their frame data (Supported) but no renderer or app plays them yet, and
 the per-frame times of a `custom` `frame_order` (`2:5`) are ignored, as in Blockbench's preview; a picked image's
 `.mcmeta` file is not read.
@@ -309,6 +315,14 @@ format, quad order and split, normal sign, `render_sides`, `render_order` and th
     `cosmic_reach_model` and Easy Model Entities' `eme_entity` set none of these flags, and no plugin sets
     `per_group_texture`. ModelShot reads a plugin format as if the plugin were installed; an id no rule names keeps
     per-face textures and the project resolution.
+16. **Texture wrap** (MS-52, checked against the Blockbench 5 desktop bundle and the Hytale plugin): a texture's
+    `wrap_mode` is `limited`, `repeat` or `clamp`, defaulting to `Format.texture_wrap_default`, which is `limited`
+    (format.ts:670-671, textures.js:2257) except in the Hytale plugin's `hytale_character` and `hytale_prop`
+    (`clamp`, hytale_plugin.js:815); a stored `wrap_mode` is merged on load like any texture property, in any format.
+    Blockbench draws `repeat` as `RepeatWrapping` and both other modes as `ClampToEdgeWrapping` (textures.js:726),
+    so only `repeat` repeats. ModelShot's renderers address a texel within the face's texel rectangle first, then
+    repeat it into the image or take the edge texel (`faceTexel`, [realtime renderer](realtime-renderer.md),
+    [path tracer](path-tracer.md)).
 
 ## Limits
 
@@ -378,7 +392,7 @@ The model still loads; at most 100 warnings are kept (`MAX_BBMODEL_WARNINGS`). E
 | code                  | when                                                                                                                        |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | `UNSUPPORTED_ELEMENT` | an element type other than `cube` or `mesh`; skipped                                                                        |
-| `UNSUPPORTED_VALUE`   | an unknown `render_order`, `render_sides`, `render_mode` or `shading` string; the default is used                           |
+| `UNSUPPORTED_VALUE`   | an unknown `render_order`, `render_sides`, `render_mode`, `wrap_mode` or `shading` string; the default is used              |
 | `UNKNOWN_REFERENCE`   | an outliner entry names a uuid no element has (skipped), or an optifine group or Hytale collection `texture` no texture has |
 | `SOURCE_NOT_FETCHED`  | a texture `source` that is not a data URI (a URL or file path); never fetched                                               |
 | `MISSING_TEXTURE`     | no embedded image and no matching picked file; the texture is `missing`                                                     |
@@ -392,7 +406,8 @@ tokens are dropped), and for a strip whose frames would be under one pixel tall 
 as one image).
 
 Textures also warn `UNSUPPORTED_VALUE` for a `render_mode` that is no known mode, of any type (`default` is used),
-and for a `visible` or `use_as_default` that is no boolean (`true` and `false` are used); in `optifine_entity` and
+for a `wrap_mode` other than `limited`, `repeat` or `clamp`, of any type (drawn clamped, as Blockbench draws every
+mode but `repeat`), and for a `visible` or `use_as_default` that is no boolean (`true` and `false` are used); in `optifine_entity` and
 `optifine_part` a group `texture` that is no string warns `UNSUPPORTED_VALUE` (ignored) and one naming no texture
 `UNKNOWN_REFERENCE` (the group's faces are untextured); in `hytale_character` and `hytale_prop` a `collections`
 entry that is no object warns `UNSUPPORTED_VALUE` at `$.collections[i]` (counted as an empty collection; Blockbench
@@ -404,7 +419,7 @@ object (Blockbench would turn an array such as `[2]` into 2; ModelShot ignores i
 `UNKNOWN_REFERENCE` there (untextured too); a child that is no uuid string is skipped silently, and other formats do
 not read `collections`; in `image`, `optifine_entity` and `optifine_part` a
 `uv_width` or `uv_height` that is no positive number warns `UNSUPPORTED_VALUE` (the resolution is used). None of
-these fails a file: the fields were ignored before MS-29.
+these fails a file: the fields were ignored before MS-29 (`wrap_mode` before MS-52).
 
 Animations also warn `UNSUPPORTED_VALUE` for an unknown `loop` (played `once`) or interpolation (played linear),
 `anim_time_update`, `start_delay`, `loop_delay`, `blend_weight` other than their defaults and negative scale, and
@@ -472,6 +487,12 @@ outward box (or, for the inflate, collapsed flat) and now loads mirrored on that
 axes is reversed. On an outline hull (an inverted cube with volume on every axis) `auto`-sided and untextured faces
 are single-sided and its single-sided faces `cameraOnly` (Conversion). Every other cube loads exactly as before; no file that loaded before fails.
 Reload affected models; scene documents need no migration.
+
+MS-52 reads texture `wrap_mode`, a behaviour change for files that loaded before: a face whose UVs pass its texture
+used to read undefined texels in the preview and a neighbouring texture's texels in the render; it now reads the edge
+texel, or the texture repeated when the texture stores `wrap_mode: "repeat"`, the same in both. A repeat texture
+gains `wrap: "repeat"`; every other texture serialises exactly as before. A bad `wrap_mode` only warns, so no file
+that loaded before fails. Reload affected models; scene documents need no migration.
 
 ## Local-first
 
