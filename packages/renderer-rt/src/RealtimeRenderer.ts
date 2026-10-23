@@ -24,6 +24,7 @@ import {
   type LookPreset,
   type LookView,
 } from '@modelshot/looks';
+import { alphaToCoverageActive } from './alphaToCoverage';
 import type { BakedLighting } from './BakedLighting';
 import { checkLighting } from './checkLighting';
 import { canvasSize, type CanvasCssSize, type CanvasSize } from './canvasSize';
@@ -762,9 +763,16 @@ export class RealtimeRenderer {
    * frames carry only order 0: the front pass is drawn as is and the back pass gets `polygonOffset(4, 4)`, a
    * slope-scaled push that keeps a back side behind the front face it meets at a silhouette (the −1/16 order is below
    * the interpolation error there), and skips closed batches opaque on every face while the camera is outside their
-   * bounds and the near plane does not reach them (`backSidesVisible`). The depth test is set by the caller.
+   * bounds and the near plane does not reach them (`backSidesVisible`). The depth test is set by the caller, and so is
+   * `SAMPLE_ALPHA_TO_COVERAGE` when `alphaToCoverage` (the opaque pass's `u_alphaToCoverage`) is true.
    */
-  private drawItems(gpu: GpuResources, passName: MeshPassName, items: readonly DrawItem[], frame: FrameView): void {
+  private drawItems(
+    gpu: GpuResources,
+    passName: MeshPassName,
+    items: readonly DrawItem[],
+    frame: FrameView,
+    alphaToCoverage = false,
+  ): void {
     const pass = gpu.programs.meshPasses[frame.mode][passName];
     if (!pass) return;
     const gl = this.gl;
@@ -780,6 +788,7 @@ export class RealtimeRenderer {
     const noPull = new Float32Array(4);
     gl.uniform1i(pass.texture, 0);
     gl.uniform1i(pass.texelAntialias, this.options.texelAntialias === false ? 0 : 1);
+    gl.uniform1i(pass.alphaToCoverage, alphaToCoverage ? 1 : 0);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, gpu.lighting?.lightmap ?? gpu.unbakedLight);
     gl.uniform1i(pass.lightmap, 1);
@@ -914,7 +923,21 @@ export class RealtimeRenderer {
     this.drawBackdrop(gpu, height, false);
     if (frame) this.drawCatcher(gpu, frame, false);
     gl.enable(gl.DEPTH_TEST);
-    if (scene && frame) this.drawItems(gpu, 'opaque', scene.opaque, frame);
+    if (scene && frame) {
+      // Cutout seams covered per sample (alphaToCoverage.ts). Set and reset within the frame, so nothing else (a
+      // restored context included) sees it; alpha stays as the backdrop wrote it, the shader's alpha is coverage.
+      const texelAntialias = this.options.texelAntialias !== false;
+      const alphaToCoverage = alphaToCoverageActive(msaa !== null, targets.samples, texelAntialias);
+      if (alphaToCoverage) {
+        gl.enable(gl.SAMPLE_ALPHA_TO_COVERAGE);
+        gl.colorMask(true, true, true, false);
+      }
+      this.drawItems(gpu, 'opaque', scene.opaque, frame, alphaToCoverage);
+      if (alphaToCoverage) {
+        gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE);
+        gl.colorMask(true, true, true, true);
+      }
+    }
 
     if (msaa) {
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, msaa);

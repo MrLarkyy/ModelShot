@@ -12,8 +12,15 @@ vec4 tapWeight(vec4 c, int mode, int cutoffByte) {
   return vec4(c.rgb * w, w);
 }
 
-vec4 fetchPremultiplied(sampler2D tex, ivec2 texel, ivec4 range, int mode, int cutoffByte) {
-  return tapWeight(texelFetch(tex, clamp(texel, range.xy, range.zw), 0), mode, cutoffByte);
+// opaque: the tap's indicator for the opaque pass's coverage (alpha-to-coverage). Opaque taps 1, invisible 0; a partial
+// tap 1 only when the fragment's nearest texel is opaque, so an opaque|partial seam stays a full opaque side (OIT owns
+// the partial texel) and the ramp only runs between opaque and cut-out texels.
+vec4 fetchPremultiplied(sampler2D tex, ivec2 texel, ivec4 range, int mode, int cutoffByte, bool nearestOpaque,
+    out float opaque) {
+  vec4 c = texelFetch(tex, clamp(texel, range.xy, range.zw), 0);
+  int coverage = texelCoverage(c.a, mode, cutoffByte);
+  opaque = coverage == COVERAGE_OPAQUE || (coverage == COVERAGE_PARTIAL && nearestOpaque) ? 1.0 : 0.0;
+  return tapWeight(c, mode, cutoffByte);
 }
 
 // The anti-aliased seam's taps: texels base, base + (1, 0), (0, 1), (1, 1), blended by f. p: position in texel units;
@@ -31,15 +38,23 @@ SeamTaps seamTaps(vec2 p, vec2 texelsPerPixel) {
   return SeamTaps(ivec2(cell), q - cell);
 }
 
-// Premultiplied, so a cutout neighbour adds no dark fringe.
-vec4 texelAntialiased(sampler2D tex, vec2 p, vec2 texelsPerPixel, ivec4 range, int mode, int cutoffByte) {
+// Premultiplied, so a cutout neighbour adds no dark fringe. opaque: the tap indicators blended by the same f. On a
+// texel boundary f is 0.5, so across an opaque|cut-out seam the coverage passes 0.5 exactly where the nearest texel
+// changes: the area it covers equals the hard per-texel shape.
+vec4 texelAntialiased(sampler2D tex, vec2 p, vec2 texelsPerPixel, ivec4 range, int mode, int cutoffByte,
+    bool nearestOpaque, out float opaque) {
   SeamTaps taps = seamTaps(p, texelsPerPixel);
   ivec2 base = taps.base;
   vec2 f = taps.f;
-  vec4 c00 = fetchPremultiplied(tex, base, range, mode, cutoffByte);
-  vec4 c10 = fetchPremultiplied(tex, base + ivec2(1, 0), range, mode, cutoffByte);
-  vec4 c01 = fetchPremultiplied(tex, base + ivec2(0, 1), range, mode, cutoffByte);
-  vec4 c11 = fetchPremultiplied(tex, base + ivec2(1, 1), range, mode, cutoffByte);
+  float o00;
+  float o10;
+  float o01;
+  float o11;
+  vec4 c00 = fetchPremultiplied(tex, base, range, mode, cutoffByte, nearestOpaque, o00);
+  vec4 c10 = fetchPremultiplied(tex, base + ivec2(1, 0), range, mode, cutoffByte, nearestOpaque, o10);
+  vec4 c01 = fetchPremultiplied(tex, base + ivec2(0, 1), range, mode, cutoffByte, nearestOpaque, o01);
+  vec4 c11 = fetchPremultiplied(tex, base + ivec2(1, 1), range, mode, cutoffByte, nearestOpaque, o11);
+  opaque = mix(mix(o00, o10, f.x), mix(o01, o11, f.x), f.y);
   return mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
 }
 
@@ -50,6 +65,9 @@ struct TexelSample {
   // exactly per texel.
   int coverage;
   float nearestAlpha;
+  // The opaque pass's anti-aliased coverage in [0, 1] (texelAntialiased); the nearest texel's alone without texel AA.
+  // Only the opaque pass reads it, and only under alpha-to-coverage.
+  float opaqueCoverage;
 };
 
 // mode and cutoffByte: the material's alpha mode id and cutoff byte (texelAlpha).
@@ -65,18 +83,30 @@ TexelSample sampleTexels(sampler2D tex, vec2 uv, vec4 uvRect, bool antialias, in
   TexelSample s;
   s.coverage = texelCoverage(nearest.a, mode, cutoffByte);
   s.nearestAlpha = nearest.a;
+  bool nearestOpaque = s.coverage == COVERAGE_OPAQUE;
   if (!antialias) {
     s.premultiplied = tapWeight(nearest, mode, cutoffByte);
+    s.opaqueCoverage = nearestOpaque ? 1.0 : 0.0;
   } else if (max(texelsPerPixel.x, texelsPerPixel.y) <= 1.0) {
-    s.premultiplied = texelAntialiased(tex, p, texelsPerPixel, range, mode, cutoffByte);
+    s.premultiplied = texelAntialiased(tex, p, texelsPerPixel, range, mode, cutoffByte, nearestOpaque,
+      s.opaqueCoverage);
   } else {
     // Minified: several texels per pixel. A rotated 2x2 grid of the same clamped lookup averages them, so a far zoom
     // does not shimmer while the camera moves.
+    float o0;
+    float o1;
+    float o2;
+    float o3;
     s.premultiplied = 0.25 * (
-      texelAntialiased(tex, p + dx * -0.125 + dy * -0.375, texelsPerPixel, range, mode, cutoffByte) +
-      texelAntialiased(tex, p + dx * 0.375 + dy * -0.125, texelsPerPixel, range, mode, cutoffByte) +
-      texelAntialiased(tex, p + dx * 0.125 + dy * 0.375, texelsPerPixel, range, mode, cutoffByte) +
-      texelAntialiased(tex, p + dx * -0.375 + dy * 0.125, texelsPerPixel, range, mode, cutoffByte));
+      texelAntialiased(tex, p + dx * -0.125 + dy * -0.375, texelsPerPixel, range, mode, cutoffByte, nearestOpaque,
+        o0) +
+      texelAntialiased(tex, p + dx * 0.375 + dy * -0.125, texelsPerPixel, range, mode, cutoffByte, nearestOpaque,
+        o1) +
+      texelAntialiased(tex, p + dx * 0.125 + dy * 0.375, texelsPerPixel, range, mode, cutoffByte, nearestOpaque,
+        o2) +
+      texelAntialiased(tex, p + dx * -0.375 + dy * 0.125, texelsPerPixel, range, mode, cutoffByte, nearestOpaque,
+        o3));
+    s.opaqueCoverage = 0.25 * (o0 + o1 + o2 + o3);
   }
   return s;
 }

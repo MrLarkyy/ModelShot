@@ -91,6 +91,29 @@ describe('shader sources', () => {
     expect(shaderProgramSource('opaque').fragment.match(/seamTaps\(/g)?.length).toBe(3);
   });
 
+  it('gives only the opaque pass the alpha-to-coverage switch, with alpha 1 and the binary cutout when it is off', () => {
+    for (const depthKey of ['raster', 'exact'] as const) {
+      const opaque = shaderProgramSource('opaque', depthKey).fragment;
+      expect(opaque).toContain('uniform bool u_alphaToCoverage;');
+      const body = opaque.slice(opaque.indexOf('void main()'));
+      expect(body).toContain('if (s.coverage == COVERAGE_PARTIAL || s.opaqueCoverage <= 0.0) discard;');
+      expect(body).toContain('} else if (s.coverage != COVERAGE_OPAQUE) {');
+      expect(body).toContain('float alpha = u_alphaToCoverage ? s.opaqueCoverage : 1.0;');
+      for (const name of ['oitAccum', 'fallback'] as const) {
+        const { fragment } = shaderProgramSource(name, depthKey);
+        expect(fragment, `${name} ${depthKey}`).not.toContain('u_alphaToCoverage');
+        expect(fragment, `${name} ${depthKey}`).not.toContain('opaqueCoverage <=');
+      }
+    }
+    // The coverage ramp blends the tap indicators with the colour's weights, so it is 0.5 on a texel boundary.
+    const texel = shaderProgramSource('opaque').fragment;
+    expect(texel).toContain('opaque = mix(mix(o00, o10, f.x), mix(o01, o11, f.x), f.y);');
+    expect(texel).toContain('return mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);');
+    expect(texel).toContain(
+      'opaque = coverage == COVERAGE_OPAQUE || (coverage == COVERAGE_PARTIAL && nearestOpaque) ? 1.0 : 0.0;',
+    );
+  });
+
   it('shades the catcher with the look chunk, tone-mapped only on request', () => {
     const { fragment } = shaderProgramSource('catcher');
     expect(fragment).toContain('float catcherShade(vec3 fill, float keyT, vec2 xz, vec4 rect)');
