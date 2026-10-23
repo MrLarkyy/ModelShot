@@ -5,7 +5,8 @@ import type { CompareOptions } from './compareImages';
  * measured values x 1.25 (docs/testing.md, path-tracer pair table), never widened later. The render adds
  * interreflection and noise; the bake adds the occlusion and soft shadows the unbaked preview lacked, so the limits
  * fell when it came (MS-16). Framing is compared without the shadow catcher on both sides (the catcher's edge fades
- * into the backdrop and would count as model), radiance with it on both.
+ * into the backdrop and would count as model) and against a preview without MSAA (pixel-centre coverage), radiance
+ * with the catcher on both and the preview's MSAA.
  */
 export const PT_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions>> = {
   // MS-30: the preview's cut-out seams are anti-aliased (alpha-to-coverage) like the render's; turntable-y030, iso,

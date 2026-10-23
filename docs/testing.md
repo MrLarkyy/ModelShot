@@ -89,23 +89,24 @@ preview-vs-render pairing tests). Each test is in exactly one project, and the p
 `pnpm test`) runs every project.
 
 Shard sizes (MS-39, `--list --project <p> --shard <k>/<n>`), each with the sum of its tests' CI times: the per-test
-times of main's run 39855838515, plus local times for MS-39's six new tests (four path-tracer tests, 29 s, and two
+times of main's run 39878163371 (MS-30's merge, so its three cut-out seam tests are counted), plus local times for MS-39's six new tests (four path-tracer tests, 29 s, and two
 pairs, 47 s). These are sums of test times, not job times; a job adds about a minute of install and build, and the VMs
 differ by up to 2x.
 
 | Project     | Tests | Shards | Tests per shard             | Minutes per shard (sum)           |
 | ----------- | ----: | -----: | --------------------------- | --------------------------------- |
-| `golden`    |   166 |      2 | 83 / 83                     | 7.7 / 3.0                         |
-| `golden-pt` |    78 |      6 | 13 / 13 / 13 / 13 / 13 / 13 | 2.6 / 4.4 / 7.0 / 3.9 / 1.1 / 1.6 |
-| `pair`      |    13 |      3 | 5 / 4 / 4                   | 5.1 / 3.6 / 3.0                   |
-| `bake`      |    25 |      3 | 9 / 8 / 8                   | 8.5 / 3.1 / 3.2                   |
+| `golden`    |   166 |      2 | 83 / 83                     | 6.3 / 2.6                         |
+| `golden-pt` |    78 |      6 | 13 / 13 / 13 / 13 / 13 / 13 | 2.6 / 4.3 / 6.3 / 3.7 / 1.0 / 1.5 |
+| `pair`      |    13 |      3 | 5 / 4 / 4                   | 5.3 / 2.8 / 2.5                   |
+| `bake`      |    25 |      3 | 9 / 8 / 8                   | 6.4 / 4.3 / 3.5                   |
 | `bench`     |     1 |      1 | 1                           | its own job                       |
 
 283 tests in all. The path-tracer tests had been part of `golden` (241 tests in 5 shards of 48-49): the shard that held
 48 of them summed to 16.0 minutes, the others 1.8-7.2, and the same block in shard 2 of 4 ran 16.3 and 17.4 minute jobs
 on main. `golden-pt` has 6 shards because its two longest tests (a denoised 2x render in batches, 3.0 minutes, and a
 denoised 2x render paired with the preview, 1.9 minutes) are four tests apart in the file: with 3, 4 or 5 shards one
-shard holds both and sums to 10.0-10.8 minutes, with 6 the largest is 7.0.
+shard holds both and sums to 10.0-10.8 minutes, with 6 the largest is 7.0 (both with run 39855838515's times; 6.3 with
+run 39878163371's).
 
 Why: the shard holding the baked tests ran into the 20-minute job limit with 4 shards (cancelled in runs 39612706830 and
 39624802150; the 23 baked lighting tests alone took 13-15 minutes on the slow VM of the second), and the 6 pairing tests
@@ -509,7 +510,8 @@ is brighter than the face centre (118.7 vs 117.4, unrounded equal); `setEdges` b
 bytes of `edges=0`, the angle round trip the initial bytes, bad values a `RangeError` naming the field).
 
 **Pair tests** (preview vs render): `rt.html` baked (`bake=64`) and `pt.html` of the same view. Framing, with the
-shadow catcher off on both sides (its edge fades into the backdrop): the backdrop masks (within 2 levels of the view's
+shadow catcher off on both sides (its edge fades into the backdrop) and the preview without MSAA (`msaa=0`, coverage
+at the pixel centre; see below): the backdrop masks (within 2 levels of the view's
 look's backdrop in that row, `agxToneMap(backdropColor(look, y), look.toneMapping)`, so a gradient counts as backdrop;
 before MS-19 the top-left pixel) must agree on every pixel off the silhouette (a pixel whose 3 x 3 neighbourhood in the preview holds
 both classes) that the two images draw more than 2 levels apart (a dark texel near the backdrop colour falls on either
@@ -521,24 +523,32 @@ Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with r
 
 | view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta                                | limit: `maxDiffRatio`, `maxMeanDelta`      |
 | -------------------------- | ----------------------------------- | ------------------------------------------------------------------ | ------------------------------------------ |
-| `turntable-y030`           | 0 (1 605)                           | 142, 0.00217, 0.724 (MS-30; before 201, 0.00307, 0.772)            | 0.00271, 0.905 (MS-30; was 0.00353, 0.953) |
-| `iso`                      | 0 (1 541)                           | 268, 0.00409, 0.889 (MS-30; before 366, 0.00558, 0.959)            | 0.00512, 1.12 (MS-30; was 0.00639, 1.18)   |
-| `alpha-plane`              | 0 (687)                             | 232, 0.00354, 1.334 (MS-30; before 682, 0.01041, 1.567)            | 0.00443, 1.67 (MS-30; was 0.013, 1.96)     |
+| `turntable-y030`           | 0 (1 627)                           | 142, 0.00217, 0.724 (MS-30; before 201, 0.00307, 0.772)            | 0.00271, 0.905 (MS-30; was 0.00353, 0.953) |
+| `iso`                      | 0 (1 533)                           | 268, 0.00409, 0.889 (MS-30; before 366, 0.00558, 0.959)            | 0.00512, 1.12 (MS-30; was 0.00639, 1.18)   |
+| `alpha-plane`              | 0 (692)                             | 232, 0.00354, 1.334 (MS-30; before 682, 0.01041, 1.567)            | 0.00443, 1.67 (MS-30; was 0.013, 1.96)     |
 | `player-hold-34`           | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295)                      | 0.0232, 1.62                               |
-| `cutout-checker`           | 0 (3 277)                           | 223, 0.00340, 0.623 (MS-30; before 293, 0.00447, 0.731)            | 0.00426, 0.78 (MS-30; was 0.00525, 0.908)  |
-| `edges`                    | 0 (1 979)                           | 43, 0.00066, 0.397                                                 | 0.00082, 0.496                             |
+| `cutout-checker`           | 0 (3 295)                           | 223, 0.00340, 0.623 (MS-30; before 293, 0.00447, 0.731)            | 0.00426, 0.78 (MS-30; was 0.00525, 0.908)  |
+| `edges`                    | 0 (1 971)                           | 40, 0.00061, 0.390 (MS-41; before 43, 0.00066, 0.397)              | 0.00082, 0.496                             |
 | `preset-marketplace`       | 0 (1 322)                           | 1 269, 0.01936, 1.237                                              | 0.0223, 1.43                               |
 | `preset-rim`               | 0 (1 322)                           | 1 407, 0.02147, 1.109                                              | 0.0241, 1.13                               |
 | `preset-marketplace-yaw30` | 0 (1 304)                           | 1 387, 0.02116, 1.281                                              | 0.0265, 1.52                               |
-| `outline-hull`             | 0 (1 456)                           | 174, 0.00266, 0.438 (MS-50 1 076, 0.01642, 0.912)                  | 0.00333, 0.548 (MS-39; was 0.0205, 1.14)   |
-| `gltf-contact`             | 0 (618)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)                     | 0.133, 7.03                                |
-| `obj-shapes-y030`          | 1 (1 657)                           | 245, 0.00374, 0.470 (MS-39, new; 463, 0.00706, 0.558 before MS-30) | 0.00468, 0.588                             |
-| `gltf-nodes-y030`          | 0 (2 182)                           | 320, 0.00488, 0.956 (MS-39, new; 435, 0.00664, 1.008 before MS-30) | 0.0061, 1.2                                |
+| `outline-hull`             | 0 (1 448)                           | 174, 0.00266, 0.438 (MS-50 1 076, 0.01642, 0.912)                  | 0.00333, 0.548 (MS-39; was 0.0205, 1.14)   |
+| `gltf-contact`             | 0 (629)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)                     | 0.133, 7.03                                |
+| `obj-shapes-y030`          | 0 (1 852)                           | 245, 0.00374, 0.470 (MS-39, new; 463, 0.00706, 0.558 before MS-30) | 0.00468, 0.588                             |
+| `gltf-nodes-y030`          | 0 (2 218)                           | 320, 0.00488, 0.956 (MS-39, new; 435, 0.00664, 1.008 before MS-30) | 0.0061, 1.2                                |
 
 MS-30 (anti-aliased cut-out seams in the preview's MSAA frames, as the render anti-aliases them by sampling)
 re-measured every pair: `turntable-y030`, `iso`, `alpha-plane` and `cutout-checker` came closer to the render (rows
-above), so their limits are tightened to measured x 1.25; every other view measured as before, its limit stays. The
-framing of every view still has 0 mismatches.
+above), so their limits are tightened to measured x 1.25; every other view measured as before, its limit stays.
+
+Framing takes the preview at `msaa=0` since MS-39: with MS-30's 4-sample alpha-to-coverage, `obj-shapes-y030` had 1
+mismatch at (191, 135), on the wedge's cut-out slope seen at a grazing angle, where an opaque texel row covers about 2 %
+of the pixel (the 512-sample render 117, 119, 124 against the backdrop 115, 118, 124). One of the preview's 4 samples
+landed on it (147, 140, 130, about a quarter covered); the render, and the preview at `msaa=0` or `aa=0`, show the
+backdrop. A sample count cannot draw 2 % coverage, so that is a radiance difference, which the radiance tolerance
+measures against the MSAA preview; framing compares geometric coverage at the pixel centre. Every view has 0
+mismatches so; the silhouette counts in the table are the `msaa=0` ones (the denoised 2x turntable pair as well: 0
+mismatches). Radiance did not change.
 
 MS-41 (world-density charts) measured the views it changes: `alpha-plane` 682 px, 0.01041, 1.567 (its ground is
 world-charted and shows the render's shadows; before 2 083, 0.03178, 2.187), so its limit is tightened to measured x

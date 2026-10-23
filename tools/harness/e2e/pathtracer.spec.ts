@@ -405,7 +405,7 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
     const previewPng = encodeFlipped(await openFixture(page, '/rt.html?variant=turntable-y030&bake=64&catcher=1'));
     const traced = await render(page, query);
     const framingPreview = decodePng(
-      encodeFlipped(await openFixture(page, '/rt.html?variant=turntable-y030&bake=64&catcher=0')),
+      encodeFlipped(await openFixture(page, '/rt.html?variant=turntable-y030&bake=64&catcher=0&msaa=0')),
     );
     const framing = silhouetteMismatches(
       framingPreview,
@@ -760,10 +760,14 @@ test.describe('the render frames and lights like the baked preview', () => {
       // Up to 1.3 m on a normal runner, about 2.6 m on a slow VM (run 39624802150).
       test.setTimeout(300_000);
       const samples = PAIR_SAMPLES[variant] ?? 64;
-      const preview = (catcher: 0 | 1) => openFixture(page, `/rt.html?variant=${variant}&bake=64&catcher=${catcher}`);
+      const preview = (catcher: 0 | 1, query = '') =>
+        openFixture(page, `/rt.html?variant=${variant}&bake=64&catcher=${catcher}${query}`);
       const previewPng = encodeFlipped(await preview(PAIR_WITHOUT_CATCHER.has(variant) ? 0 : 1));
       const traced = await render(page, `variant=${variant}&seed=1&samples=${samples}`);
-      const framingPreview = decodePng(encodeFlipped(await preview(0)));
+      // Framing compares geometric coverage, so its preview samples pixel centres (msaa=0): 4-sample
+      // alpha-to-coverage turns a cut-out texel strip covering 2 % of a pixel into a quarter-covered pixel, a radiance
+      // difference the radiance tolerance already measures (obj-shapes-y030, wedge slope, docs/testing.md).
+      const framingPreview = decodePng(encodeFlipped(await preview(0, '&msaa=0')));
       const framingTraced = await render(page, `variant=${variant}&seed=1&samples=${samples}&catcher=0`);
       const framing = silhouetteMismatches(
         framingPreview,
