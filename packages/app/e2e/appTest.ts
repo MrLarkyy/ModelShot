@@ -88,17 +88,17 @@ export function meanColour(image: Rgba): [number, number, number] {
   return [r / n, g / n, b / n];
 }
 
-/** Waits until the preview has drawn the model at least once (more than the backdrop's colour range). */
+/** Waits until the preview has drawn the model (more than the backdrop's colour range) and its lighting stopped changing. */
 export async function waitForModel(page: Page): Promise<Rgba> {
   let image = await previewImage(page);
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < 80; i++) {
     const centre = pixelAt(image, 0.5, 0.5);
     const corner = pixelAt(image, 0.02, 0.02);
-    if (Math.abs(centre[0] - corner[0]) + Math.abs(centre[1] - corner[1]) + Math.abs(centre[2] - corner[2]) > 30) {
-      return image;
-    }
-    await page.waitForTimeout(100);
+    const drawn =
+      Math.abs(centre[0] - corner[0]) + Math.abs(centre[1] - corner[1]) + Math.abs(centre[2] - corner[2]) > 30;
+    await page.waitForTimeout(150);
     image = await previewImage(page);
+    if (drawn && pixelAt(image, 0.5, 0.5).every((v, k) => v === centre[k])) return image;
   }
   return image;
 }

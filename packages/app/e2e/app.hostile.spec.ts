@@ -77,7 +77,8 @@ test('a load that hangs is stopped by the watchdog, the page stays responsive an
   await expectAlert(page, /flat-cube\.bbmodel.*took longer/);
   const after = await previewImage(page);
   expect(pixelAt(after, 0.5, 0.5)).toEqual(pixelAt(before, 0.5, 0.5));
-  // A good file opens right after.
+  // A good file opens right after (the short watchdog was for the hung load; a fresh worker needs longer than 500 ms).
+  await page.evaluate(() => window.__msApp!.setWatchdogMs(30_000));
   await openFiles(page, [fixture('bbmodel', 'flat-cube.bbmodel')], 'flat-cube.bbmodel');
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
