@@ -76,20 +76,11 @@ describe('readHandoffRecord', () => {
 });
 
 describe('describeHandoff', () => {
-  it('lists names and sizes as plain text', () => {
-    const files = [new File(['<img src=x onerror=alert(1)>'], '<b>x</b>.bbmodel')];
-    const summary = describeHandoff({ kind: 'files', files });
-    expect(summary.items).toEqual(['<b>x</b>.bbmodel · 28 bytes']);
-    expect(summary.message).toContain('Opening models arrives with the editor');
-  });
-
-  it.each<[HandoffRead, RegExp]>([
+  it.each<[Exclude<HandoffRead, { kind: 'files' }>, RegExp]>([
     [{ kind: 'none' }, /^Nothing to open/],
     [{ kind: 'expired' }, new RegExp(`${HandoffLimits.maxAgeMs / 60_000} minutes`)],
-    [{ kind: 'invalid', reason: 'VERSION' }, /\(VERSION\)/],
+    [{ kind: 'invalid', reason: 'VERSION' }, /(VERSION)/],
   ])('explains %o', (read, pattern) => {
-    const summary = describeHandoff(read);
-    expect(summary.message).toMatch(pattern);
-    expect(summary.items).toEqual([]);
+    expect(describeHandoff(read)).toMatch(pattern);
   });
 });

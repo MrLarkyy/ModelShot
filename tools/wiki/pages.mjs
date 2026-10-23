@@ -92,6 +92,12 @@ export const groups = [
         description: 'layout, hosting at / and /app/, the local file handoff, motion, tests',
       },
       {
+        file: 'app.md',
+        page: 'App',
+        title: 'App',
+        description: 'opening models, panels, shortcuts, render and export, local state, offline, limits',
+      },
+      {
         file: 'testing.md',
         page: 'Testing',
         title: 'Testing',

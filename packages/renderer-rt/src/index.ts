@@ -32,6 +32,7 @@ export {
   MIN_PITCH_DEG,
   OrbitController,
   type OrbitControllerOptions,
+  type OrbitState,
 } from './OrbitController';
 export { orbitKeyAction, type OrbitKeyAction } from './orbitKeys';
 export {
