@@ -107,8 +107,10 @@ the frame parameters but `v`, with the same values, plus two of its own.
 Changing an attribute shows the new model or view (only the fragment changes, so the frame page is not loaded again): the
 frame keeps its viewer, and for the same model its loaded document, so a new look, camera, background or `autorotate`
 needs no download and no second WebGL context (a new look bakes the light again); a new `model` is set into the same
-viewer. The Home key returns to the `yaw` and `pitch` of the attributes. An invalid attribute fires `error` once per
-distinct error, also when the page loads the element script after the element's markup.
+viewer. The latest attributes win: a model download they no longer ask for is aborted (changing `model` to another and
+back shows the first one, without the other), and a model that arrives after a newer change is replaced by the model
+that change asks for. The Home key returns to the `yaw` and `pitch` of the attributes. An invalid attribute fires
+`error` once per distinct error, also when the page loads the element script after the element's markup.
 An invalid attribute shows the error inside the element (an alert, no frame) and fires `error`. The element is 300 x 300
 CSS pixels unless the page sizes it (`modelshot-viewer { width: 100%; height: 480px }`); the frame fills it. Without
 `IntersectionObserver` it loads at once; a hidden element (`display: none`) does not load until shown.
@@ -205,7 +207,8 @@ The iframe is titled with `label`. Inside, the canvas is focusable and named; ar
 as in the app. Loading and lighting progress is announced in a `role="status"` element (visible while loading, for
 screen readers only once the model shows); errors in a `role="alert"` element. `autorotate` never starts when the
 visitor prefers reduced motion, stops when that setting turns on and stops for good on the first pointer, wheel or
-key input in the frame. The light bake runs only when a model is shown; the renderer and orbit easing follow
+key input in the frame. An error stops it (nothing turns behind the alert); it starts again once a model is shown
+with `autorotate`. The light bake runs only when a model is shown; the renderer and orbit easing follow
 reduced motion as in the app.
 
 ## Tests

@@ -126,6 +126,41 @@ test('a new model reuses the viewer: no second canvas, no second frame', async (
   expect(seen.filter((r) => r.url.includes('flat-cube')).length).toBe(1);
 });
 
+test('switching the model back during another download aborts it: the first model stays, the other never shows', async ({
+  page,
+}) => {
+  await openHost(page);
+  await addViewer(page, { model: CUBE });
+  const frame = viewerFrame(page);
+  const stage = frame.locator('#stage');
+  await waitLit(frame);
+  const cube = await shot(page);
+
+  // The other model's download is held until the switch back is done, then let through (too late, or aborted).
+  let release = (): void => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let asked = 0;
+  await page.route('**/cors/flat-cube.bbmodel', async (route) => {
+    asked++;
+    await held;
+    await route.continue().catch(() => undefined);
+  });
+  await setAttributes(page, { model: CUBE.replace('single-cube', 'flat-cube') });
+  await expect.poll(() => asked).toBe(1);
+  await expect(stage).toHaveAttribute('data-state', 'loading');
+  await setAttributes(page, { model: CUBE });
+  await expect(stage).toHaveAttribute('data-state', 'shown');
+  release();
+
+  // A late flat-cube would be set and reported within this time.
+  await page.waitForTimeout(3000);
+  await expect(stage).toHaveAttribute('data-state', 'shown');
+  expect((await events(page)).map((e) => e.type)).toEqual(['load']);
+  expect(meanDifference(cube, await shot(page)), 'still the first model').toBeLessThan(0.05);
+});
+
 /** The next picture that differs from `previous` and holds still (the camera eases for a moment). */
 async function settledShot(page: Page, previous: Rgba): Promise<Rgba> {
   let latest = previous;

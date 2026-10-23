@@ -39,6 +39,11 @@ export interface ViewerOptions {
   readonly preserveDrawingBuffer?: boolean;
   /** The starting view; the app's default. */
   readonly view?: ViewerView;
+  /**
+   * A light bake of the shown document started (a new document or look); `onBakeSettled` follows unless another bake
+   * starts first. Both are called for the latest bake only.
+   */
+  readonly onBakeStarted?: () => void;
   /** A light bake settled: `lit` when the preview carries its light, false when it shows unbaked light. */
   readonly onBakeSettled?: (lit: boolean) => void;
 }
@@ -202,6 +207,7 @@ export class Viewer {
     if (!doc) return;
     const generation = ++this.bakeGeneration;
     const look = this.look;
+    this.options.onBakeStarted?.();
     const baker = await this.lightBaker();
     if (generation !== this.bakeGeneration || this.disposed) return;
     if (!baker) {

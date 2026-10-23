@@ -37,9 +37,14 @@ const USER_INPUT = ['pointerdown', 'wheel', 'keydown'] as const;
 /** Thrown inside a load that was superseded: nothing more of it is shown or reported. */
 class Superseded extends Error {}
 
+type ViewerDocument = Parameters<Viewer['setDocument']>[0];
+type ViewerSetResult = Awaited<ReturnType<Viewer['setDocument']>>;
+
 interface Wanted {
   readonly params: EmbedParams;
   readonly look: LookPreset;
+  /** The model and arms: the same key keeps the loaded document. */
+  readonly key: string;
   readonly lookKey: string;
 }
 
@@ -61,45 +66,55 @@ function lookOf(params: EmbedParams): LookPreset {
 /**
  * Shows the model the URL fragment `hash` describes: parameters, WebGL2 viewer, download, the app's intake checks and
  * worker loader, look and camera, then autorotate if asked (once the light is baked, unless the visitor moved the
- * model first). Every failure is shown as `<code>: <message>` in the alert and posted to the parent. `update` with a
- * new fragment keeps the viewer (one WebGL context) and, for the same model, the loaded document: only look, camera,
- * background and autorotate change. A new model is downloaded and set into the same viewer.
+ * model first). Every failure is shown as `<code>: <message>` in the alert and posted to the parent, and stops
+ * autorotate. `update` with a new fragment keeps the viewer (one WebGL context) and, for the same model, the loaded
+ * document: only look, camera, background and autorotate change. A new model is downloaded and set into the same
+ * viewer. The latest fragment wins: a download it no longer asks for is aborted, and a model set while a newer
+ * fragment arrived is replaced by the one that fragment asks for.
  */
 export function showEmbed(page: EmbedPage, hash: string, env: EmbedEnvironment): EmbedHandle {
   const cleanups: (() => void)[] = [];
   let disposed = false;
   let download = new AbortController();
+  // Bumped whenever the model on its way changes, a fragment fails or the embed stops: a load of an older generation
+  // shows and reports nothing.
   let generation = 0;
   let viewer: Viewer | null = null;
   let canvas: HTMLCanvasElement | null = null;
-  // The key (model and arms) of the document in the viewer and of the download in flight.
-  let loadedKey: string | null = null;
+  // The key (model and arms) of the document in the viewer, and of the load of the current generation.
+  let shownKey: string | null = null;
   let pendingKey: string | null = null;
+  // The latest valid fragment; null after an invalid one.
   let wanted: Wanted | null = null;
   let appliedLookKey: string | null = null;
   let appliedViewKey: string | null = null;
   let touched = false;
   let settled = false;
   let stopRotation: (() => void) | null = null;
+  // setDocument calls run one after another, so the document set last is the one of the latest load that got there.
+  let documents: Promise<void> = Promise.resolve();
 
-  // `data-light` on the stage tells a test (and a stylesheet) where the bake is: baking, lit or unbaked.
-  const startBaking = (): void => {
-    settled = false;
-    page.stage.dataset['light'] = 'baking';
+  const stopRotating = (): void => {
+    stopRotation?.();
+    stopRotation = null;
   };
 
+  // Turns while the wanted model is the one shown and autorotate is asked; starts once its light settled, unless the
+  // visitor moved it.
   const syncRotation = (): void => {
     if (disposed || !viewer || !canvas) return;
-    if (!wanted?.params.autorotate) {
-      stopRotation?.();
-      stopRotation = null;
-    } else if (!stopRotation && !touched && settled && loadedKey !== null && pendingKey === null) {
+    const showing = wanted !== null && pendingKey === null && shownKey === wanted.key;
+    if (!showing || !wanted?.params.autorotate) {
+      stopRotating();
+    } else if (!stopRotation && !touched && settled) {
       stopRotation = startAutorotate(viewer, { input: canvas });
     }
   };
 
   const showFailure = (error: unknown): void => {
     const { code, message } = describe(error);
+    // Nothing redraws behind the alert.
+    stopRotating();
     page.stage.dataset['state'] = 'failed';
     page.status.textContent = '';
     page.alert.textContent = `${code}: ${message}`;
@@ -118,6 +133,12 @@ export function showEmbed(page: EmbedPage, hash: string, env: EmbedEnvironment):
         view: { yawDeg: params.yawDeg, pitchDeg: params.pitchDeg, fovYDeg: params.fovDeg },
         onStatus: (message) => {
           if (!disposed) page.status.textContent = message;
+        },
+        // `data-light` on the stage tells a test (and a stylesheet) where the bake is: baking, lit or unbaked.
+        onBakeStarted: () => {
+          if (disposed) return;
+          settled = false;
+          page.stage.dataset['light'] = 'baking';
         },
         onBakeSettled: (lit) => {
           if (disposed) return;
@@ -153,7 +174,6 @@ export function showEmbed(page: EmbedPage, hash: string, env: EmbedEnvironment):
   const applyLook = (): void => {
     if (!viewer || !wanted || appliedLookKey === wanted.lookKey) return;
     appliedLookKey = wanted.lookKey;
-    startBaking();
     viewer.setLook(wanted.look);
   };
 
@@ -169,6 +189,36 @@ export function showEmbed(page: EmbedPage, hash: string, env: EmbedEnvironment):
     viewer.resetView();
   };
 
+  const cancelLoad = (): void => {
+    generation++;
+    download.abort();
+    pendingKey = null;
+  };
+
+  // Sets the document of the load of generation `mine` after any earlier call, unless a newer generation came first
+  // (null). A document set while a newer generation came is in the viewer all the same: `reconcile` replaces it.
+  const setDocument = (
+    target: Viewer,
+    doc: ViewerDocument,
+    key: string,
+    mine: number,
+  ): Promise<ViewerSetResult | null> => {
+    const run = documents.then(async () => {
+      if (disposed || mine !== generation) return null;
+      const result = await target.setDocument(doc, true);
+      if (result.applied && !disposed) {
+        shownKey = key;
+        if (mine !== generation) reconcile();
+      }
+      return result;
+    });
+    documents = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  };
+
   const load = async (params: EmbedParams, key: string, mine: number, signal: AbortSignal): Promise<void> => {
     const live = (): void => {
       if (disposed || mine !== generation) throw new Superseded();
@@ -181,14 +231,9 @@ export function showEmbed(page: EmbedPage, hash: string, env: EmbedEnvironment):
     if (violation) throw violation;
     const loaded = await loadModel(groupFiles([file]), { arms: params.arms });
     live();
-    const result = await current.setDocument(loaded.doc, true);
-    if (result.applied) {
-      // The bake of this document starts inside setDocument and settles later; an older one may have settled before.
-      startBaking();
-      loadedKey = key;
-    }
+    const result = await setDocument(current, loaded.doc, key, mine);
     live();
-    if (!result.applied) throw new EmbedError('SCENE_REJECTED', 'The renderer did not take the model.');
+    if (!result?.applied) throw new EmbedError('SCENE_REJECTED', 'The renderer did not take the model.');
     pendingKey = null;
     applyLook();
     applyView(true);
@@ -197,6 +242,45 @@ export function showEmbed(page: EmbedPage, hash: string, env: EmbedEnvironment):
     postStatus(env.parent, env.self, { type: 'load' });
     syncRotation();
   };
+
+  const startLoad = (params: EmbedParams, key: string): void => {
+    download = new AbortController();
+    const mine = ++generation;
+    pendingKey = key;
+    page.stage.dataset['state'] = 'loading';
+    page.status.textContent = 'Loading the model…';
+    syncRotation();
+    load(params, key, mine, download.signal).catch((error: unknown) => {
+      if (disposed || error instanceof Superseded || mine !== generation) return;
+      pendingKey = null;
+      showFailure(error);
+    });
+  };
+
+  // Brings the viewer to the latest valid fragment: the load of its model goes on, the model in the viewer is shown
+  // with its parameters (any other load aborted), or its model is loaded.
+  function reconcile(): void {
+    if (disposed || !wanted) return;
+    const { params, key } = wanted;
+    if (key === pendingKey) {
+      // The model is on its way; it takes the latest parameters when it arrives.
+      page.stage.dataset['state'] = 'loading';
+      return;
+    }
+    if (pendingKey !== null) {
+      cancelLoad();
+      page.status.textContent = '';
+    }
+    if (key === shownKey) {
+      applyLook();
+      applyView(false);
+      viewer?.changed();
+      page.stage.dataset['state'] = 'shown';
+      syncRotation();
+      return;
+    }
+    startLoad(params, key);
+  }
 
   const update = (nextHash: string): void => {
     if (disposed) return;
@@ -219,37 +303,13 @@ export function showEmbed(page: EmbedPage, hash: string, env: EmbedEnvironment):
       groupFiles([new File([], name)]);
       key = `${params.model}\n${params.arms}`;
     } catch (error) {
-      generation++;
-      download.abort();
-      pendingKey = null;
+      wanted = null;
+      cancelLoad();
       showFailure(error);
       return;
     }
-    wanted = { params, look, lookKey: `${params.look} ${params.background}` };
-    if (key === pendingKey) {
-      // The same model is on its way; it takes the latest parameters when it arrives.
-      page.stage.dataset['state'] = 'loading';
-      return;
-    }
-    if (key === loadedKey) {
-      applyLook();
-      applyView(false);
-      viewer?.changed();
-      page.stage.dataset['state'] = 'shown';
-      syncRotation();
-      return;
-    }
-    download.abort();
-    download = new AbortController();
-    const mine = ++generation;
-    pendingKey = key;
-    page.stage.dataset['state'] = 'loading';
-    page.status.textContent = 'Loading the model…';
-    load(params, key, mine, download.signal).catch((error: unknown) => {
-      if (disposed || error instanceof Superseded || mine !== generation) return;
-      pendingKey = null;
-      showFailure(error);
-    });
+    wanted = { params, look, key, lookKey: `${params.look} ${params.background}` };
+    reconcile();
   };
 
   update(hash);
@@ -259,8 +319,9 @@ export function showEmbed(page: EmbedPage, hash: string, env: EmbedEnvironment):
     stop: () => {
       if (disposed) return;
       disposed = true;
+      generation++;
       download.abort();
-      stopRotation?.();
+      stopRotating();
       for (const cleanup of cleanups.reverse()) cleanup();
     },
   };
