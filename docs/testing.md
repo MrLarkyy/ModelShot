@@ -23,8 +23,9 @@ limits work is written in this order:
    for L leaves pins that the tree is binary). Structure says nothing about cost, so the two BVH builds also carry a
    thread CPU bound (200 ms coincident, 400 ms chain; idle 16 and 31 ms), which pins the build cost.
 2. Where the cost of a hostile input itself is the claim, `expectCpuBelow(maxMs, work)`
-   (`packages/formats/test/support/expectCpuBelow.ts`, a copy in `packages/scene/test/` and one in `packages/renderer-rt/test/`
-   because those packages cannot import formats tests). It runs `work` synchronously, reads `process.threadCpuUsage()` (Node 22.19 or later) around it, and asserts
+   (`packages/formats/test/support/expectCpuBelow.ts`, copies in `packages/scene/test/`, `packages/renderer-rt/test/` and
+   `packages/export/test/` because those packages cannot import formats tests; each copy has its own
+   self-test). It runs `work` synchronously, reads `process.threadCpuUsage()` (Node 22.19 or later) around it, and asserts
    the CPU time of the current thread: blocked or descheduled time is not counted, a promise-returning callback throws.
    Build the fixture outside `work`; the clock ticks in steps of about 15.6 ms on Windows, so bounds under 50 ms are
    only for work that measures 0 ms. A bound keeps its old number, now in CPU milliseconds; one is never widened to
@@ -710,6 +711,68 @@ widened.
 Times on the local machine: the denoised 64-sample closeup page about 8-9 s against 5 s plain (most of the difference
 is the guide's 1024 rays at partial texels); the determinism test about 47 s.
 
+## Export goldens
+
+MS-22 ([export.md](export.md)): `e2e/export.spec.ts` in the `golden` project, on `fixtures/export.html`
+(`fixtures/src/exportFixture.ts`, decoders in `fixtures/src/exportDecode.ts`). Every render is 64 x 64, seed 1, 16
+samples, through `exportStill` / `exportClip` with a real `PathTracer`; the fixture keeps each `readImage()` the export
+took, so a decoded file is compared with the very frames that were encoded.
+
+- Goldens: `export-still-transparent.s1.n16.png` (the alpha-plane scene without its ground and back plane under the
+  model-view camera, transparent, shadow catcher on, as PNG) and `export-turntable-f0..f3.s1.n16.png` (the frames of a
+  transparent 4-frame turntable of the showcase from the `turntable-y030` camera, as APNG) and
+  `export-animation-f0..f3.s1.n16.png` (the showcase bobbing 3 units up and down over 1 s, 4 frames at 4 fps, as
+  APNG: the model rises, its floor and shadow stay), read by `expectGolden` with threshold 0 like the path-tracer
+  goldens; the fixture hands the decoded file's pixels to `readRGBA`. Nothing compares
+  bytes against a committed PNG.
+- Still: the PNG decodes (the formats package's `decodePngRgba`) to exactly the bytes of `readImage()`; alpha is 255 at
+  the opaque texel probe, 0 at the cut-out texel probe and at the corners where camera rays escape (catcher off); with
+  the catcher on, its shadow under the opaque texel is black with alpha 1 − shade (188 measured).
+- Per format, the decoded frames against the rendered ones: APNG through `decodePngRgba` of each frame rebuilt as a
+  PNG, exact; GIF (ImageDecoder) within the palette bound of export.md (18; 10 measured), alpha 255 exactly where the
+  render's is at least 128 and 0 elsewhere; WebP (ImageDecoder) within 2 (1 measured where alpha is partial); WebM and
+  MP4 by a demux of our own containers in the page and `VideoDecoder`, mean error per channel within 5 (VP9 4.0 and
+  H.264 2.4 measured, max 80 at edges), each with `ALPHA_DROPPED`. The Chromium of the harness encodes H.264; where a
+  browser cannot, the mp4 test accepts the fallback with its warning and the log line names the format used. A run
+  logs each format's size, decoder and time (`[export] ...`; about 0.6-2.4 s for 4 frames locally).
+- Fallback: with the probe stubbed in the page to refuse `webm` (VideoEncoder.isConfigSupported) or `webp`
+  (convertToBlob), the clip comes back as APNG with one `FORMAT_FALLBACK` warning naming both, and decodes exactly.
+- Independent readers: WebM and MP4 played by a `<video>` element (MP4 where `canPlayType` accepts its codec): 64 x 64,
+  duration 0.5 s (4 frames at 8 fps), the frame seeked to at 2.5 / 8 s within the video mean bound of frame 2 (2.4 and
+  1.8 measured); the APNG through the browser's ImageDecoder: 4 frames of 125 000 µs, opaque pixels exact.
+- Animation: one `setScene` per pose, every one with the same `catcherBounds` (the union of the poses: floor y 0, top
+  23 with the bob); decoded frames exactly `readImage()`.
+- Transparent quality paths: stills plain, with `supersample: 2` and with `denoise`, catcher off and on: PNG = readImage,
+  alpha 255 / 0 / 0 at the opaque texel, the cut-out texel and the corner, no warning; the canvas of the transparent
+  request against the opaque canvas (`preserveDrawingBuffer`), every pixel: within 1 plain and supersampled (0
+  measured: the canvas composites in linear light, which pins coverage = 1 − shade per sample), within 44 denoised (14
+  without, 35 with the catcher measured). The readback composite of the supersampled and denoised stills against the
+  opaque ones: solid pixels within 18 without the catcher (0 and 14 measured), every pixel within 79 with it (36 and 63
+  measured).
+- Context loss: after a finished render `readImage()` is an image; right after `WEBGL_lose_context.loseContext()`, before
+  the event, and after it, `null`; after a restore, an export whose context goes at sample 2 of frame 1 rejects with
+  `CONTEXT_LOST`.
+- Determinism: frame 0 of two runs is the same bytes; frames 0 and 1 differ.
+- Cancel: aborting at sample 3 of frame 1 rejects with `CANCELLED`, the tracer has 3 samples and is not running, and a
+  further `step` draws nothing.
+- Preview vs render: the transparent still composited over the look's backdrop (TS mirror, `backdropColor` and
+  `agxToneMap`) against the opaque still of the same seed. Catcher off: pixels of alpha 0 or 255 match within 2 (0
+  measured); silhouette pixels are left out, as tone mapping before the mix (the readback) and after it (the canvas)
+  give partial pixels different levels (26 measured). Catcher on: every pixel within 45, 36 measured (the silhouettes
+  and the partly transparent shadow) times 1.25.
+
+Vitest covers the rest without a GPU (`packages/export/test`): every option out of type or range, the limits, frame
+planning, the render loop against a fake renderer (progress, cancel, context loss), PNG and APNG against an independent
+decoder (bitwise CRC, the platform's inflate, all filters), GIF against a textbook LZW decoder, the WebP, WebM and MP4
+structure parsed back, codec levels by size and rate (720p60, 1080p60), the fallback chains, the video path with a
+stubbed WebCodecs encoder, one catcher for every pose of an animation and the `SUPERSAMPLE_LOWERED` warning against a
+fake renderer, the path tracer's `catcherBounds` (`catcherBounds.test.ts`), a scan of the sources for network calls,
+`gif.test.ts`'s cost bound: the palette and LZW of a 4096 x 4096 frame of 2^24 distinct colours within 3 000 ms of
+thread CPU time (`expectCpuBelow`, as the other packages bound work; 453 ms measured locally, the sort-based median cut
+it replaced took 36.7 s), and `bundleSize.test.ts`: no encoder or muxer in the entry chunk and its static imports,
+every one in a chunk loaded on demand. Their gzip size is the budget `bundleGzipBytes.export` and the time of a whole
+export `frameTimeMs.export-turntable-64-f4-n16` (Budgets, below).
+
 ## Model-view fixture
 
 `fixtures/model-view.html?variant=<name>` renders a real loader result (`loadBbmodel` or `loadGltf` on a formats test
@@ -843,7 +906,7 @@ attached vertex formula in four poses, re-posing, nesting, index remapping, ever
 ## Budgets
 
 `budgets.json` (root, `"version": 1`) holds `max` values for frame time, load time, time to N samples and gzip bundle
-size of `app`, `embed`, `site` and `site-assets`. `site` is a plain `vite build` of `packages/site` without the `/app/` copy that `build:with-app` adds; `site-assets` is the same build's woff2 and svg files. `pnpm test` measures them (`bench.spec.ts`; the bundle is built fresh into a temporary directory, so
+size of `app`, `embed`, `site`, `site-assets` and `export`. `site` is a plain `vite build` of `packages/site` without the `/app/` copy that `build:with-app` adds; `site-assets` is the same build's woff2 and svg files; `export` is `@modelshot/export` built as a library (Vite lib mode, the workspace packages external), the entry chunk and the chunks it imports statically, each gzipped, so the encoders, loaded on demand, are not counted. `pnpm test` measures them (`bench.spec.ts`; the bundle is built fresh into a temporary directory, so
 it does not depend on `pnpm -r build`) and fails when a value exceeds its `max`, when a budget has no measurement, or
 a measurement has no budget. The measured values are in `tools/harness/test-results/budgets-measured.json`, and
 every run prints each one against its max (`[budget] <group>.<key>: measured … / max …`, from `bench.spec.ts` and
@@ -998,6 +1061,14 @@ probing that matching used before (about two minutes at this size; `sharpEdges` 
 vertices). Matching sorts now: 752 ms local SwiftShader for the whole load (`sharpEdges` alone 0.15 s for 400 000
 vertices), max 3500 ms as for the other load budgets. The same run: `edges-200k` 1158 ms, `edges-hostile` 1194 ms,
 `large-order` 896 ms.
+
+`frameTimeMs.export-turntable-64-f4-n16` (MS-22): `bench.spec.ts` times `window.__msExport.turntable()` of
+`export.html`, a transparent 4-frame APNG turntable of the showcase at 64 x 64 and 16 samples a frame from a fresh
+path tracer (its scene upload, the frames, the encoding; no decoding), median of 3: local SwiftShader 915, 860 and 867
+ms; max 9000 ms, 10x the median rounded up, as budgets are set before a CI measurement. `bundleGzipBytes.export`
+(MS-22): local 6407 and 6433 B (the export package's own `bundleSize.test.ts`, which gzips the chunks as one text,
+measured 5839); max 8041 B, 1.25x the larger. Both moved from the package's test and the e2e log into this file once
+MS-41 freed it.
 
 `frameTimeMs.rt-load-first-frame-200k-world` (MS-41): the same load of `world-200k` (`fixtures/src/worldLoadScene.ts`),
 49 untextured meshes of 4096 triangles each (200 704, every mesh just at the world-chart gate): 42 smooth height fields

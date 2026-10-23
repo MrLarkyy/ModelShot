@@ -5,7 +5,7 @@ global illumination and soft, texel-shaped shadows. It reads the same camera, ma
 order, light rig and tone mapping as the realtime preview ([realtime-renderer.md](realtime-renderer.md)), so the two
 images of a view agree apart from interreflection and noise once the preview has its baked light (`LightBaker`,
 below), and apart from shadows too without it. The package is private and not yet wired into
-the app or the embed.
+the app or the embed; `@modelshot/export` ([export.md](export.md)) drives it to export images and clips.
 
 ```ts
 const tracer = PathTracer.create(canvas, { preserveDrawingBuffer: true });
@@ -28,7 +28,7 @@ requestAnimationFrame(frame);
   `tileSize` (16..4096, default 256), `maxPixels`, `preserveDrawingBuffer`, `edges` (`Partial<EdgeLook>`, the
   preview's rounded edges over the initial look's; out of range a `RangeError` naming `edges.width` or
   `edges.sharpAngleDeg`).
-- `setScene(doc, { emission, shadowCatcher })`: validates, checks the material count, flattens, builds the BVH and packs the data
+- `setScene(doc, { emission, shadowCatcher, catcherBounds })`: validates, checks the material count, flattens, builds the BVH and packs the data
   (synchronously, before its first `await`), then decodes the textures, lays them out and swaps the scene in. Resolves
   `{ applied, warnings, triangles }`. A call that fails keeps the current scene and closes whatever it decoded.
   Superseding: a later call that passes the synchronous checks, or `dispose()`, supersedes a pending one, which
@@ -42,16 +42,18 @@ requestAnimationFrame(frame);
 - `setLook(look)`, `look`: the look (an invalid one throws `LookPresetError` naming the field and changes nothing). The
   shadow catcher moves under the new key; edges as `setEdges`; a scene whose `setScene` is still decoding gets the
   look too (its catcher is placed when it is swapped in).
-- `start({ seed, samples, supersample, denoise, noiseThreshold })`: a request for exactly `samples` samples per pixel
-  (1..65 536) from `seed` (0..2^32 − 1). The quality fields (Render quality, below) are optional: `supersample` an
-  integer 1..4 (default 1), `denoise` a boolean (default `false`), `noiseThreshold` a number in (0, 1] (default none),
-  with which `samples` is the maximum. Left out, the render is byte for byte the one without them. Anything else throws
-  a `RangeError` naming the field.
+- `start({ seed, samples, supersample, denoise, noiseThreshold, transparent })`: a request for exactly `samples`
+  samples per pixel (1..65 536) from `seed` (0..2^32 − 1). The quality fields (Render quality, below) are optional:
+  `supersample` an integer 1..4 (default 1), `denoise` a boolean (default `false`), `noiseThreshold` a number in (0, 1]
+  (default none), with which `samples` is the maximum. `transparent` (a boolean, default `false`) renders an alpha
+  channel (Transparent renders, below). Left out, the render is byte for byte the one without them. Anything else
+  throws a `RangeError` naming the field.
 - `step(maxSamples = 1)`: draws up to `maxSamples` more samples, never past the request, presents the image and
   returns how many it drew. The caller paces it (there is no clock or animation loop inside); a no-op returning 0
   without a camera, when complete, converged, cancelled, while the context is lost or after `dispose()`. The first
   step of a request that needs a quality program links it (Render quality), so a shader failure there throws
   `PathTracerError` `SHADER_COMPILE` / `SHADER_LINK` from `step`.
+- `contextLost`: true from the moment the context is lost (`isContextLost()`, before its event too) until a restore.
 - `samplesDone`, `targetSamples`, `running` (false once complete, converged or cancelled); `cancel()` stops the
   request and keeps the image shown: the mean of the samples done, or with `supersample` or `denoise` the image
   resolved at the end of the latest step that crossed a checkpoint (Render quality), which may hold fewer samples.
@@ -64,6 +66,11 @@ requestAnimationFrame(frame);
 - `readAccumulation()`: the RGBA32F accumulation per pixel at the traced size (rows bottom to top), for tests: rgb the
   radiance sums (divide by `samplesDone`), alpha the count of traversals stopped by the per-ray node cap (not
   divided; 0 in ordinary scenes, see Limits and errors).
+- `readImage()`: the image presented now as a `RenderedImage` `{ width, height, data }`: 8-bit sRGB RGBA with straight
+  alpha, rows top to bottom, as `ImageData` takes it. An opaque request's alpha is 255 and its pixels are the canvas's;
+  a transparent request's carry its coverage. `null` before the first sample, while the context is lost (also when it
+  went during the read, which would leave zeros), and after `dispose()`. It draws into a transient RGBA8 target that is
+  deleted before it returns, so the canvas keeps its opaque context and nothing lives past the call.
 - `onContextRestored(listener)`, `dispose()` (every GL object, decoded image and listener).
 
 `setScene`, `setCamera`, `resize`, `setEdges`, `setLook` and `start` restart the accumulation at sample 0.
@@ -72,7 +79,9 @@ Emission is a per-material linear RGB input (`SetSceneOptions.emission`, indexed
 non-finite channels count as 0). The scene format has no emission field yet; MS-32 maps one here.
 `SetSceneOptions.shadowCatcher` (default `true`) puts the shadow catcher under the model (see Lighting); its plane is
 computed from the scene's bounds and the look's key when the scene is swapped in (again on `setLook`) and kept through a
-context loss.
+context loss. `SetSceneOptions.catcherBounds` (a `SceneBounds`, finite `min ≤ max`, else a `RangeError` naming it)
+replaces the scene's bounds for the catcher alone: an animation export passes the union of all its poses, so the
+floor does not ride with a jump.
 
 ## Pipeline
 
@@ -105,7 +114,35 @@ context loss.
    driver watchdog) reads the running sum from one RGBA32F target and writes sum + sample into the other; then they
    swap. A present pass divides by the sample count and applies AgX. The quality path (Render quality) traces at the
    supersampled size, adds a second output to the trace, and at checkpoints runs the noise, denoise and resolve
-   passes; present then shows the resolved image.
+   passes; present then shows the resolved image. A transparent request adds a third output, the sums of coverage and
+   of its square (an RG32F target beside each RGBA32F one, at draw buffer 2; buffer 1 is `NONE` without moments),
+   allocated only for such a request and freed with the accumulation.
+
+### Transparent renders
+
+`RenderRequest.transparent` makes alpha the share of camera rays that met something, per texel: a ray takes the
+texel's alpha rule like any camera ray (a cut-out texel lets it through, a partial one stops it as often as its alpha,
+whatever the draw order), so a hole in a texture is a hole in the alpha. The radiance holds no backdrop: a camera ray
+that escapes adds 0 and coverage 0; one that meets the model adds its radiance and coverage 1; one that meets the
+shadow catcher adds 0 and coverage 1 − shade (unclamped per sample, so the mean stays affine), a black shadow-only
+layer. Over the backdrop, radiance + backdrop × (1 − coverage) is exactly the opaque request's mean in linear light.
+Coverage reuses the camera ray's outcome and draws no random number of its own. Resolve takes the box mean of the
+coverage. Denoised, the coverage is filtered with the radiance's edge-stopping weights (normal, albedo, depth,
+luminance) and one more stop, a coverage step beyond the pixel's own coverage noise (from the squared sum), so the
+noisy catcher shadow is smoothed while solid texels and silhouettes keep their alpha; the denoised radiance of escaped
+and catcher rays stays 0 (the guide's albedo there is the backdrop). The noise estimate of a transparent request takes
+the worse of the luminance's and the coverage's relative standard error, so a threshold does not stop a render whose
+colour converged while its alpha is still noisy. The canvas composites in linear
+light (it shows what the opaque request shows); `readImage()` unpremultiplies, tone-maps and writes the coverage
+clamped to 0..1 as alpha. Composited over the tone-mapped backdrop the readback differs from the opaque image only
+where alpha is partial (silhouettes, the catcher's shadow): tone mapping comes before the mix instead of after it
+(measured in docs/testing.md, Export goldens). Denoised, the transparent canvas differs from the opaque one where the
+filter saw different radiance (silhouettes, the shadow's edge; 14 levels without and 35 with the catcher measured).
+The lit catcher leaves a haze: one fill sample can light the catcher above 1, so a sample's coverage 1 − shade is
+negative as often as positive there and only the mean is near 0; the readback clamps the mean to 0..1, so a lit
+catcher's noise shows as a dark alpha haze of a few levels (about 1 160 pixels of alpha 1 to 15 in the 64 × 64,
+16-sample export golden), falling as 1/√n with the sample count; the canvas, composited unclamped, has none. A request
+without the field runs none of this.
 
 ## Render quality
 
@@ -180,8 +217,10 @@ dimension; there is no clock and no `Math.random`. Accumulation adds exact float
 and tiling change no byte (tested: one pass of 64, batches of 1 and 7, tiles of 64). With the quality fields the final
 image is a function of the final sums and the guides (both depending on the samples only), and checkpoints are sample
 counts, so a denoised 2x render gives the same bytes in batches of 7 and 3, tiles of 64 and after a context restore
-(tested). Where a threshold stops depends on the noise, hence on the GPU's floats: goldens and MS-22's exports use a
-fixed sample count.
+(tested). Where a threshold stops depends on the noise, hence on the GPU's floats: goldens and the exports use a
+fixed sample count. A request without `transparent` runs the same arithmetic as before that field existed (the trace's
+radiance sum, the present's opaque line and resolve's colour are unchanged; no path-tracer golden changed), and a
+transparent one draws no extra random number, so its radiance of the model is the opaque one's.
 
 ## Scene-format rules on every ray
 
@@ -260,7 +299,7 @@ dome and two unshadowed accents ([look-presets.md](look-presets.md#lighting-mode
 ## Limits and errors
 
 `PathTracerError` codes: `WEBGL2_UNAVAILABLE`; `FLOAT_TARGETS_UNAVAILABLE` (no `EXT_color_buffer_float` or RGBA32F
-targets not renderable) and `HIGHP_UNAVAILABLE` (fragment shaders without 32-bit highp): there is no inexact fallback,
+targets not renderable; a transparent request's message names the R32F coverage target) and `HIGHP_UNAVAILABLE` (fragment shaders without 32-bit highp): there is no inexact fallback,
 which would break determinism, and the preview remains; `SHADER_COMPILE` / `SHADER_LINK` with the driver's info log;
 `INVALID_SCENE` with the path; `SCENE_TOO_LARGE` for more materials than the material table holds (1.4 M) or
 triangles over `maxTriangles` (both before any vertex is read or any array allocated), data rows over

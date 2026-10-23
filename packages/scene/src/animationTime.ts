@@ -26,6 +26,21 @@ export function animationTime(
 }
 
 /**
+ * Frames `animationFrameTimes` gives `animation` at `fps` (any finite, non-negative length and fps): `loop` stops before
+ * the frame that equals frame 0, `max(1, round(length · fps))`; `hold` and `once` include the frame at `length`,
+ * `floor(length · fps) + 1`. No limit is applied here.
+ */
+export function animationFrameCount(
+  animation: Pick<SceneAnimation, 'length' | 'loop'>,
+  fps: number,
+  loop: SceneAnimationLoop = animation.loop,
+): number {
+  const frames = animation.length * fps;
+  // The epsilon keeps a length that is a whole number of frames (2.4 s at 30 fps = 71.99999…) from losing its last one.
+  return loop === 'loop' ? Math.max(1, Math.round(frames)) : Math.floor(frames + 1e-9) + 1;
+}
+
+/**
  * Playback times of every frame of `animation` at `fps`, `i / fps` (computed per index, never accumulated, so frame
  * `i` of an export is the same time as a seek to it). `loop` stops before the frame that equals frame 0
  * (`max(1, round(length · fps))` frames); `hold` and `once` include the frame at `length` (`floor(length · fps) + 1`).
@@ -39,9 +54,7 @@ export function animationFrameTimes(
   if (typeof fps !== 'number' || !Number.isFinite(fps) || fps <= 0 || fps > MAX_PLAYBACK_FPS) {
     throw new RangeError(`fps: expected a number in (0, ${MAX_PLAYBACK_FPS}]`);
   }
-  const frames = animation.length * fps;
-  // The epsilon keeps a length that is a whole number of frames (2.4 s at 30 fps = 71.99999…) from losing its last one.
-  const count = loop === 'loop' ? Math.max(1, Math.round(frames)) : Math.floor(frames + 1e-9) + 1;
+  const count = animationFrameCount(animation, fps, loop);
   if (!(count <= MAX_ANIMATION_FRAMES)) {
     throw new RangeError(`fps: ${String(count)} frames, the limit is ${MAX_ANIMATION_FRAMES}`);
   }

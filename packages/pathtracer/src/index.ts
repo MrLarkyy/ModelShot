@@ -14,7 +14,13 @@ export {
 export { pcgHash, sampleHash, unitRandom } from './pcgHash';
 export { MAX_SAMPLES, MAX_SEED, PathTracer, type PathTracerCapabilities } from './PathTracer';
 export { PathTracerError, type PathTracerErrorCode } from './PathTracerError';
-export type { PathTracerOptions, RenderRequest, SetSceneOptions, SetSceneResult } from './PathTracerOptions';
+export type {
+  PathTracerOptions,
+  RenderedImage,
+  RenderRequest,
+  SetSceneOptions,
+  SetSceneResult,
+} from './PathTracerOptions';
 export type { RenderProgress } from './renderProgress';
 export { MAX_SUPERSAMPLE, MAX_SUPERSAMPLED_PIXELS, supersampledScale, type TargetLimits } from './renderQuality';
 export type { PathTracerWarning, PathTracerWarningCode } from './PathTracerWarning';

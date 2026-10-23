@@ -38,6 +38,7 @@ Docs: [scene format](https://github.com/MrLarkyy/ModelShot/wiki/Scene-format) (w
 [path tracer](https://github.com/MrLarkyy/ModelShot/wiki/Path-tracer) (API, determinism, alpha, sides and order on every ray, lighting),
 [look presets](https://github.com/MrLarkyy/ModelShot/wiki/Look-presets) (the shared look parameters both renderers read),
 [camera](https://github.com/MrLarkyy/ModelShot/wiki/Camera) (the shared camera, frame-to-fit, controls),
+[export](https://github.com/MrLarkyy/ModelShot/wiki/Export) (PNG, APNG, GIF, WebP, WebM and MP4 from the path tracer: options, limits, fallback),
 [brand](https://github.com/MrLarkyy/ModelShot/wiki/Brand) (tokens, contrast rules, fonts, logo and icons, licences),
 [landing page](https://github.com/MrLarkyy/ModelShot/wiki/Landing-page) (layout, hosting at `/` and `/app/`, the local file handoff, motion, tests),
 [testing](https://github.com/MrLarkyy/ModelShot/wiki/Testing) (unit and browser layers, goldens, budgets, CI).
