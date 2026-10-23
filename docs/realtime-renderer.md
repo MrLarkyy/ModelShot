@@ -127,10 +127,15 @@ without depth test lets the model cover it in either depth-key variant. A scene 
   atlas regions), without flipping or premultiplying; texel (0, 0) is the top-left pixel.
 - Texel anti-aliasing: four `texelFetch` taps (linear colour) blended only within one screen pixel of a texel seam
   (offset `clamp((p − seam) / fwidth(p), −0.5, 0.5)`), with premultiplied weights so a cut-out neighbour adds no dark
-  fringe. Every tap is clamped to the face's texel rectangle from `SceneMesh.uvRects` (`faceTexelRange`, the
-  `faceTexels` chunk of `@modelshot/looks`, which the path tracer clamps with too), so no texel of a neighbouring
-  atlas region is ever read, with any face UV rotation or mirroring.
-- Minified (more than one texel per pixel): the same clamped lookup at a rotated 2 × 2 grid inside the pixel, which
+  fringe. Every tap is addressed by `faceTexel` (the `faceTexels` chunk of `@modelshot/looks`, which the path tracer
+  addresses with too): clamped to the face's texel rectangle from `SceneMesh.uvRects` (`faceTexelRange`), then, where
+  the face's UVs pass the image, repeated into it for a texture with `wrap: 'repeat'` or clamped to its edge texel
+  otherwise ([`SceneTexture.wrap`](scene-format.md#scenetexture)). So no texel of a neighbouring atlas region or
+  outside the image is ever read, with any face UV rotation or mirroring, and at a clamped edge the seam taps blend
+  the edge texel with itself. The texture's flags (`textureSamplingFlags`, bit `TEXTURE_FLAG_REPEAT`) come per vertex
+  (attribute 12, the same on every vertex of a batch, 4 bytes each) into a flat varying; the closed-opaque check on
+  the CPU (`translucentTexelsIn`) counts the same repeated texels.
+- Minified (more than one texel per pixel): the same addressed lookup at a rotated 2 × 2 grid inside the pixel, which
   keeps far views from shimmering.
 - `texelAntialias: false` samples plain nearest texels (used by the shimmer test as its reference).
 
@@ -293,7 +298,7 @@ every frame is a full layout and decode that supersedes the previous one, and th
 - `setScene` validates the document first (`validateScene`): buffer lengths (3 / 3 / 2 / 4 floats per vertex),
   indices below the vertex count, groups on whole triangles inside the index buffer, material, texture, node and mesh
   indices in range or −1, finite node `pivot`, `rotation`, `translation` and `restRotation` (a NaN would drop the
-  node's subtree from the image and the bounds without a word), `renderOrder` an integer in ±1024, `doubleSided` and `cameraOnly` booleans (all optional; material
+  node's subtree from the image and the bounds without a word), `renderOrder` an integer in ±1024, `doubleSided` and `cameraOnly` booleans, texture `wrap` `clamp` or `repeat` (all optional; material
   `alphaMode` / `alphaCutoff` are not checked, `resolveMaterialAlpha` turns any value into a valid rule). A failure
   rejects with `RendererError` `INVALID_SCENE` naming the path, e.g. `meshes[0].indices[5]`.
 - Textures are checked from the PNG header in their bytes (signature and IHDR) before decoding, never from the size

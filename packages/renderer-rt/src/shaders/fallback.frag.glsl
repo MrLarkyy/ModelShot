@@ -18,6 +18,7 @@ uniform int u_alphaCutoffByte;
 in vec3 v_normal;
 in vec2 v_uv;
 flat in vec4 v_uvRect;
+flat in int v_textureFlags;
 
 out vec4 outColor;
 
@@ -25,12 +26,13 @@ out vec4 outColor;
 void main() {
   prepareDepthKey();
   prepareEdges();
-  TexelSample s = sampleTexels(u_texture, v_uv, v_uvRect, u_texelAntialias, u_alphaMode, u_alphaCutoffByte);
+  TexelSample s =
+    sampleTexels(u_texture, v_uv, v_uvRect, v_textureFlags, u_texelAntialias, u_alphaMode, u_alphaCutoffByte);
   vec4 light = vec4(1.0);
   if (u_bakeOn) light = sampleBakedLight(v_uv, v_uvRect);
   if (s.coverage == COVERAGE_INVISIBLE) discard;
   if (s.coverage == COVERAGE_PARTIAL) {
-    ivec2 texel = nearestTexel(u_texture, v_uv, v_uvRect);
+    ivec2 texel = nearestTexel(u_texture, v_uv, v_uvRect, v_textureFlags);
     if (!hashedAlphaCovers(texel, ivec2(gl_FragCoord.xy), s.nearestAlpha)) discard;
   }
   outColor = vec4(agxToneMap(shadeLit(sampleColor(s), shadingNormal(v_normal), light)), 1.0);

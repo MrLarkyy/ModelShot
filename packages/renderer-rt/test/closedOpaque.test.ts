@@ -153,6 +153,38 @@ describe('texture opacity', () => {
     if (typeof nearly === 'string') throw new Error('expected a table');
     expect(translucentTexelsIn(nearly, [0, 0, 0.25, 0.25])).toBe(1);
   });
+
+  it('a rectangle past the image reads the edge texels when clamped', () => {
+    const table = textureOpacityOf(image([[0, 1, 0]]), 4, 4);
+    if (typeof table === 'string') throw new Error('expected a table');
+    // u 1..1.5 clamps to column 3: no hole; u -0.5..0 clamps to column 0, row 1 holds the hole.
+    expect(translucentTexelsIn(table, [1, 0, 1.5, 1])).toBe(0);
+    expect(translucentTexelsIn(table, [-0.5, 0.25, 0, 0.5])).toBe(1);
+  });
+
+  it('with repeat counts the texels a range wraps onto, each once', () => {
+    const table = textureOpacityOf(image([[0, 1, 0]]), 4, 4);
+    if (typeof table === 'string') throw new Error('expected a table');
+    // u 1..1.25 is column 4, which repeats as column 0.
+    expect(translucentTexelsIn(table, [1, 0.25, 1.25, 0.5], false)).toBe(0);
+    expect(translucentTexelsIn(table, [1, 0.25, 1.25, 0.5], true)).toBe(1);
+    // A negative start: u -0.25..0 is column -1, i.e. column 3; -0.25..0.25 crosses the edge into column 0.
+    expect(translucentTexelsIn(table, [-0.25, 0, 0, 1], true)).toBe(0);
+    expect(translucentTexelsIn(table, [-0.25, 0, 0.25, 1], true)).toBe(1);
+    // Wider than the image: every column, the hole counted once.
+    expect(translucentTexelsIn(table, [-1, 0, 2, 1], true)).toBe(1);
+    // Wrapped in v too: v 1.25..1.5 is row 1 again.
+    expect(translucentTexelsIn(table, [0, 1.25, 0.25, 1.5], true)).toBe(1);
+    expect(translucentTexelsIn(table, [0, 1.25, 0.25, 1.5], false)).toBe(0);
+  });
+
+  it('a hole only a repeated face reaches makes the closed cube not opaque', () => {
+    const table = textureOpacityOf(image([[0, 1, 0]]), 4, 4);
+    const doc = cubeDoc([1, 0.25, 1.25, 0.5]);
+    expect(closedOpaqueMeshes(doc, [table])).toEqual([true]);
+    const repeated = { ...doc, textures: doc.textures.map((t) => ({ ...t, wrap: 'repeat' as const })) };
+    expect(closedOpaqueMeshes(repeated, [table])).toEqual([false]);
+  });
 });
 
 /** The test quad's scene with its mesh replaced by a unit cube whose faces use `rect`, double-sided by default. */

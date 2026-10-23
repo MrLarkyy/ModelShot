@@ -52,6 +52,19 @@ describe('validateScene', () => {
     );
   });
 
+  it('accepts a texture wrap of clamp or repeat, rejects any other', () => {
+    const doc = quadScene();
+    const withWrap = (wrap: unknown): SceneDocument => ({
+      ...doc,
+      textures: [{ ...doc.textures[0]!, wrap: wrap as 'clamp' }],
+    });
+    expect(() => validateScene(withWrap('clamp'))).not.toThrow();
+    expect(() => validateScene(withWrap('repeat'))).not.toThrow();
+    expectInvalid(withWrap('mirror'), 'textures[0].wrap');
+    expectInvalid(withWrap(1), 'textures[0].wrap');
+    expectInvalid(withWrap(null), 'textures[0].wrap');
+  });
+
   it('rejects plain arrays where typed arrays are expected', () => {
     expectInvalid(
       withMesh((m) => ({ uvs: [...m.uvs] as unknown as Float32Array })),

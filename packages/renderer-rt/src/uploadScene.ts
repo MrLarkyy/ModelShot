@@ -64,6 +64,7 @@ const ATTRIBUTES = [
   { location: 9, size: 4, key: 'edgeDistances' },
   { location: 10, size: 4, key: 'edgeAngles' },
   { location: 11, size: 4, key: 'lightmapChart' },
+  { location: 12, size: 1, key: 'textureFlags' },
 ] as const satisfies readonly { location: number; size: number; key: keyof SceneBatch }[];
 
 const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
@@ -254,6 +255,7 @@ export function uploadExactGeometry(gl: WebGL2RenderingContext, scene: GpuScene)
       edgeDistances: new Float32Array(n * 4),
       edgeAngles: new Float32Array(n * 4),
       lightmapChart: chart ? new Float32Array(n * 4) : null,
+      textureFlags: new Float32Array(n),
     };
     // Every vertex attribute of the batch, de-indexed: `size` floats per vertex, read at the index's vertex.
     for (const { size, key } of ATTRIBUTES) {

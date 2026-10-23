@@ -1,5 +1,5 @@
-import { ALPHA_MODE_ID, alphaCutoffByte } from '@modelshot/looks';
-import { resolveMaterialAlpha, type SceneDocument } from '@modelshot/scene';
+import { ALPHA_MODE_ID, alphaCutoffByte, textureSamplingFlags } from '@modelshot/looks';
+import { resolveMaterialAlpha, textureSampling, type SceneDocument } from '@modelshot/scene';
 import { NODE_FLOATS, type Bvh } from './buildBvh';
 import type { FlatScene } from './flattenScene';
 import { PathTracerError } from './PathTracerError';
@@ -132,8 +132,9 @@ const nonNegative = (x: number | undefined): number => (x !== undefined && Numbe
 
 /**
  * The material table: slot 0 for faces without a material, slot m + 1 for `doc.materials[m]`; 3 texels each: (layer,
- * x, y, width), (height, alpha mode id, cutoff byte, 0), (emission rgb, 0). Untextured faces are opaque, as in the
- * preview; a negative or non-finite emission channel counts as 0.
+ * x, y, width), (height, alpha mode id, cutoff byte, texture sampling flags), (emission rgb, 0). Untextured faces are
+ * opaque and have no flags, as in the preview; the flags are the texture's `textureSamplingFlags` whichever image is
+ * drawn (the preview's batches carry the same); a negative or non-finite emission channel counts as 0.
  */
 export function packMaterials(
   doc: SceneDocument,
@@ -148,22 +149,24 @@ export function packMaterials(
     place: TexturePlacement,
     modeId: number,
     cutoffByte: number,
+    flags: number,
     glow: readonly number[],
   ) => {
     const at = slot * MATERIAL_TEXELS * 4;
-    table.data.set([place.layer, place.x, place.y, place.width, place.height, modeId, cutoffByte, 0], at);
+    table.data.set([place.layer, place.x, place.y, place.width, place.height, modeId, cutoffByte, flags], at);
     table.data.set([nonNegative(glow[0]), nonNegative(glow[1]), nonNegative(glow[2]), 0], at + 8);
   };
-  write(0, textures.untextured, ALPHA_MODE_ID.opaque, 0, []);
+  write(0, textures.untextured, ALPHA_MODE_ID.opaque, 0, 0, []);
   doc.materials.forEach((material, m) => {
     const glow = emission[m] ?? [];
     if (material.texture < 0) {
-      write(m + 1, textures.untextured, ALPHA_MODE_ID.opaque, 0, glow);
+      write(m + 1, textures.untextured, ALPHA_MODE_ID.opaque, 0, 0, glow);
       return;
     }
     const rule = resolveMaterialAlpha(material);
     const place = textures.textures[material.texture] ?? textures.placeholder;
-    write(m + 1, place, ALPHA_MODE_ID[rule.mode], alphaCutoffByte(rule.cutoff), glow);
+    const flags = textureSamplingFlags(textureSampling(doc.textures[material.texture]));
+    write(m + 1, place, ALPHA_MODE_ID[rule.mode], alphaCutoffByte(rule.cutoff), flags, glow);
   });
   return table;
 }

@@ -1,6 +1,7 @@
-// What a ray meets on a triangle: its nearest texel clamped to the face's texel rectangle (pixel art, no filtering,
-// nothing read from a neighbouring atlas region), the texel's coverage under the material's alpha rule (texelAlpha,
-// the same classification as the preview), and the surface the integrator shades. The shading normal lives here only.
+// What a ray meets on a triangle: its nearest texel as faceTexel addresses it (the face's texel rectangle, then the
+// texture's wrap; pixel art, no filtering, nothing read from a neighbouring atlas region), the texel's coverage under
+// the material's alpha rule (texelAlpha, the same classification as the preview), and the surface the integrator
+// shades. The shading normal lives here only.
 #include "sceneData"
 #include "texelAlpha"
 #include "faceTexels"
@@ -30,11 +31,12 @@ vec2 hitUv(int triangle, vec2 b) {
   return uv0 * (1.0 - b.x - b.y) + uv1 * b.x + uv2 * b.y;
 }
 
+// Addressed within the image before the placement offset, so a lookup never leaves its atlas place.
 vec4 materialTexel(Material m, int triangle, vec2 b) {
   vec4 uvRect = dataTexel(u_triAttributes, triangle * TRIANGLE_ATTRIBUTE_TEXELS + 4);
   vec2 size = vec2(m.size);
   ivec4 range = faceTexelRange(uvRect, size);
-  ivec2 texel = clamp(ivec2(floor(hitUv(triangle, b) * size)), range.xy, range.zw);
+  ivec2 texel = faceTexel(ivec2(floor(hitUv(triangle, b) * size)), range, m.size, m.textureFlags);
   return texelFetch(u_textureLayers, ivec3(texel + m.offset, m.layer), 0);
 }
 

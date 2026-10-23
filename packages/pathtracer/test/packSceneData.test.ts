@@ -1,4 +1,4 @@
-import { ALPHA_MODE_ID, alphaCutoffByte } from '@modelshot/looks';
+import { ALPHA_MODE_ID, TEXTURE_FLAG_REPEAT, alphaCutoffByte } from '@modelshot/looks';
 import { describe, expect, it } from 'vitest';
 import { buildBvh, NODE_FLOATS } from '../src/buildBvh';
 import { flattenScene } from '../src/flattenScene';
@@ -120,5 +120,37 @@ describe('packMaterials', () => {
     expect(slot(2)).toEqual([0, 16, 2, 16, 8, ALPHA_MODE_ID.mask, alphaCutoffByte(0.5), 0, 0, 0, 0, 0]);
     // Untextured faces are opaque, as in the preview.
     expect(slot(3)).toEqual([0, 0, 2, 16, 8, ALPHA_MODE_ID.opaque, 0, 0, 0, 3, 0, 0]);
+  });
+
+  it('writes the texture sampling flags into texel 1 w: repeat 1, clamp and untextured 0', () => {
+    const texture = (wrap?: 'clamp' | 'repeat') => ({
+      name: 't',
+      mimeType: 'image/png' as const,
+      bytes: null,
+      width: 16,
+      height: 8,
+      uvWidth: 16,
+      uvHeight: 8,
+      missing: false,
+      ...(wrap ? { wrap } : {}),
+    });
+    const doc = {
+      ...sceneOf([]),
+      textures: [texture('repeat'), texture('clamp'), texture()],
+      materials: [
+        { name: 'repeat', texture: 0 },
+        { name: 'clamp', texture: 1 },
+        { name: 'default', texture: 2 },
+        { name: 'none', texture: -1 },
+      ],
+    };
+    const placed: MaterialTextures = { ...textures, textures: [place(1, 32), place(1, 48), place(1, 64)] };
+    const table = packMaterials(doc, placed).data;
+    const flags = (s: number) => table[s * MATERIAL_TEXELS * 4 + 7];
+    expect([0, 1, 2, 3, 4].map(flags)).toEqual([0, TEXTURE_FLAG_REPEAT, 0, 0, 0]);
+    // A repeat texture drawn as the placeholder keeps its flags, as the preview's batch does.
+    expect(flags(1)).toBe(
+      packMaterials(doc, { ...placed, textures: [null, null, null] }).data[MATERIAL_TEXELS * 4 + 7],
+    );
   });
 });

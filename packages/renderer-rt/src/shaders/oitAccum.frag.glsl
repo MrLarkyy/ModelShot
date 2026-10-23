@@ -16,6 +16,7 @@ uniform int u_alphaCutoffByte;
 in vec3 v_normal;
 in vec2 v_uv;
 flat in vec4 v_uvRect;
+flat in int v_textureFlags;
 
 // Blended with (ONE, ONE) for rgb and (ZERO, ONE_MINUS_SRC_ALPHA) for alpha on both targets:
 // target 0 rgb = sum of weighted premultiplied colour, a = product of (1 - alpha) (revealage, cleared to 1);
@@ -37,7 +38,8 @@ float toHalf(float v) {
 void main() {
   prepareDepthKey();
   prepareEdges();
-  TexelSample s = sampleTexels(u_texture, v_uv, v_uvRect, u_texelAntialias, u_alphaMode, u_alphaCutoffByte);
+  TexelSample s =
+    sampleTexels(u_texture, v_uv, v_uvRect, v_textureFlags, u_texelAntialias, u_alphaMode, u_alphaCutoffByte);
   vec4 light = vec4(1.0);
   if (u_bakeOn) light = sampleBakedLight(v_uv, v_uvRect);
   if (s.coverage != COVERAGE_PARTIAL) discard;

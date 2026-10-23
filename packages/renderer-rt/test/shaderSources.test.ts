@@ -114,6 +114,26 @@ describe('shader sources', () => {
     );
   });
 
+  it('addresses every texture texel through faceTexel with the batch texture flags', () => {
+    for (const name of ['opaque', 'oitAccum', 'fallback'] as const) {
+      for (const depthKey of ['raster', 'exact'] as const) {
+        const { vertex, fragment } = shaderProgramSource(name, depthKey);
+        expect(vertex).toContain('layout(location = 12) in float a_textureFlags;');
+        expect(vertex).toContain('v_textureFlags = int(a_textureFlags);');
+        expect(fragment).toContain('flat in int v_textureFlags;');
+        expect(fragment).toContain('sampleTexels(u_texture, v_uv, v_uvRect, v_textureFlags,');
+        // The material texture is read in one place, at the texel faceTexel picks.
+        const reads = fragment.match(/texelFetch\(tex, [^;]*;/g) ?? [];
+        expect(reads, `${name} ${depthKey}`).toEqual([
+          'texelFetch(tex, faceTexel(texel, a.range, a.size, a.flags), 0);',
+        ]);
+      }
+    }
+    expect(shaderProgramSource('fallback').fragment).toContain(
+      'nearestTexel(u_texture, v_uv, v_uvRect, v_textureFlags)',
+    );
+  });
+
   it('shades the catcher with the look chunk, tone-mapped only on request', () => {
     const { fragment } = shaderProgramSource('catcher');
     expect(fragment).toContain('float catcherShade(vec3 fill, float keyT, vec2 xz, vec4 rect)');
@@ -165,6 +185,7 @@ describe('shader sources', () => {
         expect(locations).toContain(9);
         expect(locations).toContain(10);
         expect(locations).toContain(11);
+        expect(locations).toContain(12);
         // Every varying counted as a whole vector, the most it can take after packing.
         const varyings = vertex.match(/^\s*(flat )?out \w+ v_\w+;/gm) ?? [];
         expect(varyings.length, `${name} ${depthKey}`).toBeLessThanOrEqual(15);
