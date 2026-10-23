@@ -33,7 +33,7 @@ export default defineConfig({
   // are independent units: the golden tests share no state, so they shard per test; workers stay 1, so nothing runs in
   // parallel. Shards are contiguous ranges by test count, not by time, so each block of slow tests is its own project
   // with its own shards: the path-tracer tests (golden-pt, about 20 minutes together on CI), the baked lighting tests
-  // (bake, 13-15 minutes on a slow VM) and the preview-vs-render pairing tests (pair, about 4 minutes per three). The
+  // (bake, 13-15 minutes on a slow VM) and the preview-vs-render pairing tests (pair, about 2.4 minutes per three). The
   // bench has no dependency on the goldens, which would pull every golden test into its shard.
   projects: [
     {

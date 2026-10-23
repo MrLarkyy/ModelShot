@@ -90,8 +90,9 @@ preview-vs-render pairing tests). Each test is in exactly one project, and the p
 
 Shard sizes (MS-39, `--list --project <p> --shard <k>/<n>`), each with the sum of its tests' CI times: the per-test
 times of main's run 39878163371 (MS-30's merge, so its three cut-out seam tests are counted), plus local times for MS-39's six new tests (four path-tracer tests, 29 s, and two
-pairs, 47 s). These are sums of test times, not job times; a job adds about a minute of install and build, and the VMs
-differ by up to 2x.
+pairs, 47 s). These are sums of test times, not job times; a job adds the install and build, and the VMs
+differ by up to 2x. In run 39878163371 `playwright install --with-deps` took 13 s to 9.7 minutes per job and the build
+about 6 s (`bake-2`: a 14.4-minute job for 4.4 minutes of tests).
 
 | Project     | Tests | Shards | Tests per shard             | Minutes per shard (sum)           |
 | ----------- | ----: | -----: | --------------------------- | --------------------------------- |
