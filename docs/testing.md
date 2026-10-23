@@ -437,7 +437,8 @@ after a time. Random numbers come from a seeded integer hash, never `Math.random
 `e2e/pathtracer.spec.ts` renders `fixtures/pt.html` (`@modelshot/pathtracer` on SwiftShader, 256 x 256, 4 bounces,
 seed 1). The page takes the realtime fixture's scenes and views (`rtScenes.ts`: `variant`, `scene`, `look`, ...) so
 every path-traced golden pairs with a preview of the same view, plus `seed`, `samples`, `batch` (samples per `step`),
-`tile` (tile side), `size`, `maxTriangles`, `track=1`, `timing=1` and the render quality of the request (MS-18):
+`tile` (tile side), `size`, `maxTriangles`, `track=1`, `timing=1`, `geometryWorker=0` (setScene builds the geometry on
+the main thread, MS-40) and the render quality of the request (MS-18):
 `supersample=1..4`, `denoise=0|1`, `noise=<threshold>`, which the sample bench uses too; the path-tracer-only variant `emissive` sets an
 emission on the showcase's brick material. A golden spec names its view in `variant` (`PathTracedGoldenSpec.variant`,
 put in the URL, not in the file name); so are its quality fields (`supersample`, `denoise`), so the name of such a
@@ -445,7 +446,7 @@ golden says them (`-x2-denoised`).
 
 | golden                                 | view                                                  | checks                                           |
 | -------------------------------------- | ----------------------------------------------------- | ------------------------------------------------ |
-| `pt-turntable-y030.s1.n64`             | showcase, perspective 35°                             | golden; determinism; bleeding; pair              |
+| `pt-turntable-y030.s1.n64`             | showcase, perspective 35°                             | golden; determinism; bleeding; pair; no workers  |
 | `pt-iso.s1.n64`                        | showcase, orthographic isometric                      | golden; pair                                     |
 | `pt-closeup.s1.n64`                    | showcase, half the fit distance (texels ~28 px)       | golden                                           |
 | `pt-alpha-plane.s1.n128`               | alpha-plane.bbmodel, model-view camera                | golden; shadow probes; back side; pair           |
@@ -464,6 +465,11 @@ golden says them (`-x2-denoised`).
 | `pt-gltf-contact.s1.n128`              | contact-shadow.gltf, `contact`, no catcher            | golden; contact probes; pair (MS-41)             |
 | `pt-gltf-nodes-y030.s1.n128`           | scene-nodes.gltf, perspective 35°, pitch 20°, yaw 30° | golden; sentinel bleeding; catcher; pair (MS-39) |
 | `pt-obj-shapes-y030.s1.n128`           | shapes.obj, same view                                 | golden; pair (MS-39)                             |
+
+MS-40 (`geometry worker`): the accumulated float sums (`readAccumulation`, base64) of the `edges` view at 16 samples
+and of the 200 000-triangle `large-order` document at 4 samples are the same bytes with the geometry worker and with
+`geometryWorker=0`; with `Worker` made to throw (`addInitScript`) the tracer builds on the main thread
+(`geometryInWorker` false) and `pt-turntable-y030` still matches its golden. No golden changed.
 
 All eight earlier `pt-*` goldens were regenerated in MS-16 on purpose (same seeds, samples and size): the key became
 a 0.04 rad cone, the shadow catcher appeared under every model, and the random dimensions per path vertex grew from
@@ -962,7 +968,17 @@ round 7); its max was 750 ms then.
   artefact allows 3-4x the CI median (the plan's 1.5x would fail on runners 3-5x slower than this machine).
 - `frameTimeMs.pt-load-200k`: `setScene` of the generated 200 000-triangle scene of
   `rt-load-first-frame-200k-order` (validate, flatten, BVH build in JavaScript, upload) plus its first sample. Local
-  SwiftShader 1554, 919 and 941 ms; max 10 000 ms (10x the middle run, rounded up).
+  SwiftShader 1554, 919 and 941 ms; max 10 000 ms (10x the middle run, rounded up). Since MS-40 the flatten and BVH
+  build run in the geometry worker and the upload in bands: 2418 ms in a bench run on a loaded machine (the bake read
+  28.3 s there against 22.1 s before); in one session the 200 000-triangle `setScene` alone took 2107 and 1961 ms with
+  the worker, 1881 and 1840 ms with `geometryWorker=0`.
+- `mainThreadBlockMs.pt-setscene-200k` (MS-40): the most one main-thread task blocked (CPU plus GPU wait, the trace
+  of the rows below) during `setScene` of that 200 000-triangle document on `pt.html?scene=empty`: validation, the
+  triangle count, the mesh stream to the geometry worker, taking its transferred buffers back, the banded upload (128
+  rows, 4 MiB, per task) and the swap. The document is built first (`pt.prepareLarge()`), outside the trace;
+  `pt.setLarge()` is the traced call, and the bench asserts it applied 200 000 triangles in the worker
+  (`pt.geometryInWorker`). Max 50 ms, fixed like the bake rows. Local SwiftShader: 14.4 ms (382 tasks; CPU 14.4 ms,
+  largest GPU wait 13.1 ms in one task, a band's `texSubImage2D`), the call to applied 3238 ms.
 - `bundleGzipBytes` app 4500 (measured 2490; MS-31 grew the app 437 -> 2490), embed 2200: measured plus about 2 kB, so a real dependency shows up while noise does not.
   `site` 11 600 (MS-31: the landing page's js, css and html, gzip level 9; measured 9595, 9595, 9595 bytes, plus about
   2 kB) and `site-assets` 110 400 (its woff2 fonts and svg, each gzipped; measured 100 311 three times, times 1.1

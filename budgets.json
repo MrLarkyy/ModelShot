@@ -29,6 +29,7 @@
   },
   "mainThreadBlockMs": {
     "bake-bench": { "max": 50 },
-    "bake-post-200k": { "max": 50 }
+    "bake-post-200k": { "max": 50 },
+    "pt-setscene-200k": { "max": 50 }
   }
 }
