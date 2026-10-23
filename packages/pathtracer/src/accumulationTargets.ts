@@ -4,6 +4,8 @@ interface Target {
   readonly texture: WebGLTexture;
   /** R32F sum of the samples' squared luminance at COLOR_ATTACHMENT1; `null` without moments. */
   readonly moments: WebGLTexture | null;
+  /** RG32F sums of the samples' coverage and squared coverage at COLOR_ATTACHMENT2; `null` unless transparent. */
+  readonly coverage: WebGLTexture | null;
   readonly framebuffer: WebGLFramebuffer;
 }
 
@@ -12,7 +14,8 @@ interface Target {
  * writes sum + sample into the other, then they swap. No blending (which would need EXT_float_blend), and exact float
  * adds in sample order, so the result depends only on the samples, never on how they were batched. With `moments`
  * each also holds the running sum of squared luminance (R32F, the same way), from which the noise estimate and the
- * denoiser take each pixel's variance.
+ * denoiser take each pixel's variance. With `transparent` each holds the running sums of coverage and of its square
+ * too (RG32F, the square for the noise estimate): the radiance sum's alpha already counts capped traversals.
  */
 export class AccumulationTargets {
   private readonly targets: [Target, Target];
@@ -23,6 +26,7 @@ export class AccumulationTargets {
     readonly width: number,
     readonly height: number,
     readonly moments = false,
+    readonly transparent = false,
   ) {
     const first = this.createTarget();
     let second: Target;
@@ -50,13 +54,14 @@ export class AccumulationTargets {
     this.current = 1 - this.current;
   }
 
-  /** Zeroes both sums (and both moment sums). */
+  /** Zeroes both sums (and both moment and coverage sums). */
   clear(): void {
     const gl = this.gl;
     for (const target of this.targets) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
       gl.clearBufferfv(gl.COLOR, 0, [0, 0, 0, 0]);
       if (target.moments) gl.clearBufferfv(gl.COLOR, 1, [0, 0, 0, 0]);
+      if (target.coverage) gl.clearBufferfv(gl.COLOR, 2, [0, 0, 0, 0]);
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     this.current = 0;
@@ -80,6 +85,7 @@ export class AccumulationTargets {
     this.gl.deleteFramebuffer(target.framebuffer);
     this.gl.deleteTexture(target.texture);
     if (target.moments) this.gl.deleteTexture(target.moments);
+    if (target.coverage) this.gl.deleteTexture(target.coverage);
   }
 
   private createTexture(format: number): WebGLTexture {
@@ -97,23 +103,30 @@ export class AccumulationTargets {
     const gl = this.gl;
     const texture = this.createTexture(gl.RGBA32F);
     const moments = this.moments ? this.createTexture(gl.R32F) : null;
+    const coverage = this.transparent ? this.createTexture(gl.RG32F) : null;
     const framebuffer = gl.createFramebuffer();
     gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
-    if (moments) {
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, moments, 0);
+    if (moments) gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, moments, 0);
+    if (coverage) {
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT2, gl.TEXTURE_2D, coverage, 0);
+      // Draw buffer i must be attachment i or NONE: the trace writes coverage at location 2 with or without moments.
+      gl.drawBuffers([gl.COLOR_ATTACHMENT0, moments ? gl.COLOR_ATTACHMENT1 : gl.NONE, gl.COLOR_ATTACHMENT2]);
+    } else if (moments) {
       gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
     }
     const complete = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    const target = { texture, moments, framebuffer };
+    const target = { texture, moments, coverage, framebuffer };
     if (!complete && !gl.isContextLost()) {
       this.deleteTarget(target);
       throw new PathTracerError(
         'FLOAT_TARGETS_UNAVAILABLE',
-        moments
-          ? 'RGBA32F + R32F accumulation targets are not renderable here'
-          : 'RGBA32F accumulation targets are not renderable here',
+        coverage
+          ? `RGBA32F + ${moments ? 'R32F moment and ' : ''}RG32F coverage accumulation targets are not renderable here`
+          : moments
+            ? 'RGBA32F + R32F accumulation targets are not renderable here'
+            : 'RGBA32F accumulation targets are not renderable here',
       );
     }
     return target;

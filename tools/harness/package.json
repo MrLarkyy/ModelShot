@@ -10,6 +10,7 @@
     "browsers": "playwright install --only-shell chromium"
   },
   "dependencies": {
+    "@modelshot/export": "workspace:*",
     "@modelshot/formats": "workspace:*",
     "@modelshot/looks": "workspace:*",
     "@modelshot/pathtracer": "workspace:*",

@@ -7,9 +7,13 @@ precision highp sampler2D;
 
 // The noise estimate of one NOISE_BLOCK x NOISE_BLOCK block of canvas pixels: the largest relative standard error of
 // a pixel's mean luminance in it, a pixel being the box mean of its u_scale x u_scale traced pixels. Dark pixels count
-// against a floor, so the noise of near-black never holds a render back. The CPU takes a quantile over the blocks.
+// against a floor, so the noise of near-black never holds a render back. The CPU takes a quantile over the blocks. A
+// transparent request counts its coverage the same way (relative standard error of the mean alpha, against the same
+// floor): a converged colour must not stop a render whose alpha is still noisy.
 uniform highp sampler2D u_sum;
 uniform highp sampler2D u_moments;
+uniform bool u_transparent;
+uniform highp sampler2D u_coverage;
 uniform float u_samples;
 uniform int u_scale;
 uniform ivec2 u_outputSize;
@@ -34,16 +38,27 @@ void main() {
       if (o.x >= u_outputSize.x || o.y >= u_outputSize.y) continue;
       float mean = 0.0;
       float variance = 0.0;
+      float coverageMean = 0.0;
+      float coverageVariance = 0.0;
       for (int y = 0; y < u_scale; y++) {
         for (int x = 0; x < u_scale; x++) {
           ivec2 p = o * u_scale + ivec2(x, y);
           float luminanceSum = radianceLuminance(texelFetch(u_sum, p, 0).rgb);
           mean += luminanceSum / u_samples;
           variance += varianceOfMean(luminanceSum, texelFetch(u_moments, p, 0).r, u_samples);
+          if (u_transparent) {
+            vec2 coverage = texelFetch(u_coverage, p, 0).rg;
+            coverageMean += coverage.r / u_samples;
+            coverageVariance += varianceOfMean(coverage.r, coverage.g, u_samples);
+          }
         }
       }
       // The variance of a mean of `area` independent means.
       worst = max(worst, sqrt(max(variance, 0.0) / (area * area)) / max(mean / area, MEAN_FLOOR));
+      if (u_transparent) {
+        float coverageNoise = sqrt(max(coverageVariance, 0.0) / (area * area)) / max(coverageMean / area, MEAN_FLOOR);
+        worst = max(worst, coverageNoise);
+      }
     }
   }
   outNoise = vec4(worst, 0.0, 0.0, 1.0);

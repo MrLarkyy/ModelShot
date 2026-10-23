@@ -68,6 +68,12 @@ export const groups = [
         title: 'Camera',
         description: 'the shared camera, frame-to-fit, controls',
       },
+      {
+        file: 'export.md',
+        page: 'Export',
+        title: 'Export',
+        description: 'PNG, APNG, GIF, WebP, WebM and MP4 from the path tracer: options, limits, fallback',
+      },
     ],
   },
   {

@@ -1,4 +1,5 @@
 import type { EdgeLook, LookPreset } from '@modelshot/looks';
+import type { SceneBounds } from '@modelshot/scene';
 import type { PathTracerWarning } from './PathTracerWarning';
 
 export interface PathTracerOptions {
@@ -45,6 +46,13 @@ export interface SetSceneOptions {
    * `true`, as in the baked preview.
    */
   readonly shadowCatcher?: boolean;
+  /**
+   * Where the catcher goes instead of under this document's own bounds: its height is `min[1]`, its rectangle covers
+   * the box and the box's shadow. An animation export passes the union of every pose, so the floor stays put while a
+   * pose jumps or crouches. `min` and `max` must be finite with `min ≤ max` on each axis, else a `RangeError` naming
+   * `catcherBounds`.
+   */
+  readonly catcherBounds?: SceneBounds;
 }
 
 export interface SetSceneResult {
@@ -77,4 +85,20 @@ export interface RenderRequest {
    * estimate (relative standard error of each pixel's luminance, the worst of each 4 × 4 block) is at or under it.
    */
   readonly noiseThreshold?: number;
+  /**
+   * Default `false`. `true` renders with an alpha channel: per pixel the share of camera rays that met a visible texel
+   * (per texel, so a cut-out texel shows through and a partial one by its alpha, whatever the draw order), 0 where they
+   * left the scene; the shadow catcher becomes a black shadow-only layer of alpha 1 − shade, which over the backdrop
+   * gives back the opaque catcher. The canvas still shows the image over the backdrop; `readImage()` returns the
+   * alpha. A request without the field renders byte for byte as before.
+   */
+  readonly transparent?: boolean;
+}
+
+/** An 8-bit sRGB image as `ImageData` holds one: straight (not premultiplied) alpha, rows top to bottom. */
+export interface RenderedImage {
+  readonly width: number;
+  readonly height: number;
+  /** `width × height × 4` bytes, RGBA. */
+  readonly data: Uint8ClampedArray<ArrayBuffer>;
 }

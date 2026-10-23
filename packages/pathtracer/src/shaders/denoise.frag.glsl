@@ -18,9 +18,17 @@ uniform highp sampler2D u_normal;
 uniform bool u_first;
 uniform float u_samples;
 uniform int u_step;
+// A transparent request: the mean coverage is filtered alongside, with the radiance's weights and one more stop, at a
+// coverage step beyond the pixel's coverage noise, so solid texels and silhouettes keep their alpha while the noisy
+// catcher shadow is smoothed; the first pass reads the accumulation's coverage sums, the others the previous output.
+uniform bool u_transparent;
+uniform highp sampler2D u_coverageSum;
+uniform highp sampler2D u_coverageSource;
 
 // rgb: the filtered demodulated radiance; a: the variance of its luminance.
-out vec4 outFiltered;
+layout(location = 0) out vec4 outFiltered;
+// The filtered mean coverage (transparent requests).
+layout(location = 1) out float outCoverage;
 
 // The 5-tap B3 spline, by distance from the centre.
 const float KERNEL[3] = float[3](0.375, 0.25, 0.0625);
@@ -36,6 +44,10 @@ const float SIGMA_ALBEDO = 0.5;
 // so a surface seen through a cut-out never blends with the face in front of it.
 const float SIGMA_DEPTH = 1.0;
 const float DEPTH_SHARE = 0.005;
+// Coverage: a neighbour weighs exp(-|dc| / (SIGMA_COVERAGE * the standard error of the centre's mean coverage + the
+// floor)); a pixel every sample covered the same way has no noise, so a neighbour 0.01 apart counts e^-1.
+const float SIGMA_COVERAGE = 2.0;
+const float COVERAGE_FLOOR = 0.01;
 
 ivec2 frameSize() {
   return textureSize(u_albedo, 0);
@@ -58,6 +70,17 @@ vec3 normalAt(ivec2 p) {
   vec3 n = texelFetch(u_normal, p, 0).xyz;
   float length2 = dot(n, n);
   return length2 > 1.0e-6 ? n * inversesqrt(length2) : vec3(0.0);
+}
+
+float coverageAt(ivec2 p) {
+  return u_first ? texelFetch(u_coverageSum, p, 0).r / u_samples : texelFetch(u_coverageSource, p, 0).r;
+}
+
+// How far the centre's coverage may be from a neighbour's and still count: its noise (unknown from one sample: wide).
+float coverageScale(ivec2 p) {
+  vec2 sums = texelFetch(u_coverageSum, p, 0).rg;
+  float variance = varianceOfMean(sums.r, sums.g, u_samples);
+  return variance < 0.0 ? 1.0 : SIGMA_COVERAGE * sqrt(variance) + COVERAGE_FLOOR;
 }
 
 bool inside(ivec2 p, ivec2 size) {
@@ -109,6 +132,10 @@ void main() {
   vec3 filtered = vec3(0.0);
   float weights = 0.0;
   float variance = 0.0;
+  float coverage = 0.0;
+  float coverageWeights = 0.0;
+  float coverageCentre = u_transparent ? coverageAt(p) : 0.0;
+  float coverageStop = u_transparent ? coverageScale(p) : 1.0;
   for (int dy = -2; dy <= 2; dy++) {
     for (int dx = -2; dx <= 2; dx++) {
       ivec2 q = p + ivec2(dx, dy) * u_step;
@@ -133,7 +160,14 @@ void main() {
       filtered += w * c.rgb;
       weights += w;
       variance += w * w * max(c.a, 0.0);
+      if (u_transparent) {
+        float c = isCentre ? coverageCentre : coverageAt(q);
+        float wc = w * exp(-abs(c - coverageCentre) / coverageStop);
+        coverage += wc * c;
+        coverageWeights += wc;
+      }
     }
   }
   outFiltered = vec4(filtered / weights, variance / (weights * weights));
+  outCoverage = u_transparent ? coverage / coverageWeights : 0.0;
 }

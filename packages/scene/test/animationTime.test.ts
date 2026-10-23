@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_ANIMATION_FRAMES, MAX_PLAYBACK_FPS, animationFrameTimes, animationTime } from '../src/index';
+import {
+  MAX_ANIMATION_FRAMES,
+  MAX_PLAYBACK_FPS,
+  animationFrameCount,
+  animationFrameTimes,
+  animationTime,
+} from '../src/index';
 
 const clip = (length: number, loop: 'once' | 'hold' | 'loop') => ({ length, loop });
 
@@ -59,5 +65,24 @@ describe('animationFrameTimes', () => {
     expect(animationFrameTimes(clip(60, 'loop'), MAX_PLAYBACK_FPS)).toHaveLength(MAX_ANIMATION_FRAMES);
     expect(() => animationFrameTimes(clip(60, 'hold'), MAX_PLAYBACK_FPS)).toThrow(RangeError);
     expect(() => animationFrameTimes(clip(1e6, 'loop'), 24)).toThrow(RangeError);
+  });
+});
+
+describe('animationFrameCount', () => {
+  it('counts the frames animationFrameTimes gives, without its limits', () => {
+    for (const [length, fps] of [
+      [2, 30],
+      [2.4, 30],
+      [0, 24],
+      [0.3, 7],
+    ] as const) {
+      for (const loop of ['once', 'hold', 'loop'] as const) {
+        expect(animationFrameCount(clip(length, loop), fps), `${length} ${fps} ${loop}`).toBe(
+          animationFrameTimes(clip(length, loop), fps).length,
+        );
+      }
+    }
+    expect(animationFrameCount(clip(2, 'loop'), 10, 'hold')).toBe(21);
+    expect(animationFrameCount(clip(1e6, 'loop'), 24)).toBe(24e6);
   });
 });

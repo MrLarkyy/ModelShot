@@ -10,6 +10,7 @@ const LAYOUT: ResolveLayout = {
   denoise: true,
   resolve: true,
   noise: true,
+  transparent: false,
 };
 
 /** The internal formats of the 2D textures allocated at width x height. */
@@ -28,6 +29,16 @@ describe('ResolveTargets', () => {
     expect(formatsAt(calls, 32, 24)).toEqual([gl.RGBA32F]);
     expect(formatsAt(calls, 32 / NOISE_BLOCK, 24 / NOISE_BLOCK)).toEqual([gl.RGBA32F]);
     expect(targets.filtered).not.toBeNull();
+  });
+
+  it('gives each filter image an R32F coverage image at attachment 1 when denoising a transparent request', () => {
+    const { gl, calls } = stubGl();
+    const targets = new ResolveTargets(gl, { ...LAYOUT, transparent: true });
+    expect(formatsAt(calls, 64, 48)).toEqual([gl.RGBA16F, gl.RGBA16F, gl.RGBA32F, gl.R32F, gl.RGBA32F, gl.R32F]);
+    expect(targets.filtered?.every((f) => f.coverage !== null)).toBe(true);
+    const attached = calls.filter((c) => c.name === 'framebufferTexture2D' && c.args[1] === gl.COLOR_ATTACHMENT0 + 1);
+    expect(attached.map((c) => c.args[3])).toContain(targets.filtered?.[0].coverage);
+    expect(new ResolveTargets(gl, LAYOUT).filtered?.every((f) => f.coverage === null)).toBe(true);
   });
 
   it('allocates only what the layout asks for and deletes all of it', () => {

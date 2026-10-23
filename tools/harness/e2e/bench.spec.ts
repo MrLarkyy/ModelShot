@@ -175,6 +175,26 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
       `${post.call.toFixed(1)} ms, wall-time block ${post.block.toFixed(1)} ms (heartbeat lag ${post.lag.toFixed(1)} ms)`,
   );
 
+  // An export (MS-22): a transparent 4-frame turntable of the showcase at 64 x 64, 16 samples a frame, as APNG, from a
+  // fresh tracer: scene upload, the frames, the encoding. Median of 3.
+  await page.goto('/export.html');
+  await page.waitForFunction(() => window.__msExport !== undefined);
+  const exportRuns: number[] = [];
+  for (let i = 0; i < 3; i++) {
+    exportRuns.push(
+      await page.evaluate(async () => {
+        const controls = window.__msExport;
+        if (!controls) throw new Error('export controls missing');
+        const start = performance.now();
+        if ((await controls.turntable()) !== 4) throw new Error('the export rendered other than 4 frames');
+        return performance.now() - start;
+      }),
+    );
+  }
+  console.log(
+    `[bench] export turntable 64 x 64 x 4 frames, n16: ${exportRuns.map((ms) => ms.toFixed(0)).join(', ')} ms`,
+  );
+
   // Every target, so a budget row cannot go unmeasured; one at a time, as `site` and `site-assets` build the same package.
   const bundleGzipBytes: Record<string, number> = {};
   for (const target of BUNDLE_TARGETS) bundleGzipBytes[target] = (await measureBundle(target)).gzipBytes;
@@ -190,6 +210,7 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
       'rt-load-first-frame-edges-weld': edgesWeldMs,
       'rt-load-first-frame-200k-world': worldLoadMs,
       'pt-load-200k': ptLoadMs,
+      'export-turntable-64-f4-n16': median(exportRuns),
     },
     timeToSamplesMs: {
       'progressive-256-n64': median(runs),

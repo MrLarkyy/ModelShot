@@ -8,6 +8,11 @@ interface ColorTarget {
   readonly framebuffer: WebGLFramebuffer;
 }
 
+/** A filter image and, for a transparent request, the filtered mean coverage beside it (R32F, attachment 1). */
+interface FilterTarget extends ColorTarget {
+  readonly coverage: WebGLTexture | null;
+}
+
 /** The denoiser's guides (guide.frag): mean albedo (floored), shading normal and view depth of stratified camera rays. */
 interface GuideTarget {
   readonly albedo: WebGLTexture;
@@ -28,17 +33,20 @@ export interface ResolveLayout {
   readonly resolve: boolean;
   /** A noise estimate per block (denoise or a noise threshold: the accumulation has moments). */
   readonly noise: boolean;
+  /** A transparent request: denoised, the filter images carry the coverage too. */
+  readonly transparent: boolean;
 }
 
 /**
  * The quality path's targets, allocated only when a request needs them: the guides and two filter images in turn at
  * the traced size (guides RGBA16F: a level of the final 8-bit image is far coarser than half precision; filter images
  * RGBA32F, as the variance of one sample over a floored albedo overflows half precision), the resolved canvas-size
- * image (RGBA32F, the mean as exact as the accumulation's), and one RGBA32F texel per noise block.
+ * image (RGBA32F, the mean as exact as the accumulation's), and one RGBA32F texel per noise block. Denoising a
+ * transparent request, each filter image has an R32F coverage image beside it.
  */
 export class ResolveTargets {
   readonly guide: GuideTarget | null = null;
-  readonly filtered: readonly [ColorTarget, ColorTarget] | null = null;
+  readonly filtered: readonly [FilterTarget, FilterTarget] | null = null;
   readonly resolved: ColorTarget | null = null;
   readonly noise: ColorTarget | null = null;
   readonly noiseWidth: number;
@@ -58,7 +66,7 @@ export class ResolveTargets {
         const albedo = this.texture(gl.RGBA16F, width, height);
         const normal = this.texture(gl.RGBA16F, width, height);
         this.guide = { albedo, normal, framebuffer: this.framebuffer([albedo, normal]) };
-        this.filtered = [this.colorTarget(gl.RGBA32F, width, height), this.colorTarget(gl.RGBA32F, width, height)];
+        this.filtered = [this.filterTarget(layout), this.filterTarget(layout)];
       }
       if (layout.resolve) this.resolved = this.colorTarget(gl.RGBA32F, layout.outputWidth, layout.outputHeight);
       if (layout.noise) this.noise = this.colorTarget(gl.RGBA32F, this.noiseWidth, this.noiseHeight);
@@ -122,6 +130,13 @@ export class ResolveTargets {
       throw new PathTracerError('FLOAT_TARGETS_UNAVAILABLE', 'float targets of the denoiser are not renderable here');
     }
     return framebuffer;
+  }
+
+  private filterTarget(layout: ResolveLayout): FilterTarget {
+    const gl = this.gl;
+    const texture = this.texture(gl.RGBA32F, layout.width, layout.height);
+    const coverage = layout.transparent ? this.texture(gl.R32F, layout.width, layout.height) : null;
+    return { texture, coverage, framebuffer: this.framebuffer(coverage ? [texture, coverage] : [texture]) };
   }
 
   private colorTarget(format: number, width: number, height: number): ColorTarget {

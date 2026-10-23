@@ -9,7 +9,8 @@
     "rt-load-first-frame-edges-hostile": { "max": 3500 },
     "rt-load-first-frame-edges-weld": { "max": 3500 },
     "rt-load-first-frame-200k-world": { "max": 3500 },
-    "pt-load-200k": { "max": 10000 }
+    "pt-load-200k": { "max": 10000 },
+    "export-turntable-64-f4-n16": { "max": 9000 }
   },
   "timeToSamplesMs": {
     "progressive-256-n64": { "max": 300 },
@@ -20,7 +21,8 @@
     "app": { "max": 4500 },
     "embed": { "max": 2200 },
     "site": { "max": 11600 },
-    "site-assets": { "max": 110400 }
+    "site-assets": { "max": 110400 },
+    "export": { "max": 8041 }
   },
   "bakeTimeMs": {
     "bake-bench-n16": { "max": 222000 }
