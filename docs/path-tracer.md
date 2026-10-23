@@ -102,7 +102,8 @@ floor does not ride with a jump.
    With edge options (the render; the bake passes none) each triangle also carries its corners' four sharp-edge
    distances and the slots' angles (`flatEdges`, from `sceneSharpEdges` of the document, looked up once).
 3. `buildBvh`: binned SAH (12 bins per axis), leaves of at most 4 triangles, in JavaScript (with upload and a first
-   sample about 1-2 s for 200 000 triangles under software WebGL, `pt-load-200k`, see testing.md). Deterministic: ties go to the lower axis
+   sample about 1-2 s for 200 000 triangles under software WebGL, `pt-load-200k`, see testing.md). Deterministic: ties
+   go to the lower axis
    and bin, partitions are stable. Depth is at most 31 for any input: a node whose triangles would need every remaining
    level if split at the median, or whose centroids coincide, is split at its index median instead; the shader's
    32-entry traversal stack therefore never overflows.
@@ -128,7 +129,8 @@ floor does not ride with a jump.
    `PLACEHOLDER_IMAGE`).
    The data textures and the images upload over several tasks while the current scene keeps drawing: at most
    `BAND_ROWS` (128) rows, 4 MiB, of a data texture per task, and images in groups of at most 4 MiB per task (a larger
-   image in row bands of 4 MiB: a `RawImage` by a view of its rows, an `ImageBitmap` by `UNPACK_SKIP_ROWS`). A superseded upload, or one whose context was lost, deletes what it made; the swap then releases the
+   image in row bands of 4 MiB: a `RawImage` by a view of its rows, an `ImageBitmap` by `UNPACK_SKIP_ROWS`). A
+   superseded upload, or one whose context was lost, deletes what it made; the swap then releases the
    old scene's textures, so for that moment both scenes' data are on the GPU (about 2 × 40 MB at 200 000 triangles).
    After a context restore, after `setEdges` of a new angle, and for the empty scene the upload is still one task.
 6. Per sample, a trace pass per tile (scissor, at most `tileSize` square, so no draw call runs long enough to trip a

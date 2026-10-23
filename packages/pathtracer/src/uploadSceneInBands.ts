@@ -20,8 +20,8 @@ export const IMAGE_TASK_BYTES = 4 * 1024 * 1024;
 
 /**
  * `uploadGpuScene` spread over tasks: each data texture in bands of at most `BAND_ROWS` rows, the texture images in
- * groups of at most `IMAGE_TASK_BYTES` (a larger image in row bands of that size), one band or group per task, so a large scene never
- * blocks the main thread in one upload. Before each band `current()` and the context are checked: when either fails
+ * groups of at most `IMAGE_TASK_BYTES` (a larger image in row bands of that size), one band or group per task, so a
+ * large scene never blocks the main thread in one upload. Before each band `current()` and the context are checked: when either fails
  * every texture made here is deleted and the result is `null`. The same bytes as `uploadGpuScene`.
  */
 export async function uploadSceneInBands(

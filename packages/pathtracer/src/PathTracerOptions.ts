@@ -20,8 +20,9 @@ export interface PathTracerOptions {
   /**
    * `setScene` flattens the scene, builds the BVH and packs the data in a module Worker, so a large model does not
    * block the page. Default `true`; `false` does that work on the main thread (for hosts that forbid workers). Without
-   * Worker support, or when the worker cannot start or fails, the main thread does it too: the same bytes either way. The worker compares meshes by object identity and
-   * posts a `SceneMesh` it holds again never, so a mesh changed in place is not rebuilt: pass a new `SceneMesh`.
+   * Worker support, or when the worker cannot start or fails, the main thread does it too: the same bytes either way.
+   * The worker holds meshes by object: a `SceneMesh` it already holds is not posted again, so a mesh changed in place
+   * is not rebuilt; pass a new `SceneMesh`.
    */
   readonly geometryWorker?: boolean;
   /** Largest texture side accepted (further capped by MAX_TEXTURE_SIZE and 4096). Default 4096. */
