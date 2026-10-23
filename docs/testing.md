@@ -95,13 +95,13 @@ differ by up to 2x.
 
 | Project     | Tests | Shards | Tests per shard             | Minutes per shard (sum)           |
 | ----------- | ----: | -----: | --------------------------- | --------------------------------- |
-| `golden`    |   163 |      2 | 82 / 81                     | 7.7 / 3.0                         |
+| `golden`    |   166 |      2 | 83 / 83                     | 7.7 / 3.0                         |
 | `golden-pt` |    78 |      6 | 13 / 13 / 13 / 13 / 13 / 13 | 2.6 / 4.4 / 7.0 / 3.9 / 1.1 / 1.6 |
 | `pair`      |    13 |      3 | 5 / 4 / 4                   | 5.1 / 3.6 / 3.0                   |
 | `bake`      |    25 |      3 | 9 / 8 / 8                   | 8.5 / 3.1 / 3.2                   |
 | `bench`     |     1 |      1 | 1                           | its own job                       |
 
-280 tests in all. The path-tracer tests had been part of `golden` (241 tests in 5 shards of 48-49): the shard that held
+283 tests in all. The path-tracer tests had been part of `golden` (241 tests in 5 shards of 48-49): the shard that held
 48 of them summed to 16.0 minutes, the others 1.8-7.2, and the same block in shard 2 of 4 ran 16.3 and 17.4 minute jobs
 on main. `golden-pt` has 6 shards because its two longest tests (a denoised 2x render in batches, 3.0 minutes, and a
 denoised 2x render paired with the preview, 1.9 minutes) are four tests apart in the file: with 3, 4 or 5 shards one
@@ -519,21 +519,21 @@ has interreflection and noise. Logged as `[pt pair] <view>: ...`, values in `tes
 Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with rounded edges and the mirrored bounce
 (MS-16's values in brackets; every limit stayed, none widened, `edges` is new at measured x 1.25):
 
-| view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta                     | limit: `maxDiffRatio`, `maxMeanDelta`      |
-| -------------------------- | ----------------------------------- | ------------------------------------------------------- | ------------------------------------------ |
-| `turntable-y030`           | 0 (1 605)                           | 142, 0.00217, 0.724 (MS-30; before 201, 0.00307, 0.772) | 0.00271, 0.905 (MS-30; was 0.00353, 0.953) |
-| `iso`                      | 0 (1 541)                           | 268, 0.00409, 0.889 (MS-30; before 366, 0.00558, 0.959) | 0.00512, 1.12 (MS-30; was 0.00639, 1.18)   |
-| `alpha-plane`              | 0 (687)                             | 232, 0.00354, 1.334 (MS-30; before 682, 0.01041, 1.567) | 0.00443, 1.67 (MS-30; was 0.013, 1.96)     |
-| `player-hold-34`           | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295)           | 0.0232, 1.62                               |
-| `cutout-checker`           | 0 (3 277)                           | 223, 0.00340, 0.623 (MS-30; before 293, 0.00447, 0.731) | 0.00426, 0.78 (MS-30; was 0.00525, 0.908)  |
-| `edges`                    | 0 (1 979)                           | 43, 0.00066, 0.397                                      | 0.00082, 0.496                             |
-| `preset-marketplace`       | 0 (1 322)                           | 1 269, 0.01936, 1.237                                   | 0.0223, 1.43                               |
-| `preset-rim`               | 0 (1 322)                           | 1 407, 0.02147, 1.109                                   | 0.0241, 1.13                               |
-| `preset-marketplace-yaw30` | 0 (1 304)                           | 1 387, 0.02116, 1.281                                   | 0.0265, 1.52                               |
-| `outline-hull`             | 0 (1 456)                           | 174, 0.00266, 0.438 (MS-50 1 076, 0.01642, 0.912)         | 0.00333, 0.548 (MS-39; was 0.0205, 1.14) |
-| `gltf-contact`             | 0 (618)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)          | 0.133, 7.03                                |
-| `obj-shapes-y030`          | 0 (1 835)                           | 463, 0.00706, 0.558 (MS-39, new)                          | 0.00883, 0.698                           |
-| `gltf-nodes-y030`          | 0 (2 210)                           | 435, 0.00664, 1.008 (MS-39, new)                          | 0.0083, 1.26                             |
+| view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta                                | limit: `maxDiffRatio`, `maxMeanDelta`      |
+| -------------------------- | ----------------------------------- | ------------------------------------------------------------------ | ------------------------------------------ |
+| `turntable-y030`           | 0 (1 605)                           | 142, 0.00217, 0.724 (MS-30; before 201, 0.00307, 0.772)            | 0.00271, 0.905 (MS-30; was 0.00353, 0.953) |
+| `iso`                      | 0 (1 541)                           | 268, 0.00409, 0.889 (MS-30; before 366, 0.00558, 0.959)            | 0.00512, 1.12 (MS-30; was 0.00639, 1.18)   |
+| `alpha-plane`              | 0 (687)                             | 232, 0.00354, 1.334 (MS-30; before 682, 0.01041, 1.567)            | 0.00443, 1.67 (MS-30; was 0.013, 1.96)     |
+| `player-hold-34`           | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295)                      | 0.0232, 1.62                               |
+| `cutout-checker`           | 0 (3 277)                           | 223, 0.00340, 0.623 (MS-30; before 293, 0.00447, 0.731)            | 0.00426, 0.78 (MS-30; was 0.00525, 0.908)  |
+| `edges`                    | 0 (1 979)                           | 43, 0.00066, 0.397                                                 | 0.00082, 0.496                             |
+| `preset-marketplace`       | 0 (1 322)                           | 1 269, 0.01936, 1.237                                              | 0.0223, 1.43                               |
+| `preset-rim`               | 0 (1 322)                           | 1 407, 0.02147, 1.109                                              | 0.0241, 1.13                               |
+| `preset-marketplace-yaw30` | 0 (1 304)                           | 1 387, 0.02116, 1.281                                              | 0.0265, 1.52                               |
+| `outline-hull`             | 0 (1 456)                           | 174, 0.00266, 0.438 (MS-50 1 076, 0.01642, 0.912)                  | 0.00333, 0.548 (MS-39; was 0.0205, 1.14)   |
+| `gltf-contact`             | 0 (618)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)                     | 0.133, 7.03                                |
+| `obj-shapes-y030`          | 1 (1 657)                           | 245, 0.00374, 0.470 (MS-39, new; 463, 0.00706, 0.558 before MS-30) | 0.00468, 0.588                             |
+| `gltf-nodes-y030`          | 0 (2 182)                           | 320, 0.00488, 0.956 (MS-39, new; 435, 0.00664, 1.008 before MS-30) | 0.0061, 1.2                                |
 
 MS-30 (anti-aliased cut-out seams in the preview's MSAA frames, as the render anti-aliases them by sampling)
 re-measured every pair: `turntable-y030`, `iso`, `alpha-plane` and `cutout-checker` came closer to the render (rows
