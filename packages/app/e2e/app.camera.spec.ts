@@ -45,6 +45,21 @@ test('the O and I keys in the view move the projection radios with them', async 
   expect((await state(page)).pitchDeg).toBeCloseTo(35.264, 2);
 });
 
+test('the mouse orbits the model while a render result is shown', async ({ page }) => {
+  await openCube(page);
+  await page.getByRole('button', { name: 'Render' }).click();
+  await expect(page.locator('#result')).toBeVisible();
+  const before = await state(page);
+  const box = await page.locator('#viewport').boundingBox();
+  if (!box) throw new Error('no viewport');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.up();
+  expect((await state(page)).yawDeg).not.toBeCloseTo(before.yawDeg, 1);
+  await expect(page.locator('#result')).toBeHidden();
+});
+
 test('Frame and Reset', async ({ page }) => {
   await openCube(page);
   await page.locator('#preview').focus();

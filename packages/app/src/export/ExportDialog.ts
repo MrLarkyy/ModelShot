@@ -1,6 +1,6 @@
 import type { PathTracer } from '@modelshot/pathtracer';
 import type { SceneCamera, SceneDocument } from '@modelshot/scene';
-import { loadExport } from '../lazyPathTracer';
+import { loadExport } from '../loadExport';
 import { RENDER_SEED, MAX_SUPERSAMPLE_CHOICE } from '../render/RenderSettings';
 import { el, labelled, uniqueId } from '../ui/dom';
 import { downloadBlob } from './downloadBlob';

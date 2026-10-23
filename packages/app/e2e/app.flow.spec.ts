@@ -43,10 +43,28 @@ async function exportClip(page: Page, format: string): Promise<Buffer> {
   return buffer;
 }
 
+test('a file dropped on the open Export dialog loads nothing', async ({ page }) => {
+  await openApp(page);
+  await openFiles(page, [CUBE], 'single-cube.bbmodel');
+  await page.getByRole('button', { name: 'Export…' }).click();
+  await expect(page.getByRole('dialog', { name: 'Export' })).toBeVisible();
+  await page.evaluate(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(['{}'], 'other.bbmodel'));
+    window.dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true, cancelable: true }));
+  });
+  await expect(page.getByRole('status')).toContainText('Close the dialog');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await page.getByRole('dialog', { name: 'Export' }).getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByRole('status')).not.toContainText('Opening');
+});
+
 test('opens a model, switches the look, renders and exports a transparent PNG', async ({ page }) => {
   await openApp(page);
   await expect(page.getByRole('button', { name: 'Render' })).toBeDisabled();
+  await expect(page.locator('#empty')).toBeVisible();
   await openFiles(page, [CUBE], 'single-cube.bbmodel');
+  await expect(page.locator('#empty')).toBeHidden();
   const studio = await waitForModel(page);
   const centre = pixelAt(studio, 0.5, 0.5);
   const corner = pixelAt(studio, 0.02, 0.02);

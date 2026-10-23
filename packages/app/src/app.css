@@ -139,9 +139,11 @@ button:disabled {
 
 .result {
   image-rendering: pixelated;
+  pointer-events: none;
 }
 
 .result[hidden],
+.empty[hidden],
 .drop-overlay[hidden] {
   display: none;
 }

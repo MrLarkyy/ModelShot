@@ -5,7 +5,7 @@
 
 1. `pnpm test:unit`: Vitest, every package plus `tools/harness/test` (comparator, golden store, budgets, bundle size,
    model-view helpers) and `tools/wiki/test` (page table, link and anchor check over the real docs, publish against a local bare repo).
-2. `pnpm test:browser`: Playwright in a pinned headless Chromium on software WebGL (SwiftShader), `tools/harness`, and the landing page's suite in `packages/site` (its own Playwright config, docs/site.md).
+2. `pnpm test:browser`: Playwright in a pinned headless Chromium on software WebGL (SwiftShader), `tools/harness`, the landing page's suite in `packages/site` (its own Playwright config, docs/site.md) and the app's in `packages/app` (its own config, docs/app.md).
 
 Run `pnpm browsers` once per machine (and after a Playwright version bump) to install the browser. Playwright is pinned
 to an exact version in `tools/harness/package.json`, which pins the Chromium revision.
@@ -70,7 +70,7 @@ CPU ms per converted test, the maximum of 3 runs on an idle machine (Windows, No
 - `e2e`: a matrix of 14 shards (golden 1-2 of `--project=golden --shard=<k>/2`, golden-pt 1-6 of
   `--project=golden-pt --shard=<k>/6`, pair 1-3 of `--project=pair --shard=<k>/3`, bake 1-3 of
   `--project=bake --shard=<k>/3`) (`fail-fast: false`), each on its own VM: install, the pinned Chromium, `pnpm -r build`,
-  then `playwright test --project=<project> --shard=<k>/<n>`, then on golden shard 1 only `pnpm --filter @modelshot/site run test:browser` (it runs even when the harness tests failed), uploading `tools/harness/test-results/` and `packages/site/test-results/` as `browser-test-results-<golden-k|golden-pt-k|pair-k|bake-k>`.
+  then `playwright test --project=<project> --shard=<k>/<n>`, then on golden shard 1 only `pnpm --filter @modelshot/site run test:browser` and `pnpm --filter @modelshot/app run test:browser` (each runs even when an earlier step failed), uploading `tools/harness/test-results/`, `packages/site/test-results/` and `packages/app/test-results/` as `browser-test-results-<golden-k|golden-pt-k|pair-k|bake-k>`.
 - `bench`: its own VM, same install and build, `playwright test --project=bench` (the one budget test), uploading
   `browser-test-results-bench`; the budgets are measured on a machine that runs nothing else.
 

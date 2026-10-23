@@ -28,10 +28,21 @@ describe('the build version', () => {
 
 type Listener = (event: Record<string, unknown>) => void;
 
+class RequestStub {
+  readonly cache: string;
+  constructor(
+    readonly url: string,
+    init: { cache?: string } = {},
+  ) {
+    this.cache = init.cache ?? 'default';
+  }
+}
+
 function runWorker(version = 'v1', files: readonly string[] = FILES) {
   const listeners = new Map<string, Listener>();
   const cacheStore = new Map<string, Map<string, string>>();
   const fetched: string[] = [];
+  const precached: { url: string; cache: string }[] = [];
   const cacheOf = (name: string) => {
     let entries = cacheStore.get(name);
     if (!entries) {
@@ -40,8 +51,9 @@ function runWorker(version = 'v1', files: readonly string[] = FILES) {
     }
     const store = entries;
     return {
-      addAll: vi.fn((urls: string[]) => {
-        for (const url of urls) store.set(url, `cached:${url}`);
+      addAll: vi.fn((requests: { url: string; cache: string }[]) => {
+        for (const { url } of requests) store.set(url, `cached:${url}`);
+        precached.push(...requests);
         return Promise.resolve();
       }),
       match: vi.fn((request: { url: string }, options?: { ignoreSearch?: boolean }) => {
@@ -66,7 +78,14 @@ function runWorker(version = 'v1', files: readonly string[] = FILES) {
     fetched.push(request.url);
     return Promise.resolve(`network:${request.url}`);
   };
-  runInNewContext(serviceWorkerSource({ version, files }), { self, caches, URL, fetch: fetchStub, Promise });
+  runInNewContext(serviceWorkerSource({ version, files }), {
+    self,
+    caches,
+    URL,
+    Request: RequestStub,
+    fetch: fetchStub,
+    Promise,
+  });
 
   const dispatch = async (type: string, event: Record<string, unknown>): Promise<unknown> => {
     let pending: Promise<unknown> = Promise.resolve();
@@ -78,7 +97,7 @@ function runWorker(version = 'v1', files: readonly string[] = FILES) {
     return pending;
   };
   const request = (url: string, method = 'GET', mode = 'cors') => ({ request: { url, method, mode } });
-  return { dispatch, request, cacheStore, fetched, self };
+  return { dispatch, request, cacheStore, fetched, precached, self };
 }
 
 describe('the service worker', () => {
@@ -89,6 +108,13 @@ describe('the service worker', () => {
     expect([...(cache?.keys() ?? [])].sort()).toEqual(
       ['https://example.test/app/', ...FILES.slice(1).map((f) => `https://example.test/app/${f}`)].sort(),
     );
+  });
+
+  it('fetches every precached file past the HTTP cache, so an update never keeps the old index.html', async () => {
+    const worker = runWorker('v1');
+    await worker.dispatch('install', {});
+    expect(worker.precached).toHaveLength(FILES.length);
+    expect(worker.precached.every((request) => request.cache === 'reload')).toBe(true);
   });
 
   it('serves a cached file without the network and falls back to it for others', async () => {

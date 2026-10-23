@@ -14,9 +14,10 @@ const CACHE = PREFIX + ${JSON.stringify(build.version)};
 const FILES = ${JSON.stringify(build.files)};
 
 self.addEventListener('install', (event) => {
+  // Cache mode reload skips the HTTP cache: an update inside the page's max-age must not pin the old index.html next to new chunks.
   // The new worker waits for the open tabs to close: they hold the old file names, which the new cache no longer has.
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(FILES.map((file) => new URL(file, self.registration.scope).href))),
+    caches.open(CACHE).then((cache) => cache.addAll(FILES.map((file) => new Request(new URL(file, self.registration.scope).href, { cache: 'reload' })))),
   );
 });
 

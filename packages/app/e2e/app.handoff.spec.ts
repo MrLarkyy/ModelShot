@@ -87,6 +87,19 @@ test('a handoff that cannot be read says so and opens nothing', async ({ page })
   expect(await pending(page)).toBe(0);
 });
 
+test('a handoff that cannot be read from the browser storage is reported as an alert', async ({ page }) => {
+  await page.addInitScript(() => {
+    const open = indexedDB.open.bind(indexedDB);
+    indexedDB.open = (name: string, version?: number) => {
+      if (name === 'modelshot-handoff') throw new Error('storage is broken');
+      return open(name, version);
+    };
+  });
+  await openApp(page, '/app/?open=handoff');
+  await expect(page.getByRole('alert')).toContainText('storage is broken');
+  await expect(page.locator('#empty')).toBeVisible();
+});
+
 test('a handoff older than 10 minutes is discarded', async ({ page }) => {
   await openApp(page);
   await putRecord(page, await parts(fixture('bbmodel', 'single-cube.bbmodel')), { ageMs: 11 * 60 * 1000 });

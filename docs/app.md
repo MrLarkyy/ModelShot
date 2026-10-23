@@ -62,7 +62,7 @@ IndexedDB `modelshot-app`, version 1, on this device only:
 
 - store `session`, key `current`: `{ v: 1, files, modelKey, savedAt }`, the files of the last open model, reopened on
   a start without handoff;
-- store `models`, key = SHA-256 hex of the model bytes: `{ v: 1, camera, look, hidden, arms?, render, export, savedAt }`,
+- store `models`, key = SHA-256 hex of the model bytes: `{ v: 1, camera, look, hiddenNodes, hiddenMeshes, arms?, render, export?, savedAt }`,
   restored when the same model is opened again. At most 20 entries; the oldest is evicted.
 
 Saves are debounced by 500 ms. Reads are validated as untrusted (`state/readAppState.ts`: own properties, `v === 1`,

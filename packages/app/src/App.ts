@@ -18,7 +18,8 @@ import { ScenePanel } from './panels/ScenePanel';
 import { RenderSession } from './render/RenderSession';
 import { DEFAULT_RENDER_SETTINGS, type RenderSettingsValues } from './render/RenderSettings';
 import { applyLook } from './session/applyLook';
-import { hiddenIndices, visibilityFromHidden, withVisibility } from './session/withVisibility';
+import { hiddenIndices, visibilityFromHidden } from './session/visibility';
+import { withVisibility } from './session/withVisibility';
 import { bindShortcuts } from './shortcuts/bindShortcuts';
 import { HelpDialog } from './shortcuts/HelpDialog';
 import type { ModelState } from './state/AppState';
@@ -186,7 +187,10 @@ export class App {
         loaded = await this.load(request, saved.arms);
       }
       this.persistence.resume();
-      await this.commit({ loaded, request, files }, saved, true);
+      if (!(await this.commit({ loaded, request, files }, saved, true))) {
+        this.notices.alert(`Could not show ${name}: the scene changed while it was opening.`);
+        return;
+      }
       void this.persistence.saveSession(files, loaded.key);
       this.scheduleSave();
     } catch (error) {
@@ -233,7 +237,8 @@ export class App {
     }
   }
 
-  private async commit(open: OpenModel, saved: ModelState | null, reframe: boolean): Promise<void> {
+  /** False when the scene was replaced while this one was loading: nothing of it is applied. */
+  private async commit(open: OpenModel, saved: ModelState | null, reframe: boolean): Promise<boolean> {
     const viewer = this.requireViewer();
     // The previous model's setup is saved before the view changes under it.
     await this.persistence.flush();
@@ -252,12 +257,12 @@ export class App {
       meshVisible = this.meshVisible;
     }
     const look = (saved && Object.hasOwn(LOOK_PRESETS, saved.look) ? LOOK_PRESETS[saved.look] : undefined) ?? this.look;
-    this.look = applyLook(look, [viewer, this.renderSession.existingTracer()]);
     this.committing = true;
     let result;
     try {
       result = await viewer.setDocument(withVisibility(doc, nodeVisible, meshVisible), reframe);
-      if (!result.applied) return;
+      if (!result.applied) return false;
+      this.look = applyLook(look, [viewer, this.renderSession.existingTracer()]);
       this.open = open;
       this.base = doc;
       this.nodeVisible = [...nodeVisible];
@@ -279,10 +284,12 @@ export class App {
         ? `Opened ${open.loaded.name} with ${notes.length} note(s): ${shown}`
         : `Opened ${open.loaded.name}.`,
     );
+    return true;
   }
 
   private showPanels(): void {
     const open = this.open;
+    byId('empty', HTMLElement).hidden = open !== null;
     this.scenePanel.show(
       open && this.base
         ? {
@@ -307,6 +314,11 @@ export class App {
   }
 
   private setVisible(flags: boolean[], index: number, visible: boolean): void {
+    if (this.loading) {
+      // The scene of the new files is being prepared; the panel goes back to what the shown model has.
+      this.showPanels();
+      return;
+    }
     flags[index] = visible;
     void this.applyVisibility();
   }
@@ -330,7 +342,10 @@ export class App {
     try {
       const loaded = await this.load(open.request, arms);
       this.arms = arms;
-      await this.commit({ ...open, loaded }, null, false);
+      if (!(await this.commit({ ...open, loaded }, null, false))) {
+        this.notices.alert('Could not change the arms: the scene changed while it was loading.');
+        return;
+      }
       this.scheduleSave();
     } catch (error) {
       this.notices.alert(`Could not change the arms: ${error instanceof Error ? error.message : String(error)}`);
@@ -384,7 +399,7 @@ export class App {
       if (read.kind === 'files') await this.openFiles(read.files);
       else this.notices.status(describeHandoff(read));
     } catch (error) {
-      this.notices.status(error instanceof Error ? error.message : String(error));
+      this.notices.alert(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -493,7 +508,13 @@ export class App {
     byId('cancel-button', HTMLButtonElement).addEventListener('click', () => this.renderSession.cancel());
     byId('help-button', HTMLButtonElement).addEventListener('click', () => this.helpDialog.open());
     byId('forget-button', HTMLButtonElement).addEventListener('click', () => void this.forget());
-    bindDrop(window, byId('drop-overlay', HTMLElement), (files) => void this.openFiles(files));
+    bindDrop(window, byId('drop-overlay', HTMLElement), (files) => {
+      if (this.exporting || document.querySelector('dialog[open]')) {
+        this.notices.status('Close the dialog and wait for the export to finish before opening files.');
+        return;
+      }
+      void this.openFiles(files);
+    });
     bindShortcuts(document, {
       open: () => this.fileInput.click(),
       render: () => this.render(),

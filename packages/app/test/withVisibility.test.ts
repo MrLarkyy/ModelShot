@@ -1,6 +1,7 @@
 import type { SceneDocument } from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
-import { hiddenIndices, visibilityFromHidden, withVisibility } from '../src/session/withVisibility';
+import { hiddenIndices, visibilityFromHidden } from '../src/session/visibility';
+import { withVisibility } from '../src/session/withVisibility';
 
 const node = (visible: boolean): SceneDocument['nodes'][number] => ({ name: 'n', visible }) as never;
 const mesh = (visible: boolean): SceneDocument['meshes'][number] => ({ name: 'm', visible }) as never;

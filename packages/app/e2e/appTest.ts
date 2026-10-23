@@ -88,19 +88,24 @@ export function meanColour(image: Rgba): [number, number, number] {
   return [r / n, g / n, b / n];
 }
 
-/** Waits until the preview has drawn the model (more than the backdrop's colour range) and its lighting stopped changing. */
+/** Waits until the preview has drawn the model (some pixel apart from the backdrop's colour) and stopped changing. */
 export async function waitForModel(page: Page): Promise<Rgba> {
   let image = await previewImage(page);
   for (let i = 0; i < 80; i++) {
-    const centre = pixelAt(image, 0.5, 0.5);
     const corner = pixelAt(image, 0.02, 0.02);
-    const drawn =
-      Math.abs(centre[0] - corner[0]) + Math.abs(centre[1] - corner[1]) + Math.abs(centre[2] - corner[2]) > 30;
+    let drawn = false;
+    for (let y = 0; y < 24 && !drawn; y++) {
+      for (let x = 0; x < 24 && !drawn; x++) {
+        const p = pixelAt(image, (x + 0.5) / 24, (y + 0.5) / 24);
+        drawn = Math.abs(p[0] - corner[0]) + Math.abs(p[1] - corner[1]) + Math.abs(p[2] - corner[2]) > 30;
+      }
+    }
+    const before = image;
     await page.waitForTimeout(150);
     image = await previewImage(page);
-    if (drawn && pixelAt(image, 0.5, 0.5).every((v, k) => v === centre[k])) return image;
+    if (drawn && before.data.equals(image.data)) return image;
   }
-  return image;
+  throw new Error('The preview never showed a settled model.');
 }
 
 /** The frames of a GIF: its image descriptors, found by walking the blocks (image data may contain any byte). */
