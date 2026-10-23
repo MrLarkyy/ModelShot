@@ -4,7 +4,10 @@ import { MODEL_VIEW_LOOK, projectToPixel, type Matrix, type Point3 } from './mod
 import type { SceneTriangles } from './sceneTriangles';
 import type { UploadedTextures } from './sceneUpload';
 
-/** A point on a mesh, given by its texture UV (in the texture's uv units); `groundY` asks for its shadow instead. */
+/**
+ * A point on a mesh, given by its texture UV (in the texture's uv units; of frame 0 for a frame strip); `groundY`
+ * asks for its shadow instead.
+ */
 export interface ProbeRequest {
   readonly name: string;
   readonly mesh: string;
@@ -50,7 +53,8 @@ function locate(scene: SceneDocument, triangles: SceneTriangles, request: ProbeR
     const texture = material ? scene.textures[material.texture] : undefined;
     if (!material || !texture) continue;
     if (request.facesLight && !facesLight(triangles, t)) continue;
-    const target: [number, number] = [request.uv[0] / texture.uvWidth, request.uv[1] / texture.uvHeight];
+    const frames = texture.frames?.count ?? 1;
+    const target: [number, number] = [request.uv[0] / texture.uvWidth, request.uv[1] / texture.uvHeight / frames];
     const uv = (c: number): [number, number] => [
       triangles.uvs[t * 6 + c * 2] ?? 0,
       triangles.uvs[t * 6 + c * 2 + 1] ?? 0,
