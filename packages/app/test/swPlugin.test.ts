@@ -132,6 +132,10 @@ describe('the service worker', () => {
     expect(worker.self.clients.claim).toHaveBeenCalled();
   });
 
+  it('matches a cached file whatever its Vary header says (a CORS request differs in headers)', () => {
+    expect(serviceWorkerSource({ version: 'v', files: FILES })).toContain('ignoreVary: true');
+  });
+
   it('contains no address but the ones it builds from its scope', () => {
     expect(serviceWorkerSource({ version: 'v', files: FILES })).not.toMatch(/https?:\/\//);
   });

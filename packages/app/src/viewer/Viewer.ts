@@ -13,6 +13,7 @@ import { loadPathTracer } from '../lazyPathTracer';
 
 export const DEFAULT_YAW_DEG = 210;
 export const DEFAULT_PITCH_DEG = 20;
+export const DEFAULT_FOV_DEG = 35;
 const BAKE_SAMPLES = 64;
 
 export interface ViewerOptions {
@@ -81,6 +82,8 @@ export class Viewer {
     if (!result.applied || this.disposed) return result;
     this.doc = doc;
     if (reframe) {
+      // A new model starts at the default view: perspective, 35 degrees, the default angles.
+      this.orbit.setState({ projection: 'perspective', fovYDeg: DEFAULT_FOV_DEG });
       this.bounds = sceneBounds(doc);
       this.orbit.reset(this.bounds);
     }

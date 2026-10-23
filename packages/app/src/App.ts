@@ -77,8 +77,9 @@ export class App {
       byId('status-main', HTMLElement),
       byId('status-lighting', HTMLElement),
       byId('alert', HTMLElement),
+      byId('status-storage', HTMLElement),
     );
-    this.persistence = new StatePersistence(store, (message) => this.notices.status(message));
+    this.persistence = new StatePersistence(store, (message) => this.notices.storage(message));
     try {
       this.viewer = Viewer.create(byId('preview', HTMLCanvasElement), {
         onStatus: (message) => this.notices.lighting(message),
@@ -413,6 +414,8 @@ export class App {
   }
 
   private renderDone(warnings: readonly string[]): void {
+    // A count of finished renders for the tests to wait on; a page has no use for it.
+    this.resultCanvas.dataset['renders'] = String(Number(this.resultCanvas.dataset['renders'] ?? 0) + 1);
     this.progressBox.hidden = true;
     this.notices.status(warnings.length > 0 ? `Render done. ${warnings.join(' ')}` : 'Render done.');
     this.setActionsEnabled();

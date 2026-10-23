@@ -102,3 +102,92 @@ export async function waitForModel(page: Page): Promise<Rgba> {
   }
   return image;
 }
+
+/** The frames of a GIF: its image descriptors, found by walking the blocks (image data may contain any byte). */
+export function gifFrameCount(gif: Buffer): number {
+  let at = 13;
+  if ((gif[10] ?? 0) & 0x80) at += 3 * 2 ** (((gif[10] ?? 0) & 7) + 1);
+  let frames = 0;
+  const skipBlocks = (): void => {
+    while ((gif[at] ?? 0) !== 0) at += (gif[at] ?? 0) + 1;
+    at += 1;
+  };
+  while (at < gif.length) {
+    const marker = gif[at++];
+    if (marker === 0x3b) break;
+    if (marker === 0x21) {
+      at += 1;
+      skipBlocks();
+    } else if (marker === 0x2c) {
+      frames += 1;
+      const flags = gif[at + 8] ?? 0;
+      at += 9;
+      if (flags & 0x80) at += 3 * 2 ** ((flags & 7) + 1);
+      at += 1;
+      skipBlocks();
+    } else {
+      throw new Error(`unexpected GIF block 0x${(marker ?? 0).toString(16)}`);
+    }
+  }
+  return frames;
+}
+
+/** The `num_frames` of an APNG's acTL chunk, 0 when the PNG has none. */
+export function apngFrameCount(png: Buffer): number {
+  let at = 8;
+  while (at + 8 <= png.length) {
+    const length = png.readUInt32BE(at);
+    if (png.toString('latin1', at + 4, at + 8) === 'acTL') return png.readUInt32BE(at + 8);
+    at += 12 + length;
+  }
+  return 0;
+}
+
+export interface MadeFile {
+  readonly name: string;
+  /** Text content, or a size for a file of zero bytes. */
+  readonly text?: string;
+  readonly size?: number;
+}
+
+/** Puts Files built in the page into the file input and fires its change event, as a picker does. */
+export async function chooseMadeFiles(page: Page, files: readonly MadeFile[]): Promise<void> {
+  await page.locator('#file-input').evaluate((input: HTMLInputElement, made) => {
+    const transfer = new DataTransfer();
+    for (const file of made) {
+      transfer.items.add(new File([file.text ?? new Uint8Array(file.size ?? 0)], file.name));
+    }
+    input.files = transfer.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }, files);
+}
+
+/** The stored per-model records of the app's database (the saves are debounced and the browser may take a moment). */
+export function storedModels(page: Page): Promise<Record<string, unknown>[]> {
+  return page.evaluate(
+    () =>
+      new Promise<Record<string, unknown>[]>((resolve) => {
+        const open = indexedDB.open('modelshot-app', 1);
+        open.onupgradeneeded = () => {
+          open.result.createObjectStore('session');
+          open.result.createObjectStore('models');
+        };
+        open.onerror = () => resolve([]);
+        open.onsuccess = () => {
+          const db = open.result;
+          const all = db.transaction('models').objectStore('models').getAll();
+          all.onsuccess = () => {
+            db.close();
+            resolve(all.result as Record<string, unknown>[]);
+          };
+        };
+      }),
+  );
+}
+
+/** Waits until a stored record satisfies `test`. */
+export async function waitForStored(page: Page, test: (record: Record<string, unknown>) => boolean): Promise<void> {
+  await expect
+    .poll(async () => (await storedModels(page)).some(test), { timeout: 20_000, intervals: [250] })
+    .toBe(true);
+}

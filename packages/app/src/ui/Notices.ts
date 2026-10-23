@@ -9,6 +9,7 @@ export class Notices {
     private readonly main: HTMLElement,
     private readonly lightingLine: HTMLElement,
     private readonly alertLine: HTMLElement,
+    private readonly storageLine: HTMLElement,
   ) {}
 
   status(message: string): void {
@@ -17,6 +18,11 @@ export class Notices {
 
   lighting(message: string): void {
     this.lightingLine.textContent = clip(message);
+  }
+
+  /** Kept apart from the status line: later messages do not wipe it. */
+  storage(message: string): void {
+    this.storageLine.textContent = clip(message);
   }
 
   alert(message: string): void {

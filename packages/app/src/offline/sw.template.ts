@@ -37,7 +37,7 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches
       .open(CACHE)
-      .then((cache) => cache.match(request, { ignoreSearch: request.mode === 'navigate' }))
+      .then((cache) => cache.match(request, { ignoreSearch: request.mode === 'navigate', ignoreVary: true }))
       .then((hit) => hit || fetch(request)),
   );
 });
