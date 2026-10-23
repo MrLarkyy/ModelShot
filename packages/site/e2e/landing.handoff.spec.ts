@@ -1,8 +1,36 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Page } from '@playwright/test';
 import { expect, openLanding, test } from './siteTest';
 
+// The app draws the models it opens: it needs WebGL, which headless Chromium has through SwiftShader on request.
+test.use({
+  launchOptions: {
+    args: ['--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader', '--force-color-profile=srgb'],
+  },
+});
+
 const CUBE = { name: 'cube.bbmodel', mimeType: 'application/json', buffer: Buffer.from('{"meta":{}}') };
-const APP_URL = /\/app\/\?open=handoff$/;
+// A model the app can open.
+const VALID_CUBE = {
+  name: 'cube.bbmodel',
+  mimeType: 'application/json',
+  buffer: readFileSync(
+    join(
+      dirname(fileURLToPath(import.meta.url)),
+      '..',
+      '..',
+      'formats',
+      'test',
+      'fixtures',
+      'bbmodel',
+      'single-cube.bbmodel',
+    ),
+  ),
+};
+// The app drops the handoff query from the address once it has the files, so the query may or may not be there.
+const APP_URL = /\/app\/(\?open=handoff)?$/;
 
 function pendingRecords(page: Page): Promise<number> {
   return page.evaluate(
@@ -58,15 +86,15 @@ function dropFiles(page: Page, selector: string, names: string[]): Promise<boole
 
 test('a chosen file opens in the app on this device and the stored copy is deleted', async ({ page }) => {
   await openLanding(page, 1440);
-  await page.locator('#model-input').setInputFiles(CUBE);
+  await page.locator('#model-input').setInputFiles(VALID_CUBE);
   await expect(page).toHaveURL(APP_URL);
-  const status = page.getByRole('status');
-  await expect(status).toContainText('1 file(s) kept on this device');
-  await expect(status.getByRole('listitem')).toHaveText([`cube.bbmodel · ${CUBE.buffer.length} bytes`]);
+  await expect(page.getByRole('status')).toContainText('Opened cube.bbmodel', { timeout: 30_000 });
   expect(await pendingRecords(page)).toBe(0);
 
+  // The handoff query is gone from the address, so a reload reopens the app's own session, not a handoff.
+  expect(new URL(page.url()).search).toBe('');
   await page.reload();
-  await expect(page.getByRole('status')).toContainText('Nothing to open');
+  await expect(page.getByRole('status')).toContainText('Opened cube.bbmodel', { timeout: 30_000 });
 });
 
 test('a file dropped on the zone opens in the app', async ({ page }) => {
@@ -74,7 +102,8 @@ test('a file dropped on the zone opens in the app', async ({ page }) => {
   const navigation = page.waitForURL(APP_URL);
   expect(await dropFiles(page, '#drop-zone', ['skin.png', 'tree.bbmodel'])).toBe(true);
   await navigation;
-  await expect(page.getByRole('status').getByRole('listitem')).toHaveText([/^skin\.png/, /^tree\.bbmodel/]);
+  // The app takes both files; the model among them is not a Blockbench model, which it says by name.
+  await expect(page.getByRole('alert')).toContainText('tree.bbmodel', { timeout: 30_000 });
   expect(await pendingRecords(page)).toBe(0);
 });
 
@@ -145,14 +174,14 @@ test('the picker is emptied after a refused choice and after a storage failure',
 
 test('coming back from the app leaves an empty picker and the same file opens again', async ({ page }) => {
   await openLanding(page, 1440);
-  await page.locator('#model-input').setInputFiles(CUBE);
+  await page.locator('#model-input').setInputFiles(VALID_CUBE);
   await expect(page).toHaveURL(APP_URL);
   await page.goBack();
   await expect(page).toHaveURL(/\/$/);
   expect(await chosenFiles(page)).toBe(0);
-  await page.locator('#model-input').setInputFiles(CUBE);
+  await page.locator('#model-input').setInputFiles(VALID_CUBE);
   await expect(page).toHaveURL(APP_URL);
-  await expect(page.getByRole('status').getByRole('listitem')).toHaveText([/^cube\.bbmodel/]);
+  await expect(page.getByRole('status')).toContainText('Opened cube.bbmodel', { timeout: 30_000 });
 });
 
 test('the landing page removes an expired record on load and keeps a fresh one', async ({ page }) => {
@@ -201,7 +230,8 @@ test('32 files of 256 MiB in total are stored and opened well within the timeout
   const dropped = Date.now();
   await page.waitForURL(APP_URL, { timeout: 60_000 });
   const stored = Date.now();
-  await expect(page.getByRole('status').getByRole('listitem')).toHaveCount(32, { timeout: 30_000 });
+  // 32 buffers and no model: the app took all of them and says what is missing.
+  await expect(page.getByRole('alert')).toContainText('No model file', { timeout: 30_000 });
   const listed = Date.now();
   console.log(`[limit] build ${dropped - started} ms, put ${stored - dropped} ms, load + take ${listed - stored} ms`);
   expect(await pendingRecords(page)).toBe(0);

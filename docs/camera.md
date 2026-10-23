@@ -54,6 +54,7 @@ DOM, no clock.
 | `pan(dxPx, dyPx, viewportHeightPx)` | moves the target in the view plane; the model follows the pointer |
 | `setFov(deg)`                       | 10..100°, the apparent size at the target stays                   |
 | `setProjection(kind)`               | keeps the apparent size at the target                             |
+| `state()` / `setState(partial)`     | the goal view as a portable value, applied at once (below)        |
 | `isometric()`                       | orthographic at the isometric angles, framed to fit               |
 | `reset(bounds)`                     | frame-to-fit from the initial angles; also the initial view       |
 
@@ -62,6 +63,16 @@ whether it is still moving; once within 1e-6 of the goal it snaps to it, so with
 bit-identical forever (tested over 10,000 steps). `update(0)` changes nothing. Non-finite input (NaN or infinite
 angles, deltas, zoom factors, field of view or options) is ignored, so the camera always stays defined; a
 non-finite, zero or negative `dampingMs` falls back to 80 ms.
+
+### State
+
+`state(): OrbitState` returns the goal view as `{ yawDeg (0..360), pitchDeg, fovYDeg, projection, distance, orthoHeight, target }`.
+The distances are scale-free: `distance` and `orthoHeight` are multiples of the frame-to-fit values (1 is framed to fit) and
+`target` is the offset from the bounds centre in bounding-sphere radii, so a stored state restores the same view of the
+same model at another viewport size. `setState(partial)` applies the fields given at once, without easing: a field that is
+not finite, a projection other than `perspective` or `orthographic` and a target that is not three finite numbers are
+ignored, and angles, field of view and distances are clamped as the setters clamp. Call `reset(bounds)` before
+`setState`, as the distances are relative to the bounds. The app stores this value with the model (docs/app.md).
 
 ## Input
 
