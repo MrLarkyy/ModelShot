@@ -156,7 +156,7 @@ describe('shader sources', () => {
     }
   });
 
-  it('samples the normal, position and edge distances at the centroid in every mesh pass, the UV at the centre', () => {
+  it('samples the normal, position, edge distances and baked light at the centroid in every mesh pass, the UV at the centre', () => {
     for (const name of ['opaque', 'oitAccum', 'fallback'] as const) {
       for (const depthKey of ['raster', 'exact'] as const) {
         const { vertex, fragment } = shaderProgramSource(name, depthKey);
@@ -165,17 +165,21 @@ describe('shader sources', () => {
           ['vec3', 'v_normal'],
           ['vec3', 'v_worldPosition'],
           ['vec4', 'v_edgeDistances'],
+          ['vec4', 'v_vertexLight'],
+          ['vec4', 'v_vertexLightBack'],
         ] as const) {
           expect(vertex, label).toMatch(new RegExp(`^centroid out ${type} ${varying};$`, 'm'));
           expect(fragment, label).toMatch(new RegExp(`^centroid in ${type} ${varying};$`, 'm'));
         }
-        for (const varying of ['v_uv', 'v_uvRect']) {
+        for (const varying of ['v_uv', 'v_uvRect', 'v_lightmap']) {
           expect(vertex, label).toMatch(new RegExp(`^(flat )?out vec\\d ${varying};$`, 'm'));
           expect(fragment, label).toMatch(new RegExp(`^(flat )?in vec\\d ${varying};$`, 'm'));
         }
-        expect(vertex.match(/^centroid /gm)?.length, label).toBe(3);
-        expect(fragment.match(/^centroid /gm)?.length, label).toBe(3);
+        expect(vertex.match(/^centroid /gm)?.length, label).toBe(5);
+        expect(fragment.match(/^centroid /gm)?.length, label).toBe(5);
+        expect(vertex, label).not.toMatch(/^centroid out vec\d (v_uv|v_uvRect|v_lightmap);$/m);
         expect(fragment.match(/^uniform vec2 u_viewportSize;$/gm)?.length, label).toBe(1);
+        expect(vertex.match(/u_viewportSize/g)?.length ?? 0, label).toBe(0);
       }
     }
   });

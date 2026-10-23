@@ -13,8 +13,8 @@ uniform vec2 u_lightmapTextureSize;
 // (chart x, chart y, texture texels per lightmap texel, back offset); z 0: vertex mode, -1: no light, -2: world
 // mode (x, y then the provoking corner's point, unused).
 flat in vec4 v_lightmap;
-in vec4 v_vertexLight;
-in vec4 v_vertexLightBack;
+centroid in vec4 v_vertexLight;
+centroid in vec4 v_vertexLightBack;
 
 const float LIGHTMAP_NONE = -1.0;
 const float LIGHTMAP_WORLD = -2.0;

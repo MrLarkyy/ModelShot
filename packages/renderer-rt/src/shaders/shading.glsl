@@ -6,8 +6,7 @@
 // EdgeLook width (model units); 0 rounds nothing.
 uniform float u_edgeWidth;
 uniform mat4 u_viewProjection;
-// Drawing buffer size in pixels (also the exact depth key's).
-uniform vec2 u_viewportSize;
+#include "viewport"
 // Centroid-sampled (mesh.vert): under MSAA an edge pixel reads them at a covered sample, off the pixel centre.
 centroid in vec3 v_worldPosition;
 centroid in vec4 v_edgeDistances;

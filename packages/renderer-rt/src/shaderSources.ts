@@ -16,6 +16,7 @@ import oitAccumFrag from './shaders/oitAccum.frag.glsl?raw';
 import oitCompositeFrag from './shaders/oitComposite.frag.glsl?raw';
 import opaqueFrag from './shaders/opaque.frag.glsl?raw';
 import presentFrag from './shaders/present.frag.glsl?raw';
+import viewport from './shaders/viewport.glsl?raw';
 import shading from './shaders/shading.glsl?raw';
 import texelSample from './shaders/texelSample.glsl?raw';
 
@@ -32,6 +33,7 @@ export const RENDERER_SHADER_CHUNKS: ShaderChunks = Object.freeze({
   ...lookShaderChunks,
   texelSample,
   shading,
+  viewport,
   hashAlpha,
   bakedLight,
 });

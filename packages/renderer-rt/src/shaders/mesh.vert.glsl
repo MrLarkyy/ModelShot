@@ -25,8 +25,8 @@ uniform highp sampler2D u_lightmap;
 uniform bool u_bakeOn;
 
 // Centroid: under MSAA a pixel the face only partly covers is shaded at a covered sample, on the face, instead of at
-// the pixel centre past its edge, where the normal and the edge distances extrapolate (v_worldPosition and
-// v_edgeDistances too). The UV stays at the centre: texel anti-aliasing, the alpha-to-coverage contour and the hashed
+// the pixel centre past its edge, where the normal and the edge distances extrapolate (v_worldPosition,
+// v_edgeDistances and the baked vertex light too, which would show the light of beyond the face). The UV stays at the centre: texel anti-aliasing, the alpha-to-coverage contour and the hashed
 // alpha cell are defined there, and v_uvRect keeps the texel on the face.
 centroid out vec3 v_normal;
 out vec2 v_uv;
@@ -36,8 +36,8 @@ flat out vec4 v_lightmap;
 // Vertex charts: the vertex's light for the front and the back side. World charts reuse them, as two more varyings
 // would pass the minimum MAX_VARYING_VECTORS (15) with the exact depth key's: the corner's lightmap point in xy, and
 // the chart rectangle.
-out vec4 v_vertexLight;
-out vec4 v_vertexLightBack;
+centroid out vec4 v_vertexLight;
+centroid out vec4 v_vertexLightBack;
 centroid out vec3 v_worldPosition;
 centroid out vec4 v_edgeDistances;
 // The same on every corner of a triangle.

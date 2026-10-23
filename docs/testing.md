@@ -424,7 +424,8 @@ against the same views rendered with origin/main's shaders (count, largest level
 `-y030` 391 (6), `-y060` 390 (8), `-y090` 368 (7), `rt-iso` 411 (7), `rt-closeup` 557 (7), `rt-far` 185 (13),
 `rt-edges` 681 (20), `rt-gltf-nodes-y030` 248 (12), `rt-obj-shapes-y030` 219 (10), `rt-outline-hull` 531 (11),
 `rt-bake-turntable-y030` 350 (6), `rt-bake-alpha-plane` 131 (9, the ground's far silhouette; the cut-out squares
-unchanged), `rt-bake-cutout-checker` 163 (3), `rt-bake-gltf-contact` 91 (1). `rt-far`, `rt-turntable-y000`, `-y030`
+unchanged), `rt-bake-cutout-checker` 163 (3), `rt-bake-gltf-contact` 91 (1); with the baked vertex light centroid too, the
+same two move again, 34 (max 3) and 254 pixels (max 4), along silhouettes and triangle edges only. `rt-far`, `rt-turntable-y000`, `-y030`
 and `-y090` also take up drift main had left within tolerance (against their old golden 487, 449, 660 and 498 pixels,
 up to 102 levels). Drift explained and regenerated too, so every rt golden equals the current output (the same view
 rendered twice gives the same bytes; diff images judged): MS-15 left `rt-player-hold-34` (2 340 pixels, up to 47
@@ -437,8 +438,9 @@ the drift are `rt-player-classic-front` (1), `-classic-back` (1), `-walk-hold-34
 and model-view golden; `export-animation-f0.s1.n16` renders 2 pixels 1 level off its golden, twice alike (not an rt
 golden, left). Probes: **MSAA silhouette pixels are shaded on the face**:
 the baked `turntable-y030` preview against its render (the `pt-turntable-y030` golden PNG), the mean largest-channel
-difference over the 2 px outline band both draw (`outlineBand`), 1.744 over 3 919 pixels (1.773 when shaded at the
-pixel centre), at most measured x 1.25 = 2.18 and below 1.773; frame on the raster key with MSAA (asserted). **The
+difference over the 2 px outline band both draw (`outlineBand`), 1.7443 over 3 919 pixels (1.7726 when shaded at the
+pixel centre), at most measured x 1.25 = 2.18 and below the midpoint 1.7585 (a revert of the centroid qualifiers
+measures 1.7726 and fails); frame on the raster key with MSAA (asserted). **The
 edge band keeps its width across quad diagonals**: the `edges` view with MSAA against `msaa=0`, off every mesh's
 outline (more than 1 px from a `maskBoundary` of the mesh's pixels from `hide=`): 0 pixels over 2 levels at the look's
 width; at width 0.1 147 pixels differ at all (227 with the skewed footprint, 142 when shaded at the pixel centre),

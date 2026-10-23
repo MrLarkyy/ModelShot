@@ -259,9 +259,11 @@ option `edges` (a `Partial<EdgeLook>`, out of range a `RangeError` naming `edges
   in the shading chunk for both variants) and, where those steps are not unit ones (more than 0.01 px off, determinant
   above 0.25), maps the distance gradient back to unit steps with the inverse of their matrix. Fully covered pixels
   are unchanged; pixels along a triangle edge inside a face (a quad's diagonal) read each triangle at its own point.
-  `v_uv`, `v_uvRect`, the lightmap and vertex-light varyings stay at the pixel centre: texel anti-aliasing
-  (`texelSample`), the alpha-to-coverage contour on the texel boundary and the hashed-alpha cell are defined there,
-  and `v_uvRect` keeps the texel on its face. No varying is added (the exact variant uses 14 of the minimum 15).
+  The baked vertex light (`v_vertexLight`, `v_vertexLightBack`, which world charts reuse for their lightmap point)
+  is centroid too: at the pixel centre it would show the light of a point beyond the face. Only `v_uv` and `v_uvRect`
+  stay at the pixel centre: texel anti-aliasing (`texelSample`), the alpha-to-coverage contour on the texel boundary
+  and the hashed-alpha cell are defined on the texel grid there, and `v_uvRect` keeps the texel on its face.
+  `v_lightmap` is flat. No varying is added (the exact variant uses 14 of the minimum 15).
   Exact-key frames draw single-sampled, where the centroid is the centre: the player (its outer layer has a render
   order) and every `preset-*` view are not affected (at most 4 pixels by 1 level, rounding in the changed program);
   anti-aliasing their silhouettes is MS-35's.

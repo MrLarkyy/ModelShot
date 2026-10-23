@@ -152,9 +152,10 @@ test('MSAA silhouette pixels are shaded on the face: the outline band of turntab
   page,
 }) => {
   test.setTimeout(240_000);
-  // Measured mean 1.744 over 3 919 px; 1.773 when shaded at the pixel centre (before MS-54).
+  // Measured mean 1.7443 over 3 919 px; 1.7726 when shaded at the pixel centre (before MS-54); the bound between them
+  // is their midpoint, so a revert of the centroid qualifiers fails it.
   const maxMean = 2.18;
-  const before = 1.773;
+  const midpoint = 1.7585;
   const traced = decodePng(
     readFileSync(
       goldenPath({
@@ -185,10 +186,10 @@ test('MSAA silhouette pixels are shaded on the face: the outline band of turntab
     count++;
   });
   const mean = sum / count;
-  console.log(`[rt probe] outline band: ${count} px, mean largest-channel delta ${mean.toFixed(3)} / max ${maxMean}`);
+  console.log(`[rt probe] outline band: ${count} px, mean largest-channel delta ${mean.toFixed(4)} / max ${maxMean}`);
   expect(count, 'outline band pixels').toBeGreaterThan(3000);
   expect(mean).toBeLessThanOrEqual(maxMean);
-  expect(mean, 'below the pixel-centre shading').toBeLessThan(before);
+  expect(mean, 'below the midpoint to the pixel-centre shading').toBeLessThan(midpoint);
 });
 
 test('the fixture rejects unknown or malformed parameters', async ({ page }) => {
