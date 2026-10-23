@@ -17,12 +17,15 @@ uniform vec4 u_catcherRect;
 const uint FIRST_VERTEX_DIMENSION = 2u;
 const uint DIMENSIONS_PER_VERTEX = 6u;
 
-// Where a camera ray meets the catcher in front of everything else, or false.
-bool catcherHit(vec3 origin, vec3 direction, float tMin, float tMax, bool modelHit, float modelT, out vec3 point) {
+// Where a camera ray meets the catcher, or false. The catcher lies at the model's lowest point (or below it: an
+// animation's catcherBounds span all poses), so no model hit is beyond it and any model hit wins, as the preview draws
+// the catcher first: comparing distances instead let a ground in the catcher's plane lose to it on float rounding, per
+// sample.
+bool catcherHit(vec3 origin, vec3 direction, float tMin, float tMax, bool modelHit, out vec3 point) {
   point = vec3(0.0);
   if (!u_catcherOn || direction.y >= 0.0) return false;
   float t = (u_catcherY - origin.y) / direction.y;
-  if (t < tMin || t > tMax || (modelHit && t >= modelT)) return false;
+  if (t < tMin || t > tMax || modelHit) return false;
   point = origin + direction * t;
   return point.x >= u_catcherRect.x && point.x <= u_catcherRect.z && point.z >= u_catcherRect.y &&
     point.z <= u_catcherRect.w;

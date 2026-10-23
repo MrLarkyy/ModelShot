@@ -67,8 +67,10 @@ CPU ms per converted test, the maximum of 3 runs on an idle machine (Windows, No
 
 - `check`: install, typecheck, lint, format check, `pnpm -r build`, `pnpm run test:unit` (Vitest, bundle size
   included).
-- `e2e`: a matrix of 9 shards (golden 1-4 of `--project=golden --shard=<k>/4`, pair 1-2 of `--project=pair --shard=<k>/2`, bake 1-3 of `--project=bake --shard=<k>/3`) (`fail-fast: false`), each on its own VM: install, the pinned Chromium, `pnpm -r build`,
-  then `playwright test --project=<project> --shard=<k>/<n>`, then on golden shard 1 only `pnpm --filter @modelshot/site run test:browser` (it runs even when the harness tests failed), uploading `tools/harness/test-results/` and `packages/site/test-results/` as `browser-test-results-<golden-k|pair-k|bake-k>`.
+- `e2e`: a matrix of 14 shards (golden 1-2 of `--project=golden --shard=<k>/2`, golden-pt 1-6 of
+  `--project=golden-pt --shard=<k>/6`, pair 1-3 of `--project=pair --shard=<k>/3`, bake 1-3 of
+  `--project=bake --shard=<k>/3`) (`fail-fast: false`), each on its own VM: install, the pinned Chromium, `pnpm -r build`,
+  then `playwright test --project=<project> --shard=<k>/<n>`, then on golden shard 1 only `pnpm --filter @modelshot/site run test:browser` (it runs even when the harness tests failed), uploading `tools/harness/test-results/` and `packages/site/test-results/` as `browser-test-results-<golden-k|golden-pt-k|pair-k|bake-k>`.
 - `bench`: its own VM, same install and build, `playwright test --project=bench` (the one budget test), uploading
   `browser-test-results-bench`; the budgets are measured on a machine that runs nothing else.
 
@@ -80,14 +82,34 @@ separate VMs, so each keeps one worker and the budgets measure an otherwise idle
 the worker count changed. For the shards to split the suite the `golden` project is `fullyParallel` (its tests share
 no state; with one worker nothing runs at once, it only lets a shard take part of a file), and `bench` no longer
 depends on `golden` (a dependency put every golden test into the bench's shard: shard 1 had all 219 tests, 2-4
-none). The `golden` project excludes the tests titled `baked lighting` or `like the baked preview` (`grepInvert`); the
-`bake` project runs only the first, the `pair` project (the 9 preview-vs-render pairing tests of `pathtracer.spec.ts`)
-only the second: shards are contiguous ranges, so a block of slow tests always landed in one or two shards. Listed locally
-(`--list`, MS-19): `golden` 210 tests in 4 shards, 53 / 53 / 52 / 52; `pair` 9 tests, 5 / 4; `bake` 24 tests, 8 / 8 / 8;
-`bench` 1 test; 244 in all, each once, as the plain `playwright test` (and so `pnpm test`) runs every project. By the times of
-run 39624802150 (normal VM) the heaviest golden shard (2) takes about 5 minutes (about 10 on a 2x slow VM), a pair shard 3.8 (1.1-1.3 minutes per test; 7.6 on a 2x
-slow VM; with the three look-preset pairs of MS-19 a pair shard holds up to 5 tests, about 6 minutes, 12 on a slow VM),
-against the 20-minute limit.
+none). Playwright shards a project into contiguous ranges by test count, not by time, so a block of slow tests
+lands in one or two shards; each block is its own project with its own shards. `golden` runs `environment`, `export`,
+`golden*`, `modelView` and `realtime.spec.ts` without the tests titled `baked lighting` (`grepInvert`), which `bake` runs;
+`golden-pt` runs `pathtracer.spec.ts` without the tests titled `like the baked preview`, which `pair` runs (the 13
+preview-vs-render pairing tests). Each test is in exactly one project, and the plain `playwright test` (and so
+`pnpm test`) runs every project.
+
+Shard sizes (MS-39, `--list --project <p> --shard <k>/<n>`), each with the sum of its tests' CI times: the per-test
+times of main's run 39878163371 (MS-30's merge, so its three cut-out seam tests are counted), MS-22's 31 export tests
+from main's run 39928740239 (MS-22's merge, job golden-1: 1.4 minutes together, 1.3-8.7 s each), plus local times for
+MS-39's six new tests (four path-tracer tests, 29 s, and two pairs, 47 s). These are sums of test times, not job times; a job adds the install and build, and the VMs
+differ by up to 2x. In run 39878163371 `playwright install --with-deps` took 13 s to 9.7 minutes per job and the build
+about 6 s (`bake-2`: a 14.4-minute job for 4.4 minutes of tests).
+
+| Project     | Tests | Shards | Tests per shard             | Minutes per shard (sum)           |
+| ----------- | ----: | -----: | --------------------------- | --------------------------------- |
+| `golden`    |   197 |      2 | 99 / 98                     | 6.3 / 3.9                         |
+| `golden-pt` |    78 |      6 | 13 / 13 / 13 / 13 / 13 / 13 | 2.6 / 4.3 / 6.3 / 3.7 / 1.0 / 1.5 |
+| `pair`      |    13 |      3 | 5 / 4 / 4                   | 5.3 / 2.8 / 2.5                   |
+| `bake`      |    25 |      3 | 9 / 8 / 8                   | 6.4 / 4.3 / 3.5                   |
+| `bench`     |     1 |      1 | 1                           | its own job                       |
+
+314 tests in all. The path-tracer tests had been part of `golden` (241 tests in 5 shards of 48-49): the shard that held
+48 of them summed to 16.0 minutes, the others 1.8-7.2, and the same block in shard 2 of 4 ran 16.3 and 17.4 minute jobs
+on main. `golden-pt` has 6 shards because its two longest tests (a denoised 2x render in batches, 3.0 minutes, and a
+denoised 2x render paired with the preview, 1.9 minutes) are four tests apart in the file: with 3, 4 or 5 shards one
+shard holds both and sums to 10.0-10.8 minutes, with 6 the largest is 7.0 (both with run 39855838515's times; 6.3 with
+run 39878163371's).
 
 Why: the shard holding the baked tests ran into the 20-minute job limit with 4 shards (cancelled in runs 39612706830 and
 39624802150; the 23 baked lighting tests alone took 13-15 minutes on the slow VM of the second), and the 6 pairing tests
@@ -116,8 +138,13 @@ Fixtures in `tools/harness/fixtures` are self-contained WebGL2 pages served by a
 directory, so two worktrees can test at once; a server already on that port is never reused. A fixture publishes `window.__msFixture`; the spec waits for `ready`, reads the drawing buffer with
 `gl.readPixels`, flips it, and encodes a PNG in Node. Every golden render asserts a SwiftShader renderer, so a local GPU
 never produces or checks a golden. Every spec uses the shared `test` from `src/harnessTest.ts`, which fails any request off the fixture origin on any page,
-and every `openFixture` asserts SwiftShader. Fixture
-image code uses no clock or random source (lint rule; timing lives in `fixtures/src/bench.ts` only).
+and every `openFixture` asserts SwiftShader. `openFixture` waits 20 s for `__msFixture` (the module sets it as it
+evaluates). On a timeout it prints the page's failed requests, responses >= 400, console errors and page errors under
+`[fixture reload]`. If the page threw (a page error), it fails at once; otherwise it reloads once. A second boot timeout
+fails with that list only in a test whose timeout leaves room for it (45 s or more, such as the 120 s path-tracer
+describes); under the 30 s default the test timeout ends the second wait first, and the `[fixture reload]` line is the
+trace. A page once loaded without running its module (pt-gltf-contact in a full `pathtracer.spec.ts`
+run); the cause is unknown, so the reload is a guard and the printed list is the trace to find it. Fixture image code uses no clock or random source (lint rule; timing lives in `fixtures/src/bench.ts` only).
 
 ## Goldens
 
@@ -196,7 +223,8 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
   double-sided plane, factor-only colours, a `KHR_texture_transform` panel on `TEXCOORD_1` and a triangle strip);
   scene `obj-shapes` is `fixtures/obj/shapes.obj` with its `.mtl` and PNG through `loadObj` (quads, a concave star
   from negative indices, faces without `vn` or `vt`, a `map_Kd` cut-out, `Kd` only, `d 0.5`). Both are static
-  imports, CC0, `LICENSE` next to them. The path-tracer fixture can pair goldens with these scenes.
+  imports, CC0, `LICENSE` next to them. The path-tracer fixture has goldens of both (`pt-gltf-nodes-y030.s1.n128`,
+  `pt-obj-shapes-y030.s1.n128`, MS-39); both are also preview-vs-render pairs.
 - Shimmer: between yaw 30° and 30.25°, the share of pixels changing by more than 64 levels must be at most half of
   the same share with nearest sampling (`aa=0`), in the `far` and `closeup` framings.
 - Order independence: reversing the mesh order gives a byte-identical image on the float path and on the fallback,
@@ -415,25 +443,27 @@ emission on the showcase's brick material. A golden spec names its view in `vari
 put in the URL, not in the file name); so are its quality fields (`supersample`, `denoise`), so the name of such a
 golden says them (`-x2-denoised`).
 
-| golden                                 | view                                                 | checks                                          |
-| -------------------------------------- | ---------------------------------------------------- | ----------------------------------------------- |
-| `pt-turntable-y030.s1.n64`             | showcase, perspective 35°                            | golden; determinism; bleeding; pair             |
-| `pt-iso.s1.n64`                        | showcase, orthographic isometric                     | golden; pair                                    |
-| `pt-closeup.s1.n64`                    | showcase, half the fit distance (texels ~28 px)      | golden                                          |
-| `pt-alpha-plane.s1.n128`               | alpha-plane.bbmodel, model-view camera               | golden; shadow probes; back side; pair          |
-| `pt-alpha-ramp-blend.s1.n128`          | the 16 x 16 alpha ramp (blend, cutoff 0.01)          | golden; stochastic transparency                 |
-| `pt-render-order.s1.n16`               | render-order.bbmodel, model-view camera              | golden; render-order probes                     |
-| `pt-emissive.s1.n64`                   | showcase, bricks emitting (4, 2.2, 0.8)              | golden; the post beside the bricks brightens    |
-| `pt-player-hold-34.s1.n64`             | MS-20 player, hold preset, cube in the hand          | golden; pair with `rt-player-hold-34`           |
-| `pt-cutout-checker.s1.n128`            | generated cut-out checker and box, `checker`         | golden; checker shadow probes; pair             |
-| `pt-edges.s1.n128`                     | generated `edges` scene (MS-15)                      | golden; rounded-edge probes; pair               |
-| `pt-preset-marketplace.s1.n64`         | `player-hold-34` under Marketplace (MS-19)           | golden; tile/batch determinism; pair            |
-| `pt-preset-rim.s1.n64`                 | `player-hold-34` under Rim (MS-19)                   | golden; pair                                    |
-| `pt-outline-hull.s1.n64`               | outline-hull.bbmodel, board in an inverted hull      | golden; board and rim probes; pair (MS-50)      |
-| `pt-closeup-reference.s1.n2048`        | `closeup`, 2048 samples, no denoiser (MS-18)         | rendered on golden update only; AC1, AC2, drift |
-| `pt-closeup-denoised.s1.n64`           | `closeup`, `denoise` (MS-18)                         | golden; AC1; AC2                                |
-| `pt-turntable-y030-x2-denoised.s1.n16` | `turntable-y030`, `supersample=2`, `denoise` (MS-18) | golden; determinism; bleeding; pair             |
-| `pt-gltf-contact.s1.n128`              | contact-shadow.gltf, `contact`, no catcher           | golden; contact probes; pair (MS-41)            |
+| golden                                 | view                                                  | checks                                           |
+| -------------------------------------- | ----------------------------------------------------- | ------------------------------------------------ |
+| `pt-turntable-y030.s1.n64`             | showcase, perspective 35°                             | golden; determinism; bleeding; pair              |
+| `pt-iso.s1.n64`                        | showcase, orthographic isometric                      | golden; pair                                     |
+| `pt-closeup.s1.n64`                    | showcase, half the fit distance (texels ~28 px)       | golden                                           |
+| `pt-alpha-plane.s1.n128`               | alpha-plane.bbmodel, model-view camera                | golden; shadow probes; back side; pair           |
+| `pt-alpha-ramp-blend.s1.n128`          | the 16 x 16 alpha ramp (blend, cutoff 0.01)           | golden; stochastic transparency                  |
+| `pt-render-order.s1.n16`               | render-order.bbmodel, model-view camera               | golden; render-order probes                      |
+| `pt-emissive.s1.n64`                   | showcase, bricks emitting (4, 2.2, 0.8)               | golden; the post beside the bricks brightens     |
+| `pt-player-hold-34.s1.n64`             | MS-20 player, hold preset, cube in the hand           | golden; pair with `rt-player-hold-34`            |
+| `pt-cutout-checker.s1.n128`            | generated cut-out checker and box, `checker`          | golden; checker shadow probes; pair              |
+| `pt-edges.s1.n128`                     | generated `edges` scene (MS-15)                       | golden; rounded-edge probes; pair                |
+| `pt-preset-marketplace.s1.n64`         | `player-hold-34` under Marketplace (MS-19)            | golden; tile/batch determinism; pair             |
+| `pt-preset-rim.s1.n64`                 | `player-hold-34` under Rim (MS-19)                    | golden; pair                                     |
+| `pt-outline-hull.s1.n64`               | outline-hull.bbmodel, board in an inverted hull       | golden; board and rim probes; pair (MS-50)       |
+| `pt-closeup-reference.s1.n2048`        | `closeup`, 2048 samples, no denoiser (MS-18)          | rendered on golden update only; AC1, AC2, drift  |
+| `pt-closeup-denoised.s1.n64`           | `closeup`, `denoise` (MS-18)                          | golden; AC1; AC2                                 |
+| `pt-turntable-y030-x2-denoised.s1.n16` | `turntable-y030`, `supersample=2`, `denoise` (MS-18)  | golden; determinism; bleeding; pair              |
+| `pt-gltf-contact.s1.n128`              | contact-shadow.gltf, `contact`, no catcher            | golden; contact probes; pair (MS-41)             |
+| `pt-gltf-nodes-y030.s1.n128`           | scene-nodes.gltf, perspective 35°, pitch 20°, yaw 30° | golden; sentinel bleeding; catcher; pair (MS-39) |
+| `pt-obj-shapes-y030.s1.n128`           | shapes.obj, same view                                 | golden; pair (MS-39)                             |
 
 All eight earlier `pt-*` goldens were regenerated in MS-16 on purpose (same seeds, samples and size): the key became
 a 0.04 rad cone, the shadow catcher appeared under every model, and the random dimensions per path vertex grew from
@@ -462,7 +492,7 @@ again, by at most 5 levels (mean 1) over their whole catcher; the others did not
   quad of `coincident-double` shows the backdrop exactly, and alpha-plane's double-sided back plane shows its texel
   mirrored (the model-view probe); the render-order pairs resolve as in the model-view fixture; each alpha-ramp texel's
   9 x 9-pixel mean is within 6 levels of AgX(a · lit white + (1 − a) · backdrop) (largest deviation 1.29); no
-  turntable pixel shows the magenta sentinel; the emissive bricks raise the post's south face by 14.6 levels (at
+  turntable pixel and no `gltf-nodes` pixel (seed 1, 128 samples) shows the magenta sentinel; the emissive bricks raise the post's south face by 14.6 levels (at
   least 10).
 - Limits and lifetime: an empty scene draws only the backdrop; corrupt, missing and size-lying textures draw the
   placeholder with the realtime renderer's warning; `maxTriangles=10` fails the page with `SCENE_TOO_LARGE`; seeds and
@@ -483,7 +513,8 @@ is brighter than the face centre (118.7 vs 117.4, unrounded equal); `setEdges` b
 bytes of `edges=0`, the angle round trip the initial bytes, bad values a `RangeError` naming the field).
 
 **Pair tests** (preview vs render): `rt.html` baked (`bake=64`) and `pt.html` of the same view. Framing, with the
-shadow catcher off on both sides (its edge fades into the backdrop): the backdrop masks (within 2 levels of the view's
+shadow catcher off on both sides (its edge fades into the backdrop) and the preview without MSAA (`msaa=0`, coverage
+at the pixel centre; see below): the backdrop masks (within 2 levels of the view's
 look's backdrop in that row, `agxToneMap(backdropColor(look, y), look.toneMapping)`, so a gradient counts as backdrop;
 before MS-19 the top-left pixel) must agree on every pixel off the silhouette (a pixel whose 3 x 3 neighbourhood in the preview holds
 both classes) that the two images draw more than 2 levels apart (a dark texel near the backdrop colour falls on either
@@ -493,24 +524,34 @@ has interreflection and noise. Logged as `[pt pair] <view>: ...`, values in `tes
 Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with rounded edges and the mirrored bounce
 (MS-16's values in brackets; every limit stayed, none widened, `edges` is new at measured x 1.25):
 
-| view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta                     | limit: `maxDiffRatio`, `maxMeanDelta`      |
-| -------------------------- | ----------------------------------- | ------------------------------------------------------- | ------------------------------------------ |
-| `turntable-y030`           | 0 (1 605)                           | 142, 0.00217, 0.724 (MS-30; before 201, 0.00307, 0.772) | 0.00271, 0.905 (MS-30; was 0.00353, 0.953) |
-| `iso`                      | 0 (1 541)                           | 268, 0.00409, 0.889 (MS-30; before 366, 0.00558, 0.959) | 0.00512, 1.12 (MS-30; was 0.00639, 1.18)   |
-| `alpha-plane`              | 0 (687)                             | 232, 0.00354, 1.334 (MS-30; before 682, 0.01041, 1.567) | 0.00443, 1.67 (MS-30; was 0.013, 1.96)     |
-| `player-hold-34`           | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295)           | 0.0232, 1.62                               |
-| `cutout-checker`           | 0 (3 277)                           | 223, 0.00340, 0.623 (MS-30; before 293, 0.00447, 0.731) | 0.00426, 0.78 (MS-30; was 0.00525, 0.908)  |
-| `edges`                    | 0 (1 979)                           | 43, 0.00066, 0.397                                      | 0.00082, 0.496                             |
-| `preset-marketplace`       | 0 (1 322)                           | 1 269, 0.01936, 1.237                                   | 0.0223, 1.43                               |
-| `preset-rim`               | 0 (1 322)                           | 1 407, 0.02147, 1.109                                   | 0.0241, 1.13                               |
-| `preset-marketplace-yaw30` | 0 (1 304)                           | 1 387, 0.02116, 1.281                                   | 0.0265, 1.52                               |
-| `outline-hull`             | 0 (1 456)                           | 1 076, 0.01642, 0.912 (MS-50, new)                      | 0.0205, 1.14                               |
-| `gltf-contact`             | 0 (618)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)          | 0.133, 7.03                                |
+| view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta                                | limit: `maxDiffRatio`, `maxMeanDelta`      |
+| -------------------------- | ----------------------------------- | ------------------------------------------------------------------ | ------------------------------------------ |
+| `turntable-y030`           | 0 (1 627)                           | 142, 0.00217, 0.724 (MS-30; before 201, 0.00307, 0.772)            | 0.00271, 0.905 (MS-30; was 0.00353, 0.953) |
+| `iso`                      | 0 (1 533)                           | 268, 0.00409, 0.889 (MS-30; before 366, 0.00558, 0.959)            | 0.00512, 1.12 (MS-30; was 0.00639, 1.18)   |
+| `alpha-plane`              | 0 (692)                             | 232, 0.00354, 1.334 (MS-30; before 682, 0.01041, 1.567)            | 0.00443, 1.67 (MS-30; was 0.013, 1.96)     |
+| `player-hold-34`           | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295)                      | 0.0232, 1.62                               |
+| `cutout-checker`           | 0 (3 295)                           | 223, 0.00340, 0.623 (MS-30; before 293, 0.00447, 0.731)            | 0.00426, 0.78 (MS-30; was 0.00525, 0.908)  |
+| `edges`                    | 0 (1 971)                           | 40, 0.00061, 0.390 (MS-41; before 43, 0.00066, 0.397)              | 0.00082, 0.496                             |
+| `preset-marketplace`       | 0 (1 322)                           | 1 269, 0.01936, 1.237                                              | 0.0223, 1.43                               |
+| `preset-rim`               | 0 (1 322)                           | 1 407, 0.02147, 1.109                                              | 0.0241, 1.13                               |
+| `preset-marketplace-yaw30` | 0 (1 304)                           | 1 387, 0.02116, 1.281                                              | 0.0265, 1.52                               |
+| `outline-hull`             | 0 (1 448)                           | 174, 0.00266, 0.438 (MS-50 1 076, 0.01642, 0.912)                  | 0.00333, 0.548 (MS-39; was 0.0205, 1.14)   |
+| `gltf-contact`             | 0 (629)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)                     | 0.133, 7.03                                |
+| `obj-shapes-y030`          | 0 (1 852)                           | 245, 0.00374, 0.470 (MS-39, new; 463, 0.00706, 0.558 before MS-30) | 0.00468, 0.588                             |
+| `gltf-nodes-y030`          | 0 (2 218)                           | 320, 0.00488, 0.956 (MS-39, new; 435, 0.00664, 1.008 before MS-30) | 0.0061, 1.2                                |
 
 MS-30 (anti-aliased cut-out seams in the preview's MSAA frames, as the render anti-aliases them by sampling)
 re-measured every pair: `turntable-y030`, `iso`, `alpha-plane` and `cutout-checker` came closer to the render (rows
-above), so their limits are tightened to measured x 1.25; every other view measured as before, its limit stays. The
-framing of every view still has 0 mismatches.
+above), so their limits are tightened to measured x 1.25; every other view measured as before, its limit stays.
+
+Framing takes the preview at `msaa=0` since MS-39: with MS-30's 4-sample alpha-to-coverage, `obj-shapes-y030` had 1
+mismatch at (191, 135), on the wedge's cut-out slope seen at a grazing angle, where an opaque texel row covers about 2 %
+of the pixel (the 512-sample render 117, 119, 124 against the backdrop 115, 118, 124). One of the preview's 4 samples
+landed on it (147, 140, 130, about a quarter covered); the render, and the preview at `msaa=0` or `aa=0`, show the
+backdrop. A sample count cannot draw 2 % coverage, so that is a radiance difference, which the radiance tolerance
+measures against the MSAA preview; framing compares geometric coverage at the pixel centre. Every view has 0
+mismatches so; the silhouette counts in the table are the `msaa=0` ones (the denoised 2x turntable pair as well: 0
+mismatches). Radiance did not change.
 
 MS-41 (world-density charts) measured the views it changes: `alpha-plane` 682 px, 0.01041, 1.567 (its ground is
 world-charted and shows the render's shadows; before 2 083, 0.03178, 2.187), so its limit is tightened to measured x
@@ -519,6 +560,17 @@ world-charted and shows the render's shadows; before 2 083, 0.03178, 2.187), so 
 limit 0.133, 7.03. Its ground agrees; the box's sides do not: the render lights them with the bounce of the bright
 ground and the bake has no interreflection (box top, lit alike: 207, 176, 162 in both; west side low 85 baked, 132
 unbaked, 150 rendered). Same albedo in both, so no material difference.
+
+MS-39: `obj-shapes-y030` and `gltf-nodes-y030` (128 samples, catcher on) are new at measured x 1.25. The first
+measurement of `gltf-nodes-y030` was 2 931 px, 0.04472, 2.305, the ground 157 rendered against 188 baked: its ground
+lies in the catcher's plane, and the path tracer let the catcher win against a model hit by comparing distances, per
+sample, on float rounding. A camera ray with a model hit now never sees the catcher (path-tracer.md, Lighting), as the
+preview draws it first; the test 'a model surface at the catcher height hides the catcher' compares ground patches
+with the catcher on and off byte for byte. That moved three goldens on purpose, each with a model surface in the
+catcher's plane: `pt-gltf-nodes-y030` and `pt-obj-shapes-y030` (the ground and the floor, new in this task) and
+`pt-outline-hull` (the shell's bottom edge, 1 403 px of 65 536, mean delta 0.493); the other pt goldens did not
+change. `outline-hull`'s pair fell to 0.00266, 0.438, so its limit is tightened to measured x 1.25. `obj-shapes-y030`
+was 0.00739, 1.289 with the old rule.
 
 MS-19 measured the table again with the backdrop mask by rows: every earlier view kept its numbers and limits. The two
 look-preset pairs (`preset-marketplace`, `preset-rim`: the held-cube player baked under its look) are new at measured
@@ -547,7 +599,7 @@ the realtime fixture bakes under it) and `rim=0` (the preset's rim light black);
 the preview, `preset-marketplace-yaw30` the same from yaw 30 (a pair only). Studio is the v0 look, so every golden from before holds unregenerated. New goldens: `rt-preset-marketplace`,
 `rt-preset-rim`, `rt-preset-marketplace-fallback` (baked, default tolerance), `pt-preset-marketplace.s1.n64`,
 `pt-preset-rim.s1.n64` (path-tracer tolerance); pairs above. Tests (`look presets` describes of `realtime.spec.ts`
-and `pathtracer.spec.ts`, golden project):
+and `pathtracer.spec.ts`, `golden` and `golden-pt` projects):
 
 - the Marketplace backdrop of an empty scene, every row at three columns, within 2 levels of its TS mirror on the
   float path, the fallback and the path tracer in 64-pixel tiles at 1 and 4 samples (measured worst 0.5 levels);

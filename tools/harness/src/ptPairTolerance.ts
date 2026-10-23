@@ -5,7 +5,8 @@ import type { CompareOptions } from './compareImages';
  * measured values x 1.25 (docs/testing.md, path-tracer pair table), never widened later. The render adds
  * interreflection and noise; the bake adds the occlusion and soft shadows the unbaked preview lacked, so the limits
  * fell when it came (MS-16). Framing is compared without the shadow catcher on both sides (the catcher's edge fades
- * into the backdrop and would count as model), radiance with it on both.
+ * into the backdrop and would count as model) and against a preview without MSAA (pixel-centre coverage), radiance
+ * with the catcher on both and the preview's MSAA.
  */
 export const PT_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions>> = {
   // MS-30: the preview's cut-out seams are anti-aliased (alpha-to-coverage) like the render's; turntable-y030, iso,
@@ -24,9 +25,16 @@ export const PT_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions>> = {
   'preset-rim': { threshold: 0.1, maxDiffRatio: 0.0241, maxMeanDelta: 1.13 },
   // The app's default yaw: the rim follows the camera to the screen-left silhouettes.
   'preset-marketplace-yaw30': { threshold: 0.1, maxDiffRatio: 0.0265, maxMeanDelta: 1.52 },
-  // MS-50: measured ratio 0.01642, mean delta 0.912 (the rim's antialiased silhouette against the traced box filter).
-  'outline-hull': { threshold: 0.1, maxDiffRatio: 0.0205, maxMeanDelta: 1.14 },
+  // MS-50: measured ratio 0.01642, mean delta 0.912; MS-39: 0.00266 / 0.438 once the catcher stopped covering the shell's
+  // bottom edge (a model surface in its plane), x 1.25.
+  'outline-hull': { threshold: 0.1, maxDiffRatio: 0.00333, maxMeanDelta: 0.548 },
   // MS-41, catcher off: measured 0.10661 / 5.627, x 1.25. The ground agrees; the box's sides do not: the render lights
   // them with the bright ground's bounce, the bake has no interreflection (its top, lit alike, matches to the level).
   'gltf-contact': { threshold: 0.1, maxDiffRatio: 0.133, maxMeanDelta: 7.03 },
+  // MS-39 (the catcher no longer beats a model surface in its plane): measured 0.00706 / 0.558, with MS-30's
+  // anti-aliased cut-out edges 0.00374 / 0.470, x 1.25.
+  'obj-shapes-y030': { threshold: 0.1, maxDiffRatio: 0.00468, maxMeanDelta: 0.588 },
+  // MS-39: the glTF loader scene, measured 0.00664 / 1.008, with MS-30's anti-aliased cut-out edges 0.00488 / 0.956, x 1.25 (the ground was 0.04472 / 2.305 while the catcher
+  // could win against it).
+  'gltf-nodes-y030': { threshold: 0.1, maxDiffRatio: 0.0061, maxMeanDelta: 1.2 },
 };
