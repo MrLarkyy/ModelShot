@@ -67,7 +67,7 @@ vec3 tracePath(uint key, vec2 pixel) {
     bool found = closestHit(origin, direction, tMin, tMax, depthScale, skip, key, dimension + 3u, hit, pathVertex == 0);
     if (pathVertex == 0) {
       vec3 point;
-      if (catcherHit(origin, direction, tMin, tMax, found, hit.t, point)) return shadeCatcher(key, dimension, point);
+      if (catcherHit(origin, direction, tMin, tMax, found, point)) return shadeCatcher(key, dimension, point);
     }
     if (!found) {
       radiance += throughput * (pathVertex == 0 ? backdropHere() : environmentRadiance(direction));
