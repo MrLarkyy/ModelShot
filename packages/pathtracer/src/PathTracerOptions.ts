@@ -17,6 +17,12 @@ export interface PathTracerOptions {
   readonly maxBounces?: number;
   /** Triangles of visible meshes accepted by `setScene`. Default 200 000 (the loaders' limit). */
   readonly maxTriangles?: number;
+  /**
+   * `setScene` flattens the scene, builds the BVH and packs the data in a module Worker, so a large model does not
+   * block the page. Default `true`; `false` does that work on the main thread (for hosts that forbid workers). Without
+   * Worker support, or when the worker cannot start or fails, the main thread does it too: the same bytes either way.
+   */
+  readonly geometryWorker?: boolean;
   /** Largest texture side accepted (further capped by MAX_TEXTURE_SIZE and 4096). Default 4096. */
   readonly maxTextureSide?: number;
   /** Total decoded texture pixels per scene. Default 64 Mi. */

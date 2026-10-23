@@ -83,6 +83,22 @@ export function flatEdges(
 }
 
 /**
+ * Triangles of the visible meshes' groups (a mesh's own flag and its node's effective visibility), from the group
+ * counts alone: no vertex is read. Over `maxTriangles` throws `PathTracerError` `SCENE_TOO_LARGE`.
+ */
+export function visibleTriangleCount(doc: SceneDocument, maxTriangles = Infinity): number {
+  const visibility = nodeVisibility(doc);
+  let total = 0;
+  doc.meshes.forEach((mesh, m) => {
+    if (meshVisible(doc, m, visibility)) for (const group of mesh.groups) total += group.count / 3;
+  });
+  if (total > maxTriangles) {
+    throw new PathTracerError('SCENE_TOO_LARGE', `scene has ${total} visible triangles; the limit is ${maxTriangles}`);
+  }
+  return total;
+}
+
+/**
  * The visible triangles of `doc` (a mesh's own flag and its node's effective visibility, groups only) placed by their
  * node's world matrix, with sharp-edge data under `edges` (`null`: none, as the light bake needs). Over `maxTriangles`
  * throws `PathTracerError` `SCENE_TOO_LARGE` before allocating anything. `doc` must have passed `validateScene`
@@ -93,15 +109,9 @@ export function flattenScene(
   maxTriangles = DEFAULT_MAX_TRIANGLES,
   edges: SharpEdgeOptions | null = null,
 ): FlatScene {
+  const total = visibleTriangleCount(doc, maxTriangles);
   const visibility = nodeVisibility(doc);
   const visibleMeshes = doc.meshes.map((_, m) => meshVisible(doc, m, visibility));
-  let total = 0;
-  doc.meshes.forEach((mesh, m) => {
-    if (visibleMeshes[m]) for (const group of mesh.groups) total += group.count / 3;
-  });
-  if (total > maxTriangles) {
-    throw new PathTracerError('SCENE_TOO_LARGE', `scene has ${total} visible triangles; the limit is ${maxTriangles}`);
-  }
 
   const world = worldMatrices(doc.nodes);
   const positions = new Float32Array(total * 9);
