@@ -22,13 +22,31 @@ export interface OrbitControllerOptions {
   readonly dampingMs?: number;
 }
 
-/** Everything that defines the view; the controller eases its current state towards a goal state. */
-interface OrbitState {
+/** Everything that defines the view in model units; the controller eases its current pose towards a goal pose. */
+interface OrbitPose {
   target: [number, number, number];
   yawDeg: number;
   pitchDeg: number;
   distance: number;
   orthoHeight: number;
+}
+
+/**
+ * The view as a portable, scale-free value (`OrbitController.state` / `setState`): it restores the same view of the
+ * same model whatever the viewport size, and can be stored. Distances are relative to the frame-to-fit values.
+ */
+export interface OrbitState {
+  /** Normalised to 0..360 by `state()`. */
+  yawDeg: number;
+  pitchDeg: number;
+  fovYDeg: number;
+  projection: 'perspective' | 'orthographic';
+  /** Distance from the target in multiples of the frame-to-fit distance (1: framed to fit). */
+  distance: number;
+  /** Orthographic visible height in multiples of the frame-to-fit height. */
+  orthoHeight: number;
+  /** The target's offset from the bounds centre in bounding-sphere radii. */
+  target: [number, number, number];
 }
 
 export const MIN_PITCH_DEG = -89.5;
@@ -60,7 +78,7 @@ const clamp = (value: number, lo: number, hi: number): number => Math.min(hi, Ma
 const finite = (...values: number[]): boolean => values.every(Number.isFinite);
 const finiteOr = (value: number | undefined, fallback: number): number =>
   value !== undefined && Number.isFinite(value) ? value : fallback;
-const copy = (s: OrbitState): OrbitState => ({ ...s, target: [...s.target] });
+const copy = (s: OrbitPose): OrbitPose => ({ ...s, target: [...s.target] });
 
 /**
  * Orbit, dolly and pan around a target, perspective or orthographic, producing the shared `SceneCamera`. Pure state:
@@ -76,8 +94,8 @@ export class OrbitController {
   private readonly initialYaw: number;
   private readonly initialPitch: number;
   private readonly dampingMs: number;
-  private goal: OrbitState;
-  private current: OrbitState;
+  private goal: OrbitPose;
+  private current: OrbitPose;
   damping: boolean;
 
   constructor(options: OrbitControllerOptions = {}) {
@@ -116,6 +134,60 @@ export class OrbitController {
   /** Whether the eased state still differs from the goal (a caller keeps calling `update` and rendering). */
   get moving(): boolean {
     return !sameState(this.current, this.goal);
+  }
+
+  /**
+   * The goal view as a portable value; `setState` of the same model gives the same view back. The distances are
+   * relative to the fit values of the current bounds, aspect and field of view.
+   */
+  state(): OrbitState {
+    const r = fitRadius(this.bounds);
+    const g = this.goal;
+    const c = this.bounds.center;
+    return {
+      yawDeg: this.angles.yawDeg,
+      pitchDeg: g.pitchDeg,
+      fovYDeg: this.fovYDeg,
+      projection: this.projection,
+      distance: g.distance / fitDistance(r, this.fovYDeg, this.aspect),
+      orthoHeight: g.orthoHeight / fitOrthoHeight(r, this.aspect),
+      target: [(g.target[0] - c[0]) / r, (g.target[1] - c[1]) / r, (g.target[2] - c[2]) / r],
+    };
+  }
+
+  /**
+   * Applies the fields given at once (no easing). A field that is not finite, a projection that is neither of the two
+   * or a target that is not three finite numbers is ignored; angles, field of view and distances are clamped as their
+   * setters clamp. Frame the model first (`reset(bounds)`): the distances are relative to its bounds.
+   */
+  setState(state: Partial<OrbitState>): void {
+    if (state.fovYDeg !== undefined && Number.isFinite(state.fovYDeg)) {
+      this.fovYDeg = clamp(state.fovYDeg, MIN_FOV_DEG, MAX_FOV_DEG);
+    }
+    if (state.projection === 'perspective' || state.projection === 'orthographic') {
+      this.orthographic = state.projection === 'orthographic';
+    }
+    const g = this.goal;
+    if (state.yawDeg !== undefined && Number.isFinite(state.yawDeg)) g.yawDeg = state.yawDeg;
+    if (state.pitchDeg !== undefined && Number.isFinite(state.pitchDeg)) {
+      g.pitchDeg = clamp(state.pitchDeg, MIN_PITCH_DEG, MAX_PITCH_DEG);
+    }
+    const r = fitRadius(this.bounds);
+    if (state.distance !== undefined && Number.isFinite(state.distance) && state.distance > 0) {
+      g.distance = this.clampDistance(state.distance * fitDistance(r, this.fovYDeg, this.aspect));
+    } else {
+      // The field of view changed the fit distance; keep the distance inside the new range.
+      g.distance = this.clampDistance(g.distance);
+    }
+    if (state.orthoHeight !== undefined && Number.isFinite(state.orthoHeight) && state.orthoHeight > 0) {
+      g.orthoHeight = this.clampOrthoHeight(state.orthoHeight * fitOrthoHeight(r, this.aspect));
+    }
+    const t = state.target;
+    if (Array.isArray(t) && t.length === 3 && t.every((v) => typeof v === 'number' && Number.isFinite(v))) {
+      const c = this.bounds.center;
+      g.target = [c[0] + t[0] * r, c[1] + t[1] * r, c[2] + t[2] * r];
+    }
+    this.current = copy(g);
   }
 
   /** Viewport width / height; frame-to-fit and the pan scale depend on it. */
@@ -244,7 +316,7 @@ export class OrbitController {
     };
   }
 
-  private fittedState(yawDeg: number, pitchDeg: number): OrbitState {
+  private fittedState(yawDeg: number, pitchDeg: number): OrbitPose {
     const r = fitRadius(this.bounds);
     return {
       target: [...this.bounds.center],
@@ -259,7 +331,7 @@ export class OrbitController {
     if (!this.damping) this.current = copy(this.goal);
   }
 
-  private visibleHeight(state: OrbitState): number {
+  private visibleHeight(state: OrbitPose): number {
     return this.orthographic ? state.orthoHeight : 2 * state.distance * Math.tan((this.fovYDeg * Math.PI) / 360);
   }
 
@@ -282,7 +354,7 @@ function viewAxes(yawDeg: number, pitchDeg: number): { right: Vec3; up: Vec3 } {
   return { right, up };
 }
 
-function sameState(a: OrbitState, b: OrbitState): boolean {
+function sameState(a: OrbitPose, b: OrbitPose): boolean {
   return (
     a.yawDeg === b.yawDeg &&
     a.pitchDeg === b.pitchDeg &&
@@ -292,7 +364,7 @@ function sameState(a: OrbitState, b: OrbitState): boolean {
   );
 }
 
-function closeState(a: OrbitState, b: OrbitState, scale: number): boolean {
+function closeState(a: OrbitPose, b: OrbitPose, scale: number): boolean {
   const near = (x: number, y: number, unit: number): boolean => Math.abs(x - y) <= REST_EPSILON * unit;
   return (
     near(a.yawDeg, b.yawDeg, 360) &&

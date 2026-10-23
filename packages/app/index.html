@@ -10,10 +10,72 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   </head>
   <body>
-    <main>
+    <a class="skip-link" href="#viewport">Skip to the 3D view</a>
+    <header class="top-bar">
       <h1 id="title"></h1>
-      <div id="handoff" role="status"></div>
-    </main>
+      <div class="toolbar" role="toolbar" aria-label="Main actions">
+        <button id="open-button" type="button">Open…</button>
+        <button id="render-button" type="button" disabled>Render</button>
+        <button id="export-button" type="button" disabled>Export…</button>
+        <button id="help-button" type="button">Shortcuts</button>
+      </div>
+      <input
+        id="file-input"
+        class="visually-hidden"
+        type="file"
+        multiple
+        accept=".bbmodel,.gltf,.glb,.bin,.obj,.mtl,.png"
+        aria-label="Choose model files"
+        tabindex="-1"
+      />
+    </header>
+    <div class="work">
+      <main class="stage">
+        <div id="viewport" class="viewport">
+          <canvas id="preview" class="layer" aria-label="3D view of the model"></canvas>
+          <canvas id="result" class="layer result" aria-label="Rendered image" hidden></canvas>
+          <p id="empty" class="empty">Drop a model here, or choose Open…</p>
+          <div id="drop-overlay" class="drop-overlay" hidden>Drop to open</div>
+        </div>
+        <div class="messages">
+          <div id="status" role="status">
+            <span id="status-main"></span> <span id="status-lighting"></span> <span id="status-storage"></span>
+          </div>
+          <div id="alert" role="alert" hidden></div>
+          <div class="render-progress" id="render-progress" hidden>
+            <progress id="progress" max="1" value="0" aria-label="Render progress"></progress>
+            <button id="cancel-button" type="button">Cancel</button>
+          </div>
+        </div>
+      </main>
+      <aside class="panels" aria-label="Scene settings">
+        <section aria-labelledby="scene-heading">
+          <h2 id="scene-heading">Scene</h2>
+          <div id="scene-panel"><p class="hint">No model open.</p></div>
+        </section>
+        <section aria-labelledby="look-heading">
+          <h2 id="look-heading">Look</h2>
+          <div id="look-panel"></div>
+        </section>
+        <section aria-labelledby="camera-heading">
+          <h2 id="camera-heading">Camera</h2>
+          <div id="camera-panel"></div>
+        </section>
+        <section aria-labelledby="render-heading">
+          <h2 id="render-heading">Render</h2>
+          <div id="render-panel"></div>
+        </section>
+        <section aria-labelledby="data-heading">
+          <h2 id="data-heading">Local data</h2>
+          <p class="hint">
+            Everything stays in this browser. The last model and your settings are kept here so the app can reopen them.
+          </p>
+          <button id="forget-button" type="button">Forget local data</button>
+        </section>
+      </aside>
+    </div>
+    <dialog id="export-dialog" aria-labelledby="export-title"></dialog>
+    <dialog id="help-dialog" aria-labelledby="help-title"></dialog>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
