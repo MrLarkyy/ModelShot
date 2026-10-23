@@ -75,7 +75,7 @@ vec3 tracePath(uint key, vec2 pixel, out float coverage) {
     bool found = closestHit(origin, direction, tMin, tMax, depthScale, skip, key, dimension + 3u, hit, pathVertex == 0);
     if (pathVertex == 0) {
       vec3 point;
-      if (catcherHit(origin, direction, tMin, tMax, found, hit.t, point)) {
+      if (catcherHit(origin, direction, tMin, tMax, found, point)) {
         float shade = catcherShadeAt(key, dimension, point);
         if (!u_transparent) return backdropHere() * shade;
         coverage = 1.0 - shade;

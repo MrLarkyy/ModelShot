@@ -279,8 +279,12 @@ dome and two unshadowed accents ([look-presets.md](look-presets.md#lighting-mode
 - Camera rays that escape show the look's backdrop at their pixel (`backdropHere()`: screen y over the full frame
   height, never the tile's), the preview's gradient; before the first sample `present` shows it too.
 - Shadow catcher (`shadowCatcherPlane` of the realtime renderer): a camera ray that meets the plane from above,
-  inside its rectangle and nearer than the model, traces one key ray in the cone and one cosine-weighted fill ray
-  (escaped: `environmentRadiance`) and shows the pixel's backdrop × `catcherShade(fill, keyT, xz, rect)` of the look. The fill
+  inside its rectangle and with no model hit (the catcher lies at the lowest point of the model, or of `catcherBounds`,
+  which for an animation is the union of its poses, so a model surface in its plane, like a ground, always wins, as the
+  preview draws the catcher first; a transparent request keeps the rule, so such a ground has alpha 1, not the
+  catcher's 1 − shade), traces one key ray in the cone and one cosine-weighted fill ray
+  (escaped: `environmentRadiance`) and shows the pixel's backdrop × `catcherShade(fill, keyT, xz, rect)` of the look
+  (transparent: radiance 0 and coverage 1 − shade, Transparent renders). The fill
   ray accepts partial texels with its own random number (vertex 0's roulette dimension, unused there), not the camera
   ray's, so a catcher point seen through glass still has the glass's fill shadow, as in the bake. The shade
   is affine in fill and key, so the mean over samples equals the preview's shade of its baked means. The plane is

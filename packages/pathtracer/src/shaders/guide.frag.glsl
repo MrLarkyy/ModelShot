@@ -78,7 +78,7 @@ void main() {
     vec3 onCatcher;
     float z = -1.0;
     bool partialHit = false;
-    if (catcherHit(origin, direction, tMin, tMax, found, hit.t, onCatcher)) {
+    if (catcherHit(origin, direction, tMin, tMax, found, onCatcher)) {
       albedo += backdropHere();
       normal += vec3(0.0, 1.0, 0.0);
       z = dot(onCatcher - u_cameraPosition, u_cameraForward);

@@ -81,6 +81,9 @@ const GOLDENS: readonly PathTracedGoldenSpec[] = [
   pt('preset-rim', 'preset-rim', 64),
   // MS-41: the box's contact shadow on an image-less glTF ground; paired with rt-bake-gltf-contact.
   pt('gltf-contact', 'gltf-contact', 128),
+  // MS-39: MS-13 loader fixtures, paired with rt-<v>.
+  pt('gltf-nodes-y030', 'gltf-nodes-y030', 128),
+  pt('obj-shapes-y030', 'obj-shapes-y030', 128),
 ];
 
 /** The look preset of a fixture variant (rtScenes.ts RT_VARIANTS), Studio unless the variant names one. */
@@ -127,7 +130,7 @@ const at = <T extends { name: string }>(probes: readonly T[], name: string): T =
 };
 
 test.describe('path-tracer goldens', () => {
-  // 10.5-22.4 s on a SwiftShader runner (default timeout 30 s).
+  // 10.5-22.4 s on a SwiftShader runner (default timeout 30 s); MS-39's two loader scenes 5.2 and 3.5 s locally.
   test.describe.configure({ timeout: 120_000 });
   for (const golden of GOLDENS) {
     test(`${golden.name} matches its golden`, async ({ page }, testInfo) => {
@@ -402,7 +405,7 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
     const previewPng = encodeFlipped(await openFixture(page, '/rt.html?variant=turntable-y030&bake=64&catcher=1'));
     const traced = await render(page, query);
     const framingPreview = decodePng(
-      encodeFlipped(await openFixture(page, '/rt.html?variant=turntable-y030&bake=64&catcher=0')),
+      encodeFlipped(await openFixture(page, '/rt.html?variant=turntable-y030&bake=64&catcher=0&msaa=0')),
     );
     const framing = silhouetteMismatches(
       framingPreview,
@@ -526,7 +529,7 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
 });
 
 test.describe('transparency, shadows and sides (scene format rules)', () => {
-  // 11.2-22.5 s on a SwiftShader runner (default timeout 30 s).
+  // 11.2-22.5 s on a SwiftShader runner (default timeout 30 s); MS-39's sentinel and catcher tests 5.0 and 9.7 s locally.
   test.describe.configure({ timeout: 120_000 });
   test('light passes cut-out texels and opaque texels cast pixel-shaped shadows', async ({ page }) => {
     const { image } = await render(page, 'variant=alpha-plane&seed=1&samples=128');
@@ -687,6 +690,41 @@ test.describe('transparency, shadows and sides (scene format rules)', () => {
     expect(sentinelPixels(image)).toBe(0);
   });
 
+  test('no gltf-nodes pixel shows a texel from outside its face rectangle', async ({ page }) => {
+    const { image } = await render(page, 'variant=gltf-nodes-y030&seed=1&samples=128');
+    const count = sentinelPixels(image);
+    console.log(`[pt probe] gltf-nodes sentinel pixels ${count} / max 0`);
+    expect(count).toBe(0);
+  });
+
+  test('a model surface at the catcher height hides the catcher', async ({ page }) => {
+    // gltf-nodes' ground lies in the catcher's plane: a camera ray there must always take the ground. Patches of it clear
+    // of the other meshes (the glass plane shows the catcher past the ground's edge through its rejected texels).
+    const query = 'variant=gltf-nodes-y030&seed=1&samples=128';
+    const without = (await render(page, `${query}&catcher=0`)).image;
+    const withCatcher = (await render(page, query)).image;
+    const backdrop = backdropRowOf('studio');
+    const points: [number, number][] = [-1.2, -0.6, 0.6, 1.2].map((x) => [x, 1.25] as [number, number]);
+    for (const z of [-0.8, 0, 0.8]) points.push([-1.25, z], [1.25, z]);
+    let checked = 0;
+    let changed = 0;
+    for (const [x, z] of points) {
+      const [cx, cy] = await page.evaluate(([px, pz]) => window.__msFixture!.pt!.project(px!, 0, pz!), [x, z]);
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          const [px, py] = [Math.round(cx) + dx, Math.round(cy) + dy];
+          const model = pixel(without, px, py).some((v, c) => Math.abs(v - backdrop(py, without.height)[c]!) > 2);
+          if (!model) continue;
+          checked++;
+          if (pixel(without, px, py).some((v, c) => v !== pixel(withCatcher, px, py)[c])) changed++;
+        }
+      }
+    }
+    console.log(`[pt probe] catcher over the ground: ${changed} of ${checked} ground pixels differ / max 0`);
+    expect(checked, 'ground pixels checked').toBeGreaterThan(100);
+    expect(changed, 'ground pixels the catcher changed').toBe(0);
+  });
+
   test('an emissive material lights the post beside it', async ({ page }) => {
     const plain = await render(page, 'variant=turntable-y030&seed=1&samples=64');
     const glowing = await render(page, 'variant=emissive&seed=1&samples=64');
@@ -709,6 +747,8 @@ const PAIR_SAMPLES: Readonly<Record<string, number>> = {
   'cutout-checker': 128,
   edges: 128,
   'gltf-contact': 128,
+  'gltf-nodes-y030': 128,
+  'obj-shapes-y030': 128,
 };
 
 /** Views whose render has no shadow catcher (their variant turns it off): the preview's radiance is compared without. */
@@ -720,10 +760,14 @@ test.describe('the render frames and lights like the baked preview', () => {
       // Up to 1.3 m on a normal runner, about 2.6 m on a slow VM (run 39624802150).
       test.setTimeout(300_000);
       const samples = PAIR_SAMPLES[variant] ?? 64;
-      const preview = (catcher: 0 | 1) => openFixture(page, `/rt.html?variant=${variant}&bake=64&catcher=${catcher}`);
+      const preview = (catcher: 0 | 1, query = '') =>
+        openFixture(page, `/rt.html?variant=${variant}&bake=64&catcher=${catcher}${query}`);
       const previewPng = encodeFlipped(await preview(PAIR_WITHOUT_CATCHER.has(variant) ? 0 : 1));
       const traced = await render(page, `variant=${variant}&seed=1&samples=${samples}`);
-      const framingPreview = decodePng(encodeFlipped(await preview(0)));
+      // Framing compares geometric coverage, so its preview samples pixel centres (msaa=0): 4-sample
+      // alpha-to-coverage turns a cut-out texel strip covering 2 % of a pixel into a quarter-covered pixel, a radiance
+      // difference the radiance tolerance already measures (obj-shapes-y030, wedge slope, docs/testing.md).
+      const framingPreview = decodePng(encodeFlipped(await preview(0, '&msaa=0')));
       const framingTraced = await render(page, `variant=${variant}&seed=1&samples=${samples}&catcher=0`);
       const framing = silhouetteMismatches(
         framingPreview,
