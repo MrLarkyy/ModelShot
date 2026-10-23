@@ -426,9 +426,16 @@ against the same views rendered with origin/main's shaders (count, largest level
 `rt-bake-turntable-y030` 350 (6), `rt-bake-alpha-plane` 131 (9, the ground's far silhouette; the cut-out squares
 unchanged), `rt-bake-cutout-checker` 163 (3), `rt-bake-gltf-contact` 91 (1). `rt-far`, `rt-turntable-y000`, `-y030`
 and `-y090` also take up drift main had left within tolerance (against their old golden 487, 449, 660 and 498 pixels,
-up to 102 levels). Not rewritten: the exact-key player and preset frames (single-sampled; 1 to 4 pixels of 1 level
-from the changed program, within tolerance), the fallback frames (single-sampled canvas), `rt-fit-flat-cube` and
-every `pt-*`, export and model-view golden (byte-unchanged). Probes: **MSAA silhouette pixels are shaded on the face**:
+up to 102 levels). Drift explained and regenerated too, so every rt golden equals the current output (the same view
+rendered twice gives the same bytes; diff images judged): MS-15 left `rt-player-hold-34` (2 340 pixels, up to 47
+levels, all along the rounded cube edges) and `rt-player-legacy-opaque-hat-34` (1 497, 43) in tolerance, MS-30 left
+`rt-fit-flat-cube` (107, 37, its cut-out seams), and with them `rt-far` (rounded edges and seams) and
+`rt-turntable-y000`, `-y030`, `-y090` (the flower's and the frame's cut-out seams). The exact-key player and preset
+frames, single-sampled, move by MS-54 at most 4 pixels by 1 level (rounding in the changed program): rewritten with
+the drift are `rt-player-classic-front` (1), `-classic-back` (1), `-walk-hold-34` (4), `-wave-front` (2),
+`rt-preset-marketplace` (2) and `rt-preset-marketplace-fallback` (2). Unchanged: the other rt goldens, every `pt-*`
+and model-view golden; `export-animation-f0.s1.n16` renders 2 pixels 1 level off its golden, twice alike (not an rt
+golden, left). Probes: **MSAA silhouette pixels are shaded on the face**:
 the baked `turntable-y030` preview against its render (the `pt-turntable-y030` golden PNG), the mean largest-channel
 difference over the 2 px outline band both draw (`outlineBand`), 1.744 over 3 919 pixels (1.773 when shaded at the
 pixel centre), at most measured x 1.25 = 2.18 and below 1.773; frame on the raster key with MSAA (asserted). **The
