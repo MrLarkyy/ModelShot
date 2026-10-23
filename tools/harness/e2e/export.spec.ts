@@ -45,11 +45,17 @@ const QUALITY_PAIR_TOLERANCE = 18;
 const QUALITY_CATCHER_PAIR_TOLERANCE = 79;
 /**
  * The transparent canvas against the opaque one, every pixel: 0 measured plain and supersampled (the canvas composites
- * in linear light, so it is the opaque mean); denoised 14 without and 35 with the catcher (the filter sees different
- * radiance), times 1.25.
+ * in linear light, so it is the opaque mean); denoised 14 without and 34 with the catcher (the filter sees different
+ * radiance; 35 before MS-59's control variate), times 1.25.
  */
 const CANVAS_TOLERANCE = 1;
-const DENOISED_CANVAS_TOLERANCE = 44;
+const DENOISED_CANVAS_TOLERANCE = 43;
+/**
+ * Pixels of the transparent still (catcher on) with alpha 1..3: the faint haze per-sample catcher noise left where
+ * nothing blocks, 490 in the golden before MS-59's control variate made an unblocked sample exactly coverage 0. What
+ * remains is the model's real, faint occlusion of the dome: 27 measured, times 1.25.
+ */
+const HAZE_PIXELS = 34;
 /** The APNG frames ImageDecoder composites, at fully opaque pixels: 0 measured. */
 const APNG_DECODER_TOLERANCE = 0;
 
@@ -113,6 +119,16 @@ test.describe('export', () => {
     console.log(`[export] catcher shadow probe rgba ${decoded.subarray(i, i + 4).join(',')}`);
     expect(Array.from(decoded.subarray(i, i + 3))).toEqual([0, 0, 0]);
     expect(decoded[i + 3]).toBeGreaterThan(0);
+  });
+
+  test('the lit shadow catcher of a transparent still leaves no faint alpha haze', async ({ page }) => {
+    await openExport(page);
+    const outcome = await page.evaluate(() => window.__msExport!.still({ catcher: true, transparent: true }));
+    const decoded = bytes(outcome.decoded);
+    let haze = 0;
+    for (let i = 3; i < decoded.length; i += 4) if (decoded[i]! >= 1 && decoded[i]! <= 3) haze++;
+    console.log(`[export] faint catcher alpha (1..3): ${haze} px / max ${HAZE_PIXELS}`);
+    expect(haze).toBeLessThanOrEqual(HAZE_PIXELS);
   });
 
   test('export-still-transparent matches its golden', async ({ page }, testInfo) => {

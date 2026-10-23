@@ -605,6 +605,41 @@ test.describe('transparency, shadows and sides (scene format rules)', () => {
     expect(darkened, 'backdrop pixels in the catcher shadow').toBeGreaterThan(100);
   });
 
+  test('an unblocked catcher shades exactly 1: a camera-only model renders the same bytes with and without it', async ({
+    page,
+  }) => {
+    // Camera-only geometry is skipped by fill and key rays, so no catcher ray is ever blocked: with the control variate
+    // every catcher sample is the bare backdrop (opaque) or coverage 0 (transparent), so at 1 sample, with no averaging
+    // to hide a per-sample swing, the bytes must match exactly. Tolerance 0: exact by construction.
+    const count = (a: Buffer, b: Buffer): number => {
+      let differ = 0;
+      for (let i = 0; i < a.length; i += 4) {
+        if (a.subarray(i, i + 4).compare(b.subarray(i, i + 4)) !== 0) differ++;
+      }
+      return differ;
+    };
+    for (const seed of [1, 7]) {
+      const query = `variant=turntable-y030&cameraonly=1&seed=${seed}&samples=1`;
+      const opaqueOn = (await render(page, query)).image.data;
+      const opaqueOff = (await render(page, `${query}&catcher=0`)).image.data;
+      expect(count(opaqueOn, opaqueOff), `seed ${seed}: opaque pixels the catcher changed`).toBe(0);
+      const clearOn = (await render(page, `${query}&transparent=1`)).image.data;
+      const clearOff = (await render(page, `${query}&transparent=1&catcher=0`)).image.data;
+      expect(count(clearOn, clearOff), `seed ${seed}: transparent pixels the catcher changed`).toBe(0);
+      let clear = 0;
+      for (let i = 3; i < clearOn.length; i += 4) if (clearOn[i] === 0) clear++;
+      // Off the model the escaped rays and the catcher alike are alpha 0.
+      expect(clear, `seed ${seed}: alpha-0 pixels`).toBeGreaterThan(clearOn.length / 4 / 4);
+      // Not vacuous: the catcher's rectangle comes from the visible geometry, camera-only or not, and with the model
+      // casting it darkens the same view.
+      const castOn = (await render(page, `variant=turntable-y030&seed=${seed}&samples=1`)).image.data;
+      const castOff = (await render(page, `variant=turntable-y030&seed=${seed}&samples=1&catcher=0`)).image.data;
+      const cast = count(castOn, castOff);
+      console.log(`[pt probe] seed ${seed}: catcher on/off differ in 0 camera-only pixels, ${cast} casting / min 100`);
+      expect(cast, `seed ${seed}: pixels the catcher changes under a casting model`).toBeGreaterThan(100);
+    }
+  });
+
   test('a single-sided face casts a shadow only from the side facing the light', async ({ page }) => {
     // alpha-plane's flat cube: two coincident single-sided faces; the south one faces the light and has a hole at
     // (14, 2), the north one faces away. Light through the hole must reach the ground.
