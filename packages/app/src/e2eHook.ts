@@ -13,6 +13,7 @@ export interface MsAppHook {
   state(): OrbitState;
   setWatchdogMs(ms: number): void;
   hangNextLoad(): void;
+  failNextScene(): void;
   previewPixels(): Pixels;
   renderPixels(): Promise<Pixels | null>;
   loseContext(): boolean;
@@ -41,6 +42,7 @@ export function installE2eHook(app: App): void {
     state: () => viewer.orbit.state(),
     setWatchdogMs: internals.setWatchdogMs,
     hangNextLoad: internals.hangNextLoad,
+    failNextScene: internals.failNextScene,
     previewPixels: () => {
       viewer.renderNow();
       const copy = document.createElement('canvas');

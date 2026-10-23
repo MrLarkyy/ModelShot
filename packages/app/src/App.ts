@@ -37,6 +37,7 @@ interface OpenModel {
   readonly loaded: LoadedModel;
   readonly request: LoadRequest;
   readonly files: readonly File[];
+  readonly arms: PlayerArmsChoice;
 }
 
 // The app: opens files, shows the model, and owns the panels, the render, the export and the local state. Every byte
@@ -71,6 +72,7 @@ export class App {
   private exporting = false;
   private watchdogMs = LOAD_TIMEOUT_MS;
   private hangNext = false;
+  private failNext = false;
   private committing = false;
 
   constructor(private readonly store: AppStateStore) {
@@ -180,14 +182,15 @@ export class App {
       const request = groupFiles(files);
       name = request.kind === 'model' ? request.model.name : request.skin.name;
       this.notices.status(`Opening ${name}…`);
-      let loaded = await this.load(request, this.arms);
+      let arms = this.arms;
+      let loaded = await this.load(request, arms);
       const saved = await this.readSaved(loaded.key);
-      if (loaded.kind === 'skin' && saved?.arms && saved.arms !== this.arms) {
-        this.arms = saved.arms;
+      if (loaded.kind === 'skin' && saved?.arms && saved.arms !== arms) {
+        arms = saved.arms;
         loaded = await this.load(request, saved.arms);
       }
       this.persistence.resume();
-      if (!(await this.commit({ loaded, request, files }, saved, true))) {
+      if (!(await this.commit({ loaded, request, files, arms }, saved, true))) {
         this.notices.alert(`Could not show ${name}: the scene changed while it was opening.`);
         return;
       }
@@ -198,6 +201,7 @@ export class App {
       this.notices.alert(
         error instanceof IntakeError ? `Could not open ${name}: ${why}` : `Could not show ${name}: ${why}`,
       );
+      this.notices.status(this.open ? `Still showing ${this.open.loaded.name}.` : '');
     } finally {
       this.loading = false;
     }
@@ -209,12 +213,14 @@ export class App {
     renderSession: RenderSession;
     setWatchdogMs: (ms: number) => void;
     hangNextLoad: () => void;
+    failNextScene: () => void;
   } {
     return {
       viewer: this.viewer,
       renderSession: this.renderSession,
       setWatchdogMs: (ms) => (this.watchdogMs = ms),
       hangNextLoad: () => (this.hangNext = true),
+      failNextScene: () => (this.failNext = true),
     };
   }
 
@@ -227,6 +233,12 @@ export class App {
     const hang = import.meta.env.MODE === 'e2e' && this.hangNext;
     this.hangNext = false;
     return loadModel(request, { arms, timeoutMs: this.watchdogMs, hang });
+  }
+
+  private setDocument(viewer: Viewer, doc: SceneDocument, reframe: boolean): ReturnType<Viewer['setDocument']> {
+    const fail = import.meta.env.MODE === 'e2e' && this.failNext;
+    this.failNext = false;
+    return fail ? Promise.reject(new Error('The scene could not be built (e2e).')) : viewer.setDocument(doc, reframe);
   }
 
   private async readSaved(key: string): Promise<ModelState | null> {
@@ -260,10 +272,11 @@ export class App {
     this.committing = true;
     let result;
     try {
-      result = await viewer.setDocument(withVisibility(doc, nodeVisible, meshVisible), reframe);
+      result = await this.setDocument(viewer, withVisibility(doc, nodeVisible, meshVisible), reframe);
       if (!result.applied) return false;
       this.look = applyLook(look, [viewer, this.renderSession.existingTracer()]);
       this.open = open;
+      this.arms = open.arms;
       this.base = doc;
       this.nodeVisible = [...nodeVisible];
       this.meshVisible = [...meshVisible];
@@ -327,7 +340,7 @@ export class App {
     const base = this.base;
     if (!base || !this.viewer) return;
     try {
-      await this.viewer.setDocument(withVisibility(base, this.nodeVisible, this.meshVisible), false);
+      await this.setDocument(this.viewer, withVisibility(base, this.nodeVisible, this.meshVisible), false);
       this.scheduleSave();
     } catch (error) {
       this.notices.alert(`Could not update the view: ${error instanceof Error ? error.message : String(error)}`);
@@ -341,9 +354,9 @@ export class App {
     this.notices.clearAlert();
     try {
       const loaded = await this.load(open.request, arms);
-      this.arms = arms;
-      if (!(await this.commit({ ...open, loaded }, null, false))) {
+      if (!(await this.commit({ ...open, loaded, arms }, null, false))) {
         this.notices.alert('Could not change the arms: the scene changed while it was loading.');
+        this.showPanels();
         return;
       }
       this.scheduleSave();

@@ -9,6 +9,7 @@ import {
   previewImage,
   test,
   waitForModel,
+  waitForStored,
 } from './appTest';
 
 const CUBE = fixture('bbmodel', 'single-cube.bbmodel');
@@ -120,4 +121,55 @@ test('a tampered stored session is ignored and the app starts empty', async ({ p
   await page.waitForFunction(() => window.__msApp !== undefined);
   await expect(page.locator('#empty')).toBeVisible();
   await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test('a scene that fails to build keeps the model, the look and the saved session', async ({ page }) => {
+  await openApp(page);
+  const looks = page.locator('#look-panel input[type="radio"]');
+  await openFiles(page, [CUBE], 'single-cube.bbmodel');
+  const initial = (await looks.evaluateAll((inputs) => inputs.map((i) => (i as HTMLInputElement).value)))[0] ?? '';
+  const other = await looks.evaluateAll(
+    (inputs) => (inputs.find((i) => !(i as HTMLInputElement).checked) as HTMLInputElement).value,
+  );
+  await page.locator(`#look-panel input[value="${other}"]`).check();
+  await waitForStored(page, (record) => record['look'] === other);
+  await openFiles(page, [fixture('bbmodel', 'flat-cube.bbmodel')], 'flat-cube.bbmodel');
+  await page.locator(`#look-panel input[value="${initial}"]`).check();
+  await waitForStored(page, (record) => record['look'] === initial);
+  const before = await waitForModel(page);
+  await page.evaluate(() => window.__msApp!.failNextScene());
+  await page.locator('#file-input').setInputFiles([CUBE]);
+  await expectAlert(page, 'single-cube.bbmodel');
+  await expect(page.locator(`#look-panel input[value="${initial}"]`)).toBeChecked();
+  await expect(page.getByRole('status')).not.toContainText('Opening');
+  expect(pixelAt(await previewImage(page), 0.5, 0.5)).toEqual(pixelAt(before, 0.5, 0.5));
+  await page.reload();
+  await expect(page.getByRole('status')).toContainText('Opened flat-cube.bbmodel', { timeout: 30_000 });
+});
+
+test('a skin whose scene fails to build keeps its arms', async ({ page }) => {
+  await openApp(page);
+  await openFiles(page, [fixture('skins', 'skin-classic.png')], 'skin-classic.png');
+  await waitForModel(page);
+  await page.evaluate(() => window.__msApp!.failNextScene());
+  await page.getByRole('radio', { name: 'Slim (3 px)' }).check();
+  await expectAlert(page, 'Could not change the arms');
+  await expect(page.getByRole('radio', { name: 'Slim (3 px)' })).not.toBeChecked();
+  await expect(page.getByRole('radio', { name: 'Classic (4 px)' })).toBeChecked();
+});
+
+test('a scene checkbox clicked while files load goes back to what the shown model has', async ({ page }) => {
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'nested-groups.bbmodel')], 'nested-groups.bbmodel');
+  await waitForModel(page);
+  await page.evaluate(() => {
+    window.__msApp!.setWatchdogMs(3000);
+    window.__msApp!.hangNextLoad();
+  });
+  await page.locator('#file-input').setInputFiles([CUBE]);
+  const box = page.locator('#scene-panel input[type="checkbox"]').first();
+  await expect(box).toBeChecked();
+  await box.click();
+  await expect(box).toBeChecked();
+  await expectAlert(page, /took longer/);
 });
