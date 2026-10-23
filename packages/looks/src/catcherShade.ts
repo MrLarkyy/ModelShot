@@ -21,8 +21,8 @@ function fade(xz: readonly [number, number], rect: readonly [number, number, num
  * Factor a shadow-catcher point applies to the backdrop, as `glsl/shadowCatcher.glsl` computes it: `fill` the fill
  * light reaching the point (unoccluded mean `hemisphereFill(up)`, the dome's sky), `keyT` the key's visibility, `xz`
  * the point and `rect` the catcher's `[minX, minZ, maxX, maxZ]`. 1 where nothing blocks or the look has no light,
- * `1 − catcher.strength` fully shadowed, affine in `fill` and `keyT`, fading to 1 over the rectangle's outer 10 %. The unshadowed accents (fill and
- * rim lights) cast nothing, so they do not enter.
+ * `1 − catcher.strength` fully shadowed, affine in `fill` and `keyT`, fading to 1 over the rectangle's outer 10 %.
+ * The unshadowed accents (fill and rim lights) cast nothing, so they do not enter.
  */
 export function catcherShade(
   rig: LightRig,

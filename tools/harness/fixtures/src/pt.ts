@@ -23,8 +23,8 @@ import { isRtSceneName, parseRtView, reverseMeshOrder, rtCamera, rtLook, rtScene
 // per step, default all), tile (tile side, default 256), size (CSS pixels, default 256), maxTriangles, track=1 (count
 // GL objects), timing=1 (one sample per frame with a time readout, for a manual run on real hardware); the render
 // quality (RenderRequest): supersample=1..4, denoise=1, noise=<threshold>, which the sample bench uses too;
-// transparent=1 (RenderRequest.transparent: readRGBA gives readImage's straight alpha, rows bottom to top as the drawing
-// buffer's); cameraonly=1 (every mesh seen by camera rays only, so nothing blocks a catcher ray).
+// transparent=1 (RenderRequest.transparent: readRGBA gives readImage's straight alpha, rows bottom to top as the
+// drawing buffer's); cameraonly=1 (every mesh seen by camera rays only, so nothing blocks a catcher ray).
 const params = new URLSearchParams(location.search);
 
 /** Path-tracer-only presets: a realtime view plus what only the tracer has. */
