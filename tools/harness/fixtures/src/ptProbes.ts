@@ -4,7 +4,10 @@ import type { PtProbe } from './fixtureApi';
 
 type Point = [number, number, number];
 
-/** A texel of a mesh (texture UV units, of frame 0 for a frame strip) or, with `groundY`, where the key light's ray through it meets that height. */
+/**
+ * A texel of a mesh (texture UV units, of frame 0 for a frame strip) or, with `groundY`, where the key light's ray
+ * through it meets that height.
+ */
 export interface PtProbeRequest {
   readonly name: string;
   readonly mesh: string;
