@@ -172,8 +172,8 @@ const LOOKS: Readonly<Record<RtLook, { eye: Point3; target: Point3; near: number
   contact: { eye: [-70, 62, -78], target: [-4, 0, -14], near: 20, far: 260 },
   // The cutout-edge quad from yaw 20, pitch 15 at about 24 pixels per texel (256 px): 14.65 = 5.33 / tan(20 deg).
   edge: { eye: [4.84, 3.79, 13.3], target: [0, 0, 0], near: 5, far: 40 },
-  // The texture-wrap boxes' south faces from 10 degrees above, columns vertical: about 8 pixels per texel at 256 px.
-  wrap: { eye: [0, 23.3, 47.3], target: [0, 15, 0], near: 20, far: 120 },
+  // The texture-wrap boxes' south faces from 10 degrees above, columns vertical: about 5 pixels per texel at 256 px.
+  wrap: { eye: [-2, 26.7, 66.3], target: [-2, 15, 0], near: 40, far: 150 },
 };
 
 export const DEFAULT_RT_VIEW: RtView = {
@@ -257,8 +257,8 @@ export const RT_VARIANTS: Readonly<Record<string, Partial<RtView>>> = {
   'bake-gltf-contact': { scene: 'gltf-contact', look: 'contact', catcher: false, bake: 64 },
   // MS-50: a board inside an inverted-hull outline (a Blockbench cube with from > to), seen from above its side.
   'outline-hull': { scene: 'outline-hull', yawDeg: 30, pitchDeg: 30 },
-  // MS-52: faces past their texture, clamped (Hytale default, free default) and repeated (stored wrap_mode); `-inside`
-  // is the same image position under the exact depth key, whose mesh pass carries the most varyings.
+  // MS-52: faces past their texture or strip frame, clamped (Hytale default, free default) and repeated (stored
+  // wrap_mode); `-inside` is the same image position under the exact depth key, whose mesh pass has the most varyings.
   'texture-wrap': { scene: 'texture-wrap', look: 'wrap' },
   'texture-wrap-inside': { scene: 'texture-wrap', look: 'wrap', depth: 'inside' },
 };

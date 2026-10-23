@@ -130,9 +130,9 @@ without depth test lets the model cover it in either depth-key variant. A scene 
   fringe. Every tap is addressed by `faceTexel` (the `faceTexels` chunk of `@modelshot/looks`, which the path tracer
   addresses with too): clamped to the face's texel rectangle from `SceneMesh.uvRects` (`faceTexelRange`), then, where
   the face's UVs pass the image, repeated into it for a texture with `wrap: 'repeat'` or clamped to its edge texel
-  otherwise ([`SceneTexture.wrap`](scene-format.md#scenetexture)). So no texel of a neighbouring atlas region or
+  otherwise ([`SceneTexture.wrap`](scene-format.md#scenetexture)); on a strip the image is its frame 0. So no texel of a neighbouring atlas region or
   outside the image is ever read, with any face UV rotation or mirroring, and at a clamped edge the seam taps blend
-  the edge texel with itself. The texture's flags (`textureSamplingFlags`, bit `TEXTURE_FLAG_REPEAT`) come per vertex
+  the edge texel with itself. The texture's flags (`textureSamplingFlags`: bit `TEXTURE_FLAG_REPEAT`, the frame count − 1 from bit 8) come per vertex
   (attribute 12, the same on every vertex of a batch, 4 bytes each) into a flat varying; the closed-opaque check on
   the CPU (`translucentTexelsIn`) counts the same repeated texels.
 - Minified (more than one texel per pixel): the same addressed lookup at a rotated 2 × 2 grid inside the pixel, which

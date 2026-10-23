@@ -185,8 +185,10 @@ v, so a consumer that ignores `frames` draws frame 0, the still.
 `wrap` (`SceneTextureWrap`, optional: `'clamp'` or `'repeat'`; absent: `DEFAULT_TEXTURE_WRAP`, `'clamp'`) says what a
 texel lookup past the image reads. Every renderer first keeps a lookup inside the face's texel rectangle (from its
 `uvRects` entry), so only a face whose UVs pass the texture reaches beyond it; there `clamp` reads the edge texel and
-`repeat` the texture repeated (texel coordinates modulo `width` and `height`). `textureSampling(texture)` resolves the
-field with its default; renderers read it only through that function. The bbmodel loader stores `'repeat'` for a
+`repeat` the texture repeated (texel coordinates modulo `width` and `height`). On a strip (`frames`) the image is
+frame 0, the frame the UVs map into: rows 0 to ceil(`height` / `frames.count`) − 1, so a lookup never reads another
+frame (a player of frames must offset this by the played frame). `textureSampling(texture)` resolves `wrap` and the
+frame count with their defaults (`{ wrap, frames }`); renderers read them only through that function. The bbmodel loader stores `'repeat'` for a
 texture whose `wrap_mode` is `repeat` and leaves the key out otherwise ([bbmodel.md](bbmodel.md)); the glTF and OBJ
 loaders leave it out (their images clamp).
 

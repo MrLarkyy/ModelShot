@@ -238,7 +238,7 @@ one set of ray rules. A camera-only face (`SceneMeshGroup.cameraOnly`) counts fo
 
 - The texel is the nearest one of the hit's UV, addressed by `faceTexel` (the preview's chunk): clamped to the face's
   texel rectangle (`faceTexelRange`), then into the image, repeated for a texture with `wrap: 'repeat'` and clamped to
-  the edge texel otherwise ([`SceneTexture.wrap`](scene-format.md#scenetexture)), before the image's place in the
+  the edge texel otherwise ([`SceneTexture.wrap`](scene-format.md#scenetexture); a strip's image is its frame 0), before the image's place in the
   texture layers is added; read with `texelFetch`: no filtering, no mipmaps, nothing from a neighbouring atlas region
   even where a face's UVs pass its image. The flags ride in the material row (texel 1 w, `textureSamplingFlags`).
   Texel edges come out area-averaged because every sample jitters its camera ray uniformly inside the pixel (a box

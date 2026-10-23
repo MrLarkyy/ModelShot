@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test';
 // The package index pulls in GLSL through Vite's ?raw, which Playwright cannot load: the plain modules directly.
 import { agxToneMap } from '../../../packages/looks/src/agxToneMap';
 import { backdropColor } from '../../../packages/looks/src/backdropColor';
-import { WRAP_CUBES, wrapFacePoint, type WrapCube } from '../fixtures/src/textureWrapLayout';
+import { WRAP_CUBES, wrapCube, wrapFacePoint, type WrapCube } from '../fixtures/src/textureWrapLayout';
 import { compareImages, type CompareOptions } from '../src/compareImages';
 import { encodeFlipped, expectGolden, openFixture, type FixtureInfo } from '../src/expectGolden';
 import type { GoldenSpec } from '../src/goldenSpec';
@@ -15,7 +15,8 @@ import { lookPresetFile } from '../src/lookPresetFile';
 /**
  * MS-52: a face whose UVs pass its texture (u -4 .. 20 of 16 texels) reads the edge texel (clamp: the Hytale and the
  * free default) or the texture repeated (a stored wrap_mode repeat), the same in the preview and the render, and never
- * a texel of another image: a sentinel image lies right of each wrap texture in the path tracer's texture layers.
+ * a texel of another image: a sentinel image lies right of each wrap texture in the path tracer's texture layers. On a
+ * two-frame strip a face past frame 0 (v -3 .. 11 of 8 rows) clamps or repeats within that frame; frame 1 is sentinel.
  */
 const RT_WRAP: GoldenSpec = { kind: 'raster', fixture: 'rt', name: 'rt-texture-wrap', variant: 'texture-wrap' };
 // The exact depth key's mesh pass carries the most varyings (the flags are one of them); single-sampled frames.
@@ -41,35 +42,47 @@ const PT_WRAP: GoldenSpec = {
 
 /**
  * Preview (baked, 64 samples) vs render (seed 1, 64 samples), as the pair table of src/ptPairTolerance.ts: measured
- * 0.00192 / 0.689, x 1.25 (MS-52). Kept here, not in that table, whose every entry pathtracer.spec.ts pairs.
+ * 0.00070 / 0.671 with the strip boxes, x 1.25 (MS-52). Kept here, not in that table, whose every entry pathtracer.spec.ts pairs.
  */
-const PAIR_TOLERANCE: CompareOptions = { threshold: 0.1, maxDiffRatio: 0.0024, maxMeanDelta: 0.861 };
+const PAIR_TOLERANCE: CompareOptions = { threshold: 0.1, maxDiffRatio: 0.00088, maxMeanDelta: 0.839 };
 
-/** u of a probe and u of the texel inside the image it must show, on one box's south face. */
+/** A texel coordinate (u, v) on a box's south face; v absent: half way up (the still textures' rows are alike). */
+type At = readonly [number, number?];
+
+/** A probe and the texel inside the image (or frame) it must show, on one box's south face. */
 interface WrapProbe {
   readonly cube: WrapCube['name'];
-  readonly u: number;
-  readonly like: number;
+  readonly at: At;
+  readonly like: At;
   /** A texel inside the image the probe must not look like (what the other wrap mode would show). */
-  readonly unlike: number;
+  readonly unlike: At;
 }
 
 const PROBES: readonly WrapProbe[] = [
-  ...(['hytale-clamp', 'free-clamp'] as const).flatMap((cube) => [
+  ...(['hytale-clamp', 'free-clamp'] as const).flatMap((cube): WrapProbe[] => [
     // Past the right edge: column 15 (orange), not column 0 (teal, repeat).
-    { cube, u: 18.5, like: 15.5, unlike: 0.5 },
-    { cube, u: 16.5, like: 15.5, unlike: 0.5 },
+    { cube, at: [18.5], like: [15.5], unlike: [0.5] },
+    { cube, at: [16.5], like: [15.5], unlike: [0.5] },
     // Past the left edge: column 0, not column 12 (white, repeat).
-    { cube, u: -3.5, like: 0.5, unlike: 12.5 },
-    { cube, u: -0.5, like: 0.5, unlike: 15.5 },
+    { cube, at: [-3.5], like: [0.5], unlike: [12.5] },
+    { cube, at: [-0.5], like: [0.5], unlike: [15.5] },
   ]),
   // Repeated: u 16.5 is column 0, u -3.5 column 12, u -0.5 column 15, never the edge the clamp would show.
-  { cube: 'free-repeat', u: 16.5, like: 0.5, unlike: 15.5 },
-  { cube: 'free-repeat', u: -3.5, like: 12.5, unlike: 0.5 },
-  { cube: 'free-repeat', u: -0.5, like: 15.5, unlike: 0.5 },
+  { cube: 'free-repeat', at: [16.5], like: [0.5], unlike: [15.5] },
+  { cube: 'free-repeat', at: [-3.5], like: [12.5], unlike: [0.5] },
+  { cube: 'free-repeat', at: [-0.5], like: [15.5], unlike: [0.5] },
+  // Strip frame 0: row 0 white, row 7 orange, rows 1-6 green; rows 8-10 below it are frame 1, the sentinel.
+  // Clamped: above the frame row 0, below it row 7, never a repeated row.
+  { cube: 'strip-clamp', at: [8.5, -1.5], like: [8.5, 0.5], unlike: [8.5, 3.5] },
+  { cube: 'strip-clamp', at: [8.5, 9.5], like: [8.5, 7.5], unlike: [8.5, 3.5] },
+  { cube: 'strip-clamp', at: [8.5, 8.5], like: [8.5, 7.5], unlike: [8.5, 0.5] },
+  // Repeated within the frame: v 8.5 is row 0, v -0.5 row 7, v 9.5 row 1.
+  { cube: 'strip-repeat', at: [8.5, 8.5], like: [8.5, 0.5], unlike: [8.5, 7.5] },
+  { cube: 'strip-repeat', at: [8.5, -0.5], like: [8.5, 7.5], unlike: [8.5, 0.5] },
+  { cube: 'strip-repeat', at: [8.5, 9.5], like: [8.5, 3.5], unlike: [8.5, 7.5] },
 ];
 
-/** Mean colour of the 3 x 3 pixels around (x, y): a texel is about 8 pixels wide, the seams 1 pixel. */
+/** Mean colour of the 3 x 3 pixels around (x, y): a texel is about 5 pixels wide, the seams 1 pixel. */
 function meanAround(image: Image, x: number, y: number): [number, number, number] {
   const sum = [0, 0, 0];
   for (let dy = -1; dy <= 1; dy++) {
@@ -106,32 +119,40 @@ async function project(page: Page, point: readonly [number, number, number]): Pr
 /** Every probe of the image the page shows, each logged under `[wrap probe]`. */
 async function checkProbes(page: Page, label: string): Promise<void> {
   const image = await currentImage(page);
-  const colourAt = async (cube: WrapCube, u: number) => {
-    const [x, y] = await project(page, wrapFacePoint(cube, u));
+  const colourAt = async (cube: WrapCube, [u, v]: At) => {
+    const [x, y] = await project(page, wrapFacePoint(cube, u, v));
     return meanAround(image, x, y);
   };
+  const text = ([u, v]: At) => (v === undefined ? `u ${u}` : `(${u}, ${v})`);
   const failures: string[] = [];
   for (const probe of PROBES) {
     const cube = WRAP_CUBES.find((c) => c.name === probe.cube);
     if (!cube) throw new Error(`no cube ${probe.cube}`);
     const [at, like, unlike] = await Promise.all([
-      colourAt(cube, probe.u),
+      colourAt(cube, probe.at),
       colourAt(cube, probe.like),
       colourAt(cube, probe.unlike),
     ]);
     const line =
-      `${label} ${probe.cube} u ${probe.u}: ${at.map(Math.round).join(',')} like u ${probe.like} ` +
-      `${like.map(Math.round).join(',')} (hue ${hueMatch(at, like).toFixed(4)}), unlike u ${probe.unlike} ` +
+      `${label} ${probe.cube} ${text(probe.at)}: ${at.map(Math.round).join(',')} like ${text(probe.like)} ` +
+      `${like.map(Math.round).join(',')} (hue ${hueMatch(at, like).toFixed(4)}), unlike ${text(probe.unlike)} ` +
       `${unlike.map(Math.round).join(',')} (hue ${hueMatch(at, unlike).toFixed(4)})`;
     console.log(`[wrap probe] ${line}`);
     if (!same(at, like) || same(at, unlike)) failures.push(line);
   }
   // The texels the probes compare are the columns they are meant to be: no box shows its image mirrored.
-  const free = WRAP_CUBES[1];
-  if (!free) throw new Error('no free-clamp cube');
-  const [first, last] = await Promise.all([colourAt(free, 0.5), colourAt(free, 15.5)]);
+  const free = wrapCube('free-clamp');
+  const strip = wrapCube('strip-clamp');
+  const [first, last, top, bottom] = await Promise.all([
+    colourAt(free, [0.5]),
+    colourAt(free, [15.5]),
+    colourAt(strip, [8.5, 0.5]),
+    colourAt(strip, [8.5, 7.5]),
+  ]);
   expect(Math.min(first[1], first[2]), `${label}: column 0 is teal`).toBeGreaterThan(first[0] + 40);
   expect(last[0], `${label}: column 15 is orange`).toBeGreaterThan(Math.max(last[1], last[2]));
+  expect(Math.min(...top), `${label}: strip row 0 is white`).toBeGreaterThan(150);
+  expect(bottom[0], `${label}: strip row 7 is orange`).toBeGreaterThan(Math.max(bottom[1], bottom[2]));
   expect(failures, `${label}: probes off their texel`).toEqual([]);
   const sentinel = sentinelPixels(image);
   console.log(`[wrap probe] ${label}: ${sentinel} sentinel pixels`);

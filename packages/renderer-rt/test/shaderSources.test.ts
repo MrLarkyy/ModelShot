@@ -127,6 +127,8 @@ describe('shader sources', () => {
         expect(reads, `${name} ${depthKey}`).toEqual([
           'texelFetch(tex, faceTexel(texel, a.range, a.size, a.flags), 0);',
         ]);
+        // A strip's lookups stay in its frame (frame count from bit 8 of the flags).
+        expect(fragment).toContain('ivec2 s = wrapSize(size, flags);');
       }
     }
     expect(shaderProgramSource('fallback').fragment).toContain(

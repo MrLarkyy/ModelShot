@@ -39,9 +39,9 @@ describe('batchScene', () => {
     expect([...(batch?.uvRects.subarray(0, 4) ?? [])]).toEqual([0, 0, 1, 1]);
   });
 
-  it('gives every vertex its batch texture sampling flags: repeat 1, clamp and untextured 0', () => {
+  it('gives every vertex its batch texture sampling flags: repeat 1 plus a strip frame count from bit 8, clamp and untextured 0', () => {
     const scene = quadScene();
-    const repeat = { ...scene.textures[0]!, wrap: 'repeat' as const };
+    const repeat = { ...scene.textures[0]!, wrap: 'repeat' as const, frames: { count: 2 } };
     const twoGroups = quad(0, 0, {
       groups: [
         { material: 0, start: 0, count: 3 },
@@ -52,7 +52,7 @@ describe('batchScene', () => {
     const batches = batchScene(doc([twoGroups, untextured], { textures: [scene.textures[0]!, repeat] }));
     expect(batches.map((b) => [b.texture, [...new Set(b.textureFlags)], b.textureFlags.length])).toEqual([
       [0, [0], 4],
-      [1, [1], 4],
+      [1, [256 + 1], 4],
       [-1, [0], 4],
     ]);
   });

@@ -15,9 +15,14 @@ export const DEFAULT_TEXTURE_WRAP: SceneTextureWrap = 'clamp';
 /** How both renderers sample a texture, every optional field resolved to its default. */
 export interface TextureSampling {
   readonly wrap: SceneTextureWrap;
+  /**
+   * Frames of a strip (`frames.count`), 1 for a still image: a lookup past the face stays in the frame its UVs map
+   * into, clamped or repeated there, never in another frame.
+   */
+  readonly frames: number;
 }
 
 /** The sampling of `texture`; absent fields take their defaults. */
-export function textureSampling(texture: Pick<SceneTexture, 'wrap'> | undefined): TextureSampling {
-  return { wrap: texture?.wrap ?? DEFAULT_TEXTURE_WRAP };
+export function textureSampling(texture: Pick<SceneTexture, 'wrap' | 'frames'> | undefined): TextureSampling {
+  return { wrap: texture?.wrap ?? DEFAULT_TEXTURE_WRAP, frames: texture?.frames?.count ?? 1 };
 }

@@ -122,7 +122,7 @@ describe('packMaterials', () => {
     expect(slot(3)).toEqual([0, 0, 2, 16, 8, ALPHA_MODE_ID.opaque, 0, 0, 0, 3, 0, 0]);
   });
 
-  it('writes the texture sampling flags into texel 1 w: repeat 1, clamp and untextured 0', () => {
+  it('writes the texture sampling flags into texel 1 w: repeat 1, a strip frame count from bit 8, clamp and untextured 0', () => {
     const texture = (wrap?: 'clamp' | 'repeat') => ({
       name: 't',
       mimeType: 'image/png' as const,
@@ -136,21 +136,25 @@ describe('packMaterials', () => {
     });
     const doc = {
       ...sceneOf([]),
-      textures: [texture('repeat'), texture('clamp'), texture()],
+      textures: [texture('repeat'), texture('clamp'), texture(), { ...texture('repeat'), frames: { count: 4 } }],
       materials: [
         { name: 'repeat', texture: 0 },
         { name: 'clamp', texture: 1 },
         { name: 'default', texture: 2 },
         { name: 'none', texture: -1 },
+        { name: 'strip', texture: 3 },
       ],
     };
-    const placed: MaterialTextures = { ...textures, textures: [place(1, 32), place(1, 48), place(1, 64)] };
+    const placed: MaterialTextures = {
+      ...textures,
+      textures: [place(1, 32), place(1, 48), place(1, 64), place(1, 80)],
+    };
     const table = packMaterials(doc, placed).data;
     const flags = (s: number) => table[s * MATERIAL_TEXELS * 4 + 7];
-    expect([0, 1, 2, 3, 4].map(flags)).toEqual([0, TEXTURE_FLAG_REPEAT, 0, 0, 0]);
+    expect([0, 1, 2, 3, 4, 5].map(flags)).toEqual([0, TEXTURE_FLAG_REPEAT, 0, 0, 0, 3 * 256 + TEXTURE_FLAG_REPEAT]);
     // A repeat texture drawn as the placeholder keeps its flags, as the preview's batch does.
     expect(flags(1)).toBe(
-      packMaterials(doc, { ...placed, textures: [null, null, null] }).data[MATERIAL_TEXELS * 4 + 7],
+      packMaterials(doc, { ...placed, textures: [null, null, null, null] }).data[MATERIAL_TEXELS * 4 + 7],
     );
   });
 });

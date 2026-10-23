@@ -41,7 +41,7 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
   draws it (Blockbench conventions 16). Absent, `wrap_mode` takes the format's `texture_wrap_default` (`clamp` in
   `hytale_character` and `hytale_prop`, `limited` everywhere else), which draws clamped either way. A `repeat`
   texture gets [`SceneTexture.wrap`](scene-format.md#scenetexture) `"repeat"`; a clamped one no `wrap` key. Any
-  other value warns and clamps.
+  other value warns and clamps. On a frame strip a face clamps or repeats within frame 0, never into another frame.
 - **Box UV** (`meta.box_uv` or the cube's `box_uv`): faces without a `uv` get Blockbench's box layout from
   `uv_offset`, the cube size and `mirror_uv`. The size is `to − from` of the plain cube (signed, so negative on a
   reversed axis, as Blockbench lays it out; inflate and stretch ignored),
