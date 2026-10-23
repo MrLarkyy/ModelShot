@@ -1,4 +1,4 @@
-import { ALPHA_MODE_ID } from '@modelshot/looks';
+import { ALPHA_MODE_ID, TEXTURE_FLAG_REPEAT, TEXTURE_FRAMES_SHIFT, textureSamplingFlags } from '@modelshot/looks';
 import {
   resolveMaterialAlpha,
   textureSampling,
@@ -250,7 +250,7 @@ const STILL_CLAMPED: TextureSampling = { wrap: 'clamp', frames: 1 };
 
 /** Texel rows a lookup may read in an image of `height` rows: frame 0 of a strip (`wrapSize` of faceTexels.glsl). */
 function wrapRows(height: number, frames: number): number {
-  if (!(Number.isInteger(frames) && frames >= 2)) return height;
+  if (frames <= 1) return height;
   return Math.min(Math.max(Math.ceil(height / frames - 1e-3), 1), height);
 }
 
@@ -266,9 +266,11 @@ export function translucentTexelsIn(
   sampling: TextureSampling = STILL_CLAMPED,
 ): number {
   const { width, sums } = table;
-  const repeat = sampling.wrap === 'repeat';
+  // Read from the flags word the shaders get, so a frame count they treat as a still image is one here too.
+  const flags = textureSamplingFlags(sampling);
+  const repeat = (flags & TEXTURE_FLAG_REPEAT) !== 0;
   // v is normalised by the whole image, so the range is taken in its rows and only the bound is the frame's.
-  const rows = wrapRows(table.height, sampling.frames);
+  const rows = wrapRows(table.height, (flags >> TEXTURE_FRAMES_SHIFT) + 1);
   const stride = width + 1;
   const at = (x: number, y: number) => sums[y * stride + x] ?? 0;
   let count = 0;

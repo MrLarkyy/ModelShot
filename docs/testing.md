@@ -84,7 +84,8 @@ no state; with one worker nothing runs at once, it only lets a shard take part o
 depends on `golden` (a dependency put every golden test into the bench's shard: shard 1 had all 219 tests, 2-4
 none). Playwright shards a project into contiguous ranges by test count, not by time, so a block of slow tests
 lands in one or two shards; each block is its own project with its own shards. `golden` runs `environment`, `export`,
-`golden*`, `modelView` and `realtime.spec.ts` without the tests titled `baked lighting` (`grepInvert`), which `bake` runs;
+`golden*`, `modelView`, `realtime.spec.ts` and `textureWrap.spec.ts` without the tests titled `baked lighting`
+(`grepInvert`), which `bake` runs;
 `golden-pt` runs `pathtracer.spec.ts` without the tests titled `like the baked preview`, which `pair` runs (the 13
 preview-vs-render pairing tests). Each test is in exactly one project, and the plain `playwright test` (and so
 `pnpm test`) runs every project.
@@ -429,6 +430,19 @@ draws nothing): the board-centre luminance (3 x 3) within 2 levels of the board 
 pixels the hull darkens to below 50 (the rim; measured 2 385); the same unbaked and baked (`bake=16`, measured equal,
 rim 2 289).
 
+**Texture wrap** (MS-52, `e2e/textureWrap.spec.ts`, project `golden`): `fixtures/src/textureWrapScene.ts` builds a
+hytale_prop and a free .bbmodel in code (generated images, no asset file) with faces past their texture: three
+24 x 8 boxes showing u -4 .. 20 of a 16 x 16 still texture (Hytale default, free default: clamp; stored
+`wrap_mode: "repeat"`) and two boxes showing v -3 .. 11 of frame 0 of a two-frame strip (clamp, repeat), its frame 1
+the sentinel; a sentinel image follows each still texture, so it lies beside it in the path tracer's texture layers.
+Variants `texture-wrap` (fixed look `wrap`) and `texture-wrap-inside` (`depth=inside`, the exact depth key, whose mesh
+pass carries the most varyings). Goldens `rt-texture-wrap`, `rt-texture-wrap-inside` (default tolerance) and
+`pt-texture-wrap.s1.n64` (threshold 0). Probes (`textureWrapLayout.ts` points, 3 x 3 means): each probe past the
+image or frame matches the texel inside it that its wrap mode reads (hue >= 0.995, luminance within 8 levels) and not
+the one the other mode would read; 0 `sentinelPixels` in all three images. Its preview-vs-render pair (the pair rules
+below, limit kept in the spec so `pathtracer.spec.ts` keeps its list): framing 0 mismatches (3 444), radiance 46 px,
+0.00070, 0.671, limit 0.00088, 0.839 (measured x 1.25).
+
 ## Path-tracer goldens
 
 Fix the seed, the sample count, the resolution and the camera. The accumulation stops after exactly N samples, never
@@ -464,6 +478,7 @@ golden says them (`-x2-denoised`).
 | `pt-gltf-contact.s1.n128`              | contact-shadow.gltf, `contact`, no catcher            | golden; contact probes; pair (MS-41)             |
 | `pt-gltf-nodes-y030.s1.n128`           | scene-nodes.gltf, perspective 35°, pitch 20°, yaw 30° | golden; sentinel bleeding; catcher; pair (MS-39) |
 | `pt-obj-shapes-y030.s1.n128`           | shapes.obj, same view                                 | golden; pair (MS-39)                             |
+| `pt-texture-wrap.s1.n64`               | generated wrap boxes, `wrap` look (MS-52)             | golden; wrap and frame probes; sentinel; pair    |
 
 All eight earlier `pt-*` goldens were regenerated in MS-16 on purpose (same seeds, samples and size): the key became
 a 0.04 rad cone, the shadow catcher appeared under every model, and the random dimensions per path vertex grew from
@@ -539,6 +554,7 @@ Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with r
 | `gltf-contact`             | 0 (629)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)                     | 0.133, 7.03                                |
 | `obj-shapes-y030`          | 0 (1 852)                           | 245, 0.00374, 0.470 (MS-39, new; 463, 0.00706, 0.558 before MS-30) | 0.00468, 0.588                             |
 | `gltf-nodes-y030`          | 0 (2 218)                           | 320, 0.00488, 0.956 (MS-39, new; 435, 0.00664, 1.008 before MS-30) | 0.0061, 1.2                                |
+| `texture-wrap`             | 0 (3 444)                           | 46, 0.00070, 0.671 (MS-52, new; in `textureWrap.spec.ts`)          | 0.00088, 0.839                             |
 
 MS-30 (anti-aliased cut-out seams in the preview's MSAA frames, as the render anti-aliases them by sampling)
 re-measured every pair: `turntable-y030`, `iso`, `alpha-plane` and `cutout-checker` came closer to the render (rows

@@ -95,8 +95,8 @@ u_lookKeyColor × max(n·u_lookKeyDirection, 0) × a + fillLight(n)) + rimLight(
   de-indexed, a vertex per triangle corner (`LightmapLayout.cornerData`, composed with the sharp-edge split, so edge
   rounding stays), each corner carrying its point in the lightmap and its chart's rectangle (attribute 11, uploaded
   only for a batch with world charts and left disabled elsewhere, as no other vertex reads it); the
-  vertex shader passes them in the vertex-light varyings, as two more varyings would exceed the minimum of 15 next to
-  the exact depth key's. Vertex charts are fetched in `mesh.vert.glsl` and interpolated; the back pass reads the back
+  vertex shader passes them in the vertex-light varyings, as more varyings would exceed the minimum of 15: the exact
+  depth key's pass uses all 15. Vertex charts are fetched in `mesh.vert.glsl` and interpolated; the back pass reads the back
   chart. The light is sampled before the first `discard` (derivatives).
 - **Kept across poses.** `setScene` keeps the lighting when the new document has the same `layoutKey` (the same model
   in another pose), so the old light shows until the re-bake's first update; another layout drops it. A document that
@@ -270,8 +270,9 @@ GLSL ES 3.00 in `src/shaders/*.glsl`, composed by `linkShader` from static chunk
 (`texelSample`, `shading`, `hashAlpha`, `bakedLight`, `depthKey` and `depthKeyVertex` in a raster and an exact variant) and the
 shared look chunks (`agx`, `texelAlpha`, `faceTexels`, `lightRig`, `shadowCatcher`, `edgeRounding`); the catcher has its own program
 (`catcher.vert.glsl`, `catcher.frag.glsl`). `a_lightmap` uses attribute location 8, clear of the exact key's 4-7, and
-the edge attributes 9 and 10: 11 attributes and at most 14 varying vectors (exact variant; raster 9), within WebGL2's
-guaranteed 16 and 15 (`shaderSources.test.ts` counts them). An
+the edge attributes 9 and 10, the world chart 11 and the texture flags 12: 13 attributes and 15 varying vectors in the
+exact variant (raster 10), within WebGL2's guaranteed 16 and 15, the varyings exactly at it (`shaderSources.test.ts`
+counts them, each varying as a whole vector). An
 unknown or cyclic
 include throws; no shader text is built from user input. A compile or link failure throws `RendererError`
 (`SHADER_COMPILE` / `SHADER_LINK`) with the driver's info log.

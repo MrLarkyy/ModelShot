@@ -490,7 +490,8 @@ Reload affected models; scene documents need no migration.
 
 MS-52 reads texture `wrap_mode`, a behaviour change for files that loaded before: a face whose UVs pass its texture
 used to read undefined texels in the preview and a neighbouring texture's texels in the render; it now reads the edge
-texel, or the texture repeated when the texture stores `wrap_mode: "repeat"`, the same in both. A repeat texture
+texel, or the texture repeated when the texture stores `wrap_mode: "repeat"`, the same in both. On a frame strip a
+face past frame 0 used to read frame 1's texels in both renderers; it now clamps or repeats within frame 0. A repeat texture
 gains `wrap: "repeat"`; every other texture serialises exactly as before. A bad `wrap_mode` only warns, so no file
 that loaded before fails. Reload affected models; scene documents need no migration.
 

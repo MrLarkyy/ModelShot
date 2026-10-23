@@ -371,9 +371,11 @@ lets the faces shadow and occlude as ordinary faces, which only darkens what an 
 the key out everywhere else, so those documents are unchanged; no migration.
 Added within version 1 (MS-52), optional: `SceneTexture.wrap` (absent: `'clamp'`), with the type `SceneTextureWrap`,
 the exports `DEFAULT_TEXTURE_WRAP`, `SCENE_TEXTURE_WRAPS` and `textureSampling` (type `TextureSampling`). A document
-without it means what renderers now draw for every texture: the edge texel past the image (before MS-52 such a lookup
-was undefined in the realtime renderer and read a neighbouring image in the path tracer, so no defined meaning
-changes). Loaders leave the key out except for a repeating bbmodel texture; no migration.
+without it means what renderers now draw for every texture: the edge texel past the image. This changes what such
+faces draw: a lookup past the image used to be undefined in the realtime renderer and read a neighbouring image in the
+path tracer, and on a strip (`frames`) a face past frame 0 read frame 1's texels in both renderers; it now clamps (or
+repeats) within the image, and on a strip within frame 0. Loaders leave the key out except for a repeating bbmodel
+texture; no migration.
 
 ## Loaders
 

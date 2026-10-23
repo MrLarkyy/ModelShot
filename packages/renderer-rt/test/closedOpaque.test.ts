@@ -198,6 +198,13 @@ describe('texture opacity', () => {
     expect(translucentTexelsIn(frame0, [0, 0.75, 0.25, 1], strip('repeat'))).toBe(1);
   });
 
+  it('a frame count the shader flags cannot carry (over 65 535) reads the whole image, as the shaders do', () => {
+    const table = textureOpacityOf(image([[0, 2, 0]]), 4, 4);
+    if (typeof table === 'string') throw new Error('expected a table');
+    expect(translucentTexelsIn(table, [0, 0.5, 0.25, 0.75], { wrap: 'clamp', frames: 70_000 })).toBe(1);
+    expect(translucentTexelsIn(table, [0, 0.5, 0.25, 0.75], { wrap: 'clamp', frames: 2 })).toBe(0);
+  });
+
   it('a hole only a repeated face reaches makes the closed cube not opaque', () => {
     const table = textureOpacityOf(image([[0, 1, 0]]), 4, 4);
     const doc = cubeDoc([1, 0.25, 1.25, 0.5]);
