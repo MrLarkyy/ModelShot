@@ -206,8 +206,13 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
 - Bleeding: no turntable frame has a pixel whose red and blue both exceed green by more than 24 levels (the magenta
   sentinel after lighting and AgX). Without the face-rectangle clamp the 0° frame has 441 such pixels. The same holds
   for `gltf-nodes` at yaw 0°, 30°, 60°, 90°, 180° and 270°; with every UV rectangle widened to the whole image its 0°
-  frame has 179 such pixels (MS-13). Its fixture colours are chosen so that no edge pixel mixing two of them leans
-  magenta.
+  frame has 179 such pixels (MS-13). Its fixture colours are chosen so that no geometric edge pixel mixing two of them
+  leans magenta; since MS-30 the cut-out edge of its red `MASK` plane over the blue cube is anti-aliased and mixes
+  them (4 pixels at 0°), so for `gltf-nodes` a pixel within 0.01 in linear light (`agxInverse` of the studio look) of
+  a blend of up to three of its 8 neighbours that do not lean magenta does not count (`sentinelPixels` given a
+  `linear` mapping). With the face-rectangle clamp removed from `texelSample.glsl` that measure still finds 179
+  pixels at 0° (plain: 183), 152 at 30°, 234 at 90°, 251 at 180°, and 574 in the showcase's 0° frame (plain: 577).
+  Turntable and player frames keep the plain measure.
 - Loader fixtures (MS-13): scene `gltf-nodes` is `packages/formats/test/fixtures/gltf/scene-nodes.gltf` through
   `loadGltf` (a node hierarchy with TRS, quaternion, non-uniform scale, a matrix node and a mirrored node, a cube
   instanced twice on an atlas with magenta sentinel rings, a `MASK` cut-out plane, a 50 % `BLEND` plane, a
@@ -221,6 +226,21 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
 - Order independence: reversing the mesh order gives a byte-identical image on the float path and on the fallback,
   for the showcase and for `gltf-nodes`.
 - A cut-out texel over the backdrop shows exactly the backdrop colour.
+- Anti-aliased cut-out seams (MS-30), scene `cutout-edge` (`fixtures/src/cutoutEdge.ts`: one double-sided 8 x 8 unit
+  quad, `MASK`, a generated 8 x 8 texture with an opaque one-texel ring around a checker of opaque white and alpha-0
+  texels; `look=edge`, yaw 20°, pitch 15°, about 24 px per texel), measured by `src/cutoutSeams.ts` against the same
+  view at `aa=0` and over `scene=empty`: (a) no pixel more than 1 px from a hard-cutout boundary changes by more than
+  2 levels; (b) at least half of the model/backdrop transitions inside the ring have a strict mix on one side (neither
+  within 2 levels of backdrop nor texel; one pixel ramp, so at most one side of a pair can be a mix, and 4 samples
+  give 5 levels); (c) the covered area, each pixel's position between backdrop and texel in linear light
+  (`src/agxInverse.ts`, as the MSAA resolve averages before AgX), equals the hard shape's pixel count within 0.5 px
+  per row with a boundary; (d) every inner texel centre shows the backdrop exactly (cut) or the texel within 1 level.
+  With `msaa=0` (the renderer's `maxMsaaSamples`) the same seams have 0 mixes. The fallback (`aa=1` and `aa=0` give
+  the same model/backdrop map, 0 mixes) and the exact key (`cutout-edge-inside`, `depth=inside`, 0 mixes) stay hard.
+  `rt.drawStatesPerFrame()` (`fixtures/src/drawStates.ts`) records program, `SAMPLE_ALPHA_TO_COVERAGE` and the draw
+  framebuffer's `SAMPLES` at every draw: on only in opaque draws into a target with at least 2 samples (turntable,
+  `cutout-edge`, a baked checker), off in every draw of `aa=0`, exact, fallback frames, and for backdrop, catcher, OIT
+  and present.
 - Context loss through `WEBGL_lose_context`: the image after the restore matches `rt-turntable-y030`, without a
   reload or a page error.
 - Device pixel ratio 2 doubles the backing store; an element resize reallocates and keeps the projection unstretched.
@@ -376,6 +396,23 @@ rewritten: `rt-far`, `rt-gltf-nodes-y030`, `rt-obj-shapes-y030`, `rt-player-hold
 `rt-bake-cutout-checker`, `rt-bake-alpha-plane`, and as required `rt-fit-flat-cube`, `pt-alpha-ramp-blend`,
 `gradient`, `progressive.s7.n64` and every model-view golden (their fixture has its own shaders).
 
+Goldens regenerated on purpose in MS-30 (anti-aliased cut-out seams on the MSAA path; same views, bake seed and
+samples), the ones that failed their comparison, each set by its own `build golden --update --filter`:
+`rt-turntable-y060`, `rt-iso`, `rt-closeup`, `rt-gltf-nodes-y030`, `rt-obj-shapes-y030`, `rt-bake-cutout-checker`,
+`rt-bake-alpha-plane`, `rt-bake-turntable-y030`. MS-30's own change, against the same build with alpha-to-coverage
+gated off (byte-identical to origin/main's renderer), lies on cut-out seams only: 236 pixels (mean 0.070 levels),
+266 (0.086), 454 (0.131), 345 (0.106), 716 (0.175), 826 (0.225), 897 (0.401) and 269 (0.086). Three of them also take
+up the drift MS-15 left in tolerance (rounded edges; against their old golden 663, 711 and 1 389 pixels):
+`rt-gltf-nodes-y030`, `rt-obj-shapes-y030`, `rt-bake-cutout-checker`. Within tolerance and so not rewritten: the
+other turntable frames, `rt-far`, `rt-fit-flat-cube`, the player and preset frames and the rest; as required
+`rt-fallback`, `rt-player-slim-fallback`, `rt-preset-marketplace-fallback`, `rt-bake-cutout-checker-fallback`,
+`rt-player-legacy-opaque-hat-34`, `rt-edges`, `rt-bake-gltf-contact`, `rt-outline-hull`, every `pt-*` and every
+model-view golden. The `cutout-edge` test measured 1 742 transitions inside the ring, 1 053 with a mix (60 %), area
+16 590.4 against the hard shape's 16 609 pixels (limit 74.5, 149 rows); with the shader's band kept but A2C off
+(the failure its gate prevents) the area is 17 419 and no transition mixes. Frame time on SwiftShader,
+`rt-bench-512` median 389 ms against 361 ms with A2C gated off (`rt-bench-order-512`, exact frames, never A2C: 313
+against 298, the run-to-run spread); budget 2 000.
+
 For a manual run on real hardware open `rt.html?scene=bench&size=512&fps=1`: it draws continuously and shows the
 median frame work (draw until the GPU finished) and display interval over the last 120 frames, with the renderer
 string.
@@ -482,21 +519,26 @@ has interreflection and noise. Logged as `[pt pair] <view>: ...`, values in `tes
 Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with rounded edges and the mirrored bounce
 (MS-16's values in brackets; every limit stayed, none widened, `edges` is new at measured x 1.25):
 
-| view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta                       | limit: `maxDiffRatio`, `maxMeanDelta`    |
-| -------------------------- | ----------------------------------- | --------------------------------------------------------- | ---------------------------------------- |
-| `turntable-y030`           | 0 (1 604)                           | 201, 0.00307, 0.772 (185, 0.00282, 0.762)                 | 0.00353, 0.953                           |
-| `iso`                      | 0 (1 543)                           | 366, 0.00558, 0.959 (335, 0.00511, 0.942)                 | 0.00639, 1.18                            |
-| `alpha-plane`              | 0 (689)                             | 682, 0.01041, 1.567 (MS-41; before 2 083, 0.03178, 2.187) | 0.013, 1.96 (MS-41; was 0.0398, 2.48)    |
-| `player-hold-34`           | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295)             | 0.0232, 1.62                             |
-| `cutout-checker`           | 0 (3 307)                           | 293, 0.00447, 0.731 (275, 0.00420, 0.726)                 | 0.00525, 0.908                           |
-| `edges`                    | 0 (1 979)                           | 43, 0.00066, 0.397                                        | 0.00082, 0.496                           |
-| `preset-marketplace`       | 0 (1 322)                           | 1 269, 0.01936, 1.237                                     | 0.0223, 1.43                             |
-| `preset-rim`               | 0 (1 322)                           | 1 407, 0.02147, 1.109                                     | 0.0241, 1.13                             |
-| `preset-marketplace-yaw30` | 0 (1 304)                           | 1 387, 0.02116, 1.281                                     | 0.0265, 1.52                             |
+| view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta                     | limit: `maxDiffRatio`, `maxMeanDelta`      |
+| -------------------------- | ----------------------------------- | ------------------------------------------------------- | ------------------------------------------ |
+| `turntable-y030`           | 0 (1 605)                           | 142, 0.00217, 0.724 (MS-30; before 201, 0.00307, 0.772) | 0.00271, 0.905 (MS-30; was 0.00353, 0.953) |
+| `iso`                      | 0 (1 541)                           | 268, 0.00409, 0.889 (MS-30; before 366, 0.00558, 0.959) | 0.00512, 1.12 (MS-30; was 0.00639, 1.18)   |
+| `alpha-plane`              | 0 (687)                             | 232, 0.00354, 1.334 (MS-30; before 682, 0.01041, 1.567) | 0.00443, 1.67 (MS-30; was 0.013, 1.96)     |
+| `player-hold-34`           | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295)           | 0.0232, 1.62                               |
+| `cutout-checker`           | 0 (3 277)                           | 223, 0.00340, 0.623 (MS-30; before 293, 0.00447, 0.731) | 0.00426, 0.78 (MS-30; was 0.00525, 0.908)  |
+| `edges`                    | 0 (1 979)                           | 43, 0.00066, 0.397                                      | 0.00082, 0.496                             |
+| `preset-marketplace`       | 0 (1 322)                           | 1 269, 0.01936, 1.237                                   | 0.0223, 1.43                               |
+| `preset-rim`               | 0 (1 322)                           | 1 407, 0.02147, 1.109                                   | 0.0241, 1.13                               |
+| `preset-marketplace-yaw30` | 0 (1 304)                           | 1 387, 0.02116, 1.281                                   | 0.0265, 1.52                               |
 | `outline-hull`             | 0 (1 456)                           | 174, 0.00266, 0.438 (MS-50 1 076, 0.01642, 0.912)         | 0.00333, 0.548 (MS-39; was 0.0205, 1.14) |
-| `gltf-contact`             | 0 (618)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)            | 0.133, 7.03                              |
+| `gltf-contact`             | 0 (618)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)          | 0.133, 7.03                                |
 | `obj-shapes-y030`          | 0 (1 835)                           | 463, 0.00706, 0.558 (MS-39, new)                          | 0.00883, 0.698                           |
 | `gltf-nodes-y030`          | 0 (2 210)                           | 435, 0.00664, 1.008 (MS-39, new)                          | 0.0083, 1.26                             |
+
+MS-30 (anti-aliased cut-out seams in the preview's MSAA frames, as the render anti-aliases them by sampling)
+re-measured every pair: `turntable-y030`, `iso`, `alpha-plane` and `cutout-checker` came closer to the render (rows
+above), so their limits are tightened to measured x 1.25; every other view measured as before, its limit stays. The
+framing of every view still has 0 mismatches.
 
 MS-41 (world-density charts) measured the views it changes: `alpha-plane` 682 px, 0.01041, 1.567 (its ground is
 world-charted and shows the render's shadows; before 2 083, 0.03178, 2.187), so its limit is tightened to measured x

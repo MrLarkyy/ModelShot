@@ -15,6 +15,7 @@ import outlineHullSource from '../models/outline-hull.bbmodel?raw';
 import showcaseSource from '../models/rt-showcase.bbmodel?raw';
 import { benchScene } from './benchScene';
 import { cutoutChecker } from './cutoutChecker';
+import { cutoutEdge } from './cutoutEdge';
 import { edgesBbmodel, edgesHostileScene, edgesLoadScene, edgesScene, edgesWeldScene } from './edgesScene';
 import { MODEL_VIEW_LOOK, type Point3 } from './modelViewCamera';
 import { holdingCube, playerScene, posedPlayer } from './playerScenes';
@@ -68,6 +69,7 @@ export const RT_SCENE_NAMES = [
   'coincident-cubes',
   'grass-field',
   'cutout-checker',
+  'cutout-edge',
   'lightmap-overflow',
   'edges',
   'edges-200k',
@@ -134,7 +136,8 @@ export type RtLook =
   | 'ramp'
   | 'flat-shadow'
   | 'checker'
-  | 'contact';
+  | 'contact'
+  | 'edge';
 
 /** Fixed cameras: the model-view fixture's (same image positions as its probes) and two views of a horizontal pair. */
 const LOOKS: Readonly<Record<RtLook, { eye: Point3; target: Point3; near: number; far: number }>> = {
@@ -164,6 +167,8 @@ const LOOKS: Readonly<Record<RtLook, { eye: Point3; target: Point3; near: number
   checker: { eye: [-15.5, 25.4, -3], target: [-2, 2, -2.25], near: 5, far: 120 },
   // The contact-shadow glTF from the shadow side: the key light (from +x +z) casts the box's shadow toward the camera.
   contact: { eye: [-70, 62, -78], target: [-4, 0, -14], near: 20, far: 260 },
+  // The cutout-edge quad from yaw 20, pitch 15 at about 24 pixels per texel (256 px): 14.65 = 5.33 / tan(20 deg).
+  edge: { eye: [4.84, 3.79, 13.3], target: [0, 0, 0], near: 5, far: 40 },
 };
 
 export const DEFAULT_RT_VIEW: RtView = {
@@ -220,6 +225,10 @@ export const RT_VARIANTS: Readonly<Record<string, Partial<RtView>>> = {
   'cutout-checker': { scene: 'cutout-checker', look: 'checker' },
   'bake-cutout-checker': { scene: 'cutout-checker', look: 'checker', bake: 64 },
   'bake-cutout-checker-fallback': { scene: 'cutout-checker', look: 'checker', bake: 64, fallback: true },
+  // MS-30: anti-aliased cutout seams on the MSAA path; `-inside` is the same image position under the exact depth
+  // key (near = far x 1e-4), whose frames draw single-sampled.
+  'cutout-edge': { scene: 'cutout-edge', look: 'edge' },
+  'cutout-edge-inside': { scene: 'cutout-edge', look: 'edge', depth: 'inside' },
   'bake-alpha-plane': { scene: 'alpha-plane', look: 'model-view', bake: 64 },
   'bake-turntable-y030': { yawDeg: 30, bake: 64 },
   // Edge rounding (MS-15): sharp-edged cube and wedge beside a plane, a card and a smooth sphere.
@@ -372,6 +381,8 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return grassField(load(alphaPlaneSource));
     case 'cutout-checker':
       return cutoutChecker(load(showcaseSource));
+    case 'cutout-edge':
+      return cutoutEdge(load(showcaseSource));
     case 'lightmap-overflow':
       return lightmapOverflow(load(showcaseSource));
     case 'edges-200k':

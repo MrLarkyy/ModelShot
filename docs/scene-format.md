@@ -140,7 +140,8 @@ definition every pass uses:
 | `blend`     | `a = 1`                | `opaque`    |
 
 Per pass: an `invisible` texel is skipped by camera rays, shadow rays, ambient-occlusion rays and BVH hits alike, as
-if the surface had a hole there (in a rasteriser: discarded in the depth, shadow-map and colour passes). An `opaque`
+if the surface had a hole there (in a rasteriser: discarded in the depth, shadow-map and colour passes; the hole is per
+texel area, so an MSAA rasteriser may anti-alias its edge by sample coverage while keeping that area). An `opaque`
 texel stops every ray. A `partial` texel is drawn order-independently (never by draw order) with weight `a`, and lets
 `1 − a` of the light through shadow rays. A texel exactly at the cutoff is visible.
 
