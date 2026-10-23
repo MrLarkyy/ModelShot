@@ -3,6 +3,17 @@ import type { LightRig } from './lightRig';
 
 const luminance = (c: Rgb): number => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
 
+const keyWeight = (rig: LightRig): number => luminance(rig.lights.key.color) * rig.lights.key.direction[1];
+
+const lightWeight = (rig: LightRig): number => Math.max(luminance(rig.environment.sky) + keyWeight(rig), 1e-6);
+
+function fade(xz: readonly [number, number], rect: readonly [number, number, number, number]): number {
+  const u = (xz[0] - rect[0]) / Math.max(rect[2] - rect[0], 1e-6);
+  const v = (xz[1] - rect[1]) / Math.max(rect[3] - rect[1], 1e-6);
+  const edge = Math.min(u, 1 - u, v, 1 - v);
+  return Math.min(1, Math.max(0, edge / 0.1));
+}
+
 /**
  * Factor a shadow-catcher point applies to the backdrop, as `glsl/shadowCatcher.glsl` computes it: `fill` the fill
  * light reaching the point (unoccluded mean `hemisphereFill(up)`, the dome's sky), `keyT` the key's visibility, `xz`
@@ -17,13 +28,21 @@ export function catcherShade(
   xz: readonly [number, number],
   rect: readonly [number, number, number, number],
 ): number {
-  const { key } = rig.lights;
-  const keyWeight = luminance(key.color) * key.direction[1];
-  const fillWeight = luminance(rig.environment.sky);
-  const lit = (luminance(fill) + keyWeight * keyT) / Math.max(fillWeight + keyWeight, 1e-6);
-  const u = (xz[0] - rect[0]) / Math.max(rect[2] - rect[0], 1e-6);
-  const v = (xz[1] - rect[1]) / Math.max(rect[3] - rect[1], 1e-6);
-  const edge = Math.min(u, 1 - u, v, 1 - v);
-  const fade = Math.min(1, Math.max(0, edge / 0.1));
-  return 1 - rig.catcher.strength * (1 - lit) * fade;
+  const lit = (luminance(fill) + keyWeight(rig) * keyT) / lightWeight(rig);
+  return 1 - rig.catcher.strength * (1 - lit) * fade(xz, rect);
+}
+
+/**
+ * `catcherShade` from what blockers take, as the path tracer evaluates it per sample: `fillLost` = sky − `fill`,
+ * `keyLost` = 1 − `keyT`. Exactly 1 where both are 0 (a zero numerator, whatever the division rounds).
+ */
+export function catcherShadeOfLoss(
+  rig: LightRig,
+  fillLost: Rgb,
+  keyLost: number,
+  xz: readonly [number, number],
+  rect: readonly [number, number, number, number],
+): number {
+  const lost = (luminance(fillLost) + keyWeight(rig) * keyLost) / lightWeight(rig);
+  return 1 - rig.catcher.strength * lost * fade(xz, rect);
 }

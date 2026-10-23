@@ -15,7 +15,9 @@ import type { ShaderChunks } from './linkShader';
  * `u_look*` uniforms, `vec3 hemisphereFill(vec3 n)`, `vec3 environmentRadiance(vec3 d)`, `vec3 fillLight(vec3 n)`,
  * `vec3 towardEye(vec3 p)`, `vec3 rimLight(vec3 n, vec3 v, vec3 albedo)`),
  * `#include "backdrop"` (`vec3 backdropAt(float yNorm)`, `vec3 backdropHere()`), `#include "shadowCatcher"`
- * (`float catcherShade(vec3 fill, float keyT, vec2 xz, vec4 rect)`) and `#include "edgeRounding"`
+ * (`float catcherShade(vec3 fill, float keyT, vec2 xz, vec4 rect)` for the preview and
+ * `float catcherShadeOfLoss(vec3 fillLost, float keyLost, vec2 xz, vec4 rect)` for the path tracer) and
+ * `#include "edgeRounding"`
  * (`vec3 roundedNormal(vec3 n, vec4 d, vec4 angle, vec3 t[4], float width, vec4 footprint)`, the `EdgeLook` fillet).
  * The look's uniforms (`LOOK_UNIFORM_NAMES`) are set by `uploadLookUniforms`.
  */

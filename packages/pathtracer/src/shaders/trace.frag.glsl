@@ -35,9 +35,12 @@ layout(location = 2) out vec2 outCoverage;
 const int MAX_BOUNCES = 16;
 const int ROULETTE_FROM = 3;
 
-// The catcher point's shade of the backdrop: one key ray in the cone and one cosine-weighted fill ray (escaped: the
-// environment) through catcherShade, which is affine in both, so the mean over samples is the shade of the preview's
-// baked means. The catcher is invisible to every other ray.
+// The catcher point's shade of the backdrop: one key ray in the cone and one cosine-weighted fill ray, as a control
+// variate: the analytic unoccluded fill hemisphereFill(up), less what the fill ray would have brought had nothing
+// blocked it. Unbiased, since environmentRadiance's cosine mean is exactly hemisphereFill(up), and catcherShadeOfLoss
+// is affine, so the mean over samples is the shade of the preview's baked means; where neither ray is blocked every
+// sample is exactly 1 (the bare backdrop, coverage 0), so the noise sits only where something blocks. The catcher is
+// invisible to every other ray.
 float catcherShadeAt(uint key, uint dimension, vec3 point) {
   vec3 up = vec3(0.0, 1.0, 0.0);
   vec3 origin = leave(point, up);
@@ -45,9 +48,9 @@ float catcherShadeAt(uint key, uint dimension, vec3 point) {
   float keyT = shadowTransmittance(origin, cone, -1);
   vec3 d = cosineDirection(up, unitRandom(key, dimension, 0u), unitRandom(key, dimension + 1u, 0u));
   Hit blocker;
-  vec3 fill = closestHit(origin, d, 0.0, 3.0e38, 1.0, -1, key, dimension + 2u, blocker) ? vec3(0.0)
-                                                                                        : environmentRadiance(d);
-  return catcherShade(fill, keyT, point.xz, u_catcherRect);
+  vec3 fillLost = closestHit(origin, d, 0.0, 3.0e38, 1.0, -1, key, dimension + 2u, blocker) ? environmentRadiance(d)
+                                                                                            : vec3(0.0);
+  return catcherShadeOfLoss(fillLost, 1.0 - keyT, point.xz, u_catcherRect);
 }
 
 // One path: the camera ray through a jittered point of the pixel (a box filter: texel edges come out area-averaged),
@@ -55,8 +58,8 @@ float catcherShadeAt(uint key, uint dimension, vec3 point) {
 // the unshadowed fill and rim accents, the rim seen back along the camera ray (no ray, so no random dimension of their
 // own); on escape the environment (lightRig), whose cosine integral is the preview's fill. A camera ray that escapes
 // shows the backdrop at its pixel, or the shadow catcher. Transparent: such a ray adds no radiance, and coverage is 0
-// there, 1 - shade on the catcher (unclamped, so the mean stays affine: radiance + backdrop x (1 - coverage) is the
-// opaque mean) and 1 where it met a texel it accepted.
+// there, 1 - shade on the catcher (never negative, exactly 0 where nothing blocks; unclamped, so the mean stays affine:
+// radiance + backdrop x (1 - coverage) is the opaque mean) and 1 where it met a texel it accepted.
 vec3 tracePath(uint key, vec2 pixel, out float coverage) {
   vec3 origin;
   vec3 direction;
