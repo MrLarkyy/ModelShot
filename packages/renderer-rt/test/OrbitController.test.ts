@@ -236,4 +236,78 @@ describe('OrbitController', () => {
     expect(camera.position.every(Number.isFinite)).toBe(true);
     expect(camera.near).toBeGreaterThan(0);
   });
+
+  describe('state / setState', () => {
+    it('round trips a changed view exactly', () => {
+      const a = controller({ yawDeg: 210 });
+      a.rotate(33, -12);
+      a.setFov(60);
+      a.zoom(0.7);
+      a.pan(40, -25, 600);
+      const b = controller({ yawDeg: 30 });
+      b.setState(a.state());
+      expect(b.state()).toEqual(a.state());
+      expectSameCamera(b, a);
+    });
+
+    it('round trips the orthographic view', () => {
+      const a = controller();
+      a.isometric();
+      a.zoom(0.5);
+      const b = controller();
+      b.setState(a.state());
+      expect(b.projection).toBe('orthographic');
+      expectSameCamera(b, a);
+    });
+
+    it('restores the same view at another aspect of the viewport', () => {
+      const a = controller();
+      a.zoom(0.6);
+      const b = controller();
+      b.setAspect(0.8);
+      b.reset(bounds);
+      b.setState(a.state());
+      expect(b.state().distance).toBeCloseTo(a.state().distance, 9);
+    });
+
+    it('ignores fields that are not finite, an unknown projection and a bad target', () => {
+      const c = controller();
+      const before = c.state();
+      c.setState({
+        yawDeg: NaN,
+        pitchDeg: Infinity,
+        fovYDeg: NaN,
+        distance: -1,
+        orthoHeight: NaN,
+        target: [NaN, 0, 0],
+        projection: 'fisheye' as 'perspective',
+      });
+      expect(c.state()).toEqual(before);
+    });
+
+    it('clamps out-of-range fields like the setters', () => {
+      const c = controller();
+      c.setState({ pitchDeg: 500, fovYDeg: 1000, distance: 1e9 });
+      const state = c.state();
+      expect(state.pitchDeg).toBe(MAX_PITCH_DEG);
+      expect(state.fovYDeg).toBe(MAX_FOV_DEG);
+      expect(state.distance).toBeLessThanOrEqual(MAX_ZOOM_OUT);
+      expect(() => cameraProjection(c.camera(), 1.5)).not.toThrow();
+    });
+
+    it('applies a partial state and keeps the rest', () => {
+      const c = controller();
+      const before = c.state();
+      c.setState({ yawDeg: 90 });
+      expect(c.state()).toEqual({ ...before, yawDeg: 90 });
+    });
+  });
 });
+
+function expectSameCamera(actual: OrbitController, expected: OrbitController): void {
+  const a = actual.camera();
+  const e = expected.camera();
+  a.position.forEach((v, i) => expect(v).toBeCloseTo(e.position[i] ?? 0, 9));
+  a.target.forEach((v, i) => expect(v).toBeCloseTo(e.target[i] ?? 0, 9));
+  expect(a.projection.kind).toBe(e.projection.kind);
+}
