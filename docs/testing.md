@@ -83,27 +83,28 @@ the worker count changed. For the shards to split the suite the `golden` project
 no state; with one worker nothing runs at once, it only lets a shard take part of a file), and `bench` no longer
 depends on `golden` (a dependency put every golden test into the bench's shard: shard 1 had all 219 tests, 2-4
 none). Playwright shards a project into contiguous ranges by test count, not by time, so a block of slow tests
-lands in one or two shards; each block is its own project with its own shards. `golden` runs `environment`, `golden*`,
-`modelView` and `realtime.spec.ts` without the tests titled `baked lighting` (`grepInvert`), which `bake` runs;
+lands in one or two shards; each block is its own project with its own shards. `golden` runs `environment`, `export`,
+`golden*`, `modelView` and `realtime.spec.ts` without the tests titled `baked lighting` (`grepInvert`), which `bake` runs;
 `golden-pt` runs `pathtracer.spec.ts` without the tests titled `like the baked preview`, which `pair` runs (the 13
 preview-vs-render pairing tests). Each test is in exactly one project, and the plain `playwright test` (and so
 `pnpm test`) runs every project.
 
 Shard sizes (MS-39, `--list --project <p> --shard <k>/<n>`), each with the sum of its tests' CI times: the per-test
-times of main's run 39878163371 (MS-30's merge, so its three cut-out seam tests are counted), plus local times for MS-39's six new tests (four path-tracer tests, 29 s, and two
-pairs, 47 s). These are sums of test times, not job times; a job adds the install and build, and the VMs
+times of main's run 39878163371 (MS-30's merge, so its three cut-out seam tests are counted), MS-22's 31 export tests
+from main's run 39928740239 (MS-22's merge, job golden-1: 1.4 minutes together, 1.3-8.7 s each), plus local times for
+MS-39's six new tests (four path-tracer tests, 29 s, and two pairs, 47 s). These are sums of test times, not job times; a job adds the install and build, and the VMs
 differ by up to 2x. In run 39878163371 `playwright install --with-deps` took 13 s to 9.7 minutes per job and the build
 about 6 s (`bake-2`: a 14.4-minute job for 4.4 minutes of tests).
 
 | Project     | Tests | Shards | Tests per shard             | Minutes per shard (sum)           |
 | ----------- | ----: | -----: | --------------------------- | --------------------------------- |
-| `golden`    |   166 |      2 | 83 / 83                     | 6.3 / 2.6                         |
+| `golden`    |   197 |      2 | 99 / 98                     | 6.3 / 3.9                         |
 | `golden-pt` |    78 |      6 | 13 / 13 / 13 / 13 / 13 / 13 | 2.6 / 4.3 / 6.3 / 3.7 / 1.0 / 1.5 |
 | `pair`      |    13 |      3 | 5 / 4 / 4                   | 5.3 / 2.8 / 2.5                   |
 | `bake`      |    25 |      3 | 9 / 8 / 8                   | 6.4 / 4.3 / 3.5                   |
 | `bench`     |     1 |      1 | 1                           | its own job                       |
 
-283 tests in all. The path-tracer tests had been part of `golden` (241 tests in 5 shards of 48-49): the shard that held
+314 tests in all. The path-tracer tests had been part of `golden` (241 tests in 5 shards of 48-49): the shard that held
 48 of them summed to 16.0 minutes, the others 1.8-7.2, and the same block in shard 2 of 4 ran 16.3 and 17.4 minute jobs
 on main. `golden-pt` has 6 shards because its two longest tests (a denoised 2x render in batches, 3.0 minutes, and a
 denoised 2x render paired with the preview, 1.9 minutes) are four tests apart in the file: with 3, 4 or 5 shards one
@@ -598,7 +599,7 @@ the realtime fixture bakes under it) and `rim=0` (the preset's rim light black);
 the preview, `preset-marketplace-yaw30` the same from yaw 30 (a pair only). Studio is the v0 look, so every golden from before holds unregenerated. New goldens: `rt-preset-marketplace`,
 `rt-preset-rim`, `rt-preset-marketplace-fallback` (baked, default tolerance), `pt-preset-marketplace.s1.n64`,
 `pt-preset-rim.s1.n64` (path-tracer tolerance); pairs above. Tests (`look presets` describes of `realtime.spec.ts`
-and `pathtracer.spec.ts`, golden project):
+and `pathtracer.spec.ts`, `golden` and `golden-pt` projects):
 
 - the Marketplace backdrop of an empty scene, every row at three columns, within 2 levels of its TS mirror on the
   float path, the fallback and the path tracer in 64-pixel tiles at 1 and 4 samples (measured worst 0.5 levels);

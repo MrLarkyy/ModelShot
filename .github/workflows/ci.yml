@@ -33,9 +33,9 @@ jobs:
 
   # The browser tests in 14 shards, each on its own VM with one Playwright worker (docs/testing.md, CI). Playwright
   # shards a project into contiguous ranges by test count, not time, so each block of slow tests is its own project:
-  # golden 2 shards (the raster goldens, about 9 minutes together), golden-pt 6 (the path-tracer tests, about 20
-  # minutes; its two longest tests, 3.0 and 1.9 minutes, are four tests apart and fit one 7-minute shard only with
-  # 6), pair 3 (the preview-vs-render pairing tests, about 11 minutes) and bake 3 (the baked lighting tests, 13-15
+  # golden 2 shards (the raster goldens and the export tests, about 10 minutes together), golden-pt 6 (the
+  # path-tracer tests, about 20 minutes; its two longest tests, 3.0 and 1.9 minutes, are four tests apart and fit one
+  # 7-minute shard only with 6), pair 3 (the preview-vs-render pairing tests, about 11 minutes) and bake 3 (the baked lighting tests, 13-15
   # minutes on a slow VM). One runner ran past the 20-minute limit with the whole suite.
   e2e:
     runs-on: ubuntu-latest
