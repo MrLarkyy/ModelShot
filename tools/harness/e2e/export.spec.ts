@@ -52,8 +52,9 @@ const CANVAS_TOLERANCE = 1;
 const DENOISED_CANVAS_TOLERANCE = 43;
 /**
  * Pixels of the transparent still (catcher on) with alpha 1..3: the faint haze per-sample catcher noise left where
- * nothing blocks, 490 in the golden before MS-59's control variate made an unblocked sample exactly coverage 0. What
- * remains is the model's real, faint occlusion of the dome: 27 measured, times 1.25.
+ * nothing blocks, 490 in the golden before MS-59's control variate made an unblocked sample exactly coverage 0; 27
+ * measured after, times 1.25. Alpha 4..15 (674 before, 695 after) is not bounded: where one fill sample of 16 is
+ * blocked by the model the pixel gets alpha 4..15, unbiased speckle of real occlusion that falls as 1/√n.
  */
 const HAZE_PIXELS = 34;
 /** The APNG frames ImageDecoder composites, at fully opaque pixels: 0 measured. */

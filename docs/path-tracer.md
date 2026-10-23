@@ -139,10 +139,11 @@ where alpha is partial (silhouettes, the catcher's shadow): tone mapping comes b
 (measured in docs/testing.md, Export goldens). Denoised, the transparent canvas differs from the opaque one where the
 filter saw different radiance (silhouettes, the shadow's edge; 14 levels without and 34 with the catcher measured).
 The lit catcher has no haze (MS-59): its estimate is a control variate (Path tracing, shadow catcher), so a catcher
-sample where nothing blocks is exactly coverage 0 and only the model's real, faint occlusion of the dome remains
-(alpha 1 to 3 in 27 pixels of the 64 × 64, 16-sample export golden; 490 before, when an unblocked fill sample could
-light the catcher above or below 1 and the readback's clamp of the mean to 0..1 left a dark haze). A request without
-the field runs none of this.
+sample where nothing blocks is exactly coverage 0. Before, an unblocked fill sample could light the catcher above or
+below 1 and the readback's clamp of the mean to 0..1 left a dark haze: in the 64 × 64, 16-sample export golden alpha
+1..15 went from 1 164 pixels (MS-22's haze) to 722, alpha 1..3 from 490 to 27. The rest, alpha 4..15 (674 before, 695
+after), is the model's real, faint occlusion of the dome: where one fill sample of 16 is blocked its pixel gets alpha 4
+to 15, an unbiased speckle that falls as 1/√n with the sample count. A request without the field runs none of this.
 
 ## Render quality
 
@@ -292,8 +293,10 @@ dome and two unshadowed accents ([look-presets.md](look-presets.md#lighting-mode
   `environmentRadiance` over the up hemisphere is exactly `hemisphereFill(up)` (a unit test pins it per look). The fill
   ray accepts partial texels with its own random number (vertex 0's roulette dimension, unused there), not the camera
   ray's, so a catcher point seen through glass still has the glass's fill shadow, as in the bake. The shade is affine
-  in both losses, so the mean over samples equals the preview's `catcherShade` of its baked means. The plane is
-  invisible to every other ray, so the model renders exactly as without it.
+  in both losses, so the mean over samples equals the preview's `catcherShade` of its baked means. A lightless look
+  (sky, ground and key all 0: the light weight at most 1e-6) has nothing a model could take, so both functions return
+  exactly 1 there and the catcher is invisible in the preview and the render alike. The plane is invisible to every
+  other ray, so the model renders exactly as without it.
 - Rounded edges: `surfaceAt` bends the interpolated normal with the shared `roundedNormal` (`edgeRounding` chunk of
   `@modelshot/looks`, the preview's function) before a back side flips it. Each slot's direction toward its edge is
   minus the gradient of its distance over the triangle, computed exactly from the corners (the preview takes it from

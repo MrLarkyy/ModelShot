@@ -756,7 +756,9 @@ took, so a decoded file is compared with the very frames that were encoded.
   the opaque texel probe, 0 at the cut-out texel probe and at the corners where camera rays escape (catcher off); with
   the catcher on, its shadow under the opaque texel is black with alpha 1 − shade (191 measured; 188 before MS-59).
   Haze (MS-59): the transparent still with the catcher on has at most 34 pixels of alpha 1..3 (27 measured, x 1.25;
-  490 before the control variate, and 1 164 of alpha 1..15, MS-22's haze).
+  490 before the control variate). Alpha 1..15, MS-22's haze count, went 1 164 -> 722; its alpha 4..15 part, 674
+  before and 695 after, is unbiased speckle of real occlusion (one blocked fill sample of 16), falling as 1/√n, so it
+  is not bounded.
 - Per format, the decoded frames against the rendered ones: APNG through `decodePngRgba` of each frame rebuilt as a
   PNG, exact; GIF (ImageDecoder) within the palette bound of export.md (18; 10 measured), alpha 255 exactly where the
   render's is at least 128 and 0 elsewhere; WebP (ImageDecoder) within 2 (1 measured where alpha is partial); WebM and
