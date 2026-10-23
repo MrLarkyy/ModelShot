@@ -12,7 +12,8 @@ const ci = Boolean(process.env['CI']);
 export default defineConfig({
   testDir: 'e2e',
   outputDir: 'test-results',
-  timeout: 120_000,
+  // A test waits for the bake up to LIT_TIMEOUT (e2e/embedTest.ts) once or twice.
+  timeout: 600_000,
   workers: 1,
   retries: 0,
   forbidOnly: ci,

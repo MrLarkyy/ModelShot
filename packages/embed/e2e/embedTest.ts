@@ -8,9 +8,10 @@ const ports = embedPorts();
 export const FRAME_ORIGIN = `http://127.0.0.1:${ports.frame}`;
 export const HOST_ORIGIN = `http://127.0.0.1:${ports.host}`;
 export const CUBE = `${HOST_ORIGIN}/cors/single-cube.bbmodel`;
-/** Status text once the bake lit the preview (the app's Viewer). */
-export const LIT = 'Preview lit.';
-export const LIT_TIMEOUT = 90_000;
+// The frame's `data-light` on #stage says where the bake is (baking, lit, unbaked), so a test waits for a state, never
+// for status wording or a fixed time. The deadline only bounds a hang: the CPU bake (SwiftShader) took 5 to 20 s on an
+// idle machine and several times that with the other suites running, and a passing test never waits for the deadline.
+export const LIT_TIMEOUT = 240_000;
 
 export interface Seen {
   readonly method: string;
@@ -130,8 +131,18 @@ export async function frameAlert(frame: FrameLocator, timeout = LIT_TIMEOUT): Pr
   return (await alert.textContent()) ?? '';
 }
 
+export async function waitLight(frame: FrameLocator, state: 'baking' | 'lit' | 'unbaked'): Promise<void> {
+  await expect(frame.locator('#stage')).toHaveAttribute('data-light', state, { timeout: LIT_TIMEOUT });
+}
+
 export async function waitLit(frame: FrameLocator): Promise<void> {
-  await expect(frame.getByRole('status')).toHaveText(LIT, { timeout: LIT_TIMEOUT });
+  await waitLight(frame, 'lit');
+}
+
+/** Opens the host page that lists `<modelshot-viewer>` in its markup and loads the element script after it. */
+export async function openMarkupHost(page: Page): Promise<void> {
+  await page.goto(`${HOST_ORIGIN}/markup.html?frame=${encodeURIComponent(FRAME_ORIGIN)}`);
+  await page.waitForFunction(() => (window as { __upgraded?: boolean }).__upgraded === true);
 }
 
 export interface Rgba {

@@ -32,7 +32,8 @@ export const ELEMENT_ATTRIBUTE_NAMES = [
 export const EMBED_LOOKS = ['studio', 'marketplace', 'rim'] as const;
 export const EMBED_ARMS = ['classic', 'slim'] as const;
 
-export const MAX_FRAGMENT_CHARS = 4096;
+/** Room for a 2048-character model URL percent-encoded three-fold (`:` -> `%3A`) and every other parameter. */
+export const MAX_FRAGMENT_CHARS = 8192;
 export const MAX_MODEL_URL_CHARS = 2048;
 export const MAX_LABEL_CHARS = 200;
 

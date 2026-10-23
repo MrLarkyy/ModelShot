@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_EMBED_PARAMS, type EmbedParams } from '../src/EmbedParams';
+import { DEFAULT_EMBED_PARAMS, MAX_FRAGMENT_CHARS, type EmbedParams } from '../src/EmbedParams';
 import { embedFrameUrl } from '../src/embedFrameUrl';
 import { parseEmbedFragment } from '../src/parseEmbedFragment';
 
@@ -25,6 +25,28 @@ describe('embedFrameUrl', () => {
     expect(url.search).toBe('');
     expect(`${url.origin}${url.pathname}`).toBe(BASE);
     expect(parseEmbedFragment(url.hash)).toEqual({ params, ignored: [] });
+  });
+
+  it('round-trips the longest model URL with every parameter, though each reserved character takes three', () => {
+    const path = '/a'.repeat(1000);
+    const query = ':'.repeat(2048 - 'https://models.example'.length - path.length - '.bbmodel?'.length);
+    const model = `https://models.example${path}.bbmodel?${query}`;
+    expect(model.length).toBe(2048);
+    const params: EmbedParams = {
+      model,
+      ...DEFAULT_EMBED_PARAMS,
+      look: 'marketplace',
+      yawDeg: -123.456,
+      pitchDeg: -89.5,
+      fovDeg: 99.5,
+      autorotate: true,
+      background: '#1b2a4a',
+      arms: 'slim',
+    };
+    const hash = new URL(embedFrameUrl(BASE, params)).hash;
+    expect(hash.length).toBeGreaterThan(4096);
+    expect(hash.length).toBeLessThanOrEqual(MAX_FRAGMENT_CHARS);
+    expect(parseEmbedFragment(hash)).toEqual({ params, ignored: [] });
   });
 
   it('drops a query of the base, so nothing reaches the embed server', () => {

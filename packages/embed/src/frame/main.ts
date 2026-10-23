@@ -16,9 +16,6 @@ const environment = {
   self: window,
 };
 
-let stop = showEmbed(page, location.hash, environment);
+const embed = showEmbed(page, location.hash, environment);
 // The element changes only the fragment when an attribute changes; the frame shows the new parameters.
-window.addEventListener('hashchange', () => {
-  stop();
-  stop = showEmbed(page, location.hash, environment);
-});
+window.addEventListener('hashchange', () => embed.update(location.hash));

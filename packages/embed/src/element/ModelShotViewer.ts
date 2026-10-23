@@ -57,6 +57,8 @@ export class ModelShotViewer extends HTMLElement {
   private iframe: HTMLIFrameElement | null = null;
   private observer: IntersectionObserver | null = null;
   private options: ElementOptions | null = null;
+  private started = false;
+  private shownError = '';
 
   constructor() {
     super();
@@ -70,18 +72,23 @@ export class ModelShotViewer extends HTMLElement {
 
   connectedCallback(): void {
     window.addEventListener('message', this.onMessage);
+    this.started = true;
     this.update();
   }
 
   disconnectedCallback(): void {
+    this.started = false;
+    this.shownError = '';
+    this.alert.textContent = '';
     window.removeEventListener('message', this.onMessage);
     this.unobserve();
     this.iframe?.remove();
     this.iframe = null;
   }
 
+  // An upgrade reports every attribute before connectedCallback: that one call reads them all, once.
   attributeChangedCallback(): void {
-    if (this.isConnected) this.update();
+    if (this.started) this.update();
   }
 
   private readonly onMessage = (event: MessageEvent): void => {
@@ -120,6 +127,7 @@ export class ModelShotViewer extends HTMLElement {
       return;
     }
     this.options = options;
+    this.shownError = '';
     this.alert.textContent = '';
     if (this.iframe) {
       this.iframe.title = options.title;
@@ -164,7 +172,11 @@ export class ModelShotViewer extends HTMLElement {
     this.options = null;
     const code = error instanceof EmbedError ? error.code : 'INVALID_PARAM';
     const message = error instanceof Error ? error.message : String(error);
-    this.alert.textContent = `${code}: ${message}`;
+    // The same error again (another invalid attribute change) is neither shown nor fired twice.
+    const shown = `${code}: ${message}`;
+    if (shown === this.shownError) return;
+    this.shownError = shown;
+    this.alert.textContent = shown;
     this.dispatchEvent(new CustomEvent('error', { detail: { code, message } }));
   }
 }

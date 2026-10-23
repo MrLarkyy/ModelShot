@@ -1,7 +1,8 @@
 // The host pages and the model host of the embed browser tests: another origin than the embed build. Serves
-// e2e/host/*.html and the test models in place (their licences stay next to them; nothing is copied):
+// e2e/host/{host,markup}.html (markup.html has the element in its markup before the script loads) and the test models in place (their licences stay next to them; nothing is copied):
 //   /cors/<file>      a fixture with Access-Control-Allow-Origin: *
 //   /nocors/<file>    the same without it
+//   /nocors-nosniff/<file>   the same without it and with X-Content-Type-Options: nosniff (opaque-response blocking)
 //   /cors/not-json.bbmodel   a model the loader refuses
 //   /status/404.bbmodel      a 404 with CORS
 //   /big-length.bbmodel      65 MiB declared in Content-Length, then zeros until the client stops
@@ -83,10 +84,10 @@ const server = createServer((request, response) => {
   const head = request.method === 'HEAD';
   const cors = { 'access-control-allow-origin': '*', 'cache-control': 'no-store' };
 
-  if (path === '/host.html') {
+  if (path === '/host.html' || path === '/markup.html') {
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
     if (head) response.end();
-    else createReadStream(join(HERE, 'host', 'host.html')).pipe(response);
+    else createReadStream(join(HERE, 'host', path.slice(1))).pipe(response);
     return;
   }
   if (path === '/cors/not-json.bbmodel') {
@@ -112,11 +113,12 @@ const server = createServer((request, response) => {
     if (head) response.end();
     return;
   }
-  const match = /^\/(cors|nocors)\/([^/]+)$/.exec(path);
+  const match = /^\/(cors|nocors|nocors-nosniff)\/([^/]+)$/.exec(path);
   const file = match ? models.get(decodeURIComponent(match[2])) : undefined;
   if (match && file) {
     response.writeHead(200, {
       ...(match[1] === 'cors' ? cors : { 'cache-control': 'no-store' }),
+      ...(match[1] === 'nocors-nosniff' ? { 'x-content-type-options': 'nosniff' } : {}),
       'content-type': MODEL_TYPES[extname(file)],
       'content-length': String(statSync(file).size),
     });

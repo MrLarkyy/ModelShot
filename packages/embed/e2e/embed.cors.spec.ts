@@ -43,6 +43,16 @@ test('a model host without Access-Control-Allow-Origin is explained as CORS, nam
   for (const r of asked) expect([r.cookie, r.referer]).toEqual([null, null]);
 });
 
+test('the same with nosniff and a JSON type is still explained as CORS (or names the missing header)', async ({
+  page,
+}) => {
+  await openHost(page);
+  await addViewer(page, { model: `${HOST_ORIGIN}/nocors-nosniff/single-cube.bbmodel`, loading: 'eager' });
+  const alert = await frameAlert(viewerFrame(page));
+  expect(alert).toMatch(/^MODEL_CORS_BLOCKED: /);
+  expect(alert).toContain('Access-Control-Allow-Origin');
+});
+
 test('a host that does not answer is unreachable, not CORS', async ({ page }) => {
   await openHost(page);
   const port = await closedPort();

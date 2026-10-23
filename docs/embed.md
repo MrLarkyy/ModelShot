@@ -2,11 +2,14 @@
 
 Shows a live, turnable model on any page: a marketplace listing, a wiki, a blog. Two ways, one result: the
 `<modelshot-viewer>` element, or a plain `<iframe>` of the frame page. The model is downloaded from its URL, read and
-drawn in the frame with the app's realtime preview and light bake; nothing else is sent anywhere, and no host page,
-cookie or visitor data reaches the embed or the model's server.
+drawn in the frame with the app's realtime preview and light bake; nothing else is sent anywhere. The frame and the
+model's server get no cookie, referrer or host page data. The one thing the embed server sees of the host page is the
+request for `modelshot-embed.js`: a module script is fetched in CORS mode, so it carries the host's `Origin` header
+and, under the host page's referrer policy, a `Referer`; `referrerpolicy="no-referrer"` on the script tag withholds
+the latter.
 
 ```html
-<script type="module" src="https://<embed host>/modelshot-embed.js"></script>
+<script type="module" src="https://<embed host>/modelshot-embed.js" referrerpolicy="no-referrer"></script>
 <modelshot-viewer model="https://example.com/models/lantern.bbmodel" look="marketplace" autorotate></modelshot-viewer>
 ```
 
@@ -25,8 +28,8 @@ cookie or visitor data reaches the embed or the model's server.
 
 The embed build (`pnpm --filter @modelshot/embed run build`, `packages/embed/dist`) is the frame page `index.html`,
 the element script `modelshot-embed.js` next to it and their `assets/`. Every URL in it is relative, so it can be
-served under any path; where it is hosted is MS-26. A host page loads `modelshot-embed.js` (and the small chunk it
-imports) as a cross-origin module script, so the embed server must send `Access-Control-Allow-Origin: *` for the
+served under any path; where it is hosted is MS-26. A host page loads `modelshot-embed.js` (one self-contained file) as a
+cross-origin module script, so the embed server must send `Access-Control-Allow-Origin: *` for the
 `.js` files.
 
 ## How it works
@@ -52,7 +55,7 @@ worker is stopped after 30 s.
 ## Frame parameters
 
 Version 1. In the fragment of the frame page URL, `name=value` pairs joined by `&`, each value encoded with
-`encodeURIComponent` (a `+` left raw reads as a space). At most 4096 characters after the `#`.
+`encodeURIComponent` (a `+` left raw reads as a space). At most 8192 characters after the `#`.
 
 | name         | value                                                                                                                                                     | default             |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
@@ -101,7 +104,11 @@ the frame parameters but `v`, with the same values, plus two of its own.
 | `loading`    | `lazy`: insert the frame within 200 px of the viewport; `eager`: at once           | `lazy`              |
 | `label`      | the iframe's accessible name, at most 200 characters                               | "3D model viewer"   |
 
-Changing an attribute shows the new model or view (only the fragment changes, so the frame page is not loaded again).
+Changing an attribute shows the new model or view (only the fragment changes, so the frame page is not loaded again): the
+frame keeps its viewer, and for the same model its loaded document, so a new look, camera, background or `autorotate`
+needs no download and no second WebGL context (a new look bakes the light again); a new `model` is set into the same
+viewer. The Home key returns to the `yaw` and `pitch` of the attributes. An invalid attribute fires `error` once per
+distinct error, also when the page loads the element script after the element's markup.
 An invalid attribute shows the error inside the element (an alert, no frame) and fires `error`. The element is 300 x 300
 CSS pixels unless the page sizes it (`modelshot-viewer { width: 100%; height: 480px }`); the frame fills it. Without
 `IntersectionObserver` it loads at once; a hidden element (`display: none`) does not load until shown.
@@ -128,7 +135,7 @@ Shown in the frame (or the element) as `<code>: <message>`, in a `role="alert"` 
 | code                  | when                                                                                                           |
 | --------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `MISSING_MODEL`       | no `model`                                                                                                     |
-| `INVALID_PARAM`       | a value outside its contract, a parameter given twice, or a fragment over 4096 characters; names the parameter |
+| `INVALID_PARAM`       | a value outside its contract, a parameter given twice, or a fragment over 8192 characters; names the parameter |
 | `UNSUPPORTED_VERSION` | `v` other than 1                                                                                               |
 | `MODEL_URL_INVALID`   | `model` not an absolute http(s) URL, with credentials, control characters, or over 2048 characters             |
 | `MODEL_INSECURE`      | an `http` model on an `https` frame: refused before any request (the browser would block it)                   |
@@ -178,14 +185,14 @@ header to add; if not, `MODEL_UNREACHABLE`. That probe is the only second reques
 | model download    | 64 MiB, 30 s for headers and body                                                                   |
 | CORS probe        | one `HEAD`, 10 s                                                                                    |
 | model URL         | 2048 characters                                                                                     |
-| fragment          | 4096 characters                                                                                     |
+| fragment          | 8192 characters                                                                                     |
 | `label`           | 200 characters                                                                                      |
 | reading the model | the app's 30 s worker watchdog and the loaders' own limits (elements, triangles, textures, nesting) |
 
 ## Privacy
 
 - No analytics, tracking, cookies, storage or third-party request. The frame's Content-Security-Policy allows scripts,
-  styles and workers from the embed origin only; `connect-src` allows the model download.
+  styles, images and workers from the embed origin only (no `blob:` or `data:`); `connect-src` allows the model download.
 - The embed server receives only the requests for its files: the parameters are in the fragment.
 - The model server receives one `GET` (and at most one `HEAD` probe) without cookies and without `Referer`
   (`referrerpolicy="no-referrer"` on the iframe, `<meta name="referrer" content="no-referrer">` in the frame, and on

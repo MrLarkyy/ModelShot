@@ -199,10 +199,10 @@ describe('parseEmbedFragment', () => {
     expect(parseEmbedFragment(`#model=${encodeURIComponent(model)}`).params.model).toBe(model);
   });
 
-  it('refuses a fragment longer than 4096 characters', () => {
+  it('refuses a fragment longer than 8192 characters', () => {
     const fragment = `model=${encodeURIComponent(MODEL)}&pad=`;
-    const long = fragment + 'x'.repeat(4097 - fragment.length);
+    const long = fragment + 'x'.repeat(8193 - fragment.length);
     expect(failure(() => parseEmbedFragment(`#${long}`)).code).toBe('INVALID_PARAM');
-    expect(parseEmbedFragment(`#${long.slice(0, 4096)}`).ignored).toEqual(['pad']);
+    expect(parseEmbedFragment(`#${long.slice(0, 8192)}`).ignored).toEqual(['pad']);
   });
 });
