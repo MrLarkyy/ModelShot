@@ -12,6 +12,11 @@ test('opening, rendering and exporting make only same-origin GET requests withou
 }) => {
   const origin = new URL(baseURL ?? '').origin;
   const seen: Seen[] = [];
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
   page.on('request', (request) =>
     seen.push({ method: request.method(), url: request.url(), body: request.postData() }),
   );
@@ -21,7 +26,7 @@ test('opening, rendering and exporting make only same-origin GET requests withou
   const initialScripts = seen.slice(0, initial).filter((r) => new URL(r.url).pathname.endsWith('.js'));
   // The page loads its entry (and the e2e hook); the path tracer, the export code and the workers wait for first use.
   expect(initialScripts.map((r) => new URL(r.url).pathname.split('/').pop())).toEqual(
-    expect.not.arrayContaining([expect.stringMatching(/^(loadWorker|bakeWorker|src-)/)]),
+    expect.not.arrayContaining([expect.stringMatching(/^(loadWorker|bakeWorker|geometryWorker|src-)/)]),
   );
 
   await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
@@ -33,8 +38,12 @@ test('opening, rendering and exporting make only same-origin GET requests withou
   const samples = page.locator('#render-panel').getByLabel('Samples');
   await samples.fill('4');
   await samples.dispatchEvent('change');
+  const beforeRender = seen.length;
   await page.getByRole('button', { name: 'Render' }).click();
   await expect(page.getByRole('status')).toContainText('Render done', { timeout: 60_000 });
+  const afterRender = seen.slice(beforeRender).map((r) => new URL(r.url).pathname.split('/').pop() ?? '');
+  expect(afterRender.some((name) => name.startsWith('geometryWorker'))).toBe(true);
+  expect(errors).toEqual([]);
 
   await page.getByRole('button', { name: 'Export…' }).click();
   const dialog = page.getByRole('dialog', { name: 'Export' });
