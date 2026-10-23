@@ -8,7 +8,9 @@ import {
   farFrom,
   hueMatch,
   imageError,
+  maskBoundary,
   modelBox,
+  outlineBand,
   sentinelPixels,
   silhouetteMismatches,
   silhouettePixels,
@@ -117,6 +119,35 @@ describe('silhouette pixels', () => {
     expect(silhouettePixels(img(), { backdropTolerance: 4, reach: 1 }).silhouette).toHaveLength(64 - 36);
     // Tolerance 2: the backdrop's 3-level speckle counts as model.
     expect(silhouettePixels(img(), { backdropTolerance: 2, reach: 2 }).model.length).toBeGreaterThan(64);
+  });
+
+  it('takes the outline band where both images draw the model, within reach of the reference backdrop', () => {
+    // The other image draws the square one column narrower on the right.
+    const other = image(20, 20, (x, y) => (x >= 6 && x < 13 && y >= 6 && y < 14 ? [200, 30, 40] : row(y)));
+    const band = outlineBand(img(), other, (y) => row(y), 2);
+    // The reference's 8 x 8 square less its 4 x 4 core (48), less the right column the other leaves out (8).
+    expect(band.reduce((sum, v) => sum + v, 0)).toBe(48 - 8);
+    expect(band[10 * 20 + 13]).toBe(0);
+    expect(band[10 * 20 + 6]).toBe(1);
+    expect(band[10 * 20 + 10]).toBe(0);
+    expect(() =>
+      outlineBand(
+        img(),
+        image(4, 4, () => null),
+        (y) => row(y),
+        2,
+      ),
+    ).toThrow(/sizes differ/);
+  });
+
+  it('marks a mask boundary on both sides and nothing else', () => {
+    const mask = new Uint8Array(8 * 8).map((_, p) => (p % 8 >= 2 && p % 8 < 5 && p >= 16 && p < 48 ? 1 : 0));
+    const boundary = maskBoundary(mask, 8, 8);
+    // A 3 x 4 block: its outer ring of 5 x 6 plus its own ring (all but the 1 x 2 core), clipped at no image edge.
+    expect(boundary.reduce((sum, v) => sum + v, 0)).toBe(5 * 6 - 2);
+    expect(boundary[3 * 8 + 3]).toBe(0);
+    expect(boundary[0]).toBe(0);
+    expect(maskBoundary(new Uint8Array(16).fill(1), 4, 4).every((v) => v === 0)).toBe(true);
   });
 
   it('counts pixels whose every channel is above a level', () => {

@@ -248,6 +248,23 @@ option `edges` (a `Partial<EdgeLook>`, out of range a `RangeError` naming `edges
   sin(θ / 2), so both faces reach the bisector at the edge; the linear ramp is box-filtered over the pixel's
   footprint, so the band does not shimmer when it is narrower than a pixel. Where no slot bends the normal the
   function returns it unchanged, so planes, cards and smooth areas are byte-identical with rounding on and off.
+- MSAA shading point (MS-54): the fragment shader runs once per triangle and pixel, by default with its inputs at the
+  pixel centre, which for a pixel the triangle only partly covers lies off the face: the normal, the world position
+  and the edge distances extrapolate there. `v_normal`, `v_worldPosition` and `v_edgeDistances` are therefore
+  `centroid` (vertex `centroid out`, fragment `centroid in` in the opaque, OIT and fallback passes, both depth-key
+  variants; a mismatch fails to link), read at a covered sample as the render's rays hit the face. The centroid
+  values of neighbouring pixels lie up to 0.75 px off the unit steps `dFdx`/`dFdy` assume. The directions toward the
+  edges are unaffected (distance and position are differenced over the same steps); the footprint is not, so
+  `prepareEdges` projects `v_worldPosition` to the drawing buffer (`u_viewProjection`, `u_viewportSize`, now declared
+  in the shading chunk for both variants) and, where those steps are not unit ones (more than 0.01 px off, determinant
+  above 0.25), maps the distance gradient back to unit steps with the inverse of their matrix. Fully covered pixels
+  are unchanged; pixels along a triangle edge inside a face (a quad's diagonal) read each triangle at its own point.
+  `v_uv`, `v_uvRect`, the lightmap and vertex-light varyings stay at the pixel centre: texel anti-aliasing
+  (`texelSample`), the alpha-to-coverage contour on the texel boundary and the hashed-alpha cell are defined there,
+  and `v_uvRect` keeps the texel on its face. No varying is added (the exact variant uses 14 of the minimum 15).
+  Exact-key frames draw single-sampled, where the centroid is the centre: the player (its outer layer has a render
+  order) and every `preset-*` view are not affected (at most 4 pixels by 1 level, rounding in the changed program);
+  anti-aliasing their silhouettes is MS-35's.
 - Only the normal changes: texels, UVs, alpha and the depth key are untouched. The baked light is computed for the
   unrounded surface (bake width 0) and multiplies the rounded shading as before.
 - A width change is a uniform; a sharp-angle change detects again and uploads the geometry again.

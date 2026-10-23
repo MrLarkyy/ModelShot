@@ -10,7 +10,7 @@
 uniform float u_orderPull;
 uniform vec2 u_depthRange;
 uniform mat4 u_inverseProjection;
-uniform vec2 u_viewportSize;
+// u_viewportSize: declared in the shading chunk, which every mesh pass includes first.
 in vec3 v_viewPosition;
 flat in vec3 v_corner0;
 flat in vec3 v_corner1;

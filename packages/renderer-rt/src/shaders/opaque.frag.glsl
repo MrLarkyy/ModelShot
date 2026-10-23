@@ -16,7 +16,7 @@ uniform int u_alphaCutoffByte;
 // kept below would grow the cutout shape by half a pixel.
 uniform bool u_alphaToCoverage;
 
-in vec3 v_normal;
+centroid in vec3 v_normal;
 in vec2 v_uv;
 flat in vec4 v_uvRect;
 

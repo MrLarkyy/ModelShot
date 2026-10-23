@@ -376,7 +376,7 @@ pitch 35°). Golden `rt-edges`, default tolerance.
 - Planes, cards and smooth areas: the pixels of the plane, the card and the sphere (those that change when the mesh is
   hidden, `hide=`, less the cube's and the wedge's MSAA silhouette pixels) are byte-identical with rounding on and
   `edges=0`, float and fallback (0 of 1 014 / 1 272 / 1 584 float, 982 / 1 210 / 1 544 fallback).
-- Sharp-edged meshes change only beside their edges: every pixel that rounding changes (1 895 float, 1 729 fallback)
+- Sharp-edged meshes change only beside their edges: every pixel that rounding changes (1 893 float since MS-54, 1 895 before; 1 729 fallback)
   lies within the band's projected width plus 2 px (4.82 px) of a projected sharp edge of the cube or the wedge.
 - The cube's up face 0.15 units from its south edge, which faces the key, is brighter than the face centre (120.4 vs
   117.4 levels; unrounded it equals the centre).
@@ -417,6 +417,26 @@ model-view golden. The `cutout-edge` test measured 1 742 transitions inside the 
 `rt-bench-512` median 389 ms against 361 ms with A2C gated off (`rt-bench-order-512`, exact frames, never A2C: 313
 against 298, the run-to-run spread); budget 2 000.
 
+Goldens regenerated on purpose in MS-54 (centroid normal, world position and edge distances, the edge footprint
+mapped back to unit steps; same views, bake seed and samples): the raster-key MSAA frames, where the change lies on
+silhouettes and on triangle edges inside faces (quad diagonals, the sphere's facets), judged as diff images. Pixels
+against the same views rendered with origin/main's shaders (count, largest level): `rt-turntable-y000` 253 (7),
+`-y030` 391 (6), `-y060` 390 (8), `-y090` 368 (7), `rt-iso` 411 (7), `rt-closeup` 557 (7), `rt-far` 185 (13),
+`rt-edges` 681 (20), `rt-gltf-nodes-y030` 248 (12), `rt-obj-shapes-y030` 219 (10), `rt-outline-hull` 531 (11),
+`rt-bake-turntable-y030` 350 (6), `rt-bake-alpha-plane` 131 (9, the ground's far silhouette; the cut-out squares
+unchanged), `rt-bake-cutout-checker` 163 (3), `rt-bake-gltf-contact` 91 (1). `rt-far`, `rt-turntable-y000`, `-y030`
+and `-y090` also take up drift main had left within tolerance (against their old golden 487, 449, 660 and 498 pixels,
+up to 102 levels). Not rewritten: the exact-key player and preset frames (single-sampled; 1 to 4 pixels of 1 level
+from the changed program, within tolerance), the fallback frames (single-sampled canvas), `rt-fit-flat-cube` and
+every `pt-*`, export and model-view golden (byte-unchanged). Probes: **MSAA silhouette pixels are shaded on the face**:
+the baked `turntable-y030` preview against its render (the `pt-turntable-y030` golden PNG), the mean largest-channel
+difference over the 2 px outline band both draw (`outlineBand`), 1.744 over 3 919 pixels (1.773 when shaded at the
+pixel centre), at most measured x 1.25 = 2.18 and below 1.773; frame on the raster key with MSAA (asserted). **The
+edge band keeps its width across quad diagonals**: the `edges` view with MSAA against `msaa=0`, off every mesh's
+outline (more than 1 px from a `maskBoundary` of the mesh's pixels from `hide=`): 0 pixels over 2 levels at the look's
+width; at width 0.1 147 pixels differ at all (227 with the skewed footprint, 142 when shaded at the pixel centre),
+at most 183.
+
 For a manual run on real hardware open `rt.html?scene=bench&size=512&fps=1`: it draws continuously and shows the
 median frame work (draw until the GPU finished) and display interval over the last 120 frames, with the renderer
 string.
@@ -426,8 +446,8 @@ board inside a Blockbench cube with from > to on every axis (an inverted hull, `
 and `cameraOnly`); variant `outline-hull` (yaw 30°, pitch 30°). Golden `rt-outline-hull`, default tolerance. Probes
 (`src/outlineHullProbe.ts`) against `scene=outline-hull-board` (the shell keeps its vertices, so the same framing, but
 draws nothing): the board-centre luminance (3 x 3) within 2 levels of the board alone (measured equal), and over 200
-pixels the hull darkens to below 50 (the rim; measured 2 385); the same unbaked and baked (`bake=16`, measured equal,
-rim 2 289).
+pixels the hull darkens to below 50 (the rim; measured 2 383, 2 385 before MS-54); the same unbaked and baked (`bake=16`, measured equal,
+rim 2 284, 2 289 before MS-54).
 
 ## Path-tracer goldens
 
@@ -524,25 +544,32 @@ has interreflection and noise. Logged as `[pt pair] <view>: ...`, values in `tes
 Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with rounded edges and the mirrored bounce
 (MS-16's values in brackets; every limit stayed, none widened, `edges` is new at measured x 1.25):
 
-| view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta                                | limit: `maxDiffRatio`, `maxMeanDelta`      |
-| -------------------------- | ----------------------------------- | ------------------------------------------------------------------ | ------------------------------------------ |
-| `turntable-y030`           | 0 (1 627)                           | 142, 0.00217, 0.724 (MS-30; before 201, 0.00307, 0.772)            | 0.00271, 0.905 (MS-30; was 0.00353, 0.953) |
-| `iso`                      | 0 (1 533)                           | 268, 0.00409, 0.889 (MS-30; before 366, 0.00558, 0.959)            | 0.00512, 1.12 (MS-30; was 0.00639, 1.18)   |
-| `alpha-plane`              | 0 (692)                             | 232, 0.00354, 1.334 (MS-30; before 682, 0.01041, 1.567)            | 0.00443, 1.67 (MS-30; was 0.013, 1.96)     |
-| `player-hold-34`           | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295)                      | 0.0232, 1.62                               |
-| `cutout-checker`           | 0 (3 295)                           | 223, 0.00340, 0.623 (MS-30; before 293, 0.00447, 0.731)            | 0.00426, 0.78 (MS-30; was 0.00525, 0.908)  |
-| `edges`                    | 0 (1 971)                           | 40, 0.00061, 0.390 (MS-41; before 43, 0.00066, 0.397)              | 0.00082, 0.496                             |
-| `preset-marketplace`       | 0 (1 322)                           | 1 269, 0.01936, 1.237                                              | 0.0223, 1.43                               |
-| `preset-rim`               | 0 (1 322)                           | 1 407, 0.02147, 1.109                                              | 0.0241, 1.13                               |
-| `preset-marketplace-yaw30` | 0 (1 304)                           | 1 387, 0.02116, 1.281                                              | 0.0265, 1.52                               |
-| `outline-hull`             | 0 (1 448)                           | 174, 0.00266, 0.438 (MS-50 1 076, 0.01642, 0.912)                  | 0.00333, 0.548 (MS-39; was 0.0205, 1.14)   |
-| `gltf-contact`             | 0 (629)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)                     | 0.133, 7.03                                |
-| `obj-shapes-y030`          | 0 (1 852)                           | 245, 0.00374, 0.470 (MS-39, new; 463, 0.00706, 0.558 before MS-30) | 0.00468, 0.588                             |
-| `gltf-nodes-y030`          | 0 (2 218)                           | 320, 0.00488, 0.956 (MS-39, new; 435, 0.00664, 1.008 before MS-30) | 0.0061, 1.2                                |
+| view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta                     | limit: `maxDiffRatio`, `maxMeanDelta`      |
+| -------------------------- | ----------------------------------- | ------------------------------------------------------- | ------------------------------------------ |
+| `turntable-y030`           | 0 (1 627)                           | 142, 0.00217, 0.723 (MS-54; MS-30 142, 0.00217, 0.724)  | 0.00271, 0.904 (MS-54; was 0.00271, 0.905) |
+| `iso`                      | 0 (1 533)                           | 266, 0.00406, 0.888 (MS-54; MS-30 268, 0.00409, 0.889)  | 0.00508, 1.111 (MS-54; was 0.00512, 1.12)  |
+| `alpha-plane`              | 0 (692)                             | 232, 0.00354, 1.335 (MS-54; MS-30 232, 0.00354, 1.334)  | 0.00443, 1.669 (MS-54; was 0.00443, 1.67)  |
+| `player-hold-34`           | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295)           | 0.0232, 1.62                               |
+| `cutout-checker`           | 0 (3 295)                           | 223, 0.00340, 0.623 (MS-30; before 293, 0.00447, 0.731) | 0.00426, 0.78 (MS-30; was 0.00525, 0.908)  |
+| `edges`                    | 0 (1 971)                           | 41, 0.00063, 0.386 (MS-54; MS-41 40, 0.00061, 0.390)    | 0.00079, 0.483 (MS-54; was 0.00082, 0.496) |
+| `preset-marketplace`       | 0 (1 322)                           | 1 269, 0.01936, 1.237                                   | 0.0223, 1.43                               |
+| `preset-rim`               | 0 (1 322)                           | 1 407, 0.02147, 1.109                                   | 0.0241, 1.13                               |
+| `preset-marketplace-yaw30` | 0 (1 304)                           | 1 387, 0.02116, 1.281                                   | 0.0265, 1.52                               |
+| `outline-hull`             | 0 (1 448)                           | 172, 0.00262, 0.437 (MS-54; MS-39 174, 0.00266, 0.438)  | 0.00329, 0.547 (MS-54; was 0.00333, 0.548) |
+| `gltf-contact`             | 0 (629)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)          | 0.133, 7.03                                |
+| `obj-shapes-y030`          | 0 (1 852)                           | 246, 0.00375, 0.469 (MS-54; MS-39 245, 0.00374, 0.470)  | 0.00468, 0.587 (MS-54; was 0.00468, 0.588) |
+| `gltf-nodes-y030`          | 0 (2 218)                           | 319, 0.00487, 0.955 (MS-54; MS-39 320, 0.00488, 0.956)  | 0.00609, 1.194 (MS-54; was 0.0061, 1.2)    |
 
 MS-30 (anti-aliased cut-out seams in the preview's MSAA frames, as the render anti-aliases them by sampling)
 re-measured every pair: `turntable-y030`, `iso`, `alpha-plane` and `cutout-checker` came closer to the render (rows
 above), so their limits are tightened to measured x 1.25; every other view measured as before, its limit stays.
+
+MS-54 (the preview's MSAA edge pixels shaded at a covered sample: centroid normal, position and edge distances,
+docs/realtime-renderer.md) re-measured every pair. `turntable-y030`, `iso`, `alpha-plane`, `edges`, `outline-hull`,
+`obj-shapes-y030` and `gltf-nodes-y030` moved by a pixel or two and up to 0.004 levels (rows above), so their limits
+are min(previous, measured x 1.25); `player-hold-34`, the three `preset-*` views (exact depth key: single-sampled, the
+centroid is the centre), `cutout-checker` and `gltf-contact` measured exactly as before and keep theirs. The denoised
+2x turntable pair: 113 px, 0.00172, 0.618 under the turntable's limits.
 
 Framing takes the preview at `msaa=0` since MS-39: with MS-30's 4-sample alpha-to-coverage, `obj-shapes-y030` had 1
 mismatch at (191, 135), on the wedge's cut-out slope seen at a grazing angle, where an opaque texel row covers about 2 %
@@ -685,8 +712,8 @@ widened.
 - **Fields**: `supersample` 0, 5, 2.5, NaN, "2"; `denoise` 1, "yes", null; `noiseThreshold` 0, −1, 1.5, NaN, Infinity
   each throw a `RangeError` naming the field.
 - **Pair**: the denoised 2x turntable (16 samples) against `rt-turntable-y030` baked, under the turntable's pair
-  limits (0.00353, 0.953): framing 0 mismatches, 168 pixels differ, ratio 0.00256, mean delta 0.670 (the plain
-  64-sample render measures 0.00307, 0.772).
+  limits (0.00271, 0.904 since MS-54): framing 0 mismatches, 113 pixels differ, ratio 0.00172, mean delta 0.618 (MS-54;
+  the plain 64-sample render measures 0.00217, 0.723; at MS-18 168 px, 0.00256, 0.670 under 0.00353, 0.953).
 - **Lifetime**: `dispose()` after a denoised 2x request with a threshold leaves no WebGL object (`track=1`).
 - **Defaults**: `supersample=1&denoise=0` (the fields given explicitly) renders the bytes of the turntable request
   without them.

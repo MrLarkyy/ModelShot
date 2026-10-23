@@ -24,7 +24,11 @@ uniform vec4 u_depthPull;
 uniform highp sampler2D u_lightmap;
 uniform bool u_bakeOn;
 
-out vec3 v_normal;
+// Centroid: under MSAA a pixel the face only partly covers is shaded at a covered sample, on the face, instead of at
+// the pixel centre past its edge, where the normal and the edge distances extrapolate (v_worldPosition and
+// v_edgeDistances too). The UV stays at the centre: texel anti-aliasing, the alpha-to-coverage contour and the hashed
+// alpha cell are defined there, and v_uvRect keeps the texel on the face.
+centroid out vec3 v_normal;
 out vec2 v_uv;
 // Every vertex of a face carries the same rectangle; flat avoids interpolation error at the clamp bounds.
 flat out vec4 v_uvRect;
@@ -34,8 +38,8 @@ flat out vec4 v_lightmap;
 // the chart rectangle.
 out vec4 v_vertexLight;
 out vec4 v_vertexLightBack;
-out vec3 v_worldPosition;
-out vec4 v_edgeDistances;
+centroid out vec3 v_worldPosition;
+centroid out vec4 v_edgeDistances;
 // The same on every corner of a triangle.
 flat out vec4 v_edgeAngles;
 #include "depthKeyVertex"

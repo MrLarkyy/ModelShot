@@ -13,7 +13,7 @@ uniform bool u_texelAntialias;
 uniform int u_alphaMode;
 uniform int u_alphaCutoffByte;
 
-in vec3 v_normal;
+centroid in vec3 v_normal;
 in vec2 v_uv;
 flat in vec4 v_uvRect;
 
