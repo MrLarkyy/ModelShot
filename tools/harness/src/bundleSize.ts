@@ -7,21 +7,21 @@ import { build } from 'vite';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
-export const BUNDLE_TARGETS = ['app', 'app-entry', 'embed', 'site', 'site-assets', 'export'] as const;
+export const BUNDLE_TARGETS = ['app', 'app-entry', 'embed', 'embed-frame', 'site', 'site-assets', 'export'] as const;
 
 export type BundleTarget = (typeof BUNDLE_TARGETS)[number];
 
-type FileTarget = Exclude<BundleTarget, 'export' | 'app-entry'>;
+type FileTarget = Exclude<BundleTarget, 'export' | 'app-entry' | 'embed'>;
 
 const PACKAGE: Record<FileTarget, string> = {
   app: 'app',
-  embed: 'embed',
+  'embed-frame': 'embed',
   site: 'site',
   'site-assets': 'site',
 };
 const EXTENSIONS: Record<FileTarget, string[]> = {
   app: ['.js', '.css'],
-  embed: ['.js', '.css'],
+  'embed-frame': ['.js', '.css', '.html'],
   site: ['.js', '.css', '.html'],
   'site-assets': ['.woff2', '.svg'],
 };
@@ -77,6 +77,29 @@ async function measureAppEntry(): Promise<BundleSize> {
 }
 
 /**
+ * What a host page loads for `<modelshot-viewer>`: the element script `modelshot-embed.js` (its own build,
+ * `vite.element.config.ts`) and any chunk it imports statically. The frame page, its chunks and workers load in the
+ * iframe and count in `embed-frame`.
+ */
+async function measureEmbedElement(): Promise<BundleSize> {
+  const root = join(REPO_ROOT, 'packages', 'embed');
+  const output = (await build({
+    root,
+    configFile: join(root, 'vite.element.config.ts'),
+    logLevel: 'silent',
+    build: { write: false, reportCompressedSize: false },
+  })) as { output: OutputChunk[] } | { output: OutputChunk[] }[];
+  const chunks = (Array.isArray(output) ? output.flatMap((o) => o.output) : output.output).filter(
+    (c) => c.type === 'chunk',
+  );
+  const entry = chunks.find((c) => c.isEntry && c.fileName === 'modelshot-embed.js');
+  if (!entry) throw new Error('the embed build has no modelshot-embed.js entry chunk');
+  const files = staticClosure(entry, new Map(chunks.map((c) => [c.fileName, c])));
+  const gzipBytes = files.reduce((n, c) => n + gzipSync(Buffer.from(c.code ?? ''), { level: 9 }).length, 0);
+  return { gzipBytes, files: files.map((c) => c.fileName), sources: files.map((c) => c.code ?? '').join(';') };
+}
+
+/**
  * `@modelshot/export` as a library: the entry chunk and the chunks it imports statically, what an app loads before an
  * export starts. The encoders are loaded on demand and not counted; the workspace packages are external (an app ships
  * the path tracer and the scene format anyway), so this is what importing the export API adds.
@@ -121,6 +144,7 @@ function listFiles(dir: string): string[] {
 export async function measureBundle(target: BundleTarget): Promise<BundleSize> {
   if (target === 'export') return measureExportEntry();
   if (target === 'app-entry') return measureAppEntry();
+  if (target === 'embed') return measureEmbedElement();
   const outDir = mkdtempSync(join(tmpdir(), `modelshot-bundle-${target}-`));
   try {
     await build({
