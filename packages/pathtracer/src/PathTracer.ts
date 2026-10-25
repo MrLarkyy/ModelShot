@@ -173,16 +173,29 @@ function checkCatcherBounds(value: unknown): SceneBounds {
 
 /** The two emission tables give every material the same glow (`packMaterials` reads them by index). */
 function sameEmission(a: SetSceneOptions['emission'], b: SetSceneOptions['emission']): boolean {
-  const left = a ?? [];
-  const right = b ?? [];
+  const left: unknown = a ?? [];
+  const right: unknown = b ?? [];
+  if (!Array.isArray(left) || !Array.isArray(right)) return false;
   const count = Math.max(left.length, right.length);
   for (let m = 0; m < count; m++) {
-    const x = left[m];
-    const y = right[m];
+    const x: unknown = left[m];
+    const y: unknown = right[m];
     if (x === y) continue;
-    if (!x || !y || x[0] !== y[0] || x[1] !== y[1] || x[2] !== y[2]) return false;
+    if (!Array.isArray(x) || !Array.isArray(y) || x[0] !== y[0] || x[1] !== y[1] || x[2] !== y[2]) return false;
   }
   return true;
+}
+
+/** A copy of the table the caller may change later; an entry that is no array counts as no glow, as `packMaterials` reads it. */
+function copyEmission(emission: SetSceneOptions['emission']): SetSceneOptions['emission'] {
+  const source: unknown = emission;
+  if (!Array.isArray(source)) return undefined;
+  const copy: ([number, number, number] | undefined)[] = [];
+  for (let m = 0; m < source.length; m++) {
+    const glow: unknown = source[m];
+    copy.push(Array.isArray(glow) ? ([glow[0], glow[1], glow[2]] as [number, number, number]) : undefined);
+  }
+  return copy;
 }
 
 function checkInteger(label: string, value: unknown, min: number, max: number): number {
@@ -440,7 +453,7 @@ export class PathTracer {
         order: prepared.order,
         geometry: prepared.geometry,
         materials: sameMaterials ? base.materials : packMaterials(doc, layout.textures, options.emission),
-        emission: options.emission?.map((glow) => glow && ([...glow] as [number, number, number])),
+        emission: copyEmission(options.emission),
         materialTextures: layout.textures,
         textureWarnings,
         plan: layout.plan,
@@ -456,11 +469,11 @@ export class PathTracer {
     }
     const sharing = base ? { materials: sameMaterials } : null;
     let uploaded: GpuScene | null;
-    let shown: GpuScene | null;
+    let borrowed: GpuScene | null;
     try {
       const result = await this.uploadInBands(loaded, generation, sharing);
       uploaded = result.scene;
-      shown = result.shown;
+      borrowed = result.borrowed;
     } catch (error) {
       closeOwn();
       throw error;
@@ -470,9 +483,9 @@ export class PathTracer {
       closeOwn();
       return NOT_APPLIED;
     }
-    // setEdges or a restore replaced the scene shown at the upload: the handles borrowed from it are gone, and rows
-    // written before a sharp angle was changed and changed back are stale.
-    if (uploaded && this.gpu?.scene !== shown) {
+    // setEdges or a restore replaced the scene the upload borrowed handles from: they are gone. An upload that
+    // borrowed nothing owns its textures, and its rows were packed for its own angle (checked below).
+    if (uploaded && borrowed && this.gpu?.scene !== borrowed) {
       disposeGpuScene(this.gl, uploaded, this.gpu?.scene);
       uploaded = null;
     }
@@ -507,16 +520,16 @@ export class PathTracer {
    * started meanwhile (a later call that passes its limits supersedes this one even when its geometry arrives last).
    * `scene` is `null` without a context to upload to, or when superseded or the context was lost during the upload.
    * With `sharing` the shown scene's layer texture (and its material table when `sharing.materials`) goes into the
-   * result as is. `shown` is the scene on the GPU when the upload started.
+   * result as is. `borrowed` is the scene whose handles the result shares, if any.
    */
   private async uploadInBands(
     loaded: LoadedScene,
     generation: number,
     sharing: { materials: boolean } | null,
-  ): Promise<{ scene: GpuScene | null; shown: GpuScene | null }> {
+  ): Promise<{ scene: GpuScene | null; borrowed: GpuScene | null }> {
     await this.buildsSettled();
     const gpu = this.gpu;
-    if (!this.isCurrent(generation) || !gpu || this.lost) return { scene: null, shown: null };
+    if (!this.isCurrent(generation) || !gpu || this.lost) return { scene: null, borrowed: null };
     const epoch = this.contextEpoch;
     this.repackEdges(loaded);
     const shown = gpu.scene;
@@ -536,9 +549,9 @@ export class PathTracer {
     // A context lost and restored while waiting: the textures belong to the dead one, the restore uploads instead.
     if (uploaded && (this.contextEpoch !== epoch || this.gpu !== gpu)) {
       disposeGpuScene(this.gl, uploaded);
-      return { scene: null, shown: null };
+      return { scene: null, borrowed: null };
     }
-    return { scene: uploaded, shown };
+    return { scene: uploaded, borrowed: sharedFrom };
   }
 
   /** Resolves once no geometry build is pending, one started while waiting included. */

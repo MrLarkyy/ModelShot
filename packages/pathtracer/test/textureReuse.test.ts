@@ -54,11 +54,21 @@ const texture = (name: string): SceneTexture => ({
 function tracer(options: PathTracerOptions = {}, onCall?: (call: GlCall) => void) {
   vi.stubGlobal('Worker', FakeGeometryWorker);
   const closed: number[] = [];
-  const decode = vi.fn((blob: Blob) =>
-    blob.size === PNG_2X2.length
-      ? Promise.resolve({ width: 2, height: 2, close: () => closed.push(closed.length) } as unknown as ImageBitmap)
-      : Promise.reject(new Error('bad')),
-  );
+  const closes: number[] = [];
+  let made = 0;
+  const decode = vi.fn((blob: Blob) => {
+    if (blob.size !== PNG_2X2.length) return Promise.reject(new Error('bad'));
+    const id = made++;
+    const bitmap = {
+      width: 2,
+      height: 2,
+      close: () => {
+        closed.push(closed.length);
+        closes[id] = (closes[id] ?? 0) + 1;
+      },
+    };
+    return Promise.resolve(bitmap as unknown as ImageBitmap);
+  });
   vi.stubGlobal('createImageBitmap', decode);
   const { gl, calls } = stubGl(onCall ? { onCall } : {});
   const canvas = {
@@ -80,7 +90,7 @@ function tracer(options: PathTracerOptions = {}, onCall?: (call: GlCall) => void
   const created = PathTracer.create(canvas, options);
   const worker = FakeGeometryWorker.last;
   if (!worker || !created.geometryInWorker) throw new Error('no fake worker');
-  return { tracer: created, worker, gl, calls, decode, closed, internals: created as unknown as Internals };
+  return { tracer: created, worker, gl, calls, decode, closed, closes, internals: created as unknown as Internals };
 }
 
 /** One textured box on a node that a pose moves; the texture array and the material array are shared by every pose. */
@@ -190,6 +200,21 @@ describe('setScene with the textures of the shown scene', () => {
     expect(internals.gpu?.scene?.layers).toBe(layers);
     expect(count(calls, 'texStorage3D', at)).toBe(0);
     expect(decode).toHaveBeenCalledTimes(1);
+  });
+
+  it('an emission entry that is no array counts as no glow and never matches a table for reuse', async () => {
+    const { tracer: pt, internals } = tracer();
+    const doc = rest();
+    const hostile = [5, 'abc', { 0: 1 }] as unknown as [number, number, number][];
+    expect((await pt.setScene(doc, { emission: hostile })).applied).toBe(true);
+    expect(internals.loaded?.materials.data.slice(20, 23)).toEqual(new Float32Array([0, 0, 0]));
+    const materials = internals.gpu?.scene?.materials;
+    expect((await pt.setScene(pose(doc, 1), { emission: hostile })).applied).toBe(true);
+    expect(internals.gpu?.scene?.materials).not.toBe(materials);
+    await pt.setScene(doc, { emission: [[1, 0, 0]] });
+    const red = internals.gpu?.scene?.materials;
+    await pt.setScene(pose(doc, 1), { emission: [[1, 0, 0]] });
+    expect(internals.gpu?.scene?.materials).toBe(red);
   });
 
   it('a superseded reusing call and one rejected for a limit leave the shown images and textures alone', async () => {
@@ -317,18 +342,57 @@ describe('setScene with the textures of the shown scene', () => {
   });
 
   it('dispose during a reusing call resolves it unapplied and closes every image once', async () => {
-    const { tracer: pt, worker, closed } = tracer();
+    let dispose: (() => void) | null = null;
+    const {
+      tracer: pt,
+      calls,
+      closes,
+      internals,
+    } = tracer({}, (call) => {
+      if (call.name === 'texSubImage2D') dispose?.();
+    });
     const doc = rest([texture('a'), texture('b')]);
     await pt.setScene({ ...doc, textures: [...doc.textures] });
     await pt.setScene(doc);
-    worker.holdReplies = true;
-    const pending = pt.setScene(pose(doc, 1));
-    await until(() => worker.held.length === 1);
-    pt.dispose();
-    expect((await pending).applied).toBe(false);
-    worker.release();
+    const layers = internals.gpu?.scene?.layers;
+    dispose = () => {
+      dispose = null;
+      pt.dispose();
+    };
+    expect((await pt.setScene(pose(doc, 1))).applied).toBe(false);
     // The first scene's two images closed when the second replaced it, the second's two by dispose.
-    expect(closed).toHaveLength(4);
+    expect(closes).toEqual([1, 1, 1, 1]);
+    expect(calls.filter((c) => c.name === 'deleteTexture' && c.args[0] === layers)).toHaveLength(1);
+  });
+
+  it('a call that borrowed nothing keeps its upload when the sharp angle is changed and restored meanwhile', async () => {
+    const run = async (disturb: boolean) => {
+      let edit: (() => void) | null = null;
+      const {
+        tracer: pt,
+        calls,
+        internals,
+      } = tracer({ edges: { sharpAngleDeg: 30 } }, (call) => {
+        if (call.name === 'texSubImage2D') edit?.();
+      });
+      const doc = rest();
+      await pt.setScene(doc);
+      const at = calls.length;
+      if (disturb) {
+        edit = () => {
+          edit = null;
+          pt.setEdges({ sharpAngleDeg: 60 });
+          pt.setEdges({ sharpAngleDeg: 30 });
+        };
+      }
+      expect((await pt.setScene({ ...doc, textures: [...doc.textures] })).applied).toBe(true);
+      return { images: count(calls, 'texStorage3D', at), data: internals.loaded?.geometry.triAttributes.data };
+    };
+    const calm = await run(false);
+    const disturbed = await run(true);
+    // Each setEdges uploads the shown scene again on its own; the call's own upload stays, with no fallback after it.
+    expect(disturbed.images).toBe(calm.images + 2);
+    expect(disturbed.data).toEqual(calm.data);
   });
 
   it('a reusing call reports the warnings of the first call', async () => {
