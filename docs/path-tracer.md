@@ -157,8 +157,8 @@ floor does not ride with a jump.
 texel's alpha rule like any camera ray (a cut-out texel lets it through, a partial one stops it as often as its alpha,
 whatever the draw order), so a hole in a texture is a hole in the alpha. The radiance holds no backdrop: a camera ray
 that escapes adds 0 and coverage 0; one that meets the model adds its radiance and coverage 1; one that meets the
-shadow catcher adds 0 and coverage 1 − shade (unclamped per sample, so the mean stays affine), a black shadow-only
-layer. Over the backdrop, radiance + backdrop × (1 − coverage) is exactly the opaque request's mean in linear light.
+shadow catcher adds 0 and coverage 1 − shade (unclamped per sample, so the mean stays affine; never negative, and
+exactly 0 where neither catcher ray is blocked), a black shadow-only layer. Over the backdrop, radiance + backdrop × (1 − coverage) is exactly the opaque request's mean in linear light.
 Coverage reuses the camera ray's outcome and draws no random number of its own. Resolve takes the box mean of the
 coverage. Denoised, the coverage is filtered with the radiance's edge-stopping weights (normal, albedo, depth,
 luminance) and one more stop, a coverage step beyond the pixel's own coverage noise (from the squared sum), so the
@@ -170,12 +170,13 @@ light (it shows what the opaque request shows); `readImage()` unpremultiplies, t
 clamped to 0..1 as alpha. Composited over the tone-mapped backdrop the readback differs from the opaque image only
 where alpha is partial (silhouettes, the catcher's shadow): tone mapping comes before the mix instead of after it
 (measured in docs/testing.md, Export goldens). Denoised, the transparent canvas differs from the opaque one where the
-filter saw different radiance (silhouettes, the shadow's edge; 14 levels without and 35 with the catcher measured).
-The lit catcher leaves a haze: one fill sample can light the catcher above 1, so a sample's coverage 1 − shade is
-negative as often as positive there and only the mean is near 0; the readback clamps the mean to 0..1, so a lit
-catcher's noise shows as a dark alpha haze of a few levels (about 1 160 pixels of alpha 1 to 15 in the 64 × 64,
-16-sample export golden), falling as 1/√n with the sample count; the canvas, composited unclamped, has none. A request
-without the field runs none of this.
+filter saw different radiance (silhouettes, the shadow's edge; 14 levels without and 34 with the catcher measured).
+The lit catcher has no haze (MS-59): its estimate is a control variate (Path tracing, shadow catcher), so a catcher
+sample where nothing blocks is exactly coverage 0. Before, an unblocked fill sample could light the catcher above or
+below 1 and the readback's clamp of the mean to 0..1 left a dark haze: in the 64 × 64, 16-sample export golden alpha
+1..15 went from 1 164 pixels (MS-22's haze) to 722, alpha 1..3 from 490 to 27. The rest, alpha 4..15 (674 before, 695
+after), is the model's real, faint occlusion of the dome: where one fill sample of 16 is blocked its pixel gets alpha 4
+to 15, an unbiased speckle that falls as 1/√n with the sample count. A request without the field runs none of this.
 
 ## Render quality
 
@@ -315,13 +316,20 @@ dome and two unshadowed accents ([look-presets.md](look-presets.md#lighting-mode
   inside its rectangle and with no model hit (the catcher lies at the lowest point of the model, or of `catcherBounds`,
   which for an animation is the union of its poses, so a model surface in its plane, like a ground, always wins, as the
   preview draws the catcher first; a transparent request keeps the rule, so such a ground has alpha 1, not the
-  catcher's 1 − shade), traces one key ray in the cone and one cosine-weighted fill ray
-  (escaped: `environmentRadiance`) and shows the pixel's backdrop × `catcherShade(fill, keyT, xz, rect)` of the look
-  (transparent: radiance 0 and coverage 1 − shade, Transparent renders). The fill
+  catcher's 1 − shade), traces one key ray in the cone and one cosine-weighted fill ray and shows the pixel's backdrop
+  × the shade of the look (transparent: radiance 0 and coverage 1 − shade, Transparent renders). The estimate is a
+  control variate (MS-59): the analytic unoccluded fill `hemisphereFill(up)` less the `environmentRadiance` a blocked
+  fill ray would have brought, and the key's 1 − keyT, through `catcherShadeOfLoss(fillLost, keyLost, xz, rect)`
+  (`catcherShade` of fill = `hemisphereFill(up)` − fillLost, written from the losses). Where neither ray is blocked the
+  numerator is exactly 0, so every sample is exactly 1 (the bare backdrop, coverage 0) whatever the GPU's division
+  rounds; the noise sits where something blocks. The mean is unchanged, since the cosine-weighted mean of
+  `environmentRadiance` over the up hemisphere is exactly `hemisphereFill(up)` (a unit test pins it per look). The fill
   ray accepts partial texels with its own random number (vertex 0's roulette dimension, unused there), not the camera
-  ray's, so a catcher point seen through glass still has the glass's fill shadow, as in the bake. The shade
-  is affine in fill and key, so the mean over samples equals the preview's shade of its baked means. The plane is
-  invisible to every other ray, so the model renders exactly as without it.
+  ray's, so a catcher point seen through glass still has the glass's fill shadow, as in the bake. The shade is affine
+  in both losses, so the mean over samples equals the preview's `catcherShade` of its baked means. A lightless look
+  (sky, ground and key all 0: the light weight at most 1e-6) has nothing a model could take, so both functions return
+  exactly 1 there and the catcher is invisible in the preview and the render alike. The plane is invisible to every
+  other ray, so the model renders exactly as without it.
 - Rounded edges: `surfaceAt` bends the interpolated normal with the shared `roundedNormal` (`edgeRounding` chunk of
   `@modelshot/looks`, the preview's function) before a back side flips it. Each slot's direction toward its edge is
   minus the gradient of its distance over the triangle, computed exactly from the corners (the preview takes it from
