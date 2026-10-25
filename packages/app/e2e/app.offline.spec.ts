@@ -19,6 +19,7 @@ test('after the first load the whole flow works offline, export included', async
   expect(cached).toContain('/app/');
   expect(cached.some((path) => path.includes('/assets/loadWorker'))).toBe(true);
   expect(cached.some((path) => path.includes('/assets/bakeWorker'))).toBe(true);
+  expect(cached.some((path) => path.includes('/assets/geometryWorker'))).toBe(true);
 
   await context.setOffline(true);
   await page.reload();

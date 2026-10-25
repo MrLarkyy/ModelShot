@@ -605,6 +605,41 @@ test.describe('transparency, shadows and sides (scene format rules)', () => {
     expect(darkened, 'backdrop pixels in the catcher shadow').toBeGreaterThan(100);
   });
 
+  test('an unblocked catcher shades exactly 1: a camera-only model renders the same bytes with and without it', async ({
+    page,
+  }) => {
+    // Camera-only geometry is skipped by fill and key rays, so no catcher ray is ever blocked: with the control variate
+    // every catcher sample is the bare backdrop (opaque) or coverage 0 (transparent), so at 1 sample, with no averaging
+    // to hide a per-sample swing, the bytes must match exactly. Tolerance 0: exact by construction.
+    const count = (a: Buffer, b: Buffer): number => {
+      let differ = 0;
+      for (let i = 0; i < a.length; i += 4) {
+        if (a.subarray(i, i + 4).compare(b.subarray(i, i + 4)) !== 0) differ++;
+      }
+      return differ;
+    };
+    for (const seed of [1, 7]) {
+      const query = `variant=turntable-y030&cameraonly=1&seed=${seed}&samples=1`;
+      const opaqueOn = (await render(page, query)).image.data;
+      const opaqueOff = (await render(page, `${query}&catcher=0`)).image.data;
+      expect(count(opaqueOn, opaqueOff), `seed ${seed}: opaque pixels the catcher changed`).toBe(0);
+      const clearOn = (await render(page, `${query}&transparent=1`)).image.data;
+      const clearOff = (await render(page, `${query}&transparent=1&catcher=0`)).image.data;
+      expect(count(clearOn, clearOff), `seed ${seed}: transparent pixels the catcher changed`).toBe(0);
+      let clear = 0;
+      for (let i = 3; i < clearOn.length; i += 4) if (clearOn[i] === 0) clear++;
+      // Off the model the escaped rays and the catcher alike are alpha 0.
+      expect(clear, `seed ${seed}: alpha-0 pixels`).toBeGreaterThan(clearOn.length / 4 / 4);
+      // Not vacuous: the catcher's rectangle comes from the visible geometry, camera-only or not, and with the model
+      // casting it darkens the same view.
+      const castOn = (await render(page, `variant=turntable-y030&seed=${seed}&samples=1`)).image.data;
+      const castOff = (await render(page, `variant=turntable-y030&seed=${seed}&samples=1&catcher=0`)).image.data;
+      const cast = count(castOn, castOff);
+      console.log(`[pt probe] seed ${seed}: catcher on/off differ in 0 camera-only pixels, ${cast} casting / min 100`);
+      expect(cast, `seed ${seed}: pixels the catcher changes under a casting model`).toBeGreaterThan(100);
+    }
+  });
+
   test('a single-sided face casts a shadow only from the side facing the light', async ({ page }) => {
     // alpha-plane's flat cube: two coincident single-sided faces; the south one faces the light and has a hole at
     // (14, 2), the north one faces away. Light through the hole must reach the ground.
@@ -1156,6 +1191,52 @@ test.describe('lifetime', () => {
     expect(counts.loaded.gl).toBeGreaterThan(0);
     expect(counts.loaded.bitmaps).toBe(2);
     expect({ gl: counts.gl, bitmaps: counts.bitmaps, step: counts.step }).toEqual({ gl: 0, bitmaps: 0, step: 0 });
+  });
+});
+
+/** MS-40: setScene builds the geometry in a worker; the main thread builds the same bytes when it cannot or may not. */
+test.describe('geometry worker', () => {
+  // Two loads of the 200 000-triangle document and four short renders on SwiftShader.
+  test.describe.configure({ timeout: 180_000 });
+  test('the worker builds the bytes the main thread builds: the edges view and 200 000 triangles', async ({ page }) => {
+    const run = async (query: string, large: boolean) => {
+      await openFixture(page, `/pt.html?${query}`);
+      return page.evaluate(async (setLarge) => {
+        const ptc = window.__msFixture!.pt!;
+        if (setLarge) {
+          ptc.prepareLarge();
+          if (!(await ptc.setLarge()).applied) throw new Error('the large document was not applied');
+          ptc.render();
+        }
+        return { inWorker: ptc.geometryInWorker, sums: ptc.accumulationBase64() };
+      }, large);
+    };
+    for (const [query, large] of [
+      ['variant=edges&seed=1&samples=16', false],
+      ['scene=empty&size=64&seed=1&samples=4', true],
+    ] as const) {
+      const worker = await run(query, large);
+      const inline = await run(`${query}&geometryWorker=0`, large);
+      expect([worker.inWorker, inline.inWorker], query).toEqual([true, false]);
+      expect(worker.sums, query).not.toBeNull();
+      // Byte for byte: the accumulated float sums, not the 8-bit image.
+      expect(worker.sums === inline.sums, query).toBe(true);
+    }
+  });
+
+  test('with workers blocked the scene builds on the main thread and matches its golden', async ({
+    page,
+  }, testInfo) => {
+    // A host whose policy forbids workers: the constructor throws.
+    await page.addInitScript(() => {
+      Object.defineProperty(window, 'Worker', {
+        value: function Blocked() {
+          throw new Error('workers are blocked here');
+        },
+      });
+    });
+    await expectGolden(page, testInfo, TURNTABLE);
+    expect(await page.evaluate(() => window.__msFixture?.pt?.geometryInWorker)).toBe(false);
   });
 });
 

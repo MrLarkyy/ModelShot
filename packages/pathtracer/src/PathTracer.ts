@@ -15,7 +15,6 @@ import {
   BACK_SIDE_RENDER_ORDER,
   RENDER_ORDER_TIE_DISTANCE,
   SCENE_FORMAT_VERSION,
-  sceneBounds,
   type SceneBounds,
   type SceneCamera,
   type SceneDocument,
@@ -35,7 +34,8 @@ import {
 import { AccumulationTargets } from './accumulationTargets';
 import { buildBvh } from './buildBvh';
 import { cameraUniforms, type CameraUniforms } from './cameraUniforms';
-import { flatEdges, flattenScene, DEFAULT_MAX_TRIANGLES } from './flattenScene';
+import { flatEdges, flattenScene, visibleTriangleCount, DEFAULT_MAX_TRIANGLES } from './flattenScene';
+import { GeometryBuilder } from './geometry/GeometryBuilder';
 import { disposeGpuScene, uploadGpuScene, type GpuScene } from './gpuScene';
 import {
   DATA_TEXTURE_WIDTH,
@@ -63,6 +63,7 @@ import { requireExactAccumulation } from './requireExactAccumulation';
 import { layoutTextures } from './layoutTextures';
 import type { TextureLayerPlan } from './textureLayers';
 import { TracerPrograms, type QualityProgramName, type TracerProgram } from './tracerPrograms';
+import { uploadSceneInBands } from './uploadSceneInBands';
 
 const DEFAULT_MAX_BOUNCES = 4;
 const MAX_BOUNCES = 16;
@@ -83,6 +84,9 @@ const GUIDE_TILE_DIVISOR = 8;
 const UNIT_SUM = 0;
 const UNIT_MOMENTS = 6;
 const UNIT_COVERAGE = 7;
+
+const NOT_APPLIED: SetSceneResult = Object.freeze({ applied: false, warnings: Object.freeze([]), triangles: 0 });
+const noop = (): void => undefined;
 
 const EMPTY_SCENE: SceneDocument = {
   formatVersion: SCENE_FORMAT_VERSION,
@@ -198,6 +202,10 @@ export class PathTracer {
   private lastStepAt = 0;
   private cancelled = false;
   private generation = 0;
+  /** Settles once every `setScene` geometry build started so far has (`GeometryBuilder` settles them in call order). */
+  private geometryTail: Promise<void> = Promise.resolve();
+  /** Counts context losses: textures made before a loss are dead even after the restore. */
+  private contextEpoch = 0;
   private lost = false;
   private disposed = false;
   private readonly restoredListeners = new Set<() => void>();
@@ -206,6 +214,7 @@ export class PathTracer {
   private readonly maxBounces: number;
   private readonly tileSize: number;
   private edges: EdgeLook;
+  private readonly builder: GeometryBuilder;
 
   private constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -221,6 +230,7 @@ export class PathTracer {
     this.maxBounces = checkInteger('maxBounces', options.maxBounces ?? DEFAULT_MAX_BOUNCES, 1, MAX_BOUNCES);
     this.tileSize = checkInteger('tileSize', options.tileSize ?? DEFAULT_TILE_SIZE, 16, 4096);
     this.edges = checkEdgeLook(options.edges, look.edges);
+    this.builder = GeometryBuilder.create(options.geometryWorker !== false);
     canvas.addEventListener('webglcontextlost', this.handleContextLost);
     canvas.addEventListener('webglcontextrestored', this.handleContextRestored);
     try {
@@ -252,6 +262,14 @@ export class PathTracer {
 
   get capabilities(): PathTracerCapabilities | null {
     return this.gpu?.capabilities ?? null;
+  }
+
+  /**
+   * `setScene` builds the geometry in a worker: `false` with the `geometryWorker` option off, without Worker support,
+   * or once the worker could not start or failed (the main thread builds it then).
+   */
+  get geometryInWorker(): boolean {
+    return this.builder.inWorker;
   }
 
   /** The context is lost: from the moment it is, before its event too. */
@@ -317,17 +335,21 @@ export class PathTracer {
   }
 
   /**
-   * Validates `doc` (`PathTracerError` `INVALID_SCENE`), checks its material count and flattens its visible triangles
-   * (`SCENE_TOO_LARGE` before any vertex is read or array allocated), builds the BVH and packs the data
-   * (`SCENE_TOO_LARGE` for rows over MAX_TEXTURE_SIZE before the arrays are allocated), all before the first `await`;
-   * then decodes the textures, lays them out (`SCENE_TOO_LARGE` over MAX_ARRAY_TEXTURE_LAYERS, the decoded images
-   * closed) and swaps the scene in; the accumulation restarts at sample 0. Nothing reaches the GPU before every check
-   * passed, and a failing call keeps the current scene. A later call that passes the synchronous checks, or
-   * `dispose()`, supersedes a pending one: it resolves with `applied: false` and closes what it decoded. A later call
-   * rejected by the synchronous checks supersedes nothing.
+   * Validates `doc` (`PathTracerError` `INVALID_SCENE`), checks its material count, its visible triangles
+   * (`SCENE_TOO_LARGE`, from the group counts alone) and `catcherBounds` (`RangeError`), all before the first `await`
+   * and before anything is posted. Then the geometry worker (`PathTracerOptions.geometryWorker`) flattens the triangles,
+   * builds the BVH and packs the data (`SCENE_TOO_LARGE` for rows over MAX_TEXTURE_SIZE before the arrays are
+   * allocated) while the main thread streams it the meshes over several tasks; then the textures are decoded and laid
+   * out (`SCENE_TOO_LARGE` over MAX_ARRAY_TEXTURE_LAYERS, the decoded images closed), the data uploads in bands over
+   * several tasks while the current scene keeps drawing, and the scene is swapped in; the accumulation restarts at
+   * sample 0. Nothing reaches the GPU before every check passed, and a failing call keeps the current scene. A later
+   * call that passes every limit (whenever its geometry arrives) or `dispose()` supersedes a pending one: it resolves
+   * with `applied: false` and closes what it decoded. A later call rejected for a limit supersedes nothing.
+   * Meshes are compared by object identity: a `SceneMesh` mutated in place between calls is not posted again, so
+   * change one by passing a new object.
    */
   async setScene(doc: SceneDocument, options: SetSceneOptions = {}): Promise<SetSceneResult> {
-    if (this.disposed) return { applied: false, warnings: [], triangles: 0 };
+    if (this.disposed) return NOT_APPLIED;
     try {
       validateScene(doc);
     } catch (error) {
@@ -338,18 +360,26 @@ export class PathTracer {
     }
     const capabilities = this.capabilities ?? this.queryCapabilities();
     checkMaterialCount(doc.materials.length);
-    const packedAngle = this.edges.sharpAngleDeg;
-    const flat = flattenScene(doc, this.options.maxTriangles ?? DEFAULT_MAX_TRIANGLES, this.sharpEdgeOptions());
-    const bvh = buildBvh(flat.positions, flat.count);
-    const geometry = packGeometry(flat, bvh, capabilities.maxTextureSize);
-    const bounds = options.catcherBounds === undefined ? sceneBounds(doc) : checkCatcherBounds(options.catcherBounds);
+    const maxTriangles = this.options.maxTriangles ?? DEFAULT_MAX_TRIANGLES;
+    visibleTriangleCount(doc, maxTriangles);
+    const catcherBounds = options.catcherBounds === undefined ? undefined : checkCatcherBounds(options.catcherBounds);
     const catcherOn = options.shadowCatcher !== false;
-    // Only a scene that passed every limit supersedes a pending one.
+    const packedAngle = this.edges.sharpAngleDeg;
+    const build = this.builder.build(doc, {
+      maxTriangles,
+      edges: this.sharpEdgeOptions(),
+      maxTextureSize: capabilities.maxTextureSize,
+      sceneBounds: catcherBounds === undefined,
+    });
+    this.geometryTail = build.then(noop, noop);
+    const prepared = await build;
+    if (!prepared || this.disposed) return NOT_APPLIED;
+    // Builds settle in call order, so generations follow the calls; a call whose build rejected supersedes nothing.
     const generation = ++this.generation;
     const decoded = await decodeTextures(doc.textures, this.textureLimits(capabilities), () =>
       this.isCurrent(generation),
     );
-    if (!decoded) return { applied: false, warnings: [], triangles: 0 };
+    if (!decoded) return NOT_APPLIED;
     // Everything that can still fail runs before the current scene is released: a failure keeps it and closes the
     // images this call decoded.
     let loaded: LoadedScene;
@@ -357,38 +387,95 @@ export class PathTracer {
       const layout = layoutTextures(decoded.bitmaps, capabilities.layerSide, capabilities.maxArrayTextureLayers);
       loaded = {
         doc,
-        sources: flat.sources,
+        sources: prepared.sources,
         edgeAngle: packedAngle,
-        order: bvh.order,
-        geometry,
+        order: prepared.order,
+        geometry: prepared.geometry,
         materials: packMaterials(doc, layout.textures, options.emission),
         plan: layout.plan,
         images: layout.images,
         bitmaps: decoded.bitmaps,
-        bounds,
+        bounds: catcherBounds ?? prepared.bounds,
         catcherOn,
-        // Placed under the look current at the swap: a setLook while the textures decoded applies to this scene too.
-        catcher: catcherOn ? this.catcherPlane(bounds) : null,
+        catcher: null,
       };
     } catch (error) {
       for (const bitmap of decoded.bitmaps) bitmap?.close();
       throw error;
     }
+    let uploaded: GpuScene | null;
+    try {
+      uploaded = await this.uploadInBands(loaded, generation);
+    } catch (error) {
+      for (const bitmap of decoded.bitmaps) bitmap?.close();
+      throw error;
+    }
+    if (!this.isCurrent(generation)) {
+      if (uploaded) disposeGpuScene(this.gl, uploaded);
+      for (const bitmap of decoded.bitmaps) bitmap?.close();
+      return NOT_APPLIED;
+    }
     this.releaseScene();
     this.loaded = loaded;
-    this.repackEdges(loaded);
-    if (this.gpu && !this.lost) this.uploadLoaded(this.gpu);
+    // Placed under the look current at the swap: a setLook while the scene was prepared applies to it too.
+    loaded.catcher = catcherOn ? this.catcherPlane(loaded.bounds) : null;
+    const gpu = this.gpu;
+    if (uploaded && gpu && loaded.edgeAngle === this.edges.sharpAngleDeg) {
+      gpu.scene = uploaded;
+    } else {
+      if (uploaded) disposeGpuScene(this.gl, uploaded);
+      // A sharp angle set during the upload, or nothing uploaded (no context, or lost: the restore uploads then).
+      this.repackEdges(loaded);
+      if (gpu && !this.lost && !this.gl.isContextLost()) this.uploadLoaded(gpu);
+    }
     this.restart();
     const warnings: PathTracerWarning[] = [];
-    if (flat.skipped > 0) {
+    if (prepared.skipped > 0) {
       warnings.push({
         code: 'DEGENERATE_TRIANGLES',
-        count: flat.skipped,
-        message: `${flat.skipped} triangles skipped: a position, normal or UV is not finite, or the triangle has no area`,
+        count: prepared.skipped,
+        message: `${prepared.skipped} triangles skipped: a position, normal or UV is not finite, or the triangle has no area`,
       });
     }
     for (const warning of decoded.warnings) warnings.push({ ...warning });
-    return { applied: true, warnings, triangles: flat.count };
+    return { applied: true, warnings, triangles: prepared.count };
+  }
+
+  /**
+   * Uploads `loaded` in bands while the current scene keeps drawing, after and before waiting for every geometry build
+   * started meanwhile (a later call that passes its limits supersedes this one even when its geometry arrives last).
+   * `null` without a context to upload to, or when superseded or the context was lost during the upload.
+   */
+  private async uploadInBands(loaded: LoadedScene, generation: number): Promise<GpuScene | null> {
+    await this.buildsSettled();
+    const gpu = this.gpu;
+    if (!this.isCurrent(generation) || !gpu || this.lost) return null;
+    const epoch = this.contextEpoch;
+    this.repackEdges(loaded);
+    const uploaded = await uploadSceneInBands(
+      this.gl,
+      loaded.geometry,
+      loaded.materials,
+      loaded.plan,
+      loaded.images,
+      () => this.isCurrent(generation) && this.contextEpoch === epoch && this.gpu === gpu,
+    );
+    await this.buildsSettled();
+    // A context lost and restored while waiting: the textures belong to the dead one, the restore uploads instead.
+    if (uploaded && (this.contextEpoch !== epoch || this.gpu !== gpu)) {
+      disposeGpuScene(this.gl, uploaded);
+      return null;
+    }
+    return uploaded;
+  }
+
+  /** Resolves once no geometry build is pending, one started while waiting included. */
+  private async buildsSettled(): Promise<void> {
+    let tail: Promise<void>;
+    do {
+      tail = this.geometryTail;
+      await tail;
+    } while (tail !== this.geometryTail);
   }
 
   /** The look drawn with: the last `setLook` (or the options' look and overrides) with the current edges. */
@@ -631,6 +718,7 @@ export class PathTracer {
     if (this.disposed) return;
     this.disposed = true;
     this.generation++;
+    this.builder.dispose();
     this.canvas.removeEventListener('webglcontextlost', this.handleContextLost);
     this.canvas.removeEventListener('webglcontextrestored', this.handleContextRestored);
     this.releaseScene();
@@ -1051,6 +1139,7 @@ export class PathTracer {
     // Without preventDefault the browser never restores the context.
     event.preventDefault();
     this.lost = true;
+    this.contextEpoch++;
   };
 
   private readonly handleContextRestored = (): void => {

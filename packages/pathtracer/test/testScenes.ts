@@ -143,3 +143,26 @@ export function boxMesh(min: readonly number[], max: readonly number[], override
     ...overrides,
   };
 }
+
+/** Boxes on a rotated, scaled node and loose triangles, one camera-only group and one hidden mesh. */
+export function mixedScene(): SceneDocument {
+  const nodes = [node({ rotation: [0, 30, 10], translation: [1, 2, 3], scale: [1, 2, 1] })];
+  const box = boxMesh([0, 0, 0], [1, 1, 1], { node: 0 });
+  const loose = triangleMesh(randomTriangles(300, 7), {
+    groups: [
+      { material: 0, start: 0, count: 600 },
+      { material: 0, start: 600, count: 300, cameraOnly: true },
+    ],
+  });
+  const hidden = triangleMesh(randomTriangles(5, 3), { visible: false });
+  return sceneOf([box, loose, hidden], nodes);
+}
+
+/** The two views hold the same bytes (an element-wise `toEqual` of millions of floats is too slow). */
+export function sameBytes(a: ArrayBufferView, b: ArrayBufferView): boolean {
+  if (a.byteLength !== b.byteLength) return false;
+  const x = new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
+  const y = new Uint8Array(b.buffer, b.byteOffset, b.byteLength);
+  for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return false;
+  return true;
+}
