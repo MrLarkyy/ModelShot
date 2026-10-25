@@ -85,7 +85,11 @@ describe('shader sources', () => {
     expect(vertex).toContain('v_vertexLightBack = a_lightmapChart;');
     expect(fragment).toContain('if (chart.z == LIGHTMAP_NONE) return vec4(1.0);');
     expect(fragment).toContain('if (chart.z == LIGHTMAP_WORLD) {');
-    expect(fragment).toContain('vec2 at = v_vertexLight.xy - rect.xy - 0.5;');
+    expect(fragment).toContain('vec2 at = vertexLight.xy - rect.xy - 0.5;');
+    // The vertex light is read at the shading point, as the normal and the edge distances.
+    expect(fragment).toContain('vec4 vertexLight = atShadingPoint(v_vertexLight);');
+    expect(fragment).toContain('vec4 vertexLightBack = atShadingPoint(v_vertexLightBack);');
+    expect(fragment).toContain('interpolatedNormal = atShadingPoint(vec4(v_normal, 0.0)).xyz;');
     expect(fragment).not.toContain('chart.z < 0.0');
     // Light and albedo share the seam taps.
     expect(shaderProgramSource('opaque').fragment.match(/seamTaps\(/g)?.length).toBe(3);
@@ -139,15 +143,16 @@ describe('shader sources', () => {
     }
   });
 
-  it('prepares the edge derivatives before the first discard and shades with the rounded normal', () => {
+  it('prepares the shading point and edge derivatives before the first discard and shades with the rounded normal', () => {
     for (const name of ['opaque', 'oitAccum', 'fallback'] as const) {
       for (const depthKey of ['raster', 'exact'] as const) {
         const { fragment } = shaderProgramSource(name, depthKey);
         const body = fragment.slice(fragment.indexOf('void main()'));
-        const prepare = body.indexOf('prepareEdges();');
+        const prepare = body.indexOf('prepareShading();');
         expect(prepare, `${name} ${depthKey}`).toBeGreaterThan(-1);
         expect(prepare, `${name} ${depthKey}`).toBeLessThan(body.indexOf('discard'));
-        expect(body).toContain('shadingNormal(v_normal)');
+        expect(body).toContain('shadingNormal()');
+        expect(prepare, `${name} ${depthKey}`).toBeLessThan(body.indexOf('sampleBakedLight('));
         expect(body).not.toContain('surfaceNormal(');
         expect(fragment).toContain(
           'vec3 roundedNormal(vec3 n, vec4 d, vec4 angle, vec3 t[4], float width, vec4 footprint)',

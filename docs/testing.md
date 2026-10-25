@@ -436,15 +436,50 @@ frames, single-sampled, move by MS-54 at most 4 pixels by 1 level (rounding in t
 the drift are `rt-player-classic-front` (1), `-classic-back` (1), `-walk-hold-34` (4), `-wave-front` (2),
 `rt-preset-marketplace` (2) and `rt-preset-marketplace-fallback` (2). Unchanged: the other rt goldens, every `pt-*`
 and model-view golden; `export-animation-f0.s1.n16` renders 2 pixels 1 level off its golden, twice alike (not an rt
-golden, left). Probes: **MSAA silhouette pixels are shaded on the face**:
+golden, left). Round 3 (the shading point back at the pixel centre wherever the pixel lies on the face,
+`prepareShading`) rewrote 29 rt goldens, pixels (max levels) against round 2: `rt-bake-alpha-plane` 1 614 (3),
+`rt-bake-gltf-contact` 1 846 (4), `rt-bake-turntable-y030` 307 (2), `rt-bake-cutout-checker` 105 (1) and `-fallback`
+100 (1), `rt-closeup` 553 (3), `rt-edges` 635 (20), `rt-fallback` 316 (1), `rt-far` 40 (1), `rt-gltf-nodes-y030` 141
+(2), `rt-iso` 372 (1), `rt-obj-shapes-y030` 113 (2), `rt-outline-hull` 661 (3), `rt-turntable-y000` 553 (2), `-y030`
+337 (2), `-y060` 370 (2), `-y090` 441 (1), the exact-key frames `rt-player-classic-back` 731 (2), `-classic-front` 241
+(1), `-hold-34` 281 (1), `-legacy-34` 170 (1), `-legacy-opaque-hat-34` 133 (1), `-slim-34` 229 (1), `-slim-fallback`
+225 (1), `-walk-hold-34` 308 (1), `-wave-front` 111 (1), `rt-preset-marketplace` 1 320 (9) and `-fallback` 1 313 (9),
+`rt-preset-rim` 939 (16). Diff images judged: the rounded-edge bands along sharp edges, the sphere's triangle edges
+and silhouettes; nothing else. Single-sampled frames move too: SwiftShader snaps vertices to 1/16 px, so even fully
+covered pixels interpolate up to 0.04 px off `gl_FragCoord`, and the step to the centre takes that up (a 0.0625 px
+threshold that left it measured 168 pixels at width 0.1 in the edge-band probe below, against 135). Pairs re-measured
+(13, `pair` project), all within their limits, none changed: equal to the table except `preset-marketplace` 1 271,
+0.01939, 1.238, `preset-rim` 1 401, 0.02138, 1.104, `preset-marketplace-yaw30` 1 389, 0.02119, 1.280,
+`obj-shapes-y030` 245, 0.00374, 0.469, `gltf-nodes-y030` 316, 0.00482, 0.955, `gltf-contact` 6 988, 0.10663, 5.628.
+Probes: **MSAA silhouette pixels are shaded on the face**:
 the baked `turntable-y030` preview against its render (the `pt-turntable-y030` golden PNG), the mean largest-channel
-difference over the 2 px outline band both draw (`outlineBand`), 1.7443 over 3 919 pixels (1.7726 when shaded at the
-pixel centre), at most measured x 1.25 = 2.18 and below the midpoint 1.7585 (a revert of the centroid qualifiers
-measures 1.7726 and fails); frame on the raster key with MSAA (asserted). **The
-edge band keeps its width across quad diagonals**: the `edges` view with MSAA against `msaa=0`, off every mesh's
-outline (more than 1 px from a `maskBoundary` of the mesh's pixels from `hide=`): 0 pixels over 2 levels at the look's
-width; at width 0.1 147 pixels differ at all (227 with the skewed footprint, 142 when shaded at the pixel centre),
-at most 183.
+difference over the 2 px outline band both draw (`outlineBand`), 1.7461 over 3 919 pixels (1.7726 when shaded at the
+pixel centre), at most 2.18 and below 1.7585, the midpoint from round 2's 1.7443 (shading point always at the
+centroid), kept rather than widened (a revert of the centroid qualifiers measures 1.7726 and fails); frame on the raster
+key with MSAA (asserted). **The edge band keeps its width across quad diagonals**: the `edges` view with MSAA against
+`msaa=0`, off every mesh's outline (more than 1 px from a `maskBoundary` of the mesh's pixels from `hide=`): 0 pixels
+over 2 levels at the look's width; at width 0.1 135 pixels differ at all (227 with the skewed footprint, 147 with the
+shading point at the centroid inside faces too, 142 when shaded at the pixel centre), at most 141, the midpoint to 147
+(below 135 x 1.25), so a shading point left at the centroid inside faces fails.
+
+Both probes, like every golden, are calibrated on SwiftShader (`assertSwiftShader`). Measured once on a real GPU (MS-54,
+ANGLE (NVIDIA, NVIDIA GeForce RTX 3080 Direct3D11 vs_5_0 ps_5_0, D3D11), a throwaway Playwright config with
+`--use-angle=d3d11 --enable-gpu --ignore-gpu-blocklist` and the SwiftShader assertion bypassed locally, nothing
+committed), pixels over 2 levels / pixels differing at width 0.1 / outline band mean, against SwiftShader:
+
+| Shaders                                            | RTX 3080          | SwiftShader      |
+| -------------------------------------------------- | ----------------- | ---------------- |
+| before MS-54 (pixel centre)                        | 0 / 142 / 1.7569  | 0 / 142 / 1.7726 |
+| centroid, footprint not mapped                     | 9 / 510 / -       | 0 / 227 / 1.7402 |
+| centroid, footprint mapped (round 2)               | 10 / 431 / 1.7515 | 0 / 147 / 1.7443 |
+| centroid, shading point at the centre inside faces | 2 / 173 / 1.7515  | 0 / 135 / 1.7461 |
+
+A GPU's centroid is a covered sample position: inside a face, along a quad's diagonal, shading there moved the pixel
+against `msaa=0` (8 of round 2's 10 pixels came from the centroid normal: 8 / 422 with only `v_normal` centroid).
+`prepareShading` now steps each centroid input back to the pixel centre wherever the pixel lies on the face. The 2
+pixels left (3 levels each, at (69, 129) and (199, 149)) reach over a sharp edge, where the centroid sample is kept by
+design (stepping back there too leaves 1 pixel but loses the outline band on SwiftShader, 1.7696). On the GPU the
+outline band's pre-MS-54 value is already below the bound, so the revert check holds on SwiftShader only.
 
 For a manual run on real hardware open `rt.html?scene=bench&size=512&fps=1`: it draws continuously and shows the
 median frame work (draw until the GPU finished) and display interval over the last 120 frames, with the renderer

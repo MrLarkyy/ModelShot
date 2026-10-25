@@ -152,8 +152,9 @@ test('MSAA silhouette pixels are shaded on the face: the outline band of turntab
   page,
 }) => {
   test.setTimeout(240_000);
-  // Measured mean 1.7443 over 3 919 px; 1.7726 when shaded at the pixel centre (before MS-54); the bound between them
-  // is their midpoint, so a revert of the centroid qualifiers fails it.
+  // Measured mean 1.7461 over 3 919 px; 1.7726 when shaded at the pixel centre (before MS-54). The bound between them
+  // is the midpoint from 1.7443 (the shading point always at the centroid), kept as limits are never widened; a revert
+  // of the centroid qualifiers fails it.
   const maxMean = 2.18;
   const midpoint = 1.7585;
   const traced = decodePng(
@@ -1565,16 +1566,19 @@ test.describe('rounded edges', () => {
 
   /**
    * Centroid edge distances (MS-54) are differenced over steps up to 0.75 px off the unit ones where a pixel's samples
-   * fall on two triangles; prepareEdges maps the gradient back to unit steps, so the band keeps its box-filter width.
+   * fall on two triangles; prepareShading maps the gradient back to unit steps, so the band keeps its box-filter width,
+   * and shades at the pixel centre where the pixel lies on the face.
    * The edges view with 4 samples against pixel-centre sampling (msaa=0), off every mesh's outline (more than 1 px from
    * where a mesh's own pixels, from hiding it, begin), where a pixel differs only along a triangle edge inside a face:
    * at the look's width no pixel more than 2 levels apart; at width 0.1, where a band is a fraction of a pixel and the
-   * footprint decides its brightness, the pixels differing at all at most the measured count x 1.25.
+   * footprint decides its brightness, the pixels differing at all at most the limit below.
    */
   test('the edge band keeps its width across quad diagonals', async ({ page }) => {
-    // Measured 0 pixels over 2 levels at the look's width; 147 differing pixels at width 0.1 (227 with the skewed
-    // footprint, 142 when shaded at the pixel centre, before MS-54).
-    const maxNarrow = 183;
+    // Measured 0 pixels over 2 levels at the look's width; 135 differing pixels at width 0.1 (227 with the skewed
+    // footprint, 147 shaded at the centroid inside faces too, 142 at the pixel centre before MS-54). The limit is the
+    // midpoint to 147 (below 135 x 1.25), so shading inside faces at the centroid fails it. SwiftShader only: a GPU's
+    // centroid is one covered sample, docs/testing.md gives its numbers.
+    const maxNarrow = 141;
     const centre = (await render(page, 'variant=edges&msaa=0')).image;
     const { width, height } = centre;
     const outlines = new Uint8Array(width * height);

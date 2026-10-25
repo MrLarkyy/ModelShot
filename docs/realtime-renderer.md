@@ -240,7 +240,7 @@ option `edges` (a `Partial<EdgeLook>`, out of range a `RangeError` naming `edges
   `vertexOf` (positions, normals, UVs, UV rectangles and lightmap data alike) and takes its split `indices`; the
   distances and angles go to attribute locations 9 (`a_edgeDistances`) and 10 (`a_edgeAngles`, flat), in the exact
   key's de-indexed copy too. A context restore uploads them again from the retained scene.
-- `shading.glsl`: `prepareEdges()` runs first in `main`, before any discard (derivatives need uniform control flow,
+- `shading.glsl`: `prepareShading()` runs first in `main`, before any discard (derivatives need uniform control flow,
   as `prepareDepthKey`): each slot's direction toward its edge is minus the in-surface gradient of its distance,
   from `dFdx`/`dFdy` of distance and world position (`v_worldPosition`), and its footprint is the distance one pixel
   spans. `shadingNormal()` replaces the plain normal in the opaque, OIT and fallback passes: the shared
@@ -255,12 +255,18 @@ option `edges` (a `Partial<EdgeLook>`, out of range a `RangeError` naming `edges
   variants; a mismatch fails to link), read at a covered sample as the render's rays hit the face. The centroid
   values of neighbouring pixels lie up to 0.75 px off the unit steps `dFdx`/`dFdy` assume. The directions toward the
   edges are unaffected (distance and position are differenced over the same steps); the footprint is not, so
-  `prepareEdges` projects `v_worldPosition` to the drawing buffer (`u_viewProjection`, `u_viewportSize`, now declared
-  in the shading chunk for both variants) and, where those steps are not unit ones (more than 0.01 px off, determinant
-  above 0.25), maps the distance gradient back to unit steps with the inverse of their matrix. Fully covered pixels
-  are unchanged; pixels along a triangle edge inside a face (a quad's diagonal) read each triangle at its own point.
-  The baked vertex light (`v_vertexLight`, `v_vertexLightBack`, which world charts reuse for their lightmap point)
-  is centroid too: at the pixel centre it would show the light of a point beyond the face. Only `v_uv` and `v_uvRect`
+  `prepareShading` projects `v_worldPosition` to the drawing buffer (`u_viewProjection`, `u_viewportSize` from the
+  `viewport` chunk) and, where those steps are not unit ones (more than 0.01 px and less than 1 px off, determinant
+  above 0.25), maps the distance gradient back to unit steps with the inverse of their matrix. The baked vertex light
+  (`v_vertexLight`, `v_vertexLightBack`, which world charts reuse for their lightmap point) is centroid too: at the
+  pixel centre it would show the light of a point beyond the face. Shading point: a GPU's centroid is a covered
+  sample position, so inside a face, along a quad's diagonal, each triangle would be shaded at a point other than the
+  pixel centre and the pixel would change (measured on an RTX 3080, docs/testing.md).
+  `prepareShading` therefore steps every centroid input (normal, edge distances, through `atShadingPoint` the baked
+  light) back to the pixel centre, `gl_FragCoord` less the sample's projected position mapped to derivative units,
+  exact as the inputs are affine over the triangle, unless the pixel reaches over one of the triangle's sharp edges
+  (some slot's distance at the centre below half its footprint: a silhouette or a crease), where the centroid sample
+  stays. Fully covered pixels are unchanged. `sampleBakedLight` runs after `prepareShading`. Only `v_uv` and `v_uvRect`
   stay at the pixel centre: texel anti-aliasing (`texelSample`), the alpha-to-coverage contour on the texel boundary
   and the hashed-alpha cell are defined on the texel grid there, and `v_uvRect` keeps the texel on its face.
   `v_lightmap` is flat. No varying is added (the exact variant uses 14 of the minimum 15).
