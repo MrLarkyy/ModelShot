@@ -26,6 +26,8 @@ The path tracer and the export code are loaded on first use and share one tracer
 
 The embed reuses the viewer and the intake: `@modelshot/app/viewer` (`Viewer`) and `@modelshot/app/intake`
 (`checkIntake`, `groupFiles`, `loadModel`, `IntakeError`) are package exports for it ([embed.md](embed.md)).
+`loadModel` takes an optional `AbortSignal`: on abort it kills the read worker and rejects with an `AbortError` (the
+embed aborts a read its latest parameters no longer ask for); the app passes none.
 
 ## Files and limits
 
