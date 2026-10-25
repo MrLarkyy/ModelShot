@@ -21,10 +21,11 @@ import { isRtSceneName, parseRtView, reverseMeshOrder, rtCamera, rtLook, rtScene
 // rtScenes.ts; catcher=0|1 the shadow catcher, default on; edges=<width> the rounded edges, 0 none; preset=<look
 // preset id>, rim=0) plus the path-tracer-only variant `emissive`; seed (default 1), samples (default 64), batch (samples
 // per step, default all), tile (tile side, default 256), size (CSS pixels, default 256), maxTriangles, track=1 (count
-// GL objects), timing=1 (one sample per frame with a time readout, for a manual run on real hardware); the render
-// quality (RenderRequest): supersample=1..4, denoise=1, noise=<threshold>, which the sample bench uses too;
-// transparent=1 (RenderRequest.transparent: readRGBA gives readImage's straight alpha, rows bottom to top as the
-// drawing buffer's); cameraonly=1 (every mesh seen by camera rays only, so nothing blocks a catcher ray).
+// GL objects), timing=1 (one sample per frame with a time readout, for a manual run on real hardware), geometryWorker=0
+// (setScene builds the geometry on the main thread); the render quality (RenderRequest): supersample=1..4, denoise=1,
+// noise=<threshold>, which the sample bench uses too; transparent=1 (RenderRequest.transparent: readRGBA gives
+// readImage's straight alpha, rows bottom to top as the drawing buffer's); cameraonly=1 (every mesh seen by camera
+// rays only, so nothing blocks a catcher ray).
 const params = new URLSearchParams(location.search);
 
 /** Path-tracer-only presets: a realtime view plus what only the tracer has. */
@@ -128,6 +129,7 @@ async function start(): Promise<void> {
   const maxTriangles = intParam('maxTriangles', 200_000, 0, 10_000_000);
   const timing = params.get('timing') === '1';
   const cameraOnly = intParam('cameraonly', 0, 0, 1) === 1;
+  const geometryWorker = intParam('geometryWorker', 1, 0, 1) === 1;
   const quality = qualityParams();
   const variantName = params.get('variant');
   const ptVariant = variantName !== null && Object.hasOwn(PT_VARIANTS, variantName) ? PT_VARIANTS[variantName] : null;
@@ -143,6 +145,7 @@ async function start(): Promise<void> {
     preserveDrawingBuffer: !timing,
     tileSize,
     maxTriangles,
+    geometryWorker,
     ...(view.edges !== null ? { edges: { width: view.edges } } : {}),
   });
   const capabilities = tracer.capabilities;
@@ -221,6 +224,9 @@ async function start(): Promise<void> {
     tracer.step(1);
   });
 
+  // The bench's large document, built before its measured setScene.
+  let large: SceneDocument | null = null;
+
   const lose = gl.getExtension('WEBGL_lose_context');
   const controls: PtControls = {
     get warnings() {
@@ -241,6 +247,32 @@ async function start(): Promise<void> {
     },
     get probes() {
       return probes();
+    },
+    get geometryInWorker() {
+      return tracer.geometryInWorker;
+    },
+    prepareLarge: () => {
+      large = sceneOf('large-order');
+    },
+    setLarge: async () => {
+      if (!large) throw new Error('prepareLarge first');
+      const next = large;
+      const result = await tracer.setScene(next, { shadowCatcher: view.catcher });
+      if (result.applied) {
+        doc = next;
+        warnings = result.warnings;
+        triangles = result.triangles;
+      }
+      tracer.setCamera(camera());
+      return { applied: result.applied, triangles: result.triangles };
+    },
+    accumulationBase64: () => {
+      const sums = tracer.readAccumulation();
+      if (!sums) return null;
+      const bytes = new Uint8Array(sums.buffer, sums.byteOffset, sums.byteLength);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      return btoa(binary);
     },
     liveGlObjects: () => tracker?.liveGlObjects() ?? -1,
     livePrograms: () => tracker?.livePrograms() ?? -1,

@@ -27,13 +27,19 @@ requestAnimationFrame(frame);
   limit), `maxTextureSide` (default 4096, capped by `MAX_TEXTURE_SIZE`), `maxTexturePixelsTotal` (default 64 Mi),
   `tileSize` (16..4096, default 256), `maxPixels`, `preserveDrawingBuffer`, `edges` (`Partial<EdgeLook>`, the
   preview's rounded edges over the initial look's; out of range a `RangeError` naming `edges.width` or
-  `edges.sharpAngleDeg`).
-- `setScene(doc, { emission, shadowCatcher, catcherBounds })`: validates, checks the material count, flattens, builds the BVH and packs the data
-  (synchronously, before its first `await`), then decodes the textures, lays them out and swaps the scene in. Resolves
-  `{ applied, warnings, triangles }`. A call that fails keeps the current scene and closes whatever it decoded.
-  Superseding: a later call that passes the synchronous checks, or `dispose()`, supersedes a pending one, which
-  resolves `{ applied: false }` and closes what it decoded; a later call rejected by those checks (`INVALID_SCENE`,
-  `SCENE_TOO_LARGE` for materials, triangles or data rows) does not, and the pending one still applies.
+  `edges.sharpAngleDeg`), `geometryWorker` (default `true`: `setScene` builds the geometry in a module Worker;
+  `false` builds it on the main thread, for a host that forbids workers; the bytes are the same).
+- `geometryInWorker`: whether `setScene` builds in the worker; `false` with the option off, without Worker support, or
+  once the worker could not start or failed.
+- `setScene(doc, { emission, shadowCatcher, catcherBounds })`: validates, checks the material count, the visible
+  triangle count (from the group counts) and `catcherBounds` (synchronously, before its first `await` and before
+  anything is posted to the worker); then the geometry worker flattens, builds the BVH and packs the data, the
+  textures are decoded and laid out, the data uploads in bands over several tasks and the scene is swapped in
+  (Pipeline). Resolves `{ applied, warnings, triangles }`. A call that fails keeps the current scene and closes
+  whatever it decoded. Superseding: a later call that passes every limit (whenever its geometry arrives), or
+  `dispose()`, supersedes a pending one, which resolves `{ applied: false }` and closes what it decoded; a later call
+  rejected for a limit (`INVALID_SCENE`, `SCENE_TOO_LARGE` for materials, triangles or data rows, the last one after
+  the worker) does not, and the pending one still applies.
 - `setCamera(camera)`, `resize(cssSize)`: the shared `SceneCamera` and the canvas size, as for the preview.
 - `setEdges(edges)`, `edgeLook`: the rounded edges (fields left out keep theirs; a bad value throws as for the option
   and changes nothing). A new width restarts the accumulation; a new sharp angle detects the edges again and rewrites
@@ -95,21 +101,38 @@ floor does not ride with a jump.
    warning). More visible triangles than `maxTriangles` throw `SCENE_TOO_LARGE` before anything is read or allocated.
    With edge options (the render; the bake passes none) each triangle also carries its corners' four sharp-edge
    distances and the slots' angles (`flatEdges`, from `sceneSharpEdges` of the document, looked up once).
-3. `buildBvh`: binned SAH (12 bins per axis), leaves of at most 4 triangles, in JavaScript on the main thread (with
-   upload and a first sample about 1 s for 200 000 triangles on the dev machine, `pt-load-200k`). Deterministic: ties go to the lower axis and
-   bin, partitions are stable. Depth is at most 31 for any input: a node whose triangles would need every remaining
+3. `buildBvh`: binned SAH (12 bins per axis), leaves of at most 4 triangles, in JavaScript (with upload and a first
+   sample about 1-2 s for 200 000 triangles under software WebGL, `pt-load-200k`, see testing.md). Deterministic: ties
+   go to the lower axis
+   and bin, partitions are stable. Depth is at most 31 for any input: a node whose triangles would need every remaining
    level if split at the median, or whose centroids coincide, is split at its index median instead; the shader's
    32-entry traversal stack therefore never overflows.
 4. `packGeometry` / `packMaterials`: RGBA32F data textures 2048 texels wide (nodes 2 texels, triangle positions 3,
    attributes 9, materials 3); rows over `MAX_TEXTURE_SIZE` throw `SCENE_TOO_LARGE` before allocating. Attribute
    texels: normals and UVs (0-3), the UV rectangle (4), corner k's edge distances (5 + k, `NO_EDGE` when empty) and
    the slots' angles (8).
+
+   Steps 2-4 and the catcher's `sceneBounds` run off the main thread (MS-40), in one function (`prepareGeometry`) that
+   the geometry worker and the main-thread fallback share, so both give the same bytes. The main thread checks the
+   triangle count from the group counts first, so a document over `maxTriangles` never reaches the worker; then it
+   streams the meshes the worker does not hold yet (by object, as the light bake's `streamMeshes`: 1 MiB transferred
+   chunks, a yield every 2 MiB; never texture bytes) and the worker transfers the packed buffers back. Without Worker
+   support, with `geometryWorker: false`, or once the worker could not start or failed (its pending builds then run
+   again on the main thread, in call order), the main thread runs the same function. No timeout: the work is bounded
+   by `maxTriangles` and the row limits, and `dispose()` terminates the worker.
+
 5. Textures are decoded by the realtime renderer's `decodeTextures` (the same header checks, limits, placeholders and
    warnings; bytes go through a Blob, nothing is fetched) and shelf-packed into one SRGB8_ALPHA8 `TEXTURE_2D_ARRAY`
    (GLSL ES 3.00 cannot pick a sampler by a dynamic index): one layer of the smallest power-of-two width that holds
    everything, else layers of min(`MAX_TEXTURE_SIZE`, 4096); more layers than `MAX_ARRAY_TEXTURE_LAYERS` throw
    `SCENE_TOO_LARGE`. The untextured colour and the placeholder checker are the preview's (`UNTEXTURED_IMAGE`,
    `PLACEHOLDER_IMAGE`).
+   The data textures and the images upload over several tasks while the current scene keeps drawing: at most
+   `BAND_ROWS` (128) rows, 4 MiB, of a data texture per task, and images in groups of at most 4 MiB per task (a larger
+   image in row bands of 4 MiB: a `RawImage` by a view of its rows, an `ImageBitmap` by `UNPACK_SKIP_ROWS`). A
+   superseded upload, or one whose context was lost, deletes what it made; the swap then releases the
+   old scene's textures, so for that moment both scenes' data are on the GPU (about 2 × 40 MB at 200 000 triangles).
+   After a context restore, after `setEdges` of a new angle, and for the empty scene the upload is still one task.
 6. Per sample, a trace pass per tile (scissor, at most `tileSize` square, so no draw call runs long enough to trip a
    driver watchdog) reads the running sum from one RGBA32F target and writes sum + sample into the other; then they
    swap. A present pass divides by the sample count and applies AgX. The quality path (Render quality) traces at the
@@ -314,8 +337,9 @@ dome and two unshadowed accents ([look-presets.md](look-presets.md#lighting-mode
 targets not renderable; a transparent request's message names the R32F coverage target) and `HIGHP_UNAVAILABLE` (fragment shaders without 32-bit highp): there is no inexact fallback,
 which would break determinism, and the preview remains; `SHADER_COMPILE` / `SHADER_LINK` with the driver's info log;
 `INVALID_SCENE` with the path; `SCENE_TOO_LARGE` for more materials than the material table holds (1.4 M) or
-triangles over `maxTriangles` (both before any vertex is read or any array allocated), data rows over
-`MAX_TEXTURE_SIZE` (before the data arrays are allocated, after flattening and the BVH build), or texture layers over
+triangles over `maxTriangles` (both before any vertex is read or any array allocated, and before anything is posted to
+the geometry worker), data rows over `MAX_TEXTURE_SIZE` (before the data arrays are allocated, after flattening and the
+BVH build, in the worker), or texture layers over
 `MAX_ARRAY_TEXTURE_LAYERS` (found after decoding: the decoded images are closed). Every one comes before any GPU
 allocation and leaves the current scene in place. Warnings: the realtime renderer's texture codes (with `texture`) and
 `DEGENERATE_TRIANGLES` (with `count`).
@@ -408,7 +432,9 @@ after the restore and the guides drawn again, so a denoised 2x render also gives
 ## Budgets
 
 `timeToSamplesMs.pt-bench-128-n256` (the benchmark scene, 24 576 triangles, 256 samples at 128 × 128),
-`frameTimeMs.pt-load-200k` (`setScene` of the 200 000-triangle scene plus its first sample), and for the final-render
+`frameTimeMs.pt-load-200k` (`setScene` of the 200 000-triangle scene plus its first sample),
+`mainThreadBlockMs.pt-setscene-200k` (the most one main-thread task blocked during that `setScene`, max 50 ms, MS-40),
+and for the final-render
 path `timeToSamplesMs.pt-bench-128-n64-x2-denoised` (64 samples at 2x with the guides, noise checkpoints and the
 denoised resolve; MS-18); numbers in
 [testing.md](testing.md#budgets). On real hardware (RTX 3080, ANGLE D3D11, Windows) 256 samples of the benchmark scene
@@ -425,7 +451,7 @@ measured on real hardware yet.
 
 Temporal (video) denoising, emission from the scene format (MS-32), user lights (MS-33; the look's key,
 accents and dome here), an image-based environment (the dome is analytic), geometric
-bevels (edges are rounded in shading only), a Web Worker or WASM build of the render's BVH (the bake builds its own in its worker), glossy or
+bevels (edges are rounded in shading only), a GPU or WASM build of the render's BVH, glossy or
 transmissive materials, textured environments, and WebGPU. The bake has no interreflection and no animated GI;
 untextured and smooth meshes of more than 4096 triangles are still baked per vertex (world-density charts, MS-41,
 stop at that gate).

@@ -108,6 +108,31 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
   });
   expect(await page.evaluate(() => window.__msFixture?.pt?.triangles)).toBe(200_000);
 
+  // What the path tracer's setScene costs the main thread for a document at the loaders' limits (MS-40): validation,
+  // the mesh stream to the geometry worker, taking its buffers back, the banded upload and the swap, as the most one
+  // task blocked (CPU plus GPU wait). The document is built before the traced window.
+  await openFixture(page, '/pt.html?scene=empty&size=128&samples=1');
+  await page.evaluate(() => window.__msFixture?.pt?.prepareLarge());
+  let ptSet = { applied: false, triangles: 0, ms: 0 };
+  const ptSetTrace = await traceMainThread(page, async () => {
+    ptSet = await page.evaluate(async () => {
+      const pt = window.__msFixture?.pt;
+      if (!pt) throw new Error('pt controls missing');
+      const start = performance.now();
+      const result = await pt.setLarge();
+      return { ...result, ms: performance.now() - start };
+    });
+  });
+  expect({ applied: ptSet.applied, triangles: ptSet.triangles }).toEqual({ applied: true, triangles: 200_000 });
+  expect(await page.evaluate(() => window.__msFixture?.pt?.geometryInWorker)).toBe(true);
+  console.log(
+    `[bench] pt setScene of 200 000 triangles: ${ptSetTrace.tasks} tasks, max blocking per task ` +
+      `${ptSetTrace.maxBlocking.toFixed(1)} ms (CPU ${ptSetTrace.maxCpu.toFixed(1)} ms, GPU wait ` +
+      `${ptSetTrace.maxGpuWait.toFixed(1)} ms); longest ${ptSetTrace.longestWall.toFixed(1)} ms wall / ` +
+      `${ptSetTrace.longestCpu.toFixed(1)} ms CPU, largest wall-CPU gap ${ptSetTrace.largestGap.toFixed(1)} ms; ` +
+      `call to applied ${ptSet.ms.toFixed(0)} ms`,
+  );
+
   // The light bake of the benchmark scene in its worker: 16 samples with the shadow catcher, from bake() to the final
   // lighting, median of 3; and the main thread's longest event-loop lag over those bakes (posting, three progress
   // uploads per bake, drawing them).
@@ -219,7 +244,11 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
     },
     bundleGzipBytes,
     bakeTimeMs: { 'bake-bench-n16': median(bakeRuns) },
-    mainThreadBlockMs: { 'bake-bench': trace.maxBlocking, 'bake-post-200k': postTrace.maxBlocking },
+    mainThreadBlockMs: {
+      'bake-bench': trace.maxBlocking,
+      'bake-post-200k': postTrace.maxBlocking,
+      'pt-setscene-200k': ptSetTrace.maxBlocking,
+    },
   };
   const json = JSON.stringify(measured, null, 2);
   writeFileSync(join(testInfo.project.outputDir, 'budgets-measured.json'), json);
