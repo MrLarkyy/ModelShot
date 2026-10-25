@@ -9,34 +9,12 @@
 // (key + offset) × scale (exactDepthRange); costs early depth testing and gives per-pixel MSAA depth.
 uniform float u_orderPull;
 uniform vec2 u_depthRange;
-uniform mat4 u_inverseProjection;
-#include "viewport"
+#include "triangleCorners"
 in vec3 v_viewPosition;
-flat in vec3 v_corner0;
-flat in vec3 v_corner1;
-flat in vec3 v_corner2;
-// Bit i: edge i (corner i to corner i + 1) is shared with a coplanar triangle (uploadExactGeometry).
-flat in float v_sharedEdges;
+// Bit i: edge i (corner i to corner i + 1) is shared with a coplanar triangle (exactEdgeWords).
+flat in uint v_sharedEdges;
 
 float depthPerPixel;
-
-// Distance along dir from origin to the triangle's plane; false for a ray parallel to it.
-bool planeHit(vec3 origin, vec3 dir, vec3 n, out vec3 hit) {
-  float facing = dot(n, dir);
-  if (abs(facing) <= 1.0e-12 * dot(n, n) * dot(dir, dir)) return false;
-  hit = origin + dir * (dot(n, v_corner0 - origin) / facing);
-  return true;
-}
-
-// Bits of the edges the point lies outside of (or on), by a small margin.
-int edgesCrossed(vec3 p, vec3 n) {
-  float margin = 1.0e-4 * dot(n, n);
-  int crossed = 0;
-  if (dot(cross(v_corner1 - v_corner0, p - v_corner0), n) <= margin) crossed |= 1;
-  if (dot(cross(v_corner2 - v_corner1, p - v_corner1), n) <= margin) crossed |= 2;
-  if (dot(cross(v_corner0 - v_corner2, p - v_corner2), n) <= margin) crossed |= 4;
-  return crossed;
-}
 
 vec3 nearestOnSegment(vec3 p, vec3 a, vec3 b) {
   vec3 ab = b - a;
@@ -67,18 +45,16 @@ void prepareDepthKey() {
 }
 
 void writeDepthKey() {
-  vec2 ndc = gl_FragCoord.xy / u_viewportSize * 2.0 - 1.0;
-  vec4 nearPoint = u_inverseProjection * vec4(ndc, -1.0, 1.0);
-  vec4 farPoint = u_inverseProjection * vec4(ndc, 1.0, 1.0);
-  vec3 origin = nearPoint.xyz / nearPoint.w;
-  vec3 dir = farPoint.xyz / farPoint.w - origin;
+  vec3 origin;
+  vec3 dir;
+  pixelRay(origin, dir);
   vec3 n = cross(v_corner1 - v_corner0, v_corner2 - v_corner0);
   vec3 hit;
   float edgeBias = 0.0;
   if (!planeHit(origin, dir, n, hit)) {
     hit = v_viewPosition;
   } else {
-    int outline = edgesCrossed(hit, n) & ~int(v_sharedEdges + 0.5);
+    int outline = edgesCrossed(hit, n) & ~int(v_sharedEdges);
     if (outline != 0) {
       vec3 snapped = nearestOnEdges(hit, outline);
       if (gl_FrontFacing) {

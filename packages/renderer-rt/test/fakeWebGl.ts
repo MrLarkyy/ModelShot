@@ -1,7 +1,8 @@
 /**
  * A WebGL2 context that draws nothing and records every call, for tests of what the renderer asks the GPU to do.
  * Constants are distinct numbers, `create*` returns a fresh object, shaders compile, framebuffers are complete, and
- * no extension exists (the renderer takes its no-float path).
+ * no extension exists (the renderer takes its no-float path), unless `floatPath`: then EXT_color_buffer_float exists
+ * and RGBA16F renderbuffers take 4 samples.
  */
 export interface FakeWebGl {
   readonly gl: WebGL2RenderingContext;
@@ -14,7 +15,7 @@ export interface FakeWebGl {
   fire(type: string): void;
 }
 
-export function fakeWebGl(): FakeWebGl {
+export function fakeWebGl(options: { readonly floatPath?: boolean } = {}): FakeWebGl {
   const log = new Map<string, unknown[][]>();
   const constants = new Map<string, number>();
   const constant = (name: string): number => {
@@ -26,8 +27,9 @@ export function fakeWebGl(): FakeWebGl {
     return value;
   };
   const results: Readonly<Record<string, (...args: unknown[]) => unknown>> = {
-    getExtension: () => null,
-    getParameter: () => null,
+    getExtension: (name) => (options.floatPath && name === 'EXT_color_buffer_float' ? {} : null),
+    getParameter: (name) => (options.floatPath && name === constant('MAX_SAMPLES') ? 4 : null),
+    getInternalformatParameter: () => new Int32Array([4]),
     getShaderPrecisionFormat: () => ({ precision: 23, rangeMin: 127, rangeMax: 127 }),
     getShaderParameter: () => true,
     getProgramParameter: () => true,

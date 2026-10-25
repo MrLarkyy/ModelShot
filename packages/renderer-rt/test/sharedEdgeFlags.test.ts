@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sharedEdgeFlags } from '../src/uploadScene';
+import { sharedEdgeFlags } from '../src/exactEdgeWords';
 
 const quad = [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0];
 

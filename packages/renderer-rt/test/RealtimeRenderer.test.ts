@@ -138,3 +138,46 @@ describe('RealtimeRenderer.setScene with another pose of the shown document', ()
     renderer.dispose();
   });
 });
+
+describe('RealtimeRenderer geometry of the raster passes', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(() => Promise.resolve({ width: 16, height: 16, close: () => undefined })),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const draw = async (fake: FakeWebGl, maxMsaaSamples?: number) => {
+    const renderer = RealtimeRenderer.create(fake.canvas, maxMsaaSamples === undefined ? {} : { maxMsaaSamples });
+    // A depth range the raster key holds.
+    renderer.setCamera({ ...camera, near: 1, far: 10 });
+    expect((await renderer.setScene(quadScene())).applied).toBe(true);
+    renderer.render();
+    expect(renderer.depthKeyMode).toBe('raster');
+    const edgeWords = fake.calls('vertexAttribIPointer').filter(([location]) => location === 7);
+    renderer.dispose();
+    return { edgeWords, arrays: fake.calls('drawArrays').filter(([, , count]) => count === 6).length };
+  };
+
+  it('draws the MSAA opaque pass from the de-indexed geometry, whose edge words feed the silhouette test', async () => {
+    const fake = fakeWebGl({ floatPath: true });
+    const { edgeWords, arrays } = await draw(fake);
+    expect(edgeWords).toEqual([[7, 4, fake.gl.UNSIGNED_INT, 0, 0]]);
+    expect(arrays).toBeGreaterThan(0);
+    // Word 0 for the draws without it (OIT, fallback): no silhouette edge.
+    expect(fake.calls('vertexAttribI4ui')).toContainEqual([7, 0, 0, 0, 0]);
+  });
+
+  it('draws single-sampled raster frames indexed, with edge word 0', async () => {
+    const fake = fakeWebGl({ floatPath: true });
+    const { edgeWords, arrays } = await draw(fake, 0);
+    expect(edgeWords).toEqual([]);
+    expect(arrays).toBe(0);
+    expect(fake.calls('drawElements').length).toBeGreaterThan(0);
+    expect(fake.calls('vertexAttribI4ui')).toContainEqual([7, 0, 0, 0, 0]);
+  });
+});

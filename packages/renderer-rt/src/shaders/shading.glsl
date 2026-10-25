@@ -7,8 +7,10 @@
 uniform float u_edgeWidth;
 uniform mat4 u_viewProjection;
 #include "viewport"
+#include "silhouette"
 // Centroid-sampled (mesh.vert): under MSAA a pixel a triangle only partly covers reads them at a covered sample, off
-// the pixel centre. prepareShading moves them back to the centre wherever the centre lies on the face.
+// the pixel centre. prepareShading moves them back to the centre unless the centre lies off the mesh or the pixel
+// reaches over a sharp edge.
 centroid in vec3 v_normal;
 centroid in vec3 v_worldPosition;
 centroid in vec4 v_edgeDistances;
@@ -32,11 +34,13 @@ vec4 atShadingPoint(vec4 value) {
 // Called first in main, before any discard: the derivatives need uniform control flow. A slot's distance is affine
 // over the triangle, so minus its gradient in the surface (from the screen derivatives of distance and position) points
 // at the edge, the direction the path tracer computes from the corners.
-// The shading point is the pixel centre, as without MSAA, unless the pixel reaches over one of the triangle's sharp
-// edges (a silhouette or a crease: the centre less than half the pixel's footprint inside), where the centroid sample
-// stays, on the face. Along a triangle edge inside a face a GPU's centroid is a covered sample position, and shading
-// there would change the pixel against single sampling (measured on an RTX 3080).
+// The shading point is the pixel centre, as without MSAA, unless the centre lies past a silhouette edge of the
+// triangle (silhouetteCrossed: an open edge or one whose neighbour faces the other way; the centre is off the mesh)
+// or the pixel reaches over one of its sharp edges (the centre less than half the pixel's footprint inside), where the
+// centroid sample stays, on the face. Along a triangle edge inside a face a GPU's centroid is a covered sample
+// position, and shading there would change the pixel against single sampling (measured on an RTX 3080).
 void prepareShading() {
+  bool offMesh = silhouetteCrossed();
   vec3 dpx = dFdx(v_worldPosition);
   vec3 dpy = dFdy(v_worldPosition);
   vec4 ddx = dFdx(v_edgeDistances);
@@ -61,7 +65,7 @@ void prepareShading() {
   vec2 toCentre = gl_FragCoord.xy - screen;
   shadingStep = mapped && max(abs(toCentre.x), abs(toCentre.y)) > 0.01 ? toUnit * toCentre : vec2(0.0);
   edgeDistances = v_edgeDistances + ddx * shadingStep.x + ddy * shadingStep.y;
-  if (any(lessThan(edgeDistances, 0.5 * edgeFootprint))) {
+  if (offMesh || any(lessThan(edgeDistances, 0.5 * edgeFootprint))) {
     shadingStep = vec2(0.0);
     edgeDistances = v_edgeDistances;
   }

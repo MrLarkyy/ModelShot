@@ -189,6 +189,37 @@ describe('shader sources', () => {
     }
   });
 
+  it('keeps the centroid past a silhouette edge in raster frames only, from the corners and edge word at 4-7', () => {
+    for (const name of ['opaque', 'oitAccum', 'fallback'] as const) {
+      for (const depthKey of ['raster', 'exact'] as const) {
+        const { vertex, fragment } = shaderProgramSource(name, depthKey);
+        const label = `${name} ${depthKey}`;
+        expect(vertex, label).toMatch(/^layout\(location = 7\) in uvec4 a_edgeWord;$/m);
+        expect(vertex, label).toMatch(/^flat out vec3 v_corner0;$/m);
+        expect(vertex.slice(vertex.indexOf('void main()')), label).toContain('passSilhouette();');
+        expect(fragment.match(/^bool planeHit\(/gm)?.length, label).toBe(1);
+        expect(fragment.match(/^uniform mat4 u_inverseProjection;$/gm)?.length, label).toBe(1);
+        // Taken first in prepareShading, in uniform control flow: it reads screen derivatives.
+        expect(fragment, label).toContain('void prepareShading() {\n  bool offMesh = silhouetteCrossed();');
+        expect(fragment, label).toContain('if (offMesh || any(lessThan(edgeDistances, 0.5 * edgeFootprint))) {');
+        if (depthKey === 'raster') {
+          expect(vertex, label).toMatch(/^flat out uint v_silhouetteEdges;$/m);
+          expect(fragment, label).toMatch(/^flat in uint v_silhouetteEdges;$/m);
+          expect(vertex, label).toContain(
+            'if (open || dot(own, toEye) * dot(neighbour, toEye) <= 0.0) edges |= 1u << i;',
+          );
+          expect(fragment, label).toContain('return onPlane && (crossed & v_silhouetteEdges) != 0u;');
+          expect(fragment, label).not.toContain('v_sharedEdges');
+        } else {
+          // Exact frames are single-sampled: the stub, and the shared-edge bits of the exact key instead.
+          expect(vertex + fragment, label).not.toContain('v_silhouetteEdges');
+          expect(fragment, label).toContain('bool silhouetteCrossed() {\n  return false;\n}');
+          expect(vertex, label).toContain('v_sharedEdges = a_edgeWord.x & 7u;');
+        }
+      }
+    }
+  });
+
   it('stays within the WebGL2 minimums of 16 attributes and 15 varyings in every mesh pass and variant', () => {
     for (const name of ['opaque', 'oitAccum', 'fallback'] as const) {
       for (const depthKey of ['raster', 'exact'] as const) {
@@ -201,6 +232,9 @@ describe('shader sources', () => {
         // Every varying counted as a whole vector, the most it can take after packing.
         const varyings = vertex.match(/^\s*((flat|centroid) )?out \w+ v_\w+;/gm) ?? [];
         expect(varyings.length, `${name} ${depthKey}`).toBeLessThanOrEqual(15);
+        // Raster: 9 shading varyings, the corners and the silhouette bits; exact: the corners, view position and
+        // shared-edge bits instead.
+        expect(varyings.length, `${name} ${depthKey}`).toBe(depthKey === 'raster' ? 13 : 14);
         for (const varying of ['v_normal', 'v_worldPosition', 'v_edgeDistances']) {
           expect(
             varyings.some((line) => line.includes(` ${varying};`)),
