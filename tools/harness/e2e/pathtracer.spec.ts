@@ -1159,6 +1159,52 @@ test.describe('lifetime', () => {
   });
 });
 
+/** MS-40: setScene builds the geometry in a worker; the main thread builds the same bytes when it cannot or may not. */
+test.describe('geometry worker', () => {
+  // Two loads of the 200 000-triangle document and four short renders on SwiftShader.
+  test.describe.configure({ timeout: 180_000 });
+  test('the worker builds the bytes the main thread builds: the edges view and 200 000 triangles', async ({ page }) => {
+    const run = async (query: string, large: boolean) => {
+      await openFixture(page, `/pt.html?${query}`);
+      return page.evaluate(async (setLarge) => {
+        const ptc = window.__msFixture!.pt!;
+        if (setLarge) {
+          ptc.prepareLarge();
+          if (!(await ptc.setLarge()).applied) throw new Error('the large document was not applied');
+          ptc.render();
+        }
+        return { inWorker: ptc.geometryInWorker, sums: ptc.accumulationBase64() };
+      }, large);
+    };
+    for (const [query, large] of [
+      ['variant=edges&seed=1&samples=16', false],
+      ['scene=empty&size=64&seed=1&samples=4', true],
+    ] as const) {
+      const worker = await run(query, large);
+      const inline = await run(`${query}&geometryWorker=0`, large);
+      expect([worker.inWorker, inline.inWorker], query).toEqual([true, false]);
+      expect(worker.sums, query).not.toBeNull();
+      // Byte for byte: the accumulated float sums, not the 8-bit image.
+      expect(worker.sums === inline.sums, query).toBe(true);
+    }
+  });
+
+  test('with workers blocked the scene builds on the main thread and matches its golden', async ({
+    page,
+  }, testInfo) => {
+    // A host whose policy forbids workers: the constructor throws.
+    await page.addInitScript(() => {
+      Object.defineProperty(window, 'Worker', {
+        value: function Blocked() {
+          throw new Error('workers are blocked here');
+        },
+      });
+    });
+    await expectGolden(page, testInfo, TURNTABLE);
+    expect(await page.evaluate(() => window.__msFixture?.pt?.geometryInWorker)).toBe(false);
+  });
+});
+
 /**
  * MS-50: a board inside an inverted-hull outline (a Blockbench cube with from > to on every axis, its texture `auto`
  * sided): the board keeps its brightness and the hull shows only as a dark rim; paired with rt-outline-hull.
