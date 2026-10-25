@@ -148,6 +148,14 @@ export interface PtControls {
   readonly samplesDone: number;
   /** Pixels of chosen texels and of their key-light shadows on the ground (alpha-plane scenes), else empty. */
   readonly probes: readonly PtProbe[];
+  /** `PathTracer.geometryInWorker`: setScene builds the geometry in its worker (not the main thread). */
+  readonly geometryInWorker: boolean;
+  /** Builds the bench's 200 000-triangle document (`large-order`) for `setLarge`, outside any measured window. */
+  prepareLarge: () => void;
+  /** setScene of the document `prepareLarge` built, then the camera set on it; nothing drawn. */
+  setLarge: () => Promise<{ applied: boolean; triangles: number }>;
+  /** `readAccumulation()`'s bytes in base64, or `null` when it returns none. */
+  accumulationBase64: () => string | null;
   /** Live WebGL objects and open ImageBitmaps; -1 unless the page was opened with track=1. */
   liveGlObjects: () => number;
   openBitmaps: () => number;
