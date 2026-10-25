@@ -501,7 +501,8 @@ samples and size; changed pixels, max channel delta, mean delta per channel): `p
 0.001; `pt-emissive` 7 147, 4, 0.052; `pt-player-hold-34` 8 490, 3, 0.071; `pt-cutout-checker` 10 900, 2, 0.072;
 `pt-edges` 8 011, 3, 0.052; `pt-preset-marketplace` 3 377, 1, 0.020; `pt-preset-rim` 1 780, 1, 0.013;
 `pt-outline-hull` 7 984, 1, 0.057; `pt-closeup-denoised` 653, 3, 0.005; `pt-turntable-y030-x2-denoised` 1 096, 2,
-0.006; `pt-gltf-nodes-y030` 4 001, 2, 0.025; `pt-obj-shapes-y030` 2 269, 1, 0.015; `pt-closeup-reference` (re-rendered
+0.006; `pt-gltf-nodes-y030` 4 001, 2, 0.025; `pt-obj-shapes-y030` 2 269, 1, 0.015;
+`pt-texture-wrap` 6 455, 3, 0.048 (MS-52, regenerated after the MS-59 merge); `pt-closeup-reference` (re-rendered
 on the update) 408, 1, 0.002; the export goldens (alpha included) `export-still-transparent` 1 461, 11, 0.040 and the
 turntable and animation frames 826-1 030, at most 9, at most 0.012. Every change lies on the catcher (and the glass
 panes that show it); no model pixel and no shadow shape moved. `pt-alpha-plane` (its ground hides the catcher; 29
