@@ -106,9 +106,10 @@ pose reaches, so a model that jumps leaves its floor as it does in the preview's
 with it. With `fit` one camera serves every frame: it frames the same union at the camera's angles and projection, so
 the view never jumps and no pose leaves the frame (framing each pose would move the camera every frame; framing the
 rest pose crops a model that walks out of it). With `camera` the camera is used as given. Each pose is built again
-right before its `setScene`: the path tracer has no pose-only update yet, so a frame pays a scene upload (texture
-decode, the pose's nodes posted to the geometry worker, which holds the meshes since the first frame, its flatten and
-BVH build there) besides its samples.
+right before its `setScene`, sharing the textures and materials arrays of the document: the path tracer keeps its
+decoded images, its texture layers and its material table (`setScene` compares the `textures` array, and `materials`
+with `emission`, by object), so a frame pays only the pose's nodes posted to the geometry worker, which holds the
+meshes since the first frame, its flatten and BVH build there, and the upload of that geometry, besides its samples.
 
 Every frame renders with the same seed, so the noise pattern stands still instead of shimmering from frame to frame.
 Frames render with a fixed sample count (no noise threshold), so a clip is the same bytes on every run of a browser.

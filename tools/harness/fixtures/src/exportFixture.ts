@@ -16,6 +16,7 @@ import {
   type SceneAnimationChannel,
   type SceneCamera,
   type SceneDocument,
+  type SceneTexture,
 } from '@modelshot/scene';
 import { readDrawingBufferBase64 } from './context';
 import {
@@ -139,6 +140,13 @@ export interface ExportControls {
   apngTiming: () => Promise<ExportTimingOutcome>;
   /** The 4-frame transparent APNG turntable alone (a tracer of its own, no decoding): the bench times it. */
   turntable: () => Promise<number>;
+  /**
+   * The 4-frame transparent APNG animation of the showcase bobbing alone (a tracer of its own, no decoding): the bench
+   * times it. With `fullSetScene` every pose gets a new textures array, so each frame decodes and uploads them again.
+   * With `atlasSide` the first texture is a generated noise PNG of that side (made once per side, so call it once
+   * before timing): a large atlas, where the textures cost something.
+   */
+  animation: (options?: { fullSetScene?: boolean; atlasSide?: number }) => Promise<number>;
 }
 
 declare global {
@@ -187,6 +195,7 @@ function recording(
   tracer: PathTracer,
   frames: RenderedImage[],
   scenes: (SetSceneOptions | undefined)[] = [],
+  fullSetScene = false,
 ): FrameRenderer {
   return {
     get accumulationWidth() {
@@ -206,7 +215,8 @@ function recording(
     },
     setScene: (doc, options) => {
       scenes.push(options);
-      return tracer.setScene(doc, options);
+      // A new textures array per call: the tracer decodes, lays out and uploads the textures again, as before MS-58.
+      return tracer.setScene(fullSetScene ? { ...doc, textures: [...doc.textures] } : doc, options);
     },
     setCamera: (camera) => tracer.setCamera(camera),
     resize: (size) => tracer.resize(size),
@@ -339,8 +349,9 @@ const TURNTABLE_VIEW = 'turntable-y030';
  * The showcase with an animation of its own: every root node rises 3 units and comes back down over 1 s, a vertical
  * bob, so a catcher that rode with the pose would rise with it.
  */
-function bobbingShowcase(): SceneDocument {
-  const doc = rtScene(viewOf(TURNTABLE_VIEW).scene);
+function bobbingShowcase(atlas?: SceneTexture): SceneDocument {
+  const showcase = rtScene(viewOf(TURNTABLE_VIEW).scene);
+  const doc = atlas ? { ...showcase, textures: showcase.textures.map((t, i) => (i === 0 ? atlas : t)) } : showcase;
   const channels = doc.rootNodes.map((node): SceneAnimationChannel => ({
     node,
     property: 'translation',
@@ -357,10 +368,12 @@ function bobbingShowcase(): SceneDocument {
 async function exportedClip(
   options: ExportClipOptions,
   tracer: PathTracer,
+  fullSetScene = false,
+  atlas?: SceneTexture,
 ): Promise<{ result: ExportResult; read: RenderedImage[]; scenes: (SetSceneOptions | undefined)[] }> {
   const view = viewOf(TURNTABLE_VIEW);
   const animated = options.clip === 'animation';
-  const doc = animated ? bobbingShowcase() : rtScene(view.scene);
+  const doc = animated ? bobbingShowcase(atlas) : rtScene(view.scene);
   const read: RenderedImage[] = [];
   const scenes: (SetSceneOptions | undefined)[] = [];
   const base = {
@@ -373,7 +386,7 @@ async function exportedClip(
     transparent: options.transparent,
   };
   const result = await exportClip(
-    recording(tracer, read, scenes),
+    recording(tracer, read, scenes, fullSetScene),
     doc,
     animated
       ? { ...base, kind: 'animation', animation: 'bob', fps: 4 }
@@ -569,7 +582,44 @@ async function turntable(): Promise<number> {
   }
 }
 
-window.__msExport = { still, clip, cancel, pair, lose, video, apngTiming, turntable };
+const noiseAtlases = new Map<number, Promise<SceneTexture>>();
+
+/** The showcase's first texture with `side` x `side` pixels of seeded noise (a PNG that is slow to decode). */
+function noiseAtlas(side: number): Promise<SceneTexture> {
+  const known = noiseAtlases.get(side);
+  if (known) return known;
+  const made = (async (): Promise<SceneTexture> => {
+    const first = rtScene(viewOf(TURNTABLE_VIEW).scene).textures[0];
+    if (!first) throw new Error('the showcase has no texture');
+    const canvas = new OffscreenCanvas(side, side);
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('no 2d context');
+    const pixels = context.createImageData(side, side);
+    let state = 12345;
+    for (let i = 0; i < pixels.data.length; i++) {
+      state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+      pixels.data[i] = i % 4 === 3 ? 255 : state >>> 24;
+    }
+    context.putImageData(pixels, 0, 0);
+    const bytes = new Uint8Array(await (await canvas.convertToBlob({ type: 'image/png' })).arrayBuffer());
+    return { ...first, bytes, width: side, height: side };
+  })();
+  noiseAtlases.set(side, made);
+  return made;
+}
+
+async function animation(options: { fullSetScene?: boolean; atlasSide?: number } = {}): Promise<number> {
+  const tracer = tracerFor(viewOf(TURNTABLE_VIEW));
+  try {
+    const clipOptions: ExportClipOptions = { format: 'apng', transparent: true, clip: 'animation' };
+    const atlas = options.atlasSide === undefined ? undefined : await noiseAtlas(options.atlasSide);
+    return (await exportedClip(clipOptions, tracer, options.fullSetScene === true, atlas)).result.frames;
+  } finally {
+    tracer.dispose();
+  }
+}
+
+window.__msExport = { still, clip, cancel, pair, lose, video, apngTiming, turntable, animation };
 
 const api: MsFixture = {
   ready: Promise.resolve(),

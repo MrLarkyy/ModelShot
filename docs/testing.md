@@ -1083,7 +1083,16 @@ vertices), max 3500 ms as for the other load budgets. The same run: `edges-200k`
 `frameTimeMs.export-turntable-64-f4-n16` (MS-22): `bench.spec.ts` times `window.__msExport.turntable()` of
 `export.html`, a transparent 4-frame APNG turntable of the showcase at 64 x 64 and 16 samples a frame from a fresh
 path tracer (its scene upload, the frames, the encoding; no decoding), median of 3: local SwiftShader 915, 860 and 867
-ms; max 9000 ms, 10x the median rounded up, as budgets are set before a CI measurement. `bundleGzipBytes.export`
+ms; max 9000 ms, 10x the median rounded up, as budgets are set before a CI measurement. `frameTimeMs.export-animation-64-f4-n16` and `export-animation-atlas2048-64-f4-n16` (MS-58): the same with
+`window.__msExport.animation()`, the 4-frame APNG animation of the showcase bobbing, each pose sharing the textures
+array so the tracer keeps its images (no decode, no texture upload). The bench also times it with `fullSetScene`, a
+new textures array per pose (what a `setScene` did before), once with the showcase's own small atlas and once with a
+generated 2048 x 2048 noise PNG (`atlasSide`, made once per page), one untimed run of each first, median of 3
+interleaved, and logs both: showcase atlas pose 478-784 ms against full 553-789 ms (no difference, the atlas is a few
+KB: the frame is the samples, the geometry and the encoding), 2048 atlas pose 532 ms against full 760 ms (-30%: the
+decode and the 16 MB layer upload of each frame are gone). Local SwiftShader on a machine busy with other windows,
+so the numbers swing; max 5000 and 6000 ms, 10x the median rounded up. No test asserts pose below full (it would flake
+under load); the Vitest `textureReuse.test.ts` pins the reuse itself. `bundleGzipBytes.export`
 (MS-22): local 6407 and 6433 B (the export package's own `bundleSize.test.ts`, which gzips the chunks as one text,
 measured 5839); max 8041 B, 1.25x the larger. Both moved from the package's test and the e2e log into this file once
 MS-41 freed it.
