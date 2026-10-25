@@ -118,6 +118,11 @@ interface LoadedScene {
   edgeAngle: number;
   readonly geometry: PackedGeometry;
   readonly materials: ReturnType<typeof packMaterials>;
+  /** `SetSceneOptions.emission` as passed: a later call with the same textures reuses `materials` when it matches. */
+  readonly emission: SetSceneOptions['emission'];
+  /** The material table's texture entries (`layoutTextures`), for packing the table of a later call that reuses them. */
+  readonly materialTextures: ReturnType<typeof layoutTextures>['textures'];
+  readonly textureWarnings: readonly PathTracerWarning[];
   readonly plan: TextureLayerPlan;
   readonly images: readonly (ImageBitmap | RawImage)[];
   readonly bitmaps: readonly (ImageBitmap | null)[];
@@ -164,6 +169,34 @@ function checkCatcherBounds(value: unknown): SceneBounds {
     center: [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2],
     radius: Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2,
   };
+}
+
+/** The two emission tables give every material the same glow (`packMaterials` reads them by index). */
+function sameEmission(a: SetSceneOptions['emission'], b: SetSceneOptions['emission']): boolean {
+  const left: unknown = a ?? [];
+  const right: unknown = b ?? [];
+  if (!Array.isArray(left) || !Array.isArray(right)) return false;
+  const count = Math.max(left.length, right.length);
+  for (let m = 0; m < count; m++) {
+    const x: unknown = left[m];
+    const y: unknown = right[m];
+    if (x === y) continue;
+    if (!Array.isArray(x) || !Array.isArray(y) || x[0] !== y[0] || x[1] !== y[1] || x[2] !== y[2]) return false;
+  }
+  return true;
+}
+
+/** A copy of the table the caller may change later; the copy keeps array entries only (`packMaterials` packs the caller's table, so
+ * an array-like entry glows there but never matches a stored copy for reuse). */
+function copyEmission(emission: SetSceneOptions['emission']): SetSceneOptions['emission'] {
+  const source: unknown = emission;
+  if (!Array.isArray(source)) return undefined;
+  const copy: ([number, number, number] | undefined)[] = [];
+  for (let m = 0; m < source.length; m++) {
+    const glow: unknown = source[m];
+    copy.push(Array.isArray(glow) ? ([glow[0], glow[1], glow[2]] as [number, number, number]) : undefined);
+  }
+  return copy;
 }
 
 function checkInteger(label: string, value: unknown, min: number, max: number): number {
@@ -346,7 +379,11 @@ export class PathTracer {
    * call that passes every limit (whenever its geometry arrives) or `dispose()` supersedes a pending one: it resolves
    * with `applied: false` and closes what it decoded. A later call rejected for a limit supersedes nothing.
    * Meshes are compared by object identity: a `SceneMesh` mutated in place between calls is not posted again, so
-   * change one by passing a new object.
+   * change one by passing a new object. So is the `textures` array of the shown scene: the same array skips decoding,
+   * layout and the texture upload (the decoded images and the GPU layer texture stay), and the same `materials` array
+   * with equal `emission` keeps the material table too, so only the geometry is built and uploaded; a call with a
+   * changed texture needs a new array, one mutated in place is not seen. Animation poses of one model share the arrays.
+   * The result and the pixels equal those of a call with new arrays.
    */
   async setScene(doc: SceneDocument, options: SetSceneOptions = {}): Promise<SetSceneResult> {
     if (this.disposed) return NOT_APPLIED;
@@ -376,46 +413,84 @@ export class PathTracer {
     if (!prepared || this.disposed) return NOT_APPLIED;
     // Builds settle in call order, so generations follow the calls; a call whose build rejected supersedes nothing.
     const generation = ++this.generation;
-    const decoded = await decodeTextures(doc.textures, this.textureLimits(capabilities), () =>
-      this.isCurrent(generation),
-    );
-    if (!decoded) return NOT_APPLIED;
-    // Everything that can still fail runs before the current scene is released: a failure keeps it and closes the
-    // images this call decoded.
+    // The shown scene's decoded textures serve a document that shares its textures array.
+    const base = this.loaded?.doc.textures === doc.textures ? this.loaded : null;
+    let bitmaps: readonly (ImageBitmap | null)[];
+    let textureWarnings: readonly PathTracerWarning[];
+    let layout: Pick<LoadedScene, 'plan' | 'images'> & { textures: LoadedScene['materialTextures'] };
+    if (base) {
+      bitmaps = base.bitmaps;
+      textureWarnings = base.textureWarnings;
+      layout = { plan: base.plan, images: base.images, textures: base.materialTextures };
+      if (!this.isCurrent(generation)) return NOT_APPLIED;
+    } else {
+      const decoded = await decodeTextures(doc.textures, this.textureLimits(capabilities), () =>
+        this.isCurrent(generation),
+      );
+      if (!decoded) return NOT_APPLIED;
+      bitmaps = decoded.bitmaps;
+      textureWarnings = decoded.warnings;
+      // Everything that can still fail runs before the current scene is released: a failure keeps it and closes the
+      // images this call decoded.
+      try {
+        layout = layoutTextures(bitmaps, capabilities.layerSide, capabilities.maxArrayTextureLayers);
+      } catch (error) {
+        for (const bitmap of bitmaps) bitmap?.close();
+        throw error;
+      }
+    }
+    // Images this call decoded are its own to close; those of `base` belong to the shown scene.
+    const closeOwn = (): void => {
+      if (!base) for (const bitmap of bitmaps) bitmap?.close();
+    };
+    const sameMaterials =
+      base !== null && doc.materials === base.doc.materials && sameEmission(options.emission, base.emission);
     let loaded: LoadedScene;
     try {
-      const layout = layoutTextures(decoded.bitmaps, capabilities.layerSide, capabilities.maxArrayTextureLayers);
       loaded = {
         doc,
         sources: prepared.sources,
         edgeAngle: packedAngle,
         order: prepared.order,
         geometry: prepared.geometry,
-        materials: packMaterials(doc, layout.textures, options.emission),
+        materials: sameMaterials ? base.materials : packMaterials(doc, layout.textures, options.emission),
+        emission: copyEmission(options.emission),
+        materialTextures: layout.textures,
+        textureWarnings,
         plan: layout.plan,
         images: layout.images,
-        bitmaps: decoded.bitmaps,
+        bitmaps,
         bounds: catcherBounds ?? prepared.bounds,
         catcherOn,
         catcher: null,
       };
     } catch (error) {
-      for (const bitmap of decoded.bitmaps) bitmap?.close();
+      closeOwn();
       throw error;
     }
+    const sharing = base ? { materials: sameMaterials } : null;
     let uploaded: GpuScene | null;
+    let borrowed: GpuScene | null;
     try {
-      uploaded = await this.uploadInBands(loaded, generation);
+      const result = await this.uploadInBands(loaded, generation, sharing);
+      uploaded = result.scene;
+      borrowed = result.borrowed;
     } catch (error) {
-      for (const bitmap of decoded.bitmaps) bitmap?.close();
+      closeOwn();
       throw error;
     }
     if (!this.isCurrent(generation)) {
-      if (uploaded) disposeGpuScene(this.gl, uploaded);
-      for (const bitmap of decoded.bitmaps) bitmap?.close();
+      if (uploaded) disposeGpuScene(this.gl, uploaded, this.gpu?.scene);
+      closeOwn();
       return NOT_APPLIED;
     }
-    this.releaseScene();
+    // setEdges or a restore replaced the scene the upload borrowed handles from: they are gone. An upload that
+    // borrowed nothing owns its textures, and its rows were packed for its own angle (checked below).
+    if (uploaded && borrowed && this.gpu?.scene !== borrowed) {
+      disposeGpuScene(this.gl, uploaded, this.gpu?.scene);
+      uploaded = null;
+    }
+    this.releaseScene(loaded, uploaded);
     this.loaded = loaded;
     // Placed under the look current at the swap: a setLook while the scene was prepared applies to it too.
     loaded.catcher = catcherOn ? this.catcherPlane(loaded.bounds) : null;
@@ -423,7 +498,7 @@ export class PathTracer {
     if (uploaded && gpu && loaded.edgeAngle === this.edges.sharpAngleDeg) {
       gpu.scene = uploaded;
     } else {
-      if (uploaded) disposeGpuScene(this.gl, uploaded);
+      if (uploaded) disposeGpuScene(this.gl, uploaded, gpu?.scene);
       // A sharp angle set during the upload, or nothing uploaded (no context, or lost: the restore uploads then).
       this.repackEdges(loaded);
       if (gpu && !this.lost && !this.gl.isContextLost()) this.uploadLoaded(gpu);
@@ -437,21 +512,29 @@ export class PathTracer {
         message: `${prepared.skipped} triangles skipped: a position, normal or UV is not finite, or the triangle has no area`,
       });
     }
-    for (const warning of decoded.warnings) warnings.push({ ...warning });
+    for (const warning of textureWarnings) warnings.push({ ...warning });
     return { applied: true, warnings, triangles: prepared.count };
   }
 
   /**
    * Uploads `loaded` in bands while the current scene keeps drawing, after and before waiting for every geometry build
    * started meanwhile (a later call that passes its limits supersedes this one even when its geometry arrives last).
-   * `null` without a context to upload to, or when superseded or the context was lost during the upload.
+   * `scene` is `null` without a context to upload to, or when superseded or the context was lost during the upload.
+   * With `sharing` the shown scene's layer texture (and its material table when `sharing.materials`) goes into the
+   * result as is. `borrowed` is the scene whose handles the result shares, if any.
    */
-  private async uploadInBands(loaded: LoadedScene, generation: number): Promise<GpuScene | null> {
+  private async uploadInBands(
+    loaded: LoadedScene,
+    generation: number,
+    sharing: { materials: boolean } | null,
+  ): Promise<{ scene: GpuScene | null; borrowed: GpuScene | null }> {
     await this.buildsSettled();
     const gpu = this.gpu;
-    if (!this.isCurrent(generation) || !gpu || this.lost) return null;
+    if (!this.isCurrent(generation) || !gpu || this.lost) return { scene: null, borrowed: null };
     const epoch = this.contextEpoch;
     this.repackEdges(loaded);
+    const shown = gpu.scene;
+    const sharedFrom = sharing && shown && !this.gl.isContextLost() ? shown : null;
     const uploaded = await uploadSceneInBands(
       this.gl,
       loaded.geometry,
@@ -459,14 +542,17 @@ export class PathTracer {
       loaded.plan,
       loaded.images,
       () => this.isCurrent(generation) && this.contextEpoch === epoch && this.gpu === gpu,
+      sharedFrom
+        ? { layers: sharedFrom.layers, ...(sharing?.materials ? { materials: sharedFrom.materials } : {}) }
+        : {},
     );
     await this.buildsSettled();
     // A context lost and restored while waiting: the textures belong to the dead one, the restore uploads instead.
     if (uploaded && (this.contextEpoch !== epoch || this.gpu !== gpu)) {
       disposeGpuScene(this.gl, uploaded);
-      return null;
+      return { scene: null, borrowed: null };
     }
-    return uploaded;
+    return { scene: uploaded, borrowed: sharedFrom };
   }
 
   /** Resolves once no geometry build is pending, one started while waiting included. */
@@ -1118,11 +1204,17 @@ export class PathTracer {
     this.unbindTextures(2);
   }
 
-  private releaseScene(): void {
+  /**
+   * Drops the shown scene. With `next` (the scene replacing it) the textures `keep` holds stay and the images `next`
+   * shares with it stay open.
+   */
+  private releaseScene(next?: LoadedScene, keep?: GpuScene | null): void {
     const gpu = this.gpu;
-    if (gpu?.scene && !this.lost) disposeGpuScene(this.gl, gpu.scene);
+    if (gpu?.scene && !this.lost) disposeGpuScene(this.gl, gpu.scene, keep);
     if (gpu) gpu.scene = null;
-    for (const bitmap of this.loaded?.bitmaps ?? []) bitmap?.close();
+    if (this.loaded && this.loaded.bitmaps !== next?.bitmaps) {
+      for (const bitmap of this.loaded.bitmaps) bitmap?.close();
+    }
     this.loaded = null;
   }
 
