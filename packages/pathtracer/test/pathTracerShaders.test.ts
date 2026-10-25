@@ -107,6 +107,25 @@ describe('path tracer shaders', () => {
     }
   });
 
+  it('shades the catcher with a control variate: only a blocked fill ray brings environment radiance', () => {
+    const trace = pathTracerProgramSource('trace').fragment;
+    const at = trace.slice(trace.indexOf('float catcherShadeAt('), trace.indexOf('vec3 tracePath('));
+    expect(trace).toContain('float catcherShadeOfLoss(vec3 fillLost, float keyLost, vec2 xz, vec4 rect)');
+    expect(at).toMatch(
+      /vec3 fillLost = closestHit\(origin, d, 0\.0, 3\.0e38, 1\.0, -1, key, dimension \+ 2u, blocker\) \? environmentRadiance\(d\)\s*: vec3\(0\.0\);/,
+    );
+    expect(at).toContain('return catcherShadeOfLoss(fillLost, 1.0 - keyT, point.xz, u_catcherRect);');
+    expect(at).not.toMatch(/catcherShade\(/);
+    // The same random dimensions as before: the guide and the goldens' seeds keep their meaning.
+    expect(at.match(/unitRandom\(key, dimension( \+ \du)?, 0u\)/g)).toEqual([
+      'unitRandom(key, dimension + 4u, 0u)',
+      'unitRandom(key, dimension + 5u, 0u)',
+      'unitRandom(key, dimension, 0u)',
+      'unitRandom(key, dimension + 1u, 0u)',
+    ]);
+    expect(trace).toContain('coverage = 1.0 - shade;');
+  });
+
   it('sums squared luminance into the second target only when asked', () => {
     const trace = pathTracerProgramSource('trace').fragment;
     expect(trace).toContain('layout(location = 0) out vec4 outSum;');
