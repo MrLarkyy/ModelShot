@@ -55,6 +55,8 @@ export class ModelShotViewer extends HTMLElement {
   private readonly alert: HTMLElement;
   private readonly shadow: ShadowRoot;
   private iframe: HTMLIFrameElement | null = null;
+  // The URL the iframe was last sent to (its `src` stays the first one).
+  private frameSrc = '';
   private observer: IntersectionObserver | null = null;
   private options: ElementOptions | null = null;
   private started = false;
@@ -131,7 +133,14 @@ export class ModelShotViewer extends HTMLElement {
     this.alert.textContent = '';
     if (this.iframe) {
       this.iframe.title = options.title;
-      if (this.iframe.src !== options.src) this.iframe.src = options.src;
+      if (this.frameSrc !== options.src) {
+        this.frameSrc = options.src;
+        // Replacing the frame's location (allowed across origins) changes the fragment without an entry in the host
+        // page's history; a new `src` would add one per attribute change.
+        const frame = this.iframe.contentWindow;
+        if (frame) frame.location.replace(options.src);
+        else this.iframe.src = options.src;
+      }
     } else if (options.eager || typeof IntersectionObserver === 'undefined') {
       this.insertFrame();
     } else {
@@ -156,6 +165,7 @@ export class ModelShotViewer extends HTMLElement {
     iframe.referrerPolicy = 'no-referrer';
     iframe.title = options.title;
     iframe.src = options.src;
+    this.frameSrc = options.src;
     this.iframe = iframe;
     this.shadow.append(iframe);
   }

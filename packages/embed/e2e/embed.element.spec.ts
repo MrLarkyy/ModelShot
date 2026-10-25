@@ -1,9 +1,11 @@
 import type { Page } from '@playwright/test';
 import {
   CUBE,
+  HOST_ORIGIN,
   addViewer,
   events,
   expect,
+  frameAlert,
   meanDifference,
   openHost,
   openMarkupHost,
@@ -157,8 +159,47 @@ test('switching the model back during another download aborts it: the first mode
   // A late flat-cube would be set and reported within this time.
   await page.waitForTimeout(3000);
   await expect(stage).toHaveAttribute('data-state', 'shown');
-  expect((await events(page)).map((e) => e.type)).toEqual(['load']);
+  // The first model shown again after loading: load once more, and never for the other model.
+  expect((await events(page)).map((e) => e.type)).toEqual(['load', 'load']);
   expect(meanDifference(cube, await shot(page)), 'still the first model').toBeLessThan(0.05);
+});
+
+test('the shown model after an error fires load again; a look change does not', async ({ page }) => {
+  await openHost(page);
+  await addViewer(page, { model: CUBE });
+  const frame = viewerFrame(page);
+  await waitForEvent(page, 'load');
+  await setAttributes(page, { model: `${HOST_ORIGIN}/status/404.bbmodel` });
+  expect(await frameAlert(frame)).toMatch(/^MODEL_HTTP_ERROR: /);
+  await setAttributes(page, { model: CUBE });
+  await expect.poll(async () => (await events(page)).map((e) => e.type)).toEqual(['load', 'error', 'load']);
+  await expect(frame.getByRole('alert')).toBeHidden();
+
+  await setAttributes(page, { look: 'marketplace' });
+  await expect(frame.locator('#stage')).toHaveAttribute('data-light', 'baking');
+  await page.waitForTimeout(1000);
+  expect((await events(page)).map((e) => e.type)).toEqual(['load', 'error', 'load']);
+});
+
+test('attribute changes add no entry to the host page history: Back leaves the page', async ({ page }) => {
+  await openHost(page);
+  await addViewer(page, { model: CUBE });
+  const frame = viewerFrame(page);
+  await waitForEvent(page, 'load');
+  const before = await page.evaluate(() => history.length);
+
+  await setAttributes(page, { model: CUBE.replace('single-cube', 'flat-cube') });
+  await expect.poll(async () => (await events(page)).filter((e) => e.type === 'load').length).toBe(2);
+  await setAttributes(page, { model: CUBE, yaw: '90' });
+  await expect.poll(async () => (await events(page)).filter((e) => e.type === 'load').length).toBe(3);
+  await setAttributes(page, { look: 'marketplace' });
+  await expect(frame.locator('#stage')).toHaveAttribute('data-light', 'baking');
+  // Still the first frame document: the fragment changed in place.
+  await expect(frame.locator('canvas')).toHaveCount(1);
+  expect(await page.evaluate(() => history.length)).toBe(before);
+
+  await page.goBack();
+  expect(page.url()).not.toContain('/host.html');
 });
 
 /** The next picture that differs from `previous` and holds still (the camera eases for a moment). */

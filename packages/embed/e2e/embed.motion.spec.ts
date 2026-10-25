@@ -101,7 +101,7 @@ test('with the light baker unavailable, a new model ends unbaked and turns', asy
   await expectTurning(page);
 });
 
-test('an error stops autorotate: nothing turns behind the alert', async ({ page }) => {
+test('an invalid model URL stops autorotate: nothing turns behind the alert', async ({ page }) => {
   await blockBaker(page);
   await openHost(page);
   await addViewer(page, { model: CUBE, autorotate: '' });
@@ -109,8 +109,9 @@ test('an error stops autorotate: nothing turns behind the alert', async ({ page 
   await waitLight(frame, 'unbaked');
   await expectTurning(page);
 
-  await setAttributes(page, { model: `${HOST_ORIGIN}/cors/not-json.bbmodel` });
-  expect(await frameAlert(frame, 60_000)).toMatch(/^NOT_JSON: /);
+  // Refused by the frame's name check before any download, so only the failure itself can stop the turning.
+  await setAttributes(page, { model: `${HOST_ORIGIN}/cors/single-cube.txt` });
+  expect(await frameAlert(frame, 60_000)).toMatch(/^UNSUPPORTED_TYPE: /);
   // The canvas under the alert: the previous model, standing still.
   await frame.locator('#alert').evaluate((alert) => {
     alert.style.visibility = 'hidden';

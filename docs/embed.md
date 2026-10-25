@@ -122,8 +122,14 @@ navigation, popups, forms or downloads), has an empty `allow` list and `referrer
 
 The element fires, on itself (not bubbling, not composed):
 
-- `load`, `detail` `{}`: the model is shown (the light bake may still be running);
+- `load`, `detail` `{}`: the model is shown (the light bake may still be running); fired each time the frame turns to
+  showing a model from loading or an error (a new `model`, a change back to the shown one, a valid change after an
+  error), never for a look, camera, background or `autorotate` change;
 - `error`, `detail` `{ code, message }`: an invalid attribute, or why the frame shows no model.
+
+A host page with a plain iframe changes the parameters with `iframe.contentWindow.location.replace(url)` (allowed across
+origins): only the fragment changes, so the frame keeps its viewer, and the host page's history gets no entry (a new
+`src` adds one per change, so Back would step through the earlier models). The element does the same.
 
 The frame page posts the same to its parent window, for a plain iframe:
 `{ source: 'modelshot-embed', v: 1, type: 'load' | 'error', code?, message? }` with target origin `*` (the frame does
@@ -134,20 +140,20 @@ embed origin.
 
 Shown in the frame (or the element) as `<code>: <message>`, in a `role="alert"` element, and reported by `error`.
 
-| code                  | when                                                                                                           |
-| --------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `MISSING_MODEL`       | no `model`                                                                                                     |
-| `INVALID_PARAM`       | a value outside its contract, a parameter given twice, or a fragment over 8192 characters; names the parameter |
-| `UNSUPPORTED_VERSION` | `v` other than 1                                                                                               |
-| `MODEL_URL_INVALID`   | `model` not an absolute http(s) URL, with credentials, control characters, or over 2048 characters             |
-| `MODEL_INSECURE`      | an `http` model on an `https` frame: refused before any request (the browser would block it)                   |
-| `MODEL_CORS_BLOCKED`  | the model server answered but does not allow the embed origin to read the file (see CORS)                      |
-| `MODEL_UNREACHABLE`   | no answer: offline, a wrong address, a refused connection, or the connection broke mid-download                |
-| `MODEL_HTTP_ERROR`    | the server answered with an error status (404, 403, ...), named in the message                                 |
-| `MODEL_TOO_LARGE`     | over 64 MiB, from `Content-Length` before reading or while streaming without it                                |
-| `MODEL_FETCH_TIMEOUT` | the download (headers and body) took over 30 s                                                                 |
-| `WEBGL2_UNAVAILABLE`  | the browser has no WebGL2                                                                                      |
-| `SCENE_REJECTED`      | the renderer did not take the model                                                                            |
+| code                  | when                                                                                                                                                                      |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MISSING_MODEL`       | no `model`                                                                                                                                                                |
+| `INVALID_PARAM`       | a value outside its contract, a parameter given twice, or a fragment over 8192 characters; names the parameter                                                            |
+| `UNSUPPORTED_VERSION` | `v` other than 1                                                                                                                                                          |
+| `MODEL_URL_INVALID`   | `model` not an absolute http(s) URL, with credentials, control characters, or over 2048 characters                                                                        |
+| `MODEL_INSECURE`      | an `http` model on an `https` frame: refused before any request (the browser would block it)                                                                              |
+| `MODEL_CORS_BLOCKED`  | the model server answered but does not allow the embed origin to read the file (see CORS)                                                                                 |
+| `MODEL_UNREACHABLE`   | no answer: offline, a wrong address, a refused connection, the connection broke mid-download, or (some browsers, see CORS) a server without `Access-Control-Allow-Origin` |
+| `MODEL_HTTP_ERROR`    | the server answered with an error status (404, 403, ...), named in the message                                                                                            |
+| `MODEL_TOO_LARGE`     | over 64 MiB, from `Content-Length` before reading or while streaming without it                                                                                           |
+| `MODEL_FETCH_TIMEOUT` | the download (headers and body) took over 30 s                                                                                                                            |
+| `WEBGL2_UNAVAILABLE`  | the browser has no WebGL2                                                                                                                                                 |
+| `SCENE_REJECTED`      | the renderer did not take the model                                                                                                                                       |
 
 Codes of the app's intake and of the loaders pass through unchanged (see [App, Files and limits](app.md) and the
 loader pages): `UNSUPPORTED_TYPE` (no model extension in the URL path), `NO_MODEL`, `LOAD_TIMEOUT` (reading took over
