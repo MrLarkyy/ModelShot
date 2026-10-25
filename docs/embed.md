@@ -222,7 +222,8 @@ reduced motion as in the app.
 
 ## Tests
 
-`packages/embed/test` (Vitest): the parameter parser at every boundary and with hostile values, the frame URL round
+`packages/embed/test` (Vitest): the frame's model switching, status and failure handling with a fake viewer
+(`showEmbed.test.ts`), the parameter parser at every boundary and with hostile values, the frame URL round
 trip, the download limits and the CORS probe with fake `fetch`, autorotate with a fake clock, the backdrop colour
 solve for every look, no network API outside the download, and that this page's tables equal the code
 (`contractDocs.test.ts`). `packages/embed/e2e` (Playwright, SwiftShader, `pnpm --filter @modelshot/embed run

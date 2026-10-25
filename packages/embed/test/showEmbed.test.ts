@@ -318,4 +318,38 @@ describe('showEmbed', () => {
     expect(embed.page.stage.dataset['light']).toBe('unbaked');
     expect(fakes.rotations).toHaveLength(2);
   });
+
+  it('a superseded model that lands after a newer fragment failed leaves it failed, with no new request', async () => {
+    const embed = start(fragment(A));
+    await arrive(A);
+    embed.update(fragment(B));
+    await settle();
+    fetches()[1]?.answer.resolve(new File(['{}'], 'b.bbmodel'));
+    await settle();
+    reads()[1]?.answer.resolve({ doc: 'doc b.bbmodel' });
+    await settle();
+
+    const C = 'http://models.example/c.bbmodel';
+    embed.update(fragment(C));
+    await settle();
+    fetches()[2]?.answer.reject(new EmbedError('MODEL_INSECURE', 'insecure'));
+    await settle();
+    expect(embed.page.stage.dataset['state']).toBe('failed');
+
+    viewer().documents[1]?.result.resolve({ applied: true });
+    await settle();
+    expect(fetches()).toHaveLength(3);
+    expect(embed.page.stage.dataset['state']).toBe('failed');
+    expect(embed.page.alert.hidden).toBe(false);
+    expect(embed.posts()).toEqual(['load', 'error']);
+  });
+
+  it('a bake that settles unlit replaces the loading status with the unbaked text', async () => {
+    fakes.bakerMissing = true;
+    const embed = start(fragment(A));
+    await arrive(A);
+    embed.update(fragment(B));
+    await arrive(B);
+    expect(embed.page.status.textContent).toBe('The preview shows unbaked light.');
+  });
 });

@@ -31,6 +31,8 @@ export interface EmbedHandle {
   update(hash: string): void;
 }
 
+const LOADING = 'Loading the model…';
+const UNBAKED = 'The preview shows unbaked light.';
 const USER_INPUT = ['pointerdown', 'wheel', 'keydown'] as const;
 
 /** Thrown inside a load that was superseded: nothing more of it is shown or reported. */
@@ -147,6 +149,8 @@ export function showEmbed(page: EmbedPage, hash: string, env: EmbedEnvironment):
         },
         onBakeSettled: (lit) => {
           page.stage.dataset['light'] = lit ? 'lit' : 'unbaked';
+          // The viewer reports unbaked light once; a later load would leave the loading text standing.
+          if (!lit && page.status.textContent === LOADING) page.status.textContent = UNBAKED;
           settled = true;
           syncRotation();
         },
@@ -208,7 +212,8 @@ export function showEmbed(page: EmbedPage, hash: string, env: EmbedEnvironment):
       const result = await target.setDocument(doc, true);
       if (result.applied) {
         shownKey = key;
-        if (mine !== generation) reconcile();
+        // A newer fragment that already failed stays failed: no new request, the alert stays.
+        if (mine !== generation && page.stage.dataset['state'] !== 'failed') reconcile();
       }
       return result;
     });
@@ -247,7 +252,7 @@ export function showEmbed(page: EmbedPage, hash: string, env: EmbedEnvironment):
     const mine = ++generation;
     pendingKey = key;
     page.stage.dataset['state'] = 'loading';
-    page.status.textContent = 'Loading the model…';
+    page.status.textContent = LOADING;
     syncRotation();
     load(params, key, mine, download.signal).catch((error: unknown) => {
       if (error instanceof Superseded || mine !== generation) return;
