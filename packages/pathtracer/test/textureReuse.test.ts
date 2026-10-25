@@ -202,7 +202,7 @@ describe('setScene with the textures of the shown scene', () => {
     expect(decode).toHaveBeenCalledTimes(1);
   });
 
-  it('an emission entry that is no array counts as no glow and never matches a table for reuse', async () => {
+  it('a number or string emission entry counts as no glow, and a table with entries that are no arrays never matches for reuse', async () => {
     const { tracer: pt, internals } = tracer();
     const doc = rest();
     const hostile = [5, 'abc', { 0: 1 }] as unknown as [number, number, number][];

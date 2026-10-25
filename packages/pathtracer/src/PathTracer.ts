@@ -186,7 +186,8 @@ function sameEmission(a: SetSceneOptions['emission'], b: SetSceneOptions['emissi
   return true;
 }
 
-/** A copy of the table the caller may change later; an entry that is no array counts as no glow, as `packMaterials` reads it. */
+/** A copy of the table the caller may change later; the copy keeps array entries only (`packMaterials` packs the caller's table, so
+ * an array-like entry glows there but never matches a stored copy for reuse). */
 function copyEmission(emission: SetSceneOptions['emission']): SetSceneOptions['emission'] {
   const source: unknown = emission;
   if (!Array.isArray(source)) return undefined;
