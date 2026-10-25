@@ -453,9 +453,9 @@ threshold that left it measured 168 pixels at width 0.1 in the edge-band probe b
 `obj-shapes-y030` 245, 0.00374, 0.469, `gltf-nodes-y030` 316, 0.00482, 0.955, `gltf-contact` 6 988, 0.10663, 5.628.
 Probes: **MSAA silhouette pixels are shaded on the face**:
 the baked `turntable-y030` preview against its render (the `pt-turntable-y030` golden PNG), the mean largest-channel
-difference over the 2 px outline band both draw (`outlineBand`), 1.7461 over 3 919 pixels (1.7726 when shaded at the
-pixel centre), at most 2.18 and below 1.7585, the midpoint from round 2's 1.7443 (shading point always at the
-centroid), kept rather than widened (a revert of the centroid qualifiers measures 1.7726 and fails); frame on the raster
+difference over the 2 px outline band both draw (`outlineBand`), 1.6961 over 4 028 pixels against the render MS-59
+regenerated (1.7219 when shaded at the pixel centre; before MS-59 1.7461 and 1.7726 over 3 919), at most measured x 1.25
+= 2.12 and below the midpoint 1.709 (a revert of the centroid qualifiers measures 1.7219 and fails); frame on the raster
 key with MSAA (asserted). **The edge band keeps its width across quad diagonals**: the `edges` view with MSAA against
 `msaa=0`, off every mesh's outline (more than 1 px from a `maskBoundary` of the mesh's pixels from `hide=`): 0 pixels
 over 2 levels at the look's width; at width 0.1 135 pixels differ at all (227 with the skewed footprint, 147 with the
@@ -465,7 +465,8 @@ shading point at the centroid inside faces too, 142 when shaded at the pixel cen
 Both probes, like every golden, are calibrated on SwiftShader (`assertSwiftShader`). Measured once on a real GPU (MS-54,
 ANGLE (NVIDIA, NVIDIA GeForce RTX 3080 Direct3D11 vs_5_0 ps_5_0, D3D11), a throwaway Playwright config with
 `--use-angle=d3d11 --enable-gpu --ignore-gpu-blocklist` and the SwiftShader assertion bypassed locally, nothing
-committed), pixels over 2 levels / pixels differing at width 0.1 / outline band mean, against SwiftShader:
+committed), pixels over 2 levels / pixels differing at width 0.1 / outline band mean (against the render before
+MS-59), against SwiftShader:
 
 | Shaders                                            | RTX 3080          | SwiftShader      |
 | -------------------------------------------------- | ----------------- | ---------------- |
@@ -479,7 +480,7 @@ against `msaa=0` (8 of round 2's 10 pixels came from the centroid normal: 8 / 42
 `prepareShading` now steps each centroid input back to the pixel centre wherever the pixel lies on the face. The 2
 pixels left (3 levels each, at (69, 129) and (199, 149)) reach over a sharp edge, where the centroid sample is kept by
 design (stepping back there too leaves 1 pixel but loses the outline band on SwiftShader, 1.7696). On the GPU the
-outline band's pre-MS-54 value is already below the bound, so the revert check holds on SwiftShader only.
+outline band was measured against the render before MS-59; the revert check holds on SwiftShader only.
 
 For a manual run on real hardware open `rt.html?scene=bench&size=512&fps=1`: it draws continuously and shows the
 median frame work (draw until the GPU finished) and display interval over the last 120 frames, with the renderer

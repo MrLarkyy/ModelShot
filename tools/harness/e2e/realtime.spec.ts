@@ -152,11 +152,10 @@ test('MSAA silhouette pixels are shaded on the face: the outline band of turntab
   page,
 }) => {
   test.setTimeout(240_000);
-  // Measured mean 1.7461 over 3 919 px; 1.7726 when shaded at the pixel centre (before MS-54). The bound between them
-  // is the midpoint from 1.7443 (the shading point always at the centroid), kept as limits are never widened; a revert
-  // of the centroid qualifiers fails it.
-  const maxMean = 2.18;
-  const midpoint = 1.7585;
+  // Measured mean 1.6961 over 4 028 px against the MS-59 render; 1.7219 when shaded at the pixel centre (before MS-54).
+  // The bound is their midpoint, so a revert of the centroid qualifiers fails it.
+  const maxMean = 2.12;
+  const midpoint = 1.709;
   const traced = decodePng(
     readFileSync(
       goldenPath({
