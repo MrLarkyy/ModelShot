@@ -39,7 +39,13 @@ requestAnimationFrame(frame);
   whatever it decoded. Superseding: a later call that passes every limit (whenever its geometry arrives), or
   `dispose()`, supersedes a pending one, which resolves `{ applied: false }` and closes what it decoded; a later call
   rejected for a limit (`INVALID_SCENE`, `SCENE_TOO_LARGE` for materials, triangles or data rows, the last one after
-  the worker) does not, and the pending one still applies.
+  the worker) does not, and the pending one still applies. A document whose `textures` array is the one of the shown
+  scene (compared by object, like the meshes) is a pose or a visibility change of the same model: its textures are
+  not decoded, laid out or uploaded again, the decoded images, the layer plan, the warnings and the GPU layer texture
+  of the shown scene serve it, and with the same `materials` array and equal `emission` so does the material table;
+  only the geometry is built (the whole BVH again, so the bytes equal a call with new arrays) and uploaded. The
+  result and the pixels are those of a call with new arrays. A changed texture needs a new array: one mutated in
+  place is not seen. `animateScene` documents share the arrays, so the frames of an animation export take this path.
 - `setCamera(camera)`, `resize(cssSize)`: the shared `SceneCamera` and the canvas size, as for the preview.
 - `setEdges(edges)`, `edgeLook`: the rounded edges (fields left out keep theirs; a bad value throws as for the option
   and changes nothing). A new width restarts the accumulation; a new sharp angle detects the edges again and rewrites
@@ -126,7 +132,11 @@ floor does not ride with a jump.
    (GLSL ES 3.00 cannot pick a sampler by a dynamic index): one layer of the smallest power-of-two width that holds
    everything, else layers of min(`MAX_TEXTURE_SIZE`, 4096); more layers than `MAX_ARRAY_TEXTURE_LAYERS` throw
    `SCENE_TOO_LARGE`. The untextured colour and the placeholder checker are the preview's (`UNTEXTURED_IMAGE`,
-   `PLACEHOLDER_IMAGE`).
+   `PLACEHOLDER_IMAGE`). A `setScene` with the shown scene's `textures` array skips this step and borrows the shown
+   scene's images and layer texture (and its material table when `materials` and `emission` match); the images then
+   belong to both scenes and are closed once, when neither shows them, and the swap deletes only the textures the new
+   scene does not hold. Should `setEdges` or a context restore replace the shown scene during the upload, the borrowed
+   texture is gone and the swap uploads the scene fresh from the images instead.
    The data textures and the images upload over several tasks while the current scene keeps drawing: at most
    `BAND_ROWS` (128) rows, 4 MiB, of a data texture per task, and images in groups of at most 4 MiB per task (a larger
    image in row bands of 4 MiB: a `RawImage` by a view of its rows, an `ImageBitmap` by `UNPACK_SKIP_ROWS`). A

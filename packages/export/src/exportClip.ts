@@ -27,7 +27,8 @@ const FILE_TYPES: Readonly<Record<ClipFormat, { mimeType: string; extension: str
  * is kept). The options are checked before anything else (`checkExportOptions`); the format is probed and falls back
  * along its chain (`selectFormat`: mp4 → webm → apng, webm → apng, webp → apng) with a `FORMAT_FALLBACK` warning;
  * video is opaque, so a transparent request renders opaque there with `ALPHA_DROPPED`. Frames come from `planFrames`
- * and share one seed; an animation's poses all stand on one shadow catcher (the union of their bounds). A supersample
+ * and share one seed; an animation's poses all stand on one shadow catcher (the union of their bounds) and share the
+ * textures and materials of `doc`, so a path tracer keeps the images it holds and only the pose's geometry is built. A supersample
  * the GPU cannot trace adds `SUPERSAMPLE_LOWERED`. Rejects with `ExportError` `CANCELLED` on abort (the tracer stops within one step),
  * `CONTEXT_LOST`, `ENCODER_FAILED`, `LIMIT_EXCEEDED` (the encoded file over `MAX_OUTPUT_BYTES`) or
  * `UNSUPPORTED_FORMAT`; a renderer error (`PathTracerError` of `setScene`) passes through. Nothing leaves the page.

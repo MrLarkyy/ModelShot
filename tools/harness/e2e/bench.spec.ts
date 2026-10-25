@@ -220,6 +220,40 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
     `[bench] export turntable 64 x 64 x 4 frames, n16: ${exportRuns.map((ms) => ms.toFixed(0)).join(', ')} ms`,
   );
 
+  // An animation export (MS-58): the same clip of the showcase bobbing, 4 poses, from a fresh tracer. Once as exported
+  // (every pose shares the textures array: no decode, no texture upload) and once with a new array per pose (what a
+  // setScene did before); with the showcase's small atlas and with a generated 2048 x 2048 one. One untimed run of each
+  // first (shaders, the generated atlas), then the median of 3, interleaved so a load spike hits both.
+  const animationRun = async (fullSetScene: boolean, atlasSide?: number): Promise<number> =>
+    page.evaluate(
+      async (options) => {
+        const controls = window.__msExport;
+        if (!controls) throw new Error('export controls missing');
+        const start = performance.now();
+        if ((await controls.animation(options)) !== 4) throw new Error('the export rendered other than 4 frames');
+        return performance.now() - start;
+      },
+      { fullSetScene, ...(atlasSide === undefined ? {} : { atlasSide }) },
+    );
+  const animationMedians: Record<string, { pose: number; full: number }> = {};
+  for (const atlasSide of [undefined, 2048]) {
+    await animationRun(false, atlasSide);
+    await animationRun(true, atlasSide);
+    const poseRuns: number[] = [];
+    const fullRuns: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      poseRuns.push(await animationRun(false, atlasSide));
+      fullRuns.push(await animationRun(true, atlasSide));
+    }
+    animationMedians[String(atlasSide)] = { pose: median(poseRuns), full: median(fullRuns) };
+    console.log(
+      `[bench] export animation 64 x 64 x 4 frames, n16, ${atlasSide === undefined ? 'showcase atlas' : `${atlasSide}² atlas`}: ` +
+        `pose-only ${poseRuns.map((ms) => ms.toFixed(0)).join(', ')} ms, full setScene ` +
+        `${fullRuns.map((ms) => ms.toFixed(0)).join(', ')} ms, median ratio ` +
+        `${(median(poseRuns) / median(fullRuns)).toFixed(2)}`,
+    );
+  }
+
   // Every target, so a budget row cannot go unmeasured; one at a time, as `site` and `site-assets` build the same package.
   const bundleGzipBytes: Record<string, number> = {};
   for (const target of BUNDLE_TARGETS) bundleGzipBytes[target] = (await measureBundle(target)).gzipBytes;
@@ -236,6 +270,8 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
       'rt-load-first-frame-200k-world': worldLoadMs,
       'pt-load-200k': ptLoadMs,
       'export-turntable-64-f4-n16': median(exportRuns),
+      'export-animation-64-f4-n16': animationMedians['undefined']?.pose ?? Number.NaN,
+      'export-animation-atlas2048-64-f4-n16': animationMedians['2048']?.pose ?? Number.NaN,
     },
     timeToSamplesMs: {
       'progressive-256-n64': median(runs),

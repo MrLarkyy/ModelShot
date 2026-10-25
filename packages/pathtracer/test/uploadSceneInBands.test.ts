@@ -1,6 +1,6 @@
 import type { RawImage } from '@modelshot/renderer-rt';
 import { describe, expect, it } from 'vitest';
-import { uploadGpuScene } from '../src/gpuScene';
+import { disposeGpuScene, uploadGpuScene } from '../src/gpuScene';
 import { DATA_TEXTURE_WIDTH, dataTexture, type DataTexture, type PackedGeometry } from '../src/packSceneData';
 import type { TextureLayerPlan } from '../src/textureLayers';
 import { BAND_ROWS, IMAGE_TASK_BYTES, uploadSceneInBands } from '../src/uploadSceneInBands';
@@ -209,5 +209,40 @@ describe('uploadSceneInBands', () => {
     const before = stubGl({ lost: () => true });
     expect(await uploadSceneInBands(before.gl, geometry, materials, plan, images, () => true)).toBeNull();
     expect(before.calls.filter((c) => c.name === 'createTexture')).toEqual([]);
+  });
+
+  it('shared handles go into the scene as they are: nothing is made, written or deleted for them', async () => {
+    const { gl, calls } = stubGl();
+    const layers = gl.createTexture();
+    const table = gl.createTexture();
+    const at = calls.length;
+    const scene = await uploadSceneInBands(gl, geometry, materials, plan, images, () => true, {
+      layers,
+      materials: table,
+    });
+    expect(scene?.layers).toBe(layers);
+    expect(scene?.materials).toBe(table);
+    const made = calls.slice(at);
+    expect(made.filter((c) => c.name === 'createTexture')).toHaveLength(3);
+    expect(made.filter((c) => c.name === 'texSubImage3D' || c.name === 'texStorage3D')).toEqual([]);
+    // The three geometry textures only: 1 + 3 + 2 bands.
+    expect(made.filter((c) => c.name === 'texSubImage2D')).toHaveLength(6);
+    expect(made.some((c) => c.name === 'bindTexture' && (c.args[1] === layers || c.args[1] === table))).toBe(false);
+  });
+
+  it('an abort deletes only the textures it made, and disposeGpuScene with keep only the others', async () => {
+    const { gl, calls } = stubGl();
+    const layers = gl.createTexture();
+    let checks = 0;
+    const scene = await uploadSceneInBands(gl, geometry, materials, plan, images, () => ++checks < 3, { layers });
+    expect(scene).toBeNull();
+    const deleted = calls.filter((c) => c.name === 'deleteTexture').map((c) => c.args[0]);
+    expect(deleted).toHaveLength(4);
+    expect(deleted).not.toContain(layers);
+
+    const whole = uploadGpuScene(gl, geometry, materials, plan, images);
+    const at = calls.length;
+    disposeGpuScene(gl, whole, { layers: whole.layers, materials: whole.materials });
+    expect(calls.slice(at).map((c) => c.args[0])).toEqual([whole.nodes, whole.triPositions, whole.triAttributes]);
   });
 });

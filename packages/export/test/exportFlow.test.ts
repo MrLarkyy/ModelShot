@@ -146,6 +146,11 @@ describe('exportClip', () => {
     });
     expect(result.frames).toBe(4);
     expect(renderer.scenes).toHaveLength(4);
+    // Every pose shares the textures and materials of the rest document, so the tracer reuses what it holds.
+    for (const pose of renderer.scenes) {
+      expect(pose.textures).toBe(doc.textures);
+      expect(pose.materials).toBe(doc.materials);
+    }
     expect(new Set(renderer.cameras)).toEqual(new Set([renderer.cameras[0]]));
     // One shadow catcher for every pose: the union of their bounds (the cube slides 0..1.5 along x).
     const bounds = renderer.sceneOptions.map((o) => o?.catcherBounds);
