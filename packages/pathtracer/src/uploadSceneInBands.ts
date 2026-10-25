@@ -23,6 +23,8 @@ export const IMAGE_TASK_BYTES = 4 * 1024 * 1024;
  * groups of at most `IMAGE_TASK_BYTES` (a larger image in row bands of that size), one band or group per task, so a
  * large scene never blocks the main thread in one upload. Before each band `current()` and the context are checked:
  * when either fails every texture made here is deleted and the result is `null`. The same bytes as `uploadGpuScene`.
+ * A handle in `shared` (the layer texture and the material table of the scene being replaced, when their content is
+ * the same) goes into the result as is: never created, written or deleted here, so the images are not uploaded again.
  */
 export async function uploadSceneInBands(
   gl: WebGL2RenderingContext,
@@ -31,6 +33,7 @@ export async function uploadSceneInBands(
   plan: TextureLayerPlan,
   images: readonly (ImageBitmap | RawImage)[],
   current: () => boolean,
+  shared: { layers?: WebGLTexture; materials?: WebGLTexture } = {},
 ): Promise<GpuScene | null> {
   const live = () => current() && !gl.isContextLost();
   if (!live()) return null;
@@ -38,8 +41,8 @@ export async function uploadSceneInBands(
     nodes: createDataTexture(gl, geometry.nodes.rows),
     triPositions: createDataTexture(gl, geometry.triPositions.rows),
     triAttributes: createDataTexture(gl, geometry.triAttributes.rows),
-    materials: createDataTexture(gl, materials.rows),
-    layers: createLayerTexture(gl, plan),
+    materials: shared.materials ?? createDataTexture(gl, materials.rows),
+    layers: shared.layers ?? createLayerTexture(gl, plan),
     nodeCount: geometry.nodeCount,
     maxRenderOrder: geometry.maxRenderOrder,
   };
@@ -48,8 +51,8 @@ export async function uploadSceneInBands(
     [scene.nodes, geometry.nodes],
     [scene.triPositions, geometry.triPositions],
     [scene.triAttributes, geometry.triAttributes],
-    [scene.materials, materials],
   ];
+  if (!shared.materials) data.push([scene.materials, materials]);
   for (const [handle, texture] of data) {
     for (let from = 0; from < texture.rows; from += BAND_ROWS) {
       writes.push(() => writeDataRows(gl, handle, texture, from, Math.min(BAND_ROWS, texture.rows - from)));
@@ -60,7 +63,7 @@ export async function uploadSceneInBands(
   const flush = (placed: ReturnType<typeof placedImages>) => {
     if (placed.length > 0) writes.push(() => writeLayerImages(gl, scene.layers, placed));
   };
-  for (const entry of placedImages(plan, images)) {
+  for (const entry of shared.layers ? [] : placedImages(plan, images)) {
     const size = entry[0].width * entry[0].height * 4;
     if (size > IMAGE_TASK_BYTES) {
       flush(group);
@@ -88,7 +91,7 @@ export async function uploadSceneInBands(
     write();
     await nextTask();
     if (!live()) {
-      disposeGpuScene(gl, scene);
+      disposeGpuScene(gl, scene, shared);
       return null;
     }
   }

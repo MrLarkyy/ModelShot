@@ -156,8 +156,14 @@ export function uploadGpuScene(
   };
 }
 
-export function disposeGpuScene(gl: WebGL2RenderingContext, scene: GpuScene): void {
+/** Deletes the textures of `scene` that `keep` (the handles of another scene sharing some of them) does not hold. */
+export function disposeGpuScene(
+  gl: WebGL2RenderingContext,
+  scene: GpuScene,
+  keep: Partial<GpuScene> | null = null,
+): void {
+  const kept = keep ? [keep.nodes, keep.triPositions, keep.triAttributes, keep.materials, keep.layers] : [];
   for (const texture of [scene.nodes, scene.triPositions, scene.triAttributes, scene.materials, scene.layers]) {
-    gl.deleteTexture(texture);
+    if (!kept.includes(texture)) gl.deleteTexture(texture);
   }
 }
