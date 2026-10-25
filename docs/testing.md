@@ -501,15 +501,17 @@ after a time. Random numbers come from a seeded integer hash, never `Math.random
 `e2e/pathtracer.spec.ts` renders `fixtures/pt.html` (`@modelshot/pathtracer` on SwiftShader, 256 x 256, 4 bounces,
 seed 1). The page takes the realtime fixture's scenes and views (`rtScenes.ts`: `variant`, `scene`, `look`, ...) so
 every path-traced golden pairs with a preview of the same view, plus `seed`, `samples`, `batch` (samples per `step`),
-`tile` (tile side), `size`, `maxTriangles`, `track=1`, `timing=1` and the render quality of the request (MS-18):
-`supersample=1..4`, `denoise=0|1`, `noise=<threshold>`, which the sample bench uses too; the path-tracer-only variant `emissive` sets an
+`tile` (tile side), `size`, `maxTriangles`, `track=1`, `timing=1`, `geometryWorker=0` (setScene builds the geometry on
+the main thread, MS-40) and the render quality of the request (MS-18):
+`supersample=1..4`, `denoise=0|1`, `noise=<threshold>`, which the sample bench uses too, and `transparent=1` (`readRGBA`
+gives `readImage()`'s straight alpha); `cameraonly=1` makes every mesh camera-only (MS-59); the path-tracer-only variant `emissive` sets an
 emission on the showcase's brick material. A golden spec names its view in `variant` (`PathTracedGoldenSpec.variant`,
 put in the URL, not in the file name); so are its quality fields (`supersample`, `denoise`), so the name of such a
 golden says them (`-x2-denoised`).
 
 | golden                                 | view                                                  | checks                                           |
 | -------------------------------------- | ----------------------------------------------------- | ------------------------------------------------ |
-| `pt-turntable-y030.s1.n64`             | showcase, perspective 35°                             | golden; determinism; bleeding; pair              |
+| `pt-turntable-y030.s1.n64`             | showcase, perspective 35°                             | golden; determinism; bleeding; pair; no workers  |
 | `pt-iso.s1.n64`                        | showcase, orthographic isometric                      | golden; pair                                     |
 | `pt-closeup.s1.n64`                    | showcase, half the fit distance (texels ~28 px)       | golden                                           |
 | `pt-alpha-plane.s1.n128`               | alpha-plane.bbmodel, model-view camera                | golden; shadow probes; back side; pair           |
@@ -529,12 +531,42 @@ golden says them (`-x2-denoised`).
 | `pt-gltf-nodes-y030.s1.n128`           | scene-nodes.gltf, perspective 35°, pitch 20°, yaw 30° | golden; sentinel bleeding; catcher; pair (MS-39) |
 | `pt-obj-shapes-y030.s1.n128`           | shapes.obj, same view                                 | golden; pair (MS-39)                             |
 
+MS-40 (`geometry worker`): the accumulated float sums (`readAccumulation`, base64) of the `edges` view at 16 samples
+and of the 200 000-triangle `large-order` document at 4 samples are the same bytes with the geometry worker and with
+`geometryWorker=0`; with `Worker` made to throw (`addInitScript`) the tracer builds on the main thread
+(`geometryInWorker` false) and `pt-turntable-y030` still matches its golden. No golden changed.
+
 All eight earlier `pt-*` goldens were regenerated in MS-16 on purpose (same seeds, samples and size): the key became
 a 0.04 rad cone, the shadow catcher appeared under every model, and the random dimensions per path vertex grew from
 4 to 6. Their probes were measured again (below). Round 2 gave the catcher's fill ray its own number for partial
 texels (it shared the camera ray's): `pt-turntable-y030`, `pt-iso`, `pt-closeup`, `pt-emissive` and
 `pt-alpha-ramp-blend`, where catcher fill rays meet partial texels (the glass panes, the ramp), were regenerated
 again, by at most 5 levels (mean 1) over their whole catcher; the others did not change.
+
+MS-59 made the catcher estimate a control variate (path-tracer.md, shadow catcher): an unblocked catcher sample is
+exactly 1, so the lit catcher has no noise and only blocked samples carry any. Regenerated on purpose (same seeds,
+samples and size; changed pixels, max channel delta, mean delta per channel): `pt-turntable-y030` 7 172 px, 4, 0.052;
+`pt-iso` 7 646, 3, 0.056; `pt-closeup` 1 332, 4, 0.013; `pt-alpha-ramp-blend` 975, 1, 0.006; `pt-render-order` 133, 2,
+0.001; `pt-emissive` 7 147, 4, 0.052; `pt-player-hold-34` 8 490, 3, 0.071; `pt-cutout-checker` 10 900, 2, 0.072;
+`pt-edges` 8 011, 3, 0.052; `pt-preset-marketplace` 3 377, 1, 0.020; `pt-preset-rim` 1 780, 1, 0.013;
+`pt-outline-hull` 7 984, 1, 0.057; `pt-closeup-denoised` 653, 3, 0.005; `pt-turntable-y030-x2-denoised` 1 096, 2,
+0.006; `pt-gltf-nodes-y030` 4 001, 2, 0.025; `pt-obj-shapes-y030` 2 269, 1, 0.015; `pt-closeup-reference` (re-rendered
+on the update) 408, 1, 0.002; the export goldens (alpha included) `export-still-transparent` 1 461, 11, 0.040 and the
+turntable and animation frames 826-1 030, at most 9, at most 0.012. Every change lies on the catcher (and the glass
+panes that show it); no model pixel and no shadow shape moved. `pt-alpha-plane` (its ground hides the catcher; 29
+pixels by 1 level, within the tolerance) and `pt-gltf-contact` (no catcher) were not regenerated, nor any `rt-*`
+golden: the preview's `catcherShade` arithmetic is unchanged. The pairs pass at their limits, which stay (before ->
+after, ratio / mean delta): `turntable-y030` 0.00217 / 0.724 -> 0.00215 / 0.715, `iso` 0.00409 / 0.889 -> 0.00407 /
+0.880, `alpha-plane` 0.00354 / 1.334 (same), `player-hold-34` 0.01843 / 1.293 -> 0.01843 / 1.290, `cutout-checker`
+0.00340 / 0.623 -> 0.00340 / 0.611, `edges` 0.00061 / 0.390 -> 0.00061 / 0.377, `preset-marketplace` 1.237 -> 1.236,
+`preset-rim` 1.109 -> 1.108, `preset-marketplace-yaw30` 1.281 -> 1.280, `outline-hull` 0.438 -> 0.425,
+`obj-shapes-y030` 0.470 -> 0.463, `gltf-nodes-y030` 0.956 -> 0.948, `gltf-contact` and the denoised 2x turntable pair
+(0.00177 / 0.620) unchanged; each ratio the same or lower. "An unblocked catcher shades exactly 1" renders
+`turntable-y030` with `cameraonly=1` (every mesh camera-only: fill and key rays skip it, so no catcher ray is ever
+blocked) at 1 sample, seeds 1 and 7: catcher on and off are byte-identical opaque and with `transparent=1` (RGBA), at
+tolerance 0; the same view with the model casting differs in 3 169 and 3 112 pixels (not vacuous). Before the change
+it failed with 16 734 pixels. The noise-threshold test pins no sample count (368 and 800 samples at 0.1 and 0.07 on
+`closeup`).
 
 - Tolerance: an override of `threshold 0` only (its reason in the spec); `maxDiffRatio 0.001` and `maxMeanDelta 1`
   stay the defaults. The tracer converges, so at the default threshold 0.1 another seed or one sample more or less
@@ -799,7 +831,11 @@ took, so a decoded file is compared with the very frames that were encoded.
   bytes against a committed PNG.
 - Still: the PNG decodes (the formats package's `decodePngRgba`) to exactly the bytes of `readImage()`; alpha is 255 at
   the opaque texel probe, 0 at the cut-out texel probe and at the corners where camera rays escape (catcher off); with
-  the catcher on, its shadow under the opaque texel is black with alpha 1 − shade (188 measured).
+  the catcher on, its shadow under the opaque texel is black with alpha 1 − shade (191 measured; 188 before MS-59).
+  Haze (MS-59): the transparent still with the catcher on has at most 34 pixels of alpha 1..3 (27 measured, x 1.25;
+  490 before the control variate). Alpha 1..15, MS-22's haze count, went 1 164 -> 722; its alpha 4..15 part, 674
+  before and 695 after, is unbiased speckle of real occlusion (one blocked fill sample of 16), falling as 1/√n, so it
+  is not bounded.
 - Per format, the decoded frames against the rendered ones: APNG through `decodePngRgba` of each frame rebuilt as a
   PNG, exact; GIF (ImageDecoder) within the palette bound of export.md (18; 10 measured), alpha 255 exactly where the
   render's is at least 128 and 0 elsewhere; WebP (ImageDecoder) within 2 (1 measured where alpha is partial); WebM and
@@ -817,8 +853,8 @@ took, so a decoded file is compared with the very frames that were encoded.
 - Transparent quality paths: stills plain, with `supersample: 2` and with `denoise`, catcher off and on: PNG = readImage,
   alpha 255 / 0 / 0 at the opaque texel, the cut-out texel and the corner, no warning; the canvas of the transparent
   request against the opaque canvas (`preserveDrawingBuffer`), every pixel: within 1 plain and supersampled (0
-  measured: the canvas composites in linear light, which pins coverage = 1 − shade per sample), within 44 denoised (14
-  without, 35 with the catcher measured). The readback composite of the supersampled and denoised stills against the
+  measured: the canvas composites in linear light, which pins coverage = 1 − shade per sample), within 43 denoised (14
+  without, 34 with the catcher measured; 35 and 44 before MS-59). The readback composite of the supersampled and denoised stills against the
   opaque ones: solid pixels within 18 without the catcher (0 and 14 measured), every pixel within 79 with it (36 and 63
   measured).
 - Context loss: after a finished render `readImage()` is an image; right after `WEBGL_lose_context.loseContext()`, before
@@ -1033,7 +1069,17 @@ round 7); its max was 750 ms then.
   artefact allows 3-4x the CI median (the plan's 1.5x would fail on runners 3-5x slower than this machine).
 - `frameTimeMs.pt-load-200k`: `setScene` of the generated 200 000-triangle scene of
   `rt-load-first-frame-200k-order` (validate, flatten, BVH build in JavaScript, upload) plus its first sample. Local
-  SwiftShader 1554, 919 and 941 ms; max 10 000 ms (10x the middle run, rounded up).
+  SwiftShader 1554, 919 and 941 ms; max 10 000 ms (10x the middle run, rounded up). Since MS-40 the flatten and BVH
+  build run in the geometry worker and the upload in bands: 2418 ms in a bench run on a loaded machine (the bake read
+  28.3 s there against 22.1 s before); in one session the 200 000-triangle `setScene` alone took 2107 and 1961 ms with
+  the worker, 1881 and 1840 ms with `geometryWorker=0`.
+- `mainThreadBlockMs.pt-setscene-200k` (MS-40): the most one main-thread task blocked (CPU plus GPU wait, the trace
+  of the rows below) during `setScene` of that 200 000-triangle document on `pt.html?scene=empty`: validation, the
+  triangle count, the mesh stream to the geometry worker, taking its transferred buffers back, the banded upload (128
+  rows, 4 MiB, per task) and the swap. The document is built first (`pt.prepareLarge()`), outside the trace;
+  `pt.setLarge()` is the traced call, and the bench asserts it applied 200 000 triangles in the worker
+  (`pt.geometryInWorker`). Max 50 ms, fixed like the bake rows. Local SwiftShader: 14.4 ms (382 tasks; CPU 14.4 ms,
+  largest GPU wait 13.1 ms in one task, a band's `texSubImage2D`), the call to applied 3238 ms.
 - `bundleGzipBytes` embed 2200: measured plus about 2 kB, so a real dependency shows up while noise does not.
   `app` 205 300 and `app-entry` 66 800 (MS-23: the app opens, looks, renders and exports; measured 186 590 and 60 655 B, gzip level 9, plus 10 %, rounded up to 100). The app-entry row is what loads before a model is opened; the lazy tracer and export chunks count only in `app`.
   `site` 11 600 (MS-31: the landing page's js, css and html, gzip level 9; measured 9595, 9595, 9595 bytes, plus about

@@ -30,8 +30,9 @@ vec3 hemisphereFill(vec3 n) {
 
 // Radiance of the environment along the unit direction d, for path-traced rays that escape. The cosine-weighted mean
 // of d.y over the hemisphere around n is 2/3 n.y, so with the factor 3/4 an unoccluded Lambert surface receives exactly
-// hemisphereFill(n): the path tracer converges to the preview's fill. Never negative: checkLookPreset keeps each
-// channel of sky and ground within five times the other.
+// hemisphereFill(n): the path tracer converges to the preview's fill, and its shadow catcher, which subtracts only the
+// blocked fill from hemisphereFill(up), stays unbiased. Never negative: checkLookPreset keeps each channel of sky and
+// ground within five times the other.
 vec3 environmentRadiance(vec3 d) {
   return mix(u_lookGround, u_lookSky, d.y * 0.75 + 0.5);
 }

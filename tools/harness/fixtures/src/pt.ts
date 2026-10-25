@@ -21,8 +21,11 @@ import { isRtSceneName, parseRtView, reverseMeshOrder, rtCamera, rtLook, rtScene
 // rtScenes.ts; catcher=0|1 the shadow catcher, default on; edges=<width> the rounded edges, 0 none; preset=<look
 // preset id>, rim=0) plus the path-tracer-only variant `emissive`; seed (default 1), samples (default 64), batch (samples
 // per step, default all), tile (tile side, default 256), size (CSS pixels, default 256), maxTriangles, track=1 (count
-// GL objects), timing=1 (one sample per frame with a time readout, for a manual run on real hardware); the render
-// quality (RenderRequest): supersample=1..4, denoise=1, noise=<threshold>, which the sample bench uses too.
+// GL objects), timing=1 (one sample per frame with a time readout, for a manual run on real hardware), geometryWorker=0
+// (setScene builds the geometry on the main thread); the render quality (RenderRequest): supersample=1..4, denoise=1,
+// noise=<threshold>, which the sample bench uses too; transparent=1 (RenderRequest.transparent: readRGBA gives
+// readImage's straight alpha, rows bottom to top as the drawing buffer's); cameraonly=1 (every mesh seen by camera
+// rays only, so nothing blocks a catcher ray).
 const params = new URLSearchParams(location.search);
 
 /** Path-tracer-only presets: a realtime view plus what only the tracer has. */
@@ -32,6 +35,14 @@ const PT_VARIANTS: Readonly<Record<string, { view: string; options: SetSceneOpti
   // A 4x glow over near-black texels (MS-18): divided by the floored albedo, one sample's variance overflows half floats.
   'emissive-dark': { view: 'turntable-y030', options: { emission: [undefined, [16, 8.8, 3.2]] }, darken: 1 },
 };
+
+/** `doc` with every mesh group seen by camera rays only: no shadow, fill or bounce ray meets it. */
+function cameraOnlyScene(doc: SceneDocument): SceneDocument {
+  return {
+    ...doc,
+    meshes: doc.meshes.map((mesh) => ({ ...mesh, groups: mesh.groups.map((g) => ({ ...g, cameraOnly: true })) })),
+  };
+}
 
 /** `doc` with material `index` on a copy of its texture whose every texel is near-black (sRGB 2, opaque). */
 function darkenMaterial(doc: SceneDocument, index: number): SceneDocument {
@@ -65,15 +76,27 @@ function decimalParam(name: string): number | undefined {
 }
 
 /** The quality fields of the page's request; none given: none set, as a caller of the plain API. */
-function qualityParams(): Pick<RenderRequest, 'supersample' | 'denoise' | 'noiseThreshold'> {
+function qualityParams(): Pick<RenderRequest, 'supersample' | 'denoise' | 'noiseThreshold' | 'transparent'> {
   const supersample = params.has('supersample') ? intParam('supersample', 1, 1, 4) : undefined;
   const denoise = params.has('denoise') ? intParam('denoise', 0, 0, 1) === 1 : undefined;
   const noiseThreshold = decimalParam('noise');
+  const transparent = params.has('transparent') ? intParam('transparent', 0, 0, 1) === 1 : undefined;
   return {
     ...(supersample !== undefined ? { supersample } : {}),
     ...(denoise !== undefined ? { denoise } : {}),
     ...(noiseThreshold !== undefined ? { noiseThreshold } : {}),
+    ...(transparent !== undefined ? { transparent } : {}),
   };
+}
+
+/** Image rows top to bottom (readImage) as the drawing buffer's, bottom to top, in base64. */
+function bottomUpBase64(data: Uint8ClampedArray, width: number, height: number): string {
+  const row = width * 4;
+  const flipped = new Uint8Array(data.length);
+  for (let y = 0; y < height; y++) flipped.set(data.subarray(y * row, (y + 1) * row), (height - 1 - y) * row);
+  let binary = '';
+  for (let i = 0; i < flipped.length; i += 0x8000) binary += String.fromCharCode(...flipped.subarray(i, i + 0x8000));
+  return btoa(binary);
 }
 
 const tracker = params.get('track') === '1' ? installGlTracker() : null;
@@ -105,6 +128,8 @@ async function start(): Promise<void> {
   const tileSize = intParam('tile', 256, 16, 4096);
   const maxTriangles = intParam('maxTriangles', 200_000, 0, 10_000_000);
   const timing = params.get('timing') === '1';
+  const cameraOnly = intParam('cameraonly', 0, 0, 1) === 1;
+  const geometryWorker = intParam('geometryWorker', 1, 0, 1) === 1;
   const quality = qualityParams();
   const variantName = params.get('variant');
   const ptVariant = variantName !== null && Object.hasOwn(PT_VARIANTS, variantName) ? PT_VARIANTS[variantName] : null;
@@ -120,6 +145,7 @@ async function start(): Promise<void> {
     preserveDrawingBuffer: !timing,
     tileSize,
     maxTriangles,
+    geometryWorker,
     ...(view.edges !== null ? { edges: { width: view.edges } } : {}),
   });
   const capabilities = tracer.capabilities;
@@ -129,12 +155,18 @@ async function start(): Promise<void> {
   if (!gl) throw new Error('WebGL2 context missing');
   api.renderer = capabilities.renderer;
   api.floatRenderTargets = gl.getExtension('EXT_color_buffer_float') !== null;
-  api.readRGBA = () => readDrawingBufferBase64(gl, canvas.width, canvas.height);
+  api.readRGBA = () => {
+    if (!quality.transparent) return readDrawingBufferBase64(gl, canvas.width, canvas.height);
+    const image = tracer.readImage();
+    if (!image) throw new Error('no transparent image to read');
+    return bottomUpBase64(image.data, image.width, image.height);
+  };
   Object.defineProperty(api, 'samplesDone', { get: () => tracer.samplesDone });
 
   const sceneOf = (name: RtSceneName): SceneDocument => {
     const plain = rtScene(name);
-    const doc = ptVariant?.darken !== undefined ? darkenMaterial(plain, ptVariant.darken) : plain;
+    const darkened = ptVariant?.darken !== undefined ? darkenMaterial(plain, ptVariant.darken) : plain;
+    const doc = cameraOnly ? cameraOnlyScene(darkened) : darkened;
     return view.reverse ? reverseMeshOrder(doc) : doc;
   };
   let doc = sceneOf(view.scene);
@@ -192,6 +224,9 @@ async function start(): Promise<void> {
     tracer.step(1);
   });
 
+  // The bench's large document, built before its measured setScene.
+  let large: SceneDocument | null = null;
+
   const lose = gl.getExtension('WEBGL_lose_context');
   const controls: PtControls = {
     get warnings() {
@@ -212,6 +247,32 @@ async function start(): Promise<void> {
     },
     get probes() {
       return probes();
+    },
+    get geometryInWorker() {
+      return tracer.geometryInWorker;
+    },
+    prepareLarge: () => {
+      large = sceneOf('large-order');
+    },
+    setLarge: async () => {
+      if (!large) throw new Error('prepareLarge first');
+      const next = large;
+      const result = await tracer.setScene(next, { shadowCatcher: view.catcher });
+      if (result.applied) {
+        doc = next;
+        warnings = result.warnings;
+        triangles = result.triangles;
+      }
+      tracer.setCamera(camera());
+      return { applied: result.applied, triangles: result.triangles };
+    },
+    accumulationBase64: () => {
+      const sums = tracer.readAccumulation();
+      if (!sums) return null;
+      const bytes = new Uint8Array(sums.buffer, sums.byteOffset, sums.byteLength);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      return btoa(binary);
     },
     liveGlObjects: () => tracker?.liveGlObjects() ?? -1,
     livePrograms: () => tracker?.livePrograms() ?? -1,

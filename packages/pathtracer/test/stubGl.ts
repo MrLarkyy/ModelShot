@@ -7,12 +7,17 @@ export interface GlCall {
 export interface StubGlOptions {
   /** Whether a shader of this source compiles; default every one. */
   readonly compiles?: (source: string) => boolean;
+  /** Whether the context is lost now; default never. */
+  readonly lost?: () => boolean;
+  /** Called with each call as it is recorded. */
+  readonly onCall?: (call: GlCall) => void;
 }
 
 /**
  * A WebGL2 context that records every call and does nothing: each constant (an upper-case name) is a distinct number,
  * `create*` returns a fresh object, shaders compile as `options.compiles` says, programs link, framebuffers are
- * complete and the context is never lost. Enough for the resource and program code, never for drawing.
+ * complete and the context is lost as `options.lost` says (default never). Enough for the resource and program code,
+ * never for drawing.
  */
 export function stubGl(options: StubGlOptions = {}): { gl: WebGL2RenderingContext; calls: GlCall[] } {
   const calls: GlCall[] = [];
@@ -29,7 +34,7 @@ export function stubGl(options: StubGlOptions = {}): { gl: WebGL2RenderingContex
     getShaderInfoLog: () => 'stub compile log',
     getProgramInfoLog: () => '',
     checkFramebufferStatus: () => constant('FRAMEBUFFER_COMPLETE'),
-    isContextLost: () => false,
+    isContextLost: () => options.lost?.() ?? false,
     getUniformLocation: () => ({}),
   };
   const gl = new Proxy(
@@ -39,7 +44,9 @@ export function stubGl(options: StubGlOptions = {}): { gl: WebGL2RenderingContex
         if (typeof property !== 'string') return undefined;
         if (/^[A-Z0-9_]+$/.test(property)) return constant(property);
         return (...args: unknown[]) => {
-          calls.push({ name: property, args });
+          const call = { name: property, args };
+          calls.push(call);
+          options.onCall?.(call);
           if (property.startsWith('create')) return { created: property };
           return results[property]?.(...args);
         };
