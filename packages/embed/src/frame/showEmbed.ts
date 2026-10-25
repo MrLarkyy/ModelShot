@@ -229,13 +229,15 @@ export function showEmbed(page: EmbedPage, hash: string, env: EmbedEnvironment):
       if (mine !== generation) throw new Superseded();
     };
     const current = ensureViewer(params);
-    applyLook();
+    // A look applied now would re-bake the model on screen and its status would hide the download's.
+    if (shownKey === null) applyLook();
     const file = await fetchModel(params.model, { fetch: env.fetch, frameOrigin: env.origin, signal });
     live();
     const violation = checkIntake([file]);
     if (violation) throw violation;
     const loaded = await loadModel(groupFiles([file]), { arms: params.arms, signal });
     live();
+    applyLook();
     const result = await setDocument(current, loaded.doc, key, mine);
     live();
     if (!result?.applied) throw new EmbedError('SCENE_REJECTED', 'The renderer did not take the model.');

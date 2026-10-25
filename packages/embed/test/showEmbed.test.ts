@@ -19,6 +19,7 @@ function deferred<T>(): Deferred<T> {
 }
 
 interface ViewerOptions {
+  onStatus?: (message: string) => void;
   onBakeStarted?: () => void;
   onBakeSettled?: (lit: boolean) => void;
 }
@@ -29,7 +30,9 @@ class FakeViewer {
   /** Like the app's viewer without its light baker: the bake settles one microtask after it starts. */
   bakerMissing = false;
   readonly documents: { readonly doc: unknown; readonly result: Deferred<{ applied: boolean }> }[] = [];
-  readonly setLook = vi.fn();
+  readonly setLook = vi.fn(() => {
+    this.options.onStatus?.('Lighting the preview…');
+  });
   readonly setView = vi.fn();
   readonly resetView = vi.fn();
   readonly changed = vi.fn();
@@ -351,5 +354,29 @@ describe('showEmbed', () => {
     embed.update(fragment(B));
     await arrive(B);
     expect(embed.page.status.textContent).toBe('The preview shows unbaked light.');
+  });
+
+  it('a model change that also changes the look keeps the loading status and applies the new look with the model', async () => {
+    const embed = start(fragment(A));
+    await arrive(A);
+    viewer().setLook.mockClear();
+
+    embed.update(fragment(B, '&look=rim'));
+    await settle();
+    expect(viewer().setLook).not.toHaveBeenCalled();
+    expect(embed.page.status.textContent).toBe('Loading the model…');
+
+    await arrive(B);
+    expect(viewer().setLook).toHaveBeenCalledOnce();
+    expect(viewer().documents).toHaveLength(2);
+    expect(embed.page.stage.dataset['state']).toBe('shown');
+  });
+
+  it('a look-only change applies at once', async () => {
+    const embed = start(fragment(A));
+    await arrive(A);
+    viewer().setLook.mockClear();
+    embed.update(fragment(A, '&look=rim'));
+    expect(viewer().setLook).toHaveBeenCalledOnce();
   });
 });
