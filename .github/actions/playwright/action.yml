@@ -1,0 +1,61 @@
+name: playwright
+description: Install the pinned Chromium and its system packages, restoring both from the cache when it is warm.
+
+inputs:
+  package:
+    description: Workspace package whose Playwright version and install run.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - id: version
+      shell: bash
+      env:
+        PACKAGE: ${{ inputs.package }}
+      run: |
+        version=$(pnpm --filter "$PACKAGE" exec playwright --version | awk '{print $NF}')
+        test -n "$version"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
+    - id: browser
+      uses: actions/cache/restore@v6
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-chromium-shell-${{ runner.os }}-${{ runner.arch }}-${{ steps.version.outputs.version }}
+
+    # The slow part of the install is downloading the .deb files from a mirror that is sometimes under 50 kB/s; the
+    # key carries the runner image so a new image starts a fresh cache.
+    - id: apt
+      uses: actions/cache/restore@v6
+      with:
+        path: ~/.cache/playwright-apt
+        key: playwright-apt-${{ env.ImageOS }}-${{ env.ImageVersion }}-${{ steps.version.outputs.version }}
+
+    - if: steps.apt.outputs.cache-hit == 'true'
+      shell: bash
+      run: sudo cp ~/.cache/playwright-apt/*.deb /var/cache/apt/archives/ || true
+
+    - shell: bash
+      env:
+        PACKAGE: ${{ inputs.package }}
+      run: pnpm --filter "$PACKAGE" exec playwright install --with-deps --only-shell chromium
+
+    # Saved here, not in a post step, so a red test run still fills the cache.
+    - if: steps.apt.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        mkdir -p ~/.cache/playwright-apt
+        cp /var/cache/apt/archives/*.deb ~/.cache/playwright-apt/ || true
+
+    - if: steps.apt.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ~/.cache/playwright-apt
+        key: playwright-apt-${{ env.ImageOS }}-${{ env.ImageVersion }}-${{ steps.version.outputs.version }}
+
+    - if: steps.browser.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-chromium-shell-${{ runner.os }}-${{ runner.arch }}-${{ steps.version.outputs.version }}

@@ -93,8 +93,7 @@ Shard sizes (MS-39, `--list --project <p> --shard <k>/<n>`), each with the sum o
 times of main's run 39878163371 (MS-30's merge, so its three cut-out seam tests are counted), MS-22's 31 export tests
 from main's run 39928740239 (MS-22's merge, job golden-1: 1.4 minutes together, 1.3-8.7 s each), plus local times for
 MS-39's six new tests (four path-tracer tests, 29 s, and two pairs, 47 s). These are sums of test times, not job times; a job adds the install and build, and the VMs
-differ by up to 2x. In run 39878163371 `playwright install --with-deps` took 13 s to 9.7 minutes per job and the build
-about 6 s (`bake-2`: a 14.4-minute job for 4.4 minutes of tests).
+differ by up to 2x. The build takes about 6 s (`bake-2` in run 39878163371: a 14.4-minute job for 4.4 minutes of tests, mostly the install, see Playwright install).
 
 | Project     | Tests | Shards | Tests per shard             | Minutes per shard (sum)           |
 | ----------- | ----: | -----: | --------------------------- | --------------------------------- |
@@ -103,6 +102,15 @@ about 6 s (`bake-2`: a 14.4-minute job for 4.4 minutes of tests).
 | `pair`      |    13 |      3 | 5 / 4 / 4                   | 5.3 / 2.8 / 2.5                   |
 | `bake`      |    25 |      3 | 9 / 8 / 8                   | 6.4 / 4.3 / 3.5                   |
 | `bench`     |     1 |      1 | 1                           | its own job                       |
+
+Playwright install: `playwright install --with-deps` took 12-15 s on most jobs but 4.5 to 9.4 minutes on some (main run
+40368207797: `bake-3`, `golden-2`, `golden-pt-5`; run 39878163371: 13 s to 9.7 minutes). The browser download is not the slow part:
+in `golden-2` `apt-get update` took 4 s and the .deb files (fonts, `libnss3`, `xvfb`; 24.9 MB) took 9 min 15 s from a mirror
+at 45 kB/s. The local action `.github/actions/playwright` (used by `e2e`, `bench` and the pages `verify` job) restores
+`~/.cache/ms-playwright`, keyed by the Playwright version, and the .deb files in `~/.cache/playwright-apt`, keyed by the runner
+image and the Playwright version, so apt installs from `/var/cache/apt/archives` without downloading. A job that misses a
+cache saves it right after the install, so a red test run still fills it; shards that miss at the same time only warn.
+Times after the change are recorded here from the first warm runs.
 
 314 tests in all. The path-tracer tests had been part of `golden` (241 tests in 5 shards of 48-49): the shard that held
 48 of them summed to 16.0 minutes, the others 1.8-7.2, and the same block in shard 2 of 4 ran 16.3 and 17.4 minute jobs
