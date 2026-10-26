@@ -156,9 +156,9 @@ page staying responsive, the requests made and the background colour per look; n
 differences after "Preview lit."). See [embed.md](embed.md#tests).
 
 The deploy suite (`tools/deploy/e2e`, `pnpm --filter @modelshot/deploy run test:browser`, part of the root
-`test:browser`) runs the assembled `tools/deploy/dist` (build it with `pnpm -r build`) on `MS_DEPLOY_PORT`, else a
+`test:browser`) builds `@modelshot/deploy...` itself, then serves the assembled `tools/deploy/dist` on `MS_DEPLOY_PORT`, else a
 per-checkout port, under `/ModelShot/` like GitHub Pages, and a host page on that port plus 2000. With `MS_DEPLOY_URL`
-set it tests the deployed site instead; `pages.yml` runs it that way after each deploy (`ci.yml` does not run it yet).
+set it serves only the host page and tests the deployed site instead; `pages.yml` runs it that way after each deploy (`ci.yml` does not run it yet).
 See [hosting.md](hosting.md#tests).
 
 ## Goldens

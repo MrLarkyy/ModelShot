@@ -1,3 +1,4 @@
+import { devWithoutCsp } from '@modelshot/brand/devWithoutCsp';
 import { defineConfig } from 'vite';
 
 // The frame page (index.html), where the model is fetched, parsed and drawn. The element script is a second build
@@ -5,6 +6,8 @@ import { defineConfig } from 'vite';
 // path it is hosted (MS-26).
 export default defineConfig({
   base: './',
+  // The dev server injects styles the frame's policy refuses; a build keeps the policy.
+  plugins: [devWithoutCsp()],
   build: {
     // No polyfill: it would add an inline script, which the frame's Content-Security-Policy refuses.
     modulePreload: { polyfill: false },

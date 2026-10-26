@@ -84,8 +84,8 @@ Rollback: unset `PAGES_DEPLOY` to stop further deploys; revert the commit and pu
 
 ## Tests
 
-`pnpm --filter @modelshot/deploy run test:browser` serves the built `tools/deploy/dist` under `/ModelShot/` the way
+`pnpm --filter @modelshot/deploy run test:browser` builds `@modelshot/deploy...` itself (`pnpm -r build` for the assembly), then serves `tools/deploy/dist` under `/ModelShot/` the way
 Pages does (`e2e/staticServer.ts`: MIME types, `Access-Control-Allow-Origin: *`, `max-age=600`, no framing headers) and
 runs the flow, CSP, offline, embed and header specs. With `MS_DEPLOY_URL=https://mrlarkyy.github.io/ModelShot/` it
-tests the live site instead. Unit tests (`tools/deploy/test`) cover the layout, the assembly, the dist checks and the
+serves only the host page and tests the live site instead. Unit tests (`tools/deploy/test`) cover the layout, the assembly, the dist checks and the
 server's path handling.
