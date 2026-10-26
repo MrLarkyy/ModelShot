@@ -18,13 +18,7 @@ import opaqueFrag from './shaders/opaque.frag.glsl?raw';
 import presentFrag from './shaders/present.frag.glsl?raw';
 import viewport from './shaders/viewport.glsl?raw';
 import shading from './shaders/shading.glsl?raw';
-import silhouetteExact from './shaders/silhouetteExact.glsl?raw';
-import silhouetteRaster from './shaders/silhouetteRaster.glsl?raw';
-import silhouetteVertexExact from './shaders/silhouetteVertexExact.glsl?raw';
-import silhouetteVertexRaster from './shaders/silhouetteVertexRaster.glsl?raw';
 import texelSample from './shaders/texelSample.glsl?raw';
-import triangleCorners from './shaders/triangleCorners.glsl?raw';
-import triangleCornersVertex from './shaders/triangleCornersVertex.glsl?raw';
 
 export type ShaderProgramName =
   'opaque' | 'oitAccum' | 'oitComposite' | 'present' | 'fallback' | 'backdrop' | 'catcher';
@@ -42,29 +36,12 @@ export const RENDERER_SHADER_CHUNKS: ShaderChunks = Object.freeze({
   viewport,
   hashAlpha,
   bakedLight,
-  triangleCorners,
-  triangleCornersVertex,
 });
 
-/**
- * `#include "depthKey"`, `"silhouette"` (fragment) and `"depthKeyVertex"`, `"silhouetteVertex"` per depth-key variant
- * of the mesh passes; exact frames are single-sampled, so their silhouette chunks are stubs.
- */
+/** `#include "depthKey"` (fragment) and `#include "depthKeyVertex"` per depth-key variant of the mesh passes. */
 const DEPTH_KEY_CHUNKS: Readonly<Record<DepthKeyMode, ShaderChunks>> = {
-  raster: Object.freeze({
-    ...RENDERER_SHADER_CHUNKS,
-    depthKey: depthKeyRaster,
-    depthKeyVertex: depthKeyVertexRaster,
-    silhouette: silhouetteRaster,
-    silhouetteVertex: silhouetteVertexRaster,
-  }),
-  exact: Object.freeze({
-    ...RENDERER_SHADER_CHUNKS,
-    depthKey: depthKeyExact,
-    depthKeyVertex: depthKeyVertexExact,
-    silhouette: silhouetteExact,
-    silhouetteVertex: silhouetteVertexExact,
-  }),
+  raster: Object.freeze({ ...RENDERER_SHADER_CHUNKS, depthKey: depthKeyRaster, depthKeyVertex: depthKeyVertexRaster }),
+  exact: Object.freeze({ ...RENDERER_SHADER_CHUNKS, depthKey: depthKeyExact, depthKeyVertex: depthKeyVertexExact }),
 };
 
 const PROGRAMS: Readonly<Record<ShaderProgramName, readonly [string, string]>> = {

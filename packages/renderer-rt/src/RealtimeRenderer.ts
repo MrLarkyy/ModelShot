@@ -56,7 +56,6 @@ import {
   disposeGpuScene,
   poseGpuScene,
   uploadExactGeometry,
-  EDGE_WORD_LOCATION,
   uploadScene,
   type DrawItem,
   type GpuScene,
@@ -482,10 +481,9 @@ export class RealtimeRenderer {
     const view = cameraView(camera);
     const depthBits = gpu.targets ? FLOAT_PATH_DEPTH_BITS : this.defaultDepthBits();
     const mode = depthKeyMode(camera, depthBits, gpu.scene?.hasRenderOrder ?? false);
-    // A scene with render order got its de-indexed geometry at upload; an order-0 scene builds it once, on the first
-    // MSAA frame (the silhouette test of the opaque pass) or the first frame inside its bounding sphere.
-    const needsTriangles = mode === 'exact' || (gpu.targets?.samples ?? 0) > 0;
-    if (needsTriangles && gpu.scene && !gpu.scene.exact) gpu.scene.exact = uploadExactGeometry(this.gl, gpu.scene);
+    // A scene with render order got its exact geometry at upload; an order-0 scene builds it once, on the first frame
+    // inside its bounding sphere.
+    if (mode === 'exact' && gpu.scene && !gpu.scene.exact) gpu.scene.exact = uploadExactGeometry(this.gl, gpu.scene);
     return {
       view: new Float32Array(view),
       projection,
@@ -766,9 +764,7 @@ export class RealtimeRenderer {
    * slope-scaled push that keeps a back side behind the front face it meets at a silhouette (the −1/16 order is below
    * the interpolation error there), and skips closed batches opaque on every face while the camera is outside their
    * bounds and the near plane does not reach them (`backSidesVisible`). The depth test is set by the caller, and so is
-   * `SAMPLE_ALPHA_TO_COVERAGE` when `alphaToCoverage` (the opaque pass's `u_alphaToCoverage`) is true. `multisampled`
-   * (a raster frame's opaque pass into the MSAA target) draws the de-indexed geometry too, for the silhouette test of
-   * `silhouetteRaster.glsl`; single-sampled raster passes draw indexed, with edge word 0 (no silhouette edge).
+   * `SAMPLE_ALPHA_TO_COVERAGE` when `alphaToCoverage` (the opaque pass's `u_alphaToCoverage`) is true.
    */
   private drawItems(
     gpu: GpuResources,
@@ -776,7 +772,6 @@ export class RealtimeRenderer {
     items: readonly DrawItem[],
     frame: FrameView,
     alphaToCoverage = false,
-    multisampled = false,
   ): void {
     const pass = gpu.programs.meshPasses[frame.mode][passName];
     if (!pass) return;
@@ -790,9 +785,6 @@ export class RealtimeRenderer {
     const [depthOffset, depthScale] = exactDepthRange(frame.far);
     gl.uniform2f(pass.depthRange, depthOffset, depthScale);
     const exact = frame.mode === 'exact' ? gpu.scene?.exact : null;
-    const triangles = exact ?? (multisampled ? gpu.scene?.exact : null);
-    // The integer attribute's value where a vertex array has none (the indexed geometry).
-    gl.vertexAttribI4ui(EDGE_WORD_LOCATION, 0, 0, 0, 0);
     const noPull = new Float32Array(4);
     gl.uniform1i(pass.texture, 0);
     gl.uniform1i(pass.texelAntialias, this.options.texelAntialias === false ? 0 : 1);
@@ -813,9 +805,9 @@ export class RealtimeRenderer {
       gl.uniform2f(pass.lightmapTextureSize, item.textureSize[0], item.textureSize[1]);
       gl.uniformMatrix4fv(pass.model, false, item.model);
       gl.uniformMatrix3fv(pass.normalMatrix, false, item.normal);
-      const trianglesVao = triangles?.vaos.get(item.batch);
-      if (trianglesVao) {
-        gl.bindVertexArray(trianglesVao);
+      const exactVao = exact?.vaos.get(item.batch);
+      if (exactVao) {
+        gl.bindVertexArray(exactVao);
         gl.drawArrays(gl.TRIANGLES, 0, item.count);
       } else {
         gl.bindVertexArray(item.vao);
@@ -940,7 +932,7 @@ export class RealtimeRenderer {
         gl.enable(gl.SAMPLE_ALPHA_TO_COVERAGE);
         gl.colorMask(true, true, true, false);
       }
-      this.drawItems(gpu, 'opaque', scene.opaque, frame, alphaToCoverage, msaa !== null);
+      this.drawItems(gpu, 'opaque', scene.opaque, frame, alphaToCoverage);
       if (alphaToCoverage) {
         gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE);
         gl.colorMask(true, true, true, true);

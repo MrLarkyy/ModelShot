@@ -7,7 +7,6 @@ import {
   type SharpEdgeAttributes,
 } from '@modelshot/scene';
 import { batchScene, type BatchAlpha, type SceneBatch } from './batchScene';
-import { exactEdgeWords } from './exactEdgeWords';
 import { worldBounds } from './closedOpaque';
 import { hasPartialCoverage, type AlphaLevels } from './textureUpload';
 
@@ -37,10 +36,7 @@ export interface DrawItem {
   readonly batch: SceneBatch;
 }
 
-/**
- * De-indexed geometry with per-vertex triangle corners and edge words, built only when a frame needs them: the exact
- * depth key, or the silhouette test of a raster MSAA frame's opaque pass.
- */
+/** De-indexed geometry with per-vertex triangle corners, built only when a frame needs the exact depth key. */
 export interface ExactGeometry {
   readonly vaos: ReadonlyMap<SceneBatch, WebGLVertexArrayObject>;
   readonly buffers: readonly WebGLBuffer[];
@@ -171,15 +167,76 @@ export function poseGpuScene(scene: GpuScene, doc: SceneDocument): void {
   }
 }
 
-/** Corner and edge-word attribute locations of the de-indexed geometry (`triangleCornersVertex.glsl`). */
+/** Corner and shared-edge attribute locations of the exact depth key (`depthKeyVertexExact.glsl`). */
 const CORNER_LOCATIONS = [4, 5, 6] as const;
-export const EDGE_WORD_LOCATION = 7;
+const SHARED_EDGES_LOCATION = 7;
+
+/** Positions closer than this (model units) are the same corner when matching shared edges. */
+const SHARED_EDGE_EPSILON = 1e-5;
 
 /**
- * Uploads every batch again without indices, each vertex carrying its triangle's three corners and edge word
- * (`exactEdgeWords`), for the exact depth key and the silhouette test of raster MSAA frames; drawn with `drawArrays`.
- * Built once per scene: at upload for a scene with render order, else on the first frame that needs it (an MSAA frame,
- * or a camera inside the bounding sphere).
+ * Per triangle, bit i set when its edge i (corner i to corner i + 1) is shared, by position, with another triangle of
+ * the batch that lies in the same plane (normals within 1e-4 radians of each other, same side): the inner edges of a
+ * quad or polygon face. A pixel whose centre ray leaves the triangle only across such edges still meets the same
+ * plane, so the exact key keeps the centre ray there.
+ */
+export function sharedEdgeFlags(positions: Float32Array, indices: Uint32Array): Uint8Array {
+  const triangles = Math.floor(indices.length / 3);
+  // One id per distinct position (within SHARED_EDGE_EPSILON), so faces with their own vertices still match.
+  const vertexCount = Math.floor(positions.length / 3);
+  const ids = new Uint32Array(vertexCount);
+  const byPosition = new Map<string, number>();
+  for (let v = 0; v < vertexCount; v++) {
+    const q = (k: number) => Math.round((positions[v * 3 + k] ?? 0) / SHARED_EDGE_EPSILON);
+    const key = `${q(0)},${q(1)},${q(2)}`;
+    let id = byPosition.get(key);
+    if (id === undefined) {
+      id = byPosition.size;
+      byPosition.set(key, id);
+    }
+    ids[v] = id;
+  }
+  const normals = new Float64Array(triangles * 3);
+  for (let t = 0; t < triangles; t++) {
+    const p = (c: number, k: number) => positions[(indices[t * 3 + c] ?? 0) * 3 + k] ?? 0;
+    const u = [p(1, 0) - p(0, 0), p(1, 1) - p(0, 1), p(1, 2) - p(0, 2)] as const;
+    const w = [p(2, 0) - p(0, 0), p(2, 1) - p(0, 1), p(2, 2) - p(0, 2)] as const;
+    const n = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+    const length = Math.hypot(n[0]!, n[1]!, n[2]!) || 1;
+    for (let k = 0; k < 3; k++) normals[t * 3 + k] = (n[k] ?? 0) / length;
+  }
+  const coplanar = (s: number, t: number) =>
+    (normals[s * 3] ?? 0) * (normals[t * 3] ?? 0) +
+      (normals[s * 3 + 1] ?? 0) * (normals[t * 3 + 1] ?? 0) +
+      (normals[s * 3 + 2] ?? 0) * (normals[t * 3 + 2] ?? 0) >
+    1 - 5e-9;
+  const distinct = byPosition.size;
+  const firstOwner = new Map<number, number>();
+  const flags = new Uint8Array(triangles);
+  for (let t = 0; t < triangles; t++) {
+    for (let i = 0; i < 3; i++) {
+      const a = ids[indices[t * 3 + i] ?? 0] ?? 0;
+      const b = ids[indices[t * 3 + ((i + 1) % 3)] ?? 0] ?? 0;
+      const key = Math.min(a, b) * distinct + Math.max(a, b);
+      const owner = firstOwner.get(key);
+      if (owner === undefined) {
+        firstOwner.set(key, t * 3 + i);
+        continue;
+      }
+      const other = Math.floor(owner / 3);
+      if (other !== t && coplanar(t, other)) {
+        flags[t] = (flags[t] ?? 0) | (1 << i);
+        flags[other] = (flags[other] ?? 0) | (1 << (owner % 3));
+      }
+    }
+  }
+  return flags;
+}
+
+/**
+ * Uploads every batch again without indices, each vertex carrying its triangle's three corners, for the exact depth
+ * key; drawn with `drawArrays`. Built once per scene: at upload for a scene with render order, else on the first frame
+ * that needs it (a camera inside the bounding sphere).
  */
 export function uploadExactGeometry(gl: WebGL2RenderingContext, scene: GpuScene): ExactGeometry {
   const vaos = new Map<SceneBatch, WebGLVertexArrayObject>();
@@ -236,18 +293,10 @@ export function uploadExactGeometry(gl: WebGL2RenderingContext, scene: GpuScene)
       if (data) attribute(location, size, data);
     }
     CORNER_LOCATIONS.forEach((location, c) => attribute(location, 3, corners[c] ?? new Float32Array(0)));
-    const triangleWords = exactEdgeWords(positions, indices);
-    const vertexWords = new Uint32Array(n * 4);
-    for (let i = 0; i < n; i++) {
-      const t = Math.floor(i / 3) * 4;
-      for (let k = 0; k < 4; k++) vertexWords[i * 4 + k] = triangleWords[t + k] ?? 0;
-    }
-    const wordBuffer = gl.createBuffer();
-    buffers.push(wordBuffer);
-    gl.bindBuffer(gl.ARRAY_BUFFER, wordBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, vertexWords, gl.STATIC_DRAW);
-    gl.enableVertexAttribArray(EDGE_WORD_LOCATION);
-    gl.vertexAttribIPointer(EDGE_WORD_LOCATION, 4, gl.UNSIGNED_INT, 0, 0);
+    const triangleFlags = sharedEdgeFlags(positions, indices);
+    const vertexFlags = new Float32Array(n);
+    for (let i = 0; i < n; i++) vertexFlags[i] = triangleFlags[Math.floor(i / 3)] ?? 0;
+    attribute(SHARED_EDGES_LOCATION, 1, vertexFlags);
     gl.bindVertexArray(null);
     vaos.set(batch, vao);
   }

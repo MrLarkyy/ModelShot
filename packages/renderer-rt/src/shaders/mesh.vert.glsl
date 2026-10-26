@@ -27,9 +27,9 @@ uniform bool u_bakeOn;
 // Centroid: under MSAA a pixel a triangle only partly covers reads the normal at a covered sample, on the face, not at
 // the pixel centre past the triangle's edge, where it extrapolates; v_worldPosition, v_edgeDistances and the baked
 // vertex light (which at that centre would carry the light of a point beyond the face) likewise. prepareShading
-// (shading.glsl) returns to the centre unless the centre lies past a silhouette edge or the pixel reaches over a sharp
-// edge. The UV stays at the centre: texel anti-aliasing, the alpha-to-coverage contour and the hashed alpha cell are
-// defined there, and v_uvRect keeps the texel on the face.
+// (shading.glsl) keeps that sample only where the pixel reaches over a sharp edge and returns to the centre elsewhere.
+// The UV stays at the centre: texel anti-aliasing, the alpha-to-coverage contour and the hashed alpha cell are defined
+// there, and v_uvRect keeps the texel on the face.
 centroid out vec3 v_normal;
 out vec2 v_uv;
 // Every vertex of a face carries the same rectangle; flat avoids interpolation error at the clamp bounds.
@@ -45,7 +45,6 @@ centroid out vec4 v_edgeDistances;
 // The same on every corner of a triangle.
 flat out vec4 v_edgeAngles;
 #include "depthKeyVertex"
-#include "silhouetteVertex"
 
 void main() {
   v_normal = u_normalMatrix * a_normal;
@@ -67,6 +66,5 @@ void main() {
   vec4 world = u_model * vec4(a_position, 1.0);
   v_worldPosition = world.xyz;
   passDepthKey(world);
-  passSilhouette();
   gl_Position = u_viewProjection * world + u_depthPull;
 }

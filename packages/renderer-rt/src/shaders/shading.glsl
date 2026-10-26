@@ -7,10 +7,8 @@
 uniform float u_edgeWidth;
 uniform mat4 u_viewProjection;
 #include "viewport"
-#include "silhouette"
 // Centroid-sampled (mesh.vert): under MSAA a pixel a triangle only partly covers reads them at a covered sample, off
-// the pixel centre. prepareShading moves them back to the centre unless the centre lies off the mesh or the pixel
-// reaches over a sharp edge.
+// the pixel centre. prepareShading moves them back to the centre unless the pixel reaches over a sharp edge.
 centroid in vec3 v_normal;
 centroid in vec3 v_worldPosition;
 centroid in vec4 v_edgeDistances;
@@ -34,13 +32,13 @@ vec4 atShadingPoint(vec4 value) {
 // Called first in main, before any discard: the derivatives need uniform control flow. A slot's distance is affine
 // over the triangle, so minus its gradient in the surface (from the screen derivatives of distance and position) points
 // at the edge, the direction the path tracer computes from the corners.
-// The shading point is the pixel centre, as without MSAA, unless the centre lies past a silhouette edge of the
-// triangle (silhouetteCrossed: an open edge or one whose neighbour faces the other way; the centre is off the mesh)
-// or the pixel reaches over one of its sharp edges (the centre less than half the pixel's footprint inside), where the
-// centroid sample stays, on the face. Along a triangle edge inside a face a GPU's centroid is a covered sample
-// position, and shading there would change the pixel against single sampling (measured on an RTX 3080).
+// The shading point is the pixel centre, as without MSAA, unless the pixel reaches over one of the triangle's sharp
+// edges (a sharp silhouette or a crease: the centre less than half the pixel's footprint inside), where the centroid
+// sample stays, on the face. Elsewhere the centre is used even where it lies off the face: along a triangle edge
+// inside a face a GPU's centroid is a covered sample position, and shading there would change the pixel against
+// single sampling (measured on an RTX 3080); at a smooth mesh's silhouette the centroid matched neither the render nor
+// a supersampled preview better (docs/realtime-renderer.md).
 void prepareShading() {
-  bool offMesh = silhouetteCrossed();
   vec3 dpx = dFdx(v_worldPosition);
   vec3 dpy = dFdy(v_worldPosition);
   vec4 ddx = dFdx(v_edgeDistances);
@@ -48,9 +46,9 @@ void prepareShading() {
   // Neighbouring centroid samples lie up to 0.75 px off the unit steps dFdx and dFdy assume, which skews the footprint
   // (not the direction: distance and position are differenced over the same steps). Where the steps between the
   // samples' screen positions are not unit ones, toUnit (their matrix inverted) maps the derivatives back to unit
-  // steps. Sample offsets lie within half a pixel, so a step 1 px or more off is no sample pattern: kept as it is. Steps
-  // shortened to 0.25 px by opposite offsets are one (an RTX 3080's 4x pattern gives a determinant of 0.25 there):
-  // only a nearly singular matrix (below 1/16) is not.
+  // steps. Sample offsets lie within half a pixel, so a step 1 px or more off is no sample pattern: kept as it is.
+  // Steps shortened to 0.25 px by opposite offsets are one (an RTX 3080's 4x pattern gives a determinant of 0.25
+  // there): only a nearly singular matrix (below 1/16) is not.
   vec4 clip = u_viewProjection * vec4(v_worldPosition, 1.0);
   vec2 screen = (clip.xy / clip.w * 0.5 + 0.5) * u_viewportSize;
   vec2 sx = dFdx(screen);
@@ -67,7 +65,7 @@ void prepareShading() {
   vec2 toCentre = gl_FragCoord.xy - screen;
   shadingStep = mapped && max(abs(toCentre.x), abs(toCentre.y)) > 0.01 ? toUnit * toCentre : vec2(0.0);
   edgeDistances = v_edgeDistances + ddx * shadingStep.x + ddy * shadingStep.y;
-  if (offMesh || any(lessThan(edgeDistances, 0.5 * edgeFootprint))) {
+  if (any(lessThan(edgeDistances, 0.5 * edgeFootprint))) {
     shadingStep = vec2(0.0);
     edgeDistances = v_edgeDistances;
   }
