@@ -376,7 +376,7 @@ pitch 35°). Golden `rt-edges`, default tolerance.
 - Planes, cards and smooth areas: the pixels of the plane, the card and the sphere (those that change when the mesh is
   hidden, `hide=`, less the cube's and the wedge's MSAA silhouette pixels) are byte-identical with rounding on and
   `edges=0`, float and fallback (0 of 1 014 / 1 272 / 1 584 float, 982 / 1 210 / 1 544 fallback).
-- Sharp-edged meshes change only beside their edges: every pixel that rounding changes (1 893 float since MS-54, 1 895 before; 1 729 fallback)
+- Sharp-edged meshes change only beside their edges: every pixel that rounding changes (1 886 float since MS-54 round 4, 1 895 before; 1 723 fallback, 1 729 before)
   lies within the band's projected width plus 2 px (4.82 px) of a projected sharp edge of the cube or the wedge.
 - The cube's up face 0.15 units from its south edge, which faces the key, is brighter than the face centre (120.4 vs
   117.4 levels; unrounded it equals the centre).
@@ -432,7 +432,7 @@ rendered twice gives the same bytes; diff images judged): MS-15 left `rt-player-
 levels, all along the rounded cube edges) and `rt-player-legacy-opaque-hat-34` (1 497, 43) in tolerance, MS-30 left
 `rt-fit-flat-cube` (107, 37, its cut-out seams), and with them `rt-far` (rounded edges and seams) and
 `rt-turntable-y000`, `-y030`, `-y090` (the flower's and the frame's cut-out seams). The exact-key player and preset
-frames, single-sampled, move by MS-54 at most 4 pixels by 1 level (rounding in the changed program): rewritten with
+frames, single-sampled, moved in round 1 at most 4 pixels by 1 level (rounding in the changed program): rewritten with
 the drift are `rt-player-classic-front` (1), `-classic-back` (1), `-walk-hold-34` (4), `-wave-front` (2),
 `rt-preset-marketplace` (2) and `rt-preset-marketplace-fallback` (2). Unchanged: the other rt goldens, every `pt-*`
 and model-view golden; `export-animation-f0.s1.n16` renders 2 pixels 1 level off its golden, twice alike (not an rt
@@ -444,8 +444,18 @@ golden, left). Round 3 (the shading point back at the pixel centre wherever the 
 337 (2), `-y060` 370 (2), `-y090` 441 (1), the exact-key frames `rt-player-classic-back` 731 (2), `-classic-front` 241
 (1), `-hold-34` 281 (1), `-legacy-34` 170 (1), `-legacy-opaque-hat-34` 133 (1), `-slim-34` 229 (1), `-slim-fallback`
 225 (1), `-walk-hold-34` 308 (1), `-wave-front` 111 (1), `rt-preset-marketplace` 1 320 (9) and `-fallback` 1 313 (9),
-`rt-preset-rim` 939 (16). Diff images judged: the rounded-edge bands along sharp edges, the sphere's triangle edges
-and silhouettes; nothing else. Single-sampled frames move too: SwiftShader snaps vertices to 1/16 px, so even fully
+`rt-preset-rim` 939 (16) (against origin/main: `rt-preset-rim` 939 (16), `rt-preset-marketplace` 1 320 (9),
+`rt-player-classic-back` 732 (2)). Diff images judged: the rounded-edge bands along sharp edges, the sphere's triangle
+edges and silhouettes; nothing else. Round 4 (the step back to the centre on any sample pattern, determinant bound 1/16
+instead of 0.25) rewrote 6 rt goldens by a few pixels along triangle edges inside faces, pixels (max levels) against
+round 3: `rt-edges` 13 (3, inside the sphere), `rt-far` 12 (3), `rt-turntable-y060` 4 (2), `-y000` 2 (1),
+`rt-bake-cutout-checker` 2 (1), `rt-outline-hull` 1 (1); every exact-key, fallback and `pt-*` golden byte-unchanged.
+A round-4 trial that kept the centroid at smooth silhouettes too (corners and neighbour normals per triangle) was
+measured and reverted: the `edges` view's sphere outline band (704 pixels, either side of its `msaa=0` pixels) gave
+14.1790 against `pt-edges` (14.1520 at the centre) and 1.2233 against a 4 x 4 supersampled `msaa=0` preview (1.1282),
+26 pixels moved, 16 of them farther from the render; the RTX 3080 alike (14.1903 / 14.1548). The rule and the reason
+are in docs/realtime-renderer.md; the `rt-edges` golden pins the centre on smooth silhouettes.
+Single-sampled frames move too: SwiftShader snaps vertices to 1/16 px, so even fully
 covered pixels interpolate up to 0.04 px off `gl_FragCoord`, and the step to the centre takes that up (a 0.0625 px
 threshold that left it measured 168 pixels at width 0.1 in the edge-band probe below, against 135). Pairs re-measured
 (13, `pair` project), all within their limits, none changed: equal to the table except `preset-marketplace` 1 271,
@@ -458,9 +468,10 @@ regenerated (1.7219 when shaded at the pixel centre; before MS-59 1.7461 and 1.7
 = 2.12 and below the midpoint 1.709 (a revert of the centroid qualifiers measures 1.7219 and fails); frame on the raster
 key with MSAA (asserted). **The edge band keeps its width across quad diagonals**: the `edges` view with MSAA against
 `msaa=0`, off every mesh's outline (more than 1 px from a `maskBoundary` of the mesh's pixels from `hide=`): 0 pixels
-over 2 levels at the look's width; at width 0.1 135 pixels differ at all (227 with the skewed footprint, 147 with the
-shading point at the centroid inside faces too, 142 when shaded at the pixel centre), at most 141, the midpoint to 147
-(below 135 x 1.25), so a shading point left at the centroid inside faces fails.
+over 2 levels at the look's width; at width 0.1 133 pixels differ at all (135 with the 0.25 determinant bound, 227
+with the skewed footprint, 147 with the shading point at the centroid inside faces too, 142 when shaded at the pixel
+centre), at most 140, the midpoint to 147 (below 133 x 1.25), so a shading point left at the centroid inside faces
+fails.
 
 Both probes, like every golden, are calibrated on SwiftShader (`assertSwiftShader`). Measured once on a real GPU (MS-54,
 ANGLE (NVIDIA, NVIDIA GeForce RTX 3080 Direct3D11 vs_5_0 ps_5_0, D3D11), a throwaway Playwright config with
@@ -474,13 +485,20 @@ MS-59), against SwiftShader:
 | centroid, footprint not mapped                     | 9 / 510 / -       | 0 / 227 / 1.7402 |
 | centroid, footprint mapped (round 2)               | 10 / 431 / 1.7515 | 0 / 147 / 1.7443 |
 | centroid, shading point at the centre inside faces | 2 / 173 / 1.7515  | 0 / 135 / 1.7461 |
+| the same, determinant bound 1/16 (round 4, final)  | 1 / 152 / 1.6997  | 0 / 133 / 1.6961 |
 
 A GPU's centroid is a covered sample position: inside a face, along a quad's diagonal, shading there moved the pixel
 against `msaa=0` (8 of round 2's 10 pixels came from the centroid normal: 8 / 422 with only `v_normal` centroid).
-`prepareShading` now steps each centroid input back to the pixel centre wherever the pixel lies on the face. The 2
-pixels left (3 levels each, at (69, 129) and (199, 149)) reach over a sharp edge, where the centroid sample is kept by
-design (stepping back there too leaves 1 pixel but loses the outline band on SwiftShader, 1.7696). On the GPU the
-outline band was measured against the render before MS-59; the revert check holds on SwiftShader only.
+`prepareShading` steps each centroid input back to the pixel centre unless the pixel reaches over a sharp edge. Round
+3's residual (2 / 173) was read out per fragment on the GPU (debug colours for kept-by-slot, `mapped`, skew,
+determinant, distance to the centre): 24 of the 34 pixels differing at width 0.1 that the pixel-centre shaders did not,
+among them (199, 149) inside the sphere, had a fragment with `mapped` false, its determinant at 0.25: the GPU's 4x
+offsets shorten a lane step to 0.25 px, so the bound 0.25 skipped the step back and left the centroid. With the bound at
+1/16, 1 / 152. The pixel left over 2 levels, (69, 129) at 3 levels, and the cube's and wedge's pixels at x 70-73 reach
+over a sharp edge, where the centroid sample is kept by design (stepping back there too leaves the pixel but loses the
+outline band on SwiftShader, 1.7696); 3 more differ by 1 level from rounding in the changed program. The outline band
+in the last two rows is against the render MS-59 regenerated (1.6997 on the GPU); the revert checks hold on
+SwiftShader only.
 
 For a manual run on real hardware open `rt.html?scene=bench&size=512&fps=1`: it draws continuously and shows the
 median frame work (draw until the GPU finished) and display interval over the last 120 frames, with the renderer

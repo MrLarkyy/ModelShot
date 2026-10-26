@@ -142,8 +142,8 @@ test('the float path uses MSAA and the fallback reports itself', async ({ page }
 });
 
 /**
- * MSAA silhouette pixels are shaded at a covered sample (centroid normal, position and edge distances, MS-54), as the
- * render's rays hit the face: the baked turntable-y030 preview (raster key, 4 samples) against its pair render
+ * MSAA silhouette pixels over a sharp edge (all of this Blockbench model's) are shaded at a covered sample (centroid
+ * normal, position and edge distances, MS-54), as the render's rays hit the face: the baked turntable-y030 preview (raster key, 4 samples) against its pair render
  * pt-turntable-y030 (seed 1, 64 samples, the golden PNG), the mean of the largest channel difference over the 2 px
  * outline band both draw. Shaded at the pixel centre the band's normal and edge rounding extrapolated past the face.
  * Exact-key frames (a render order: the player's outer layer) draw single-sampled and are not concerned.
@@ -1566,18 +1566,18 @@ test.describe('rounded edges', () => {
   /**
    * Centroid edge distances (MS-54) are differenced over steps up to 0.75 px off the unit ones where a pixel's samples
    * fall on two triangles; prepareShading maps the gradient back to unit steps, so the band keeps its box-filter width,
-   * and shades at the pixel centre where the pixel lies on the face.
+   * and shades at the pixel centre unless the pixel reaches over a sharp edge.
    * The edges view with 4 samples against pixel-centre sampling (msaa=0), off every mesh's outline (more than 1 px from
    * where a mesh's own pixels, from hiding it, begin), where a pixel differs only along a triangle edge inside a face:
    * at the look's width no pixel more than 2 levels apart; at width 0.1, where a band is a fraction of a pixel and the
    * footprint decides its brightness, the pixels differing at all at most the limit below.
    */
   test('the edge band keeps its width across quad diagonals', async ({ page }) => {
-    // Measured 0 pixels over 2 levels at the look's width; 135 differing pixels at width 0.1 (227 with the skewed
+    // Measured 0 pixels over 2 levels at the look's width; 133 differing pixels at width 0.1 (227 with the skewed
     // footprint, 147 shaded at the centroid inside faces too, 142 at the pixel centre before MS-54). The limit is the
-    // midpoint to 147 (below 135 x 1.25), so shading inside faces at the centroid fails it. SwiftShader only: a GPU's
+    // midpoint to 147 (below 133 x 1.25), so shading inside faces at the centroid fails it. SwiftShader only: a GPU's
     // centroid is one covered sample, docs/testing.md gives its numbers.
-    const maxNarrow = 141;
+    const maxNarrow = 140;
     const centre = (await render(page, 'variant=edges&msaa=0')).image;
     const { width, height } = centre;
     const outlines = new Uint8Array(width * height);
