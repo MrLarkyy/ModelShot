@@ -41,6 +41,28 @@ describe('exactEdgeWords', () => {
     for (let t = 0; t < 3; t++) expect((w[t * 4] ?? 0) & OPEN_EDGE, `triangle ${t}`).toBe(OPEN_EDGE);
   });
 
+  it('finds the neighbour across a zero-thickness card diagonal and leaves its outline open', () => {
+    // Front (0, 1, 2), (0, 2, 3) and the back wound the other way on the same corners: four triangles on 0-2.
+    const w = words([0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0], [0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2]);
+    // Front triangle 0: edges 0 (0-1) and 1 (1-2) are the outline, edge 2 (2-0) the diagonal to front triangle 1.
+    expect((w[0] ?? 0) & ~7).toBe(OPEN_EDGE | (OPEN_EDGE << 1));
+    for (const [component, value] of decode(w[3] ?? 0).entries()) expect(value).toBeCloseTo([0, 0, 1][component]!, 4);
+    // Back triangle (0, 2, 1): its edge 0 (0-2) is the diagonal, its neighbour the back triangle (0, 3, 2).
+    expect((w[8] ?? 0) & ~7).toBe((OPEN_EDGE << 1) | (OPEN_EDGE << 2));
+    for (const [component, value] of decode(w[9] ?? 0).entries()) expect(value).toBeCloseTo([0, 0, -1][component]!, 4);
+  });
+
+  it('leaves an edge open that a fan of ten triangles shares', () => {
+    const positions = [0, 0, 0, 1, 0, 0];
+    const indices: number[] = [];
+    for (let k = 0; k < 10; k++) {
+      positions.push(0.5, Math.cos(k), Math.sin(k));
+      indices.push(0, 1, 2 + k);
+    }
+    const w = words(positions, indices);
+    for (let t = 0; t < 10; t++) expect((w[t * 4] ?? 0) & OPEN_EDGE).toBe(OPEN_EDGE);
+  });
+
   it('marks a neighbour folded back onto the triangle open: two faces back to back', () => {
     const w = words([0, 0, 0, 1, 0, 0, 0, 1, 0], [0, 1, 2, 0, 2, 1]);
     expect([w[0], w[4]]).toEqual([ALL_OPEN, ALL_OPEN]);

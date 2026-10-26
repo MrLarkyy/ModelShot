@@ -6,6 +6,9 @@ const SHARED_EDGE_EPSILON = 1e-5;
 /** Unit normals at least this close to opposite: the neighbour is folded back onto the triangle. */
 const FOLD_COS = -0.9999;
 
+/** More triangles than this on one edge leave it open, so the neighbour search stays linear. */
+const MAX_EDGE_FAN = 8;
+
 /** Bit of `exactEdgeWords` x: edge i has no plain neighbour (`OPEN_EDGE << i`). */
 export const OPEN_EDGE = 8;
 
@@ -63,13 +66,16 @@ export function sharedEdgeFlags(positions: Float32Array, indices: Uint32Array): 
 /**
  * The edge word of every triangle of an indexed batch, four uint32 per triangle, the attribute at location 7 of the
  * de-indexed geometry (`triangleCornersVertex.glsl`):
- * - x: bits 0-2 `sharedEdgeFlags`; bit `OPEN_EDGE << i` when edge i has no plain neighbour: no other triangle meets it
- *   (by position, welded to `EDGE_WELD_DISTANCE`), or two or more do, or the one that does is degenerate, has a
- *   non-finite corner or is folded back onto this one (unit normals opposite within `FOLD_COS`). Such an edge is a
- *   silhouette from every view.
+ * - x: bits 0-2 `sharedEdgeFlags`; bit `OPEN_EDGE << i` when edge i has no plain neighbour. Triangles meet by position,
+ *   welded to `EDGE_WELD_DISTANCE`; one with the same third corner as this one lies on it (a zero-thickness card's other
+ *   side) and is no neighbour. The edge is open when no other triangle meets it, when the others reach two or more
+ *   third corners (non-manifold) or more than `MAX_EDGE_FAN` triangles share it, or when the neighbour is degenerate,
+ *   has a non-finite corner or is folded back onto this one (unit normals opposite within `FOLD_COS`). An open edge is
+ *   a silhouette from every view.
  * - y, z, w: per edge i the neighbour's unit face normal as its own winding gives it (never re-oriented: a neighbour
  *   wound against this triangle faces away where this one faces the eye, as a culled back face does), octahedral in
- *   two snorm16 (x in the low half), as GLSL's unpackSnorm2x16 reads it; 0 on an open edge.
+ *   two snorm16 (x in the low half), as GLSL's unpackSnorm2x16 reads it; 0 on an open edge. Where both sides of a card
+ *   lie across the edge, the one facing most like this triangle.
  * A triangle with a non-finite corner has every edge open. Linear in the triangle count, deterministic.
  */
 export function exactEdgeWords(positions: Float32Array, indices: Uint32Array): Uint32Array {
@@ -79,31 +85,32 @@ export function exactEdgeWords(positions: Float32Array, indices: Uint32Array): U
   const normals = faceNormals(positions, indices);
   const ids = weldedIds(positions);
   const distinct = ids.reduce((max, id) => Math.max(max, id + 1), 0);
-  // Per welded edge: how many triangle edges lie on it and the first two of them (triangle × 3 + edge).
-  const slots = new Map<number, number>();
-  const count: number[] = [];
-  const first: number[] = [];
-  const second: number[] = [];
+  const corner = (t: number, c: number): number => ids[indices[t * 3 + (c % 3)] ?? 0] ?? -1;
   const edgeKey = (t: number, i: number): number => {
-    const a = ids[indices[t * 3 + i] ?? 0] ?? -1;
-    const b = ids[indices[t * 3 + ((i + 1) % 3)] ?? 0] ?? -1;
+    const a = corner(t, i);
+    const b = corner(t, i + 1);
     if (a < 0 || b < 0 || a === b) return -1;
     return Math.min(a, b) * distinct + Math.max(a, b);
   };
+  // Per welded edge its triangle edges (triangle × 3 + edge) as a list: head per edge, next per triangle edge.
+  const slots = new Map<number, number>();
+  const head: number[] = [];
+  const count: number[] = [];
+  const next = new Int32Array(triangles * 3).fill(-1);
   for (let t = 0; t < triangles; t++) {
     for (let i = 0; i < 3; i++) {
       const key = edgeKey(t, i);
       if (key < 0) continue;
-      const slot = slots.get(key);
+      let slot = slots.get(key);
       if (slot === undefined) {
-        slots.set(key, count.length);
-        count.push(1);
-        first.push(t * 3 + i);
-        second.push(-1);
-        continue;
+        slot = head.length;
+        slots.set(key, slot);
+        head.push(-1);
+        count.push(0);
       }
+      next[t * 3 + i] = head[slot] ?? -1;
+      head[slot] = t * 3 + i;
       count[slot] = (count[slot] ?? 0) + 1;
-      if ((second[slot] ?? -1) < 0) second[slot] = t * 3 + i;
     }
   }
   for (let t = 0; t < triangles; t++) {
@@ -112,17 +119,33 @@ export function exactEdgeWords(positions: Float32Array, indices: Uint32Array): U
     for (let i = 0; i < 3; i++) {
       const key = edgeKey(t, i);
       const slot = key < 0 ? undefined : slots.get(key);
-      const self = t * 3 + i;
-      let other = -1;
-      if (slot !== undefined && count[slot] === 2)
-        other = first[slot] === self ? (second[slot] ?? -1) : (first[slot] ?? -1);
-      const neighbour = other < 0 ? null : normalAt(normals, Math.floor(other / 3));
-      const plain =
-        neighbour !== null &&
-        own !== null &&
-        own[0] * neighbour[0] + own[1] * neighbour[1] + own[2] * neighbour[2] > FOLD_COS;
-      if (plain && neighbour) words[t * 4 + 1 + i] = octSnorm16x2(neighbour[0], neighbour[1], neighbour[2]);
-      else bits |= OPEN_EDGE << i;
+      let neighbour: readonly [number, number, number] | null = null;
+      let facing = -Infinity;
+      let open = !own || slot === undefined || (count[slot] ?? 0) > MAX_EDGE_FAN;
+      const third = corner(t, i + 2);
+      // The third corner the triangles across the edge share.
+      let across = -1;
+      for (let e = open || slot === undefined ? -1 : (head[slot] ?? -1); e >= 0; e = next[e] ?? -1) {
+        const other = Math.floor(e / 3);
+        const otherThird = corner(other, (e % 3) + 2);
+        if (other === t || otherThird === third) continue;
+        const n = normalAt(normals, other);
+        if (!n || (across >= 0 && otherThird !== across)) {
+          open = true;
+          break;
+        }
+        across = otherThird;
+        const d = own ? own[0] * n[0] + own[1] * n[1] + own[2] * n[2] : -Infinity;
+        if (d > facing) {
+          facing = d;
+          neighbour = n;
+        }
+      }
+      if (!open && neighbour && facing > FOLD_COS) {
+        words[t * 4 + 1 + i] = octSnorm16x2(neighbour[0], neighbour[1], neighbour[2]);
+      } else {
+        bits |= OPEN_EDGE << i;
+      }
     }
     words[t * 4] = bits;
   }
