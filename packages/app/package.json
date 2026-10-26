@@ -7,6 +7,14 @@
     "./handoff": {
       "types": "./src/handoff/index.ts",
       "default": "./src/handoff/index.ts"
+    },
+    "./intake": {
+      "types": "./src/intake/index.ts",
+      "default": "./src/intake/index.ts"
+    },
+    "./viewer": {
+      "types": "./src/viewer/Viewer.ts",
+      "default": "./src/viewer/Viewer.ts"
     }
   },
   "scripts": {

@@ -91,8 +91,8 @@ export class OrbitController {
   private aspect = 1;
   private fovYDeg: number;
   private orthographic: boolean;
-  private readonly initialYaw: number;
-  private readonly initialPitch: number;
+  private initialYaw: number;
+  private initialPitch: number;
   private readonly dampingMs: number;
   private goal: OrbitPose;
   private current: OrbitPose;
@@ -193,6 +193,13 @@ export class OrbitController {
   /** Viewport width / height; frame-to-fit and the pan scale depend on it. */
   setAspect(aspect: number): void {
     if (aspect > 0 && Number.isFinite(aspect)) this.aspect = aspect;
+  }
+
+  /** The angles `reset` returns to; a value that is not finite keeps the current one. */
+  setInitialAngles(yawDeg: number, pitchDeg: number): void {
+    if (!finite(yawDeg, pitchDeg)) return;
+    this.initialYaw = yawDeg;
+    this.initialPitch = clamp(pitchDeg, MIN_PITCH_DEG, MAX_PITCH_DEG);
   }
 
   /** Frames `bounds` (null: an empty scene) from the initial angles and makes it the zoom reference. */

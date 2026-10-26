@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Host page with the element in its markup</title>
+  </head>
+  <body>
+    <modelshot-viewer
+      id="viewer"
+      model="/cors/single-cube.bbmodel"
+      yaw="abc"
+      pitch="x"
+      loading="eager"
+    ></modelshot-viewer>
+    <script type="module">
+      // The page lists the element first and loads the script after, as the documented usage does: the upgrade
+      // reports every attribute, then connects.
+      window.__embedEvents = [];
+      document
+        .getElementById('viewer')
+        .addEventListener('error', (event) => window.__embedEvents.push({ type: 'error', detail: event.detail }));
+      const frame = new URLSearchParams(location.search).get('frame');
+      await import(`${frame}/modelshot-embed.js`);
+      window.__upgraded = true;
+    </script>
+  </body>
+</html>

@@ -98,6 +98,12 @@ export const groups = [
         description: 'opening models, panels, shortcuts, render and export, local state, offline, limits',
       },
       {
+        file: 'embed.md',
+        page: 'Embed',
+        title: 'Embed',
+        description: 'the <modelshot-viewer> element and iframe, parameters, CORS, limits, privacy',
+      },
+      {
         file: 'testing.md',
         page: 'Testing',
         title: 'Testing',

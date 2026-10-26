@@ -46,17 +46,18 @@ fits them on every `camera()` call, so zooming never clips the model.
 `OrbitController` (`@modelshot/renderer-rt`) holds the view state and produces `SceneCamera`. It is pure state: no
 DOM, no clock.
 
-| operation                           | range                                                             |
-| ----------------------------------- | ----------------------------------------------------------------- |
-| `rotate(dYaw, dPitch)`, `setAngles` | pitch clamped to ±89.5° so the view never flips                   |
-| `zoom(factor)` perspective          | distance from the target in [1.05 × radius, 8 × the fit distance] |
-| `zoom(factor)` orthographic         | height in [fit / 16, 8 × fit]                                     |
-| `pan(dxPx, dyPx, viewportHeightPx)` | moves the target in the view plane; the model follows the pointer |
-| `setFov(deg)`                       | 10..100°, the apparent size at the target stays                   |
-| `setProjection(kind)`               | keeps the apparent size at the target                             |
-| `state()` / `setState(partial)`     | the goal view as a portable value, applied at once (below)        |
-| `isometric()`                       | orthographic at the isometric angles, framed to fit               |
-| `reset(bounds)`                     | frame-to-fit from the initial angles; also the initial view       |
+| operation                           | range                                                                   |
+| ----------------------------------- | ----------------------------------------------------------------------- |
+| `rotate(dYaw, dPitch)`, `setAngles` | pitch clamped to ±89.5° so the view never flips                         |
+| `zoom(factor)` perspective          | distance from the target in [1.05 × radius, 8 × the fit distance]       |
+| `zoom(factor)` orthographic         | height in [fit / 16, 8 × fit]                                           |
+| `pan(dxPx, dyPx, viewportHeightPx)` | moves the target in the view plane; the model follows the pointer       |
+| `setFov(deg)`                       | 10..100°, the apparent size at the target stays                         |
+| `setProjection(kind)`               | keeps the apparent size at the target                                   |
+| `state()` / `setState(partial)`     | the goal view as a portable value, applied at once (below)              |
+| `isometric()`                       | orthographic at the isometric angles, framed to fit                     |
+| `reset(bounds)`                     | frame-to-fit from the initial angles; also the initial view             |
+| `setInitialAngles(yaw, pitch)`      | the angles `reset` returns to; pitch clamped, a non-finite pair ignored |
 
 Damping (default on, 80 ms time constant) eases the camera towards the input goal in `update(dtMs)`, which returns
 whether it is still moving; once within 1e-6 of the goal it snaps to it, so with no input the state stays

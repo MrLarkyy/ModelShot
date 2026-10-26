@@ -111,4 +111,35 @@ describe('loadModel', () => {
       vi.useRealTimers();
     }
   });
+
+  it('stops the worker on abort and rejects with an AbortError, ignoring a late answer', async () => {
+    const worker = new FakeWorker();
+    const controller = new AbortController();
+    const loading = failure(loadModel(REQUEST, { createWorker: () => worker, signal: controller.signal }));
+    controller.abort();
+    const error = (await loading) as unknown as DOMException;
+    expect(error.name).toBe('AbortError');
+    expect(worker.terminate).toHaveBeenCalledOnce();
+    worker.reply({ ok: false, code: 'X', message: 'late' });
+    expect(worker.terminate).toHaveBeenCalledOnce();
+  });
+
+  it('starts no worker for a signal that is already aborted', async () => {
+    const createWorker = vi.fn(() => new FakeWorker());
+    const error = (await failure(
+      loadModel(REQUEST, { createWorker, signal: AbortSignal.abort() }),
+    )) as unknown as DOMException;
+    expect(error.name).toBe('AbortError');
+    expect(createWorker).not.toHaveBeenCalled();
+  });
+
+  it('keeps a finished load when the signal aborts later', async () => {
+    const worker = new FakeWorker();
+    const controller = new AbortController();
+    const loading = loadModel(REQUEST, { createWorker: () => worker, signal: controller.signal });
+    worker.reply({ ok: false, code: 'NOT_BBMODEL', message: 'no' });
+    expect((await failure(loading)).code).toBe('NOT_BBMODEL');
+    controller.abort();
+    expect(worker.terminate).toHaveBeenCalledOnce();
+  });
 });
