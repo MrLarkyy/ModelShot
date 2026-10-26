@@ -195,8 +195,9 @@ describe('shader sources', () => {
         const { fragment } = shaderProgramSource(name, depthKey);
         const label = `${name} ${depthKey}`;
         expect(fragment, label).toContain('if (any(lessThan(edgeDistances, 0.5 * edgeFootprint))) {');
-        // A 0.25 px step is a sample pattern (an RTX 3080 kept 24 pixels at the centroid with a 0.25 bound).
-        expect(fragment, label).toContain('bool mapped = maxSkew < 1.0 && abs(det) > 0.0625;');
+        // Every non-singular 4x sample pattern (determinant 1/16 or more) steps back: an RTX 3080 kept 24 pixels at the
+        // centroid with a 0.25 bound.
+        expect(fragment, label).toContain('bool mapped = maxSkew < 1.0 && abs(det) > 0.03125;');
       }
     }
   });

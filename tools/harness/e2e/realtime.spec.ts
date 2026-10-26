@@ -143,9 +143,10 @@ test('the float path uses MSAA and the fallback reports itself', async ({ page }
 
 /**
  * MSAA silhouette pixels over a sharp edge (all of this Blockbench model's) are shaded at a covered sample (centroid
- * normal, position and edge distances, MS-54), as the render's rays hit the face: the baked turntable-y030 preview (raster key, 4 samples) against its pair render
- * pt-turntable-y030 (seed 1, 64 samples, the golden PNG), the mean of the largest channel difference over the 2 px
- * outline band both draw. Shaded at the pixel centre the band's normal and edge rounding extrapolated past the face.
+ * normal, position and edge distances, MS-54), as the render's rays hit the face: the baked turntable-y030 preview
+ * (raster key, 4 samples) against its pair render pt-turntable-y030 (seed 1, 64 samples, the golden PNG), the mean of
+ * the largest channel difference over the 2 px outline band both draw. Shaded at the pixel centre the band's normal
+ * and edge rounding extrapolated past the face.
  * Exact-key frames (a render order: the player's outer layer) draw single-sampled and are not concerned.
  */
 test('MSAA silhouette pixels are shaded on the face: the outline band of turntable-y030 against its render', async ({

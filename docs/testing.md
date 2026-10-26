@@ -376,7 +376,7 @@ pitch 35°). Golden `rt-edges`, default tolerance.
 - Planes, cards and smooth areas: the pixels of the plane, the card and the sphere (those that change when the mesh is
   hidden, `hide=`, less the cube's and the wedge's MSAA silhouette pixels) are byte-identical with rounding on and
   `edges=0`, float and fallback (0 of 1 014 / 1 272 / 1 584 float, 982 / 1 210 / 1 544 fallback).
-- Sharp-edged meshes change only beside their edges: every pixel that rounding changes (1 886 float since MS-54 round 4, 1 895 before; 1 723 fallback, 1 729 before)
+- Sharp-edged meshes change only beside their edges: every pixel that rounding changes (1 886 float since MS-54 round 4, 1 895 before MS-54; 1 723 fallback, 1 729 before MS-54)
   lies within the band's projected width plus 2 px (4.82 px) of a projected sharp edge of the cube or the wedge.
 - The cube's up face 0.15 units from its south edge, which faces the key, is brighter than the face centre (120.4 vs
   117.4 levels; unrounded it equals the centre).
@@ -446,7 +446,7 @@ golden, left). Round 3 (the shading point back at the pixel centre wherever the 
 225 (1), `-walk-hold-34` 308 (1), `-wave-front` 111 (1), `rt-preset-marketplace` 1 320 (9) and `-fallback` 1 313 (9),
 `rt-preset-rim` 939 (16) (against origin/main: `rt-preset-rim` 939 (16), `rt-preset-marketplace` 1 320 (9),
 `rt-player-classic-back` 732 (2)). Diff images judged: the rounded-edge bands along sharp edges, the sphere's triangle
-edges and silhouettes; nothing else. Round 4 (the step back to the centre on any sample pattern, determinant bound 1/16
+edges and silhouettes; nothing else. Round 4 (the step back to the centre on any sample pattern, determinant bound 1/32
 instead of 0.25) rewrote 6 rt goldens by a few pixels along triangle edges inside faces, pixels (max levels) against
 round 3: `rt-edges` 13 (3, inside the sphere), `rt-far` 12 (3), `rt-turntable-y060` 4 (2), `-y000` 2 (1),
 `rt-bake-cutout-checker` 2 (1), `rt-outline-hull` 1 (1); every exact-key, fallback and `pt-*` golden byte-unchanged.
@@ -457,10 +457,13 @@ measured and reverted: the `edges` view's sphere outline band (704 pixels, eithe
 are in docs/realtime-renderer.md; the `rt-edges` golden pins the centre on smooth silhouettes.
 Single-sampled frames move too: SwiftShader snaps vertices to 1/16 px, so even fully
 covered pixels interpolate up to 0.04 px off `gl_FragCoord`, and the step to the centre takes that up (a 0.0625 px
-threshold that left it measured 168 pixels at width 0.1 in the edge-band probe below, against 135). Pairs re-measured
-(13, `pair` project), all within their limits, none changed: equal to the table except `preset-marketplace` 1 271,
-0.01939, 1.238, `preset-rim` 1 401, 0.02138, 1.104, `preset-marketplace-yaw30` 1 389, 0.02119, 1.280,
-`obj-shapes-y030` 245, 0.00374, 0.469, `gltf-nodes-y030` 316, 0.00482, 0.955, `gltf-contact` 6 988, 0.10663, 5.628.
+threshold that left it measured 168 pixels at width 0.1 in the edge-band probe below, against round 3's 135). Pairs re-measured
+after the MS-59 merge, round 4 (13, `pair` project; pixels differing, ratio, mean delta), all within their limits,
+none changed: `turntable-y030` 141, 0.00215, 0.713, `iso` 265, 0.00404, 0.879, `alpha-plane` 232, 0.00354, 1.335,
+`player-hold-34` 1 208, 0.01843, 1.290, `cutout-checker` 223, 0.00340, 0.611, `edges` 41, 0.00063, 0.373,
+`preset-marketplace` 1 271, 0.01939, 1.237, `preset-rim` 1 401, 0.02138, 1.103, `preset-marketplace-yaw30` 1 389,
+0.02119, 1.279, `outline-hull` 172, 0.00262, 0.423, `gltf-contact` 6 988, 0.10663, 5.628, `obj-shapes-y030` 245,
+0.00374, 0.461, `gltf-nodes-y030` 316, 0.00482, 0.948.
 Probes: **MSAA silhouette pixels are shaded on the face**:
 the baked `turntable-y030` preview against its render (the `pt-turntable-y030` golden PNG), the mean largest-channel
 difference over the 2 px outline band both draw (`outlineBand`), 1.6961 over 4 028 pixels against the render MS-59
@@ -468,7 +471,7 @@ regenerated (1.7219 when shaded at the pixel centre; before MS-59 1.7461 and 1.7
 = 2.12 and below the midpoint 1.709 (a revert of the centroid qualifiers measures 1.7219 and fails); frame on the raster
 key with MSAA (asserted). **The edge band keeps its width across quad diagonals**: the `edges` view with MSAA against
 `msaa=0`, off every mesh's outline (more than 1 px from a `maskBoundary` of the mesh's pixels from `hide=`): 0 pixels
-over 2 levels at the look's width; at width 0.1 133 pixels differ at all (135 with the 0.25 determinant bound, 227
+over 2 levels at the look's width; at width 0.1 133 pixels differ at all (135 with the 0.25 determinant bound in round 3, 227
 with the skewed footprint, 147 with the shading point at the centroid inside faces too, 142 when shaded at the pixel
 centre), at most 140, the midpoint to 147 (below 133 x 1.25), so a shading point left at the centroid inside faces
 fails.
@@ -485,7 +488,8 @@ MS-59), against SwiftShader:
 | centroid, footprint not mapped                     | 9 / 510 / -       | 0 / 227 / 1.7402 |
 | centroid, footprint mapped (round 2)               | 10 / 431 / 1.7515 | 0 / 147 / 1.7443 |
 | centroid, shading point at the centre inside faces | 2 / 173 / 1.7515  | 0 / 135 / 1.7461 |
-| the same, determinant bound 1/16 (round 4, final)  | 1 / 152 / 1.6997  | 0 / 133 / 1.6961 |
+| the same, determinant bound 1/16 (round 4)         | 1 / 152 / 1.6997  | 0 / 133 / 1.6961 |
+| the same, determinant bound 1/32 (round 5, final)  | 1 / 151 / 1.6997  | 0 / 133 / 1.6961 |
 
 A GPU's centroid is a covered sample position: inside a face, along a quad's diagonal, shading there moved the pixel
 against `msaa=0` (8 of round 2's 10 pixels came from the centroid normal: 8 / 422 with only `v_normal` centroid).
@@ -494,7 +498,8 @@ against `msaa=0` (8 of round 2's 10 pixels came from the centroid normal: 8 / 42
 determinant, distance to the centre): 24 of the 34 pixels differing at width 0.1 that the pixel-centre shaders did not,
 among them (199, 149) inside the sphere, had a fragment with `mapped` false, its determinant at 0.25: the GPU's 4x
 offsets shorten a lane step to 0.25 px, so the bound 0.25 skipped the step back and left the centroid. With the bound at
-1/16, 1 / 152. The pixel left over 2 levels, (69, 129) at 3 levels, and the cube's and wedge's pixels at x 70-73 reach
+1/16, 1 / 152; at 1/32, below the smallest non-zero pattern determinant 1/16, 1 / 151. The pixel left over 2
+levels, (69, 129) at 3 levels, and the cube's and wedge's pixels at x 70-73 reach
 over a sharp edge, where the centroid sample is kept by design (stepping back there too leaves the pixel but loses the
 outline band on SwiftShader, 1.7696); 3 more differ by 1 level from rounding in the changed program. The outline band
 in the last two rows is against the render MS-59 regenerated (1.6997 on the GPU); the revert checks hold on

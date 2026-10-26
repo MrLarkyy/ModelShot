@@ -257,9 +257,11 @@ option `edges` (a `Partial<EdgeLook>`, out of range a `RangeError` naming `edges
   edges are unaffected (distance and position are differenced over the same steps); the footprint is not, so
   `prepareShading` projects `v_worldPosition` to the drawing buffer (`u_viewProjection`, `u_viewportSize` from the
   `viewport` chunk) and, where those steps are not unit ones (more than 0.01 px and less than 1 px off, determinant
-  above 1/16), maps the distance gradient back to unit steps with the inverse of their matrix. Opposite sample
-  offsets shorten a step to 0.25 px, so a real sample pattern can have a determinant of 0.25: an RTX 3080 does, and
-  the earlier bound of 0.25 left 24 pixels inside the edges view's sphere at the centroid (docs/testing.md). The baked
+  above 1/32), maps the distance gradient back to unit steps with the inverse of their matrix. Opposite sample
+  offsets shorten a step to 0.25 px, and the determinants of the standard 4x pattern's lane steps are multiples of
+  1/16 (0, 1/16, 1/8, ...): only 0 is singular, so the bound sits halfway below the smallest non-zero one, where float
+  rounding cannot decide. An RTX 3080 gives 0.25 inside faces, and the earlier bound of 0.25 left 24 pixels inside the
+  edges view's sphere at the centroid (docs/testing.md). The baked
   vertex light (`v_vertexLight`, `v_vertexLightBack`, which world charts reuse for their lightmap point) is centroid
   too: at the pixel centre it would show the light of a point beyond the face. Shading point: a GPU's centroid is a
   covered sample position, so inside a face, along a quad's diagonal, each triangle would be shaded at a point other
