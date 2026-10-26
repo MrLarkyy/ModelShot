@@ -718,9 +718,11 @@ widened.
   run in batches of 7, 3 and 1, in 64-pixel tiles, and after a context loss and restore, also one in the middle of the
   guide (MS-56; the whole guide, 256 tiles, is drawn again). The guide is spread over steps: guide draws per `step(1)`
   and `step(4)`, tile 256 and 64, stay within the budget bound and add up to every guide tile, no sample is drawn
-  before the last, a guide-only step returns 0 with `guiding` true and traces and presents nothing and leaves the default framebuffer bound.
+  before the last, a guide-only step returns 0 with `guiding` true and traces and presents nothing and leaves the
+  default framebuffer bound.
 - **Guiding** (MS-56): `guiding` is false and `step(1)` draws 0 after a context lost mid-guide (straight after
-  `loseContext()` and after the event), after `cancel()`, after `dispose()` and after a restore whose GPU rebuild failed.
+  `loseContext()` and after the event), after `cancel()`, after `dispose()` and after a restore whose GPU rebuild
+  failed.
 - **Convergence** (64 x 64 closeup, maximum 1024 samples): `noise=0.1` stops at 368 with a noise of 0.0968, `noise=0.07`
   at 800 with 0.0686, each converged, not running, remaining 0, at a multiple of 16; denoised without a threshold
   draws all 1024. The plan's thresholds 0.05 and 0.0125 were for a 256-pixel closeup, which does not reach 0.05 within
@@ -1012,10 +1014,12 @@ round 7); its max was 750 ms then.
   artefact allows 3-4x the CI median (the plan's 1.5x would fail on runners 3-5x slower than this machine).
 - `frameTimeMs.pt-bench-128-x2-denoised-step` (MS-56): the same request (64 samples at 2x, denoised) drawn by `step(1)`
   calls, each timed until the GPU finished (`finish()`: a guide-only step ends with the default framebuffer bound,
-  checked by the guide-tile test), the longest step, median of 3 after one untimed run. Local SwiftShader, before the guide was spread: the first
+  checked by the guide-tile test), the longest step, median of 3 after one untimed run. Local SwiftShader, before the
+  guide was spread: the first
   step drew the whole guide, 2515, 2384, 2592 and 2477 ms in four runs (the guide plus the first sample, program
   already linked). After: 229, 231, 238 and 230 ms, the slowest steps being a checkpoint's noise estimate and resolve
-  (about 250 ms) and single guide tiles (up to about 240 ms where a tile meets partial texels); the guide steps take 5 to
+  (about 250 ms) and single guide tiles (up to about 240 ms where a tile meets partial texels); the guide steps take 5
+  to
   240 ms. Max 1500 ms, not the 10x of the median (2600 ms) that the other rows use: that would be above the 2.4 s of
   the unspread guide and catch nothing; 1500 ms is about 6x the median, inside the 3-5x of a slower runner, and under
   the old step. The browser test `a denoised step(k) draws a bounded number of guide tiles` counts guide draws per

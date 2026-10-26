@@ -978,7 +978,10 @@ export class PathTracer {
     return targets;
   }
 
-  /** The preconditions of a `step` that draws: a request, a camera, a live context, not cancelled, not converged, not complete. */
+  /**
+   * The preconditions of a `step` that draws: a request, a camera, a live context, not cancelled, not converged, not
+   * complete.
+   */
   private canStep(): boolean {
     return (
       this.running &&

@@ -171,7 +171,8 @@ was exported as WebM instead."). No format of the chain: `UNSUPPORTED_FORMAT`.
 ## Progress, cancel and errors
 
 `onProgress` gets `{ phase, frame, frames, samplesDone, samples, fraction }` after every step (`render`, with
-`samplesDone` 0 while a denoised frame draws its guide) and after each frame is encoded (`encode`); `fraction` only grows and reaches 1 once, when the file is done. The render loop
+`samplesDone` 0 while a denoised frame draws its guide) and after each frame is encoded (`encode`); `fraction` only
+grows and reaches 1 once, when the file is done. The render loop
 draws one sample per `step` and yields to the event loop between steps (a message, not a timer, which nested would be
 clamped to 4 ms), so the page stays responsive. Aborting `signal` rejects with `ExportError` `CANCELLED`: the path
 tracer is cancelled before its next step, the encoder closed and nothing kept.

@@ -11,7 +11,7 @@ export interface MsFixture {
   readRGBA: () => string;
   renderFrames?: (count: number) => number[];
   timeToSamples?: (samples: number) => number;
-  /** Draws a request of `samples` one `step(1)` at a time; the longest step in ms, each timed until the GPU finished. */
+  /** Draws a request of `samples` by `step(1)`; the longest step in ms, each timed until the GPU finished. */
   maxStepMs?: (samples: number) => number;
   /** Load-and-first-frame bench (rt.html): milliseconds until the GPU finished. */
   /** setScene and the first frame of a scene (the realtime fixture: default `large-order`, else that scene), in ms. */

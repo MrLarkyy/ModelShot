@@ -15,9 +15,10 @@ uploaded ([privacy](#privacy)).
    any failure.
 4. The viewer draws the scene with `RealtimeRenderer`, orbit controls ([camera.md](camera.md)) and the baked lighting
    of the chosen look, re-baked when the scene, look or visibility changes.
-5. Render runs the path tracer in slices of about 8 ms on the main thread (seed 1; samples, supersampling and
-   denoise from the Render panel), with a progress element; Esc cancels. The result stays until the camera or scene
-   changes.
+5. Render runs the path tracer on the main thread (seed 1; samples, supersampling and denoise from the Render
+   panel), with a progress element: one `step(4)` per animation frame while a denoised request draws its guide, else
+   slices of about 8 ms; Esc cancels. The result canvas is hidden from the Render click until the first sample, and
+   stays hidden after a cancel or a failure; a finished render stays until the camera or scene changes.
 6. Export opens a dialog: still PNG (transparent), turntable or animation (only for a model with animations) as GIF,
    APNG or the other clip formats of [export.md](export.md). Options are checked with `checkExportOptions`; a
    failure names the field. The file is a download of a Blob URL, revoked afterwards.
