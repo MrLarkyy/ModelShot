@@ -68,6 +68,27 @@ export function installFrameReadout(
   requestAnimationFrame(tick);
 }
 
+/** The longest `step(1)` of a request drawn to the end, each timed until the GPU finished it. */
+export function installStepBench(
+  api: MsFixture,
+  gl: WebGL2RenderingContext,
+  start: (samples: number) => void,
+  step: () => number,
+  guiding: () => boolean,
+): void {
+  api.maxStepMs = (samples) => {
+    start(samples);
+    let longest = 0;
+    for (;;) {
+      const began = performance.now();
+      const drawn = step();
+      finish(gl);
+      longest = Math.max(longest, performance.now() - began);
+      if (drawn === 0 && !guiding()) return longest;
+    }
+  };
+}
+
 export function installSampleBench(
   api: MsFixture,
   gl: WebGL2RenderingContext,

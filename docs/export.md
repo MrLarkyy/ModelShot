@@ -170,13 +170,16 @@ was exported as WebM instead."). No format of the chain: `UNSUPPORTED_FORMAT`.
 
 ## Progress, cancel and errors
 
-`onProgress` gets `{ phase, frame, frames, samplesDone, samples, fraction }` after every sample (`render`) and after
-each frame is encoded (`encode`); `fraction` only grows and reaches 1 once, when the file is done. The render loop
+`onProgress` gets `{ phase, frame, frames, samplesDone, samples, fraction }` after every step (`render`, with
+`samplesDone` 0 while a denoised frame draws its guide) and after each frame is encoded (`encode`); `fraction` only
+grows and reaches 1 once, when the file is done. The render loop
 draws one sample per `step` and yields to the event loop between steps (a message, not a timer, which nested would be
 clamped to 4 ms), so the page stays responsive. Aborting `signal` rejects with `ExportError` `CANCELLED`: the path
 tracer is cancelled before its next step, the encoder closed and nothing kept.
 
 `ExportError` codes: `INVALID_OPTION`, `LIMIT_EXCEEDED` (both with `field`), `CANCELLED`, `CONTEXT_LOST` (the WebGL
-context went during the export, or went and came back, which restarts the request: a blank or partial frame is never
-encoded), `ENCODER_FAILED` (the browser's encoder failed or produced something unusable), `UNSUPPORTED_FORMAT`.
+context went during the export, or went and came back after a sample was drawn, which restarts the request: a blank
+or partial frame is never encoded; a context restored while a denoised frame is still drawing its guide redraws the
+whole guide and the frame comes out the same), `ENCODER_FAILED` (the browser's encoder failed or produced something
+unusable), `UNSUPPORTED_FORMAT`.
 `PathTracerError` of `setScene` (an invalid or too large scene) passes through unchanged.

@@ -32,6 +32,54 @@ describe('renderFrame', () => {
     expect(image.width).toBe(4);
   });
 
+  it('keeps stepping through a denoiser guide phase that draws no sample', async () => {
+    const renderer = new FakeRenderer({ guideSteps: 3 });
+    renderer.resize({ cssWidth: 4, cssHeight: 4, devicePixelRatio: 1 });
+    const seen: number[] = [];
+    await renderFrame(renderer, { seed: 1, samples: 2 }, undefined, (n) => seen.push(n));
+    expect(seen).toEqual([0, 0, 0, 1, 2]);
+  });
+
+  it('ends with CANCELLED when cancelled during the guide, not spinning on a guide that is over', async () => {
+    const renderer = new FakeRenderer({ guideSteps: 5 });
+    renderer.resize({ cssWidth: 4, cssHeight: 4, devicePixelRatio: 1 });
+    let calls = 0;
+    const pending = renderFrame(renderer, { seed: 1, samples: 2 }, undefined, () => {
+      if (++calls === 2) renderer.cancel();
+    });
+    expect(await codeOf(pending)).toBe('CANCELLED');
+    expect(calls).toBe(2);
+  });
+
+  it('ends with CONTEXT_LOST when the context is lost during the guide', async () => {
+    const renderer = new FakeRenderer({ guideSteps: 5, loseAtGuideStep: 2 });
+    renderer.resize({ cssWidth: 4, cssHeight: 4, devicePixelRatio: 1 });
+    expect(await codeOf(renderFrame(renderer, { seed: 1, samples: 2 }, undefined, () => undefined))).toBe(
+      'CONTEXT_LOST',
+    );
+  });
+
+  it('goes on after a restore inside the guide: the whole guide is redrawn, the frame is the reference', async () => {
+    const restored = new FakeRenderer({ guideSteps: 3, restoreAtGuideStep: 2 });
+    restored.resize({ cssWidth: 4, cssHeight: 4, devicePixelRatio: 1 });
+    const seen: number[] = [];
+    const image = await renderFrame(restored, { seed: 1, samples: 2 }, undefined, (n) => seen.push(n));
+    expect(seen).toEqual([0, 0, 0, 0, 1, 2]);
+    const plain = new FakeRenderer({ guideSteps: 3 });
+    plain.resize({ cssWidth: 4, cssHeight: 4, devicePixelRatio: 1 });
+    const reference = await renderFrame(plain, { seed: 1, samples: 2 }, undefined, () => undefined);
+    expect(image.data).toEqual(reference.data);
+  });
+
+  it('still ends with CANCELLED when a step draws nothing outside a guide phase', async () => {
+    const renderer = new FakeRenderer();
+    renderer.resize({ cssWidth: 4, cssHeight: 4, devicePixelRatio: 1 });
+    const pending = renderFrame(renderer, { seed: 1, samples: 5 }, undefined, (n) => {
+      if (n === 2) renderer.cancel();
+    });
+    expect(await codeOf(pending)).toBe('CANCELLED');
+  });
+
   it('rejects with CONTEXT_LOST instead of reading a blank frame', async () => {
     const lost = new FakeRenderer({ loseAtSample: 3 });
     lost.resize({ cssWidth: 4, cssHeight: 4, devicePixelRatio: 1 });

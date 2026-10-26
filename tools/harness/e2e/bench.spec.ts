@@ -99,6 +99,16 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
     return [fixture.timeToSamples(64), fixture.timeToSamples(64), fixture.timeToSamples(64)];
   });
 
+  // The same request one `step(1)` at a time (MS-56): the longest step, each timed until the GPU finished it. The guide
+  // is spread over the first steps, so none is the 2.4 s step the whole guide once made on the local SwiftShader
+  // machine; the slowest steps now are a checkpoint's noise estimate and resolve. One untimed run first, median of 3.
+  await page.evaluate(() => window.__msFixture?.maxStepMs?.(64));
+  const ptStepRuns = await page.evaluate(() => {
+    const fixture = window.__msFixture;
+    if (!fixture?.maxStepMs) throw new Error('step bench missing');
+    return [fixture.maxStepMs(64), fixture.maxStepMs(64), fixture.maxStepMs(64)];
+  });
+
   // Path-tracer load at the loader's limits: validate, flatten, build the BVH of 200 000 triangles, upload, one sample.
   await openFixture(page, '/pt.html?scene=empty&size=128&samples=1');
   const ptLoadMs = await page.evaluate(async () => {
@@ -268,6 +278,7 @@ test('frame time, time to samples and bundle size stay inside budgets.json', asy
       'rt-load-first-frame-edges-hostile': edgesHostileMs,
       'rt-load-first-frame-edges-weld': edgesWeldMs,
       'rt-load-first-frame-200k-world': worldLoadMs,
+      'pt-bench-128-x2-denoised-step': median(ptStepRuns),
       'pt-load-200k': ptLoadMs,
       'export-turntable-64-f4-n16': median(exportRuns),
       'export-animation-64-f4-n16': animationMedians['undefined']?.pose ?? Number.NaN,
