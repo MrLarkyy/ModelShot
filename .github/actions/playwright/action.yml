@@ -16,7 +16,9 @@ runs:
       run: |
         version=$(pnpm --filter "$PACKAGE" exec playwright --version | awk '{print $NF}')
         test -n "$version"
+        test -n "$ImageOS" -a -n "$ImageVersion"
         echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "image=${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
 
     - id: browser
       uses: actions/cache/restore@v6
@@ -30,7 +32,7 @@ runs:
       uses: actions/cache/restore@v6
       with:
         path: ~/.cache/playwright-apt
-        key: playwright-apt-${{ env.ImageOS }}-${{ env.ImageVersion }}-${{ steps.version.outputs.version }}
+        key: playwright-apt-${{ steps.version.outputs.image }}-${{ steps.version.outputs.version }}
 
     - if: steps.apt.outputs.cache-hit == 'true'
       shell: bash
@@ -42,17 +44,19 @@ runs:
       run: pnpm --filter "$PACKAGE" exec playwright install --with-deps --only-shell chromium
 
     # Saved here, not in a post step, so a red test run still fills the cache.
-    - if: steps.apt.outputs.cache-hit != 'true'
+    - id: debs
+      if: steps.apt.outputs.cache-hit != 'true'
       shell: bash
       run: |
         mkdir -p ~/.cache/playwright-apt
         cp /var/cache/apt/archives/*.deb ~/.cache/playwright-apt/ || true
+        echo "count=$(ls ~/.cache/playwright-apt/*.deb 2>/dev/null | wc -l)" >> "$GITHUB_OUTPUT"
 
-    - if: steps.apt.outputs.cache-hit != 'true'
+    - if: steps.apt.outputs.cache-hit != 'true' && steps.debs.outputs.count != '0'
       uses: actions/cache/save@v6
       with:
         path: ~/.cache/playwright-apt
-        key: playwright-apt-${{ env.ImageOS }}-${{ env.ImageVersion }}-${{ steps.version.outputs.version }}
+        key: playwright-apt-${{ steps.version.outputs.image }}-${{ steps.version.outputs.version }}
 
     - if: steps.browser.outputs.cache-hit != 'true'
       uses: actions/cache/save@v6

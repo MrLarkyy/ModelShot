@@ -109,7 +109,7 @@ in `golden-2` `apt-get update` took 4 s and the .deb files (fonts, `libnss3`, `x
 at 45 kB/s. The local action `.github/actions/playwright` (used by `e2e`, `bench` and the pages `verify` job) restores
 `~/.cache/ms-playwright`, keyed by the Playwright version, and the .deb files in `~/.cache/playwright-apt`, keyed by the runner
 image and the Playwright version, so apt installs from `/var/cache/apt/archives` without downloading. A job that misses a
-cache saves it right after the install, so a red test run still fills it; shards that miss at the same time only warn.
+cache saves it right after the install, so a red test run still fills it (an apt cache with no .deb files is never saved); shards that miss at the same time only warn.
 Times after the change are recorded here from the first warm runs.
 
 314 tests in all. The path-tracer tests had been part of `golden` (241 tests in 5 shards of 48-49): the shard that held
