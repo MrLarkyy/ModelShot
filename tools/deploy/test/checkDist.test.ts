@@ -34,7 +34,7 @@ describe('checkDist', () => {
   });
 
   it('refuses two CSP metas', async () => {
-    const two = `<meta http-equiv="Content-Security-Policy" content="${CSP}" />${page(CSP)}`;
+    const two = page(CSP, `<meta http-equiv="Content-Security-Policy" content="${CSP}" />`);
     const problems = await problemsOf((f) => (f['index.html'] = two));
     expect(problems.join()).toContain('index.html: 2 Content-Security-Policy metas');
   });
@@ -90,6 +90,30 @@ describe('checkDist', () => {
     });
     expect(problems.filter((p) => p.includes('another origin'))).toHaveLength(1);
     expect(problems.join()).not.toContain('app/index.html');
+  });
+
+  it('reads the first copy of a repeated directive, as a browser does', async () => {
+    const loose = CSP.replace("default-src 'self';", "default-src 'self'; connect-src 'self'; connect-src *;");
+    const problems = await problemsOf((f) => (f['index.html'] = page(loose)));
+    expect(problems.join()).not.toContain('wildcard');
+    const first = CSP.replace("default-src 'self';", "default-src 'self'; img-src *; img-src 'self';");
+    expect((await problemsOf((f) => (f['index.html'] = page(first)))).join()).toContain('img-src has the wildcard');
+  });
+
+  it("refuses 'unsafe-hashes' and 'wasm-unsafe-eval'", async () => {
+    for (const keyword of ["'unsafe-hashes'", "'wasm-unsafe-eval'"]) {
+      const policy = CSP.replace("script-src 'self'", `script-src 'self' ${keyword}`);
+      const problems = await problemsOf((f) => (f['index.html'] = page(policy)));
+      expect(problems.join(), keyword).toContain(`script-src allows ${keyword}`);
+    }
+  });
+
+  it('does not count a CSP meta outside <head>', async () => {
+    const body = `<!doctype html><html><head><meta charset="utf-8" /></head><body><meta http-equiv="Content-Security-Policy" content="${CSP}" /></body></html>`;
+    const problems = await problemsOf((f) => (f['index.html'] = body));
+    expect(problems).toEqual([
+      'index.html: no Content-Security-Policy meta inside <head> (a meta elsewhere does not count)',
+    ]);
   });
 
   it('names a missing service worker and a missing element script', async () => {

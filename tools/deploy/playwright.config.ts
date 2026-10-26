@@ -20,10 +20,14 @@ export default defineConfig({
   forbidOnly: ci,
   reporter: [['list']],
   webServer: {
-    command: `node e2e/serve.ts${live === '' ? '' : ' --host-only'}`,
+    // Local mode builds first: the assembled dist must be the current code, never a leftover of an earlier build.
+    command:
+      live === ''
+        ? 'pnpm --filter "@modelshot/deploy..." run build && node e2e/serve.ts'
+        : 'node e2e/serve.ts --host-only',
     url: `http://127.0.0.1:${ports.host}/host.html`,
     reuseExistingServer: false,
-    timeout: 30_000,
+    timeout: live === '' ? 300_000 : 30_000,
   },
   use: {
     baseURL,

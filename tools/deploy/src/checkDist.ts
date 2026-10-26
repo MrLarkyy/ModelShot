@@ -3,7 +3,7 @@ import { join, relative, sep } from 'node:path';
 import { EMBED_PATH_MAJOR } from './layout.ts';
 
 const EMBED_FRAME = `embed/v${EMBED_PATH_MAJOR}/index.html`;
-const REQUIRED_FILES = [
+export const REQUIRED_FILES = [
   'index.html',
   'app/index.html',
   'app/sw.js',
@@ -11,6 +11,7 @@ const REQUIRED_FILES = [
   `embed/v${EMBED_PATH_MAJOR}/modelshot-embed.js`,
 ];
 const CSP_META = /<meta\b[^>]*\bhttp-equiv\s*=\s*["']content-security-policy["'][^>]*>/gi;
+const UNSAFE_KEYWORDS = new Set(["'unsafe-inline'", "'unsafe-eval'", "'unsafe-hashes'", "'wasm-unsafe-eval'"]);
 const SUBRESOURCE_TAG = /<(?:script|link|style)\b/i;
 const ROOT_ABSOLUTE_ATTRIBUTE = /\b(?:href|src|action|poster|srcset|content)\s*=\s*["']\s*\/(?!\/)/gi;
 const ROOT_ABSOLUTE_URL = /url\(\s*["']?\/(?!\/)/gi;
@@ -44,7 +45,8 @@ function policyProblems(file: string, policy: string): string[] {
   const directives = new Map<string, string[]>();
   for (const part of policy.split(';')) {
     const [name, ...sources] = part.trim().split(/\s+/);
-    if (name) directives.set(name.toLowerCase(), sources);
+    // A browser honours the first copy of a repeated directive and ignores the rest.
+    if (name && !directives.has(name.toLowerCase())) directives.set(name.toLowerCase(), sources);
   }
   const problem = (text: string): number => problems.push(`${file}: ${text}`);
   if (!directives.get('default-src')?.includes("'self'")) problem("CSP lacks default-src 'self'");
@@ -55,7 +57,7 @@ function policyProblems(file: string, policy: string): string[] {
   for (const [name, sources] of directives) {
     for (const source of sources) {
       const lower = source.toLowerCase();
-      if (lower === "'unsafe-inline'" || lower === "'unsafe-eval'") problem(`CSP ${name} allows ${source}`);
+      if (UNSAFE_KEYWORDS.has(lower)) problem(`CSP ${name} allows ${source}`);
       else if (lower.includes('*')) problem(`CSP ${name} has the wildcard source ${source}`);
       else if (lower.startsWith("'")) continue;
       else if (lower.endsWith(':')) {
@@ -70,11 +72,18 @@ function policyProblems(file: string, policy: string): string[] {
 
 function htmlProblems(file: string, html: string): string[] {
   const problems: string[] = [];
-  const metas = html.match(CSP_META) ?? [];
-  if (metas.length === 0) problems.push(`${file}: no Content-Security-Policy meta`);
-  else if (metas.length > 1) problems.push(`${file}: ${metas.length} Content-Security-Policy metas, expected one`);
+  const headStart = html.search(/<head[\s>]/i);
+  const headEnd = html.search(/<\/head\s*>/i);
+  const head = headStart === -1 || headEnd === -1 ? '' : html.slice(headStart, headEnd);
+  const metas = head.match(CSP_META) ?? [];
+  if (metas.length === 0) {
+    const outside = (html.match(CSP_META) ?? []).length > 0;
+    problems.push(
+      `${file}: no Content-Security-Policy meta${outside ? ' inside <head> (a meta elsewhere does not count)' : ''}`,
+    );
+  } else if (metas.length > 1) problems.push(`${file}: ${metas.length} Content-Security-Policy metas, expected one`);
   else {
-    if (html.search(SUBRESOURCE_TAG) !== -1 && html.search(SUBRESOURCE_TAG) < html.indexOf(metas[0]!)) {
+    if (head.search(SUBRESOURCE_TAG) !== -1 && head.search(SUBRESOURCE_TAG) < head.indexOf(metas[0]!)) {
       problems.push(`${file}: the CSP meta comes after a script, link or style, which it then does not cover`);
     }
     problems.push(...policyProblems(file, attribute(metas[0]!, 'content') ?? ''));

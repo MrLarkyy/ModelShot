@@ -14,8 +14,9 @@ One artifact (`tools/deploy`, `pnpm -r build` writes `tools/deploy/dist`):
 | `embed/v1/`      | embed frame and element script | `https://mrlarkyy.github.io/ModelShot/embed/v1/modelshot-embed.js` |
 
 Every build uses the relative base `./`, so the same files work under `/ModelShot/` and, after a custom domain, at the
-domain root. The assembly (`tools/deploy/src/checkDist.ts`) fails the build on a root-absolute URL, a script or
-stylesheet from another origin, a missing page policy, or a missing `app/sw.js` or `embed/v1/modelshot-embed.js`.
+domain root. The assembly (`tools/deploy/src/checkDist.ts`) fails the build on a root-absolute URL in an HTML or CSS file (not in JavaScript: the code builds its URLs from
+`import.meta.url`, and the deploy suite loads every worker and chunk under `/ModelShot/`), a script or stylesheet
+from another origin, a missing page policy, or a missing `app/sw.js` or `embed/v1/modelshot-embed.js`.
 
 ### Embed path versioning
 
@@ -58,6 +59,11 @@ status or an error and does not hang (`deploy.embed.spec.ts`).
 All project pages of `mrlarkyy.github.io` share one origin, so IndexedDB and caches are shared with the owner's other
 Pages sites. A custom domain isolates them.
 
+The app and the embed frame also share that origin, so the frame can reach the app's IndexedDB. That is safe because
+only the site's own scripts run there (`script-src 'self'`, no inline code, pinned by `checkDist`), and the frame's
+`connect-src https: http:` lets it fetch the model URL only: a response is data, never code. Separating the two would
+need another domain.
+
 ## Deploying
 
 `.github/workflows/pages.yml` runs on every push to `main` and on demand, and does nothing until the repository variable
@@ -69,10 +75,12 @@ Pages sites. A custom domain isolates them.
 
 Jobs: `build` installs, builds and uploads the artifact with only `contents: read`; `deploy` is the only job with
 `pages: write` and `id-token: write` and runs nothing but `deploy-pages`; `verify` runs the deploy suite against the
-live URL once the live `app/sw.js` equals the artifact's.
+live URL once every fixed-name file (the three pages, `app/sw.js`, `embed/v1/modelshot-embed.js`) equals the artifact's.
+A failed `verify` does not undo the deploy: the site stays live. Read the uploaded `deploy-test-results`, then fix
+forward or roll back as below.
 
 Rollback: unset `PAGES_DEPLOY` to stop further deploys; revert the commit and push; or re-run an older successful
-`pages` run (its deploy job).
+`pages` run (its deploy job), which works only while its artifact is kept (30 days, `retention-days` in `pages.yml`).
 
 ## Tests
 

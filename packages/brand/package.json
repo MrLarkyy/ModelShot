@@ -11,6 +11,10 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./devWithoutCsp": {
+      "types": "./src/devWithoutCsp.ts",
+      "default": "./src/devWithoutCsp.ts"
+    },
     "./tokens.css": "./css/tokens.css",
     "./illustration.css": "./css/illustration.css",
     "./fonts.css": "./css/fonts.css",

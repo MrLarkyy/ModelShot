@@ -38,6 +38,7 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: tools/deploy/dist
+          retention-days: 30
 
   # Only this job can write to Pages; it runs no repository code.
   deploy:

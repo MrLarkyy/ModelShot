@@ -82,7 +82,7 @@ controlled) listing every file of the build with a version hash.
 Install caches them; activate deletes older caches; same-origin GET requests are answered cache-first with the network
 as fallback; other origins and methods are untouched. A new version waits until the open tabs are closed, because they
 hold the old file names. After one visit the whole flow, including export, works offline. `index.html` carries the
-Content Security Policy (`default-src 'self'`, `worker-src 'self'`, no inline code) as its first meta; see
+Content Security Policy (`default-src 'self'`, `worker-src 'self'`, no inline code) right after the charset meta; see
 [hosting.md](hosting.md).
 
 ## Privacy

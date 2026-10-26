@@ -32,7 +32,7 @@ the latter.
 
 The embed build (`pnpm --filter @modelshot/embed run build`, `packages/embed/dist`) is the frame page `index.html`,
 the element script `modelshot-embed.js` next to it and their `assets/`. Every URL in it is relative, so it can be
-served under any path. It is published at `https://mrlarkyy.github.io/ModelShot/embed/v1/`; the folder name is the
+served under any path. It is published at `https://mrlarkyy.github.io/ModelShot/embed/v1/` (live after the first deploy, docs/hosting.md); the folder name is the
 contract version (`v1` is `EMBED_PARAMS_VERSION`), so a breaking change gets a new folder ([hosting.md](hosting.md)).
 A host page loads `modelshot-embed.js` (one self-contained file) as a
 cross-origin module script, so the embed server must send `Access-Control-Allow-Origin: *` for the
