@@ -7,6 +7,8 @@ function brandAsset(path: string): string {
 }
 
 export default defineConfig({
+  // Relative URLs: one build works under /ModelShot/ on GitHub Pages and at a domain root (docs/hosting.md).
+  base: './',
   publicDir: '../brand/assets/public',
   plugins: [
     inlineBrandSvg({

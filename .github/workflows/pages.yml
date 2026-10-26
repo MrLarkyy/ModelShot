@@ -1,0 +1,89 @@
+# Publishes the site (landing page, app/, embed/v1/) to GitHub Pages and tests the live URL.
+#
+# It does nothing until the owner turns it on: every job is skipped unless the repository variable PAGES_DEPLOY is
+# 'true'. To turn it on: Settings > Pages > Source: GitHub Actions; Settings > Secrets and variables > Actions >
+# Variables > PAGES_DEPLOY = true; then run this workflow once (Actions > pages > Run workflow). To stop deploying,
+# delete the variable or set it to anything else (docs/hosting.md).
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A deploy is never cancelled half way: the next one waits.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: ${{ vars.PAGES_DEPLOY == 'true' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - run: npm i -g corepack@latest
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r build
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: tools/deploy/dist
+
+  # Only this job can write to Pages; it runs no repository code.
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
+
+  # The deploy suite against the live URL, once the live app/sw.js is the one of this artifact.
+  verify:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - run: npm i -g corepack@latest
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @modelshot/deploy exec playwright install --with-deps --only-shell chromium
+      - uses: actions/download-artifact@v8
+        with:
+          name: github-pages
+          path: ${{ runner.temp }}/pages
+      - run: mkdir -p tools/deploy/dist && tar -xf "$RUNNER_TEMP/pages/artifact.tar" -C tools/deploy/dist
+      - run: pnpm --filter @modelshot/deploy run test:browser
+        env:
+          MS_DEPLOY_URL: ${{ needs.deploy.outputs.page_url }}
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: deploy-test-results
+          path: tools/deploy/test-results/
+          retention-days: 14
+          if-no-files-found: ignore

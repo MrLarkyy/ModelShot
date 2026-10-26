@@ -9,13 +9,17 @@ and, under the host page's referrer policy, a `Referer`; `referrerpolicy="no-ref
 the latter.
 
 ```html
-<script type="module" src="https://<embed host>/modelshot-embed.js" referrerpolicy="no-referrer"></script>
+<script
+  type="module"
+  src="https://mrlarkyy.github.io/ModelShot/embed/v1/modelshot-embed.js"
+  referrerpolicy="no-referrer"
+></script>
 <modelshot-viewer model="https://example.com/models/lantern.bbmodel" look="marketplace" autorotate></modelshot-viewer>
 ```
 
 ```html
 <iframe
-  src="https://<embed host>/#v=1&model=https%3A%2F%2Fexample.com%2Fmodels%2Flantern.bbmodel&look=marketplace"
+  src="https://mrlarkyy.github.io/ModelShot/embed/v1/#v=1&model=https%3A%2F%2Fexample.com%2Fmodels%2Flantern.bbmodel&look=marketplace"
   title="Lantern, 3D model"
   width="400"
   height="400"
@@ -28,7 +32,9 @@ the latter.
 
 The embed build (`pnpm --filter @modelshot/embed run build`, `packages/embed/dist`) is the frame page `index.html`,
 the element script `modelshot-embed.js` next to it and their `assets/`. Every URL in it is relative, so it can be
-served under any path; where it is hosted is MS-26. A host page loads `modelshot-embed.js` (one self-contained file) as a
+served under any path. It is published at `https://mrlarkyy.github.io/ModelShot/embed/v1/`; the folder name is the
+contract version (`v1` is `EMBED_PARAMS_VERSION`), so a breaking change gets a new folder ([hosting.md](hosting.md)).
+A host page loads `modelshot-embed.js` (one self-contained file) as a
 cross-origin module script, so the embed server must send `Access-Control-Allow-Origin: *` for the
 `.js` files.
 

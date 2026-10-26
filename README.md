@@ -42,6 +42,7 @@ Docs: [scene format](https://github.com/MrLarkyy/ModelShot/wiki/Scene-format) (w
 [brand](https://github.com/MrLarkyy/ModelShot/wiki/Brand) (tokens, contrast rules, fonts, logo and icons, licences),
 [landing page](https://github.com/MrLarkyy/ModelShot/wiki/Landing-page) (layout, hosting at `/` and `/app/`, the local file handoff, motion, tests),
 [app](https://github.com/MrLarkyy/ModelShot/wiki/App) (opening models, panels, shortcuts, render and export, local state, offline, limits),
+[hosting](https://github.com/MrLarkyy/ModelShot/wiki/Hosting) (GitHub Pages, layout and URLs, CSP, the deploy workflow; the app is at `https://mrlarkyy.github.io/ModelShot/app/` after the first deploy),
 [embed](https://github.com/MrLarkyy/ModelShot/wiki/Embed) (the `<modelshot-viewer>` element and iframe, parameters, CORS, limits, privacy),
 [testing](https://github.com/MrLarkyy/ModelShot/wiki/Testing) (unit and browser layers, goldens, budgets, CI).
 

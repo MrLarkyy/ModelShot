@@ -2,6 +2,8 @@ import { defineConfig } from 'vite';
 import { swPlugin } from './src/offline/swPlugin.ts';
 
 export default defineConfig({
+  // Relative URLs: one build works under /ModelShot/ on GitHub Pages and at a domain root (docs/hosting.md).
+  base: './',
   // Favicons and app icons come from the brand package.
   publicDir: '../brand/assets/public',
   plugins: [swPlugin()],

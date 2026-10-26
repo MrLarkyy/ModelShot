@@ -18,19 +18,24 @@ never parses them.
 | `e2e/`                        | Playwright specs and the guard fixture `siteTest.ts`                                                       |
 | `goldens/`                    | `landing-360.png`, `landing-768.png`, `landing-1440.png`                                                   |
 
-`pnpm --filter @modelshot/site build` writes `dist/`; `build:with-app` also builds the app with base `/app/` into
-`dist/app/`, the layout the page expects when hosted.
+`pnpm --filter @modelshot/site build` writes `dist/`; `build:with-app` also builds the app into `dist/app/`, the
+layout the page expects when hosted (both use the relative base `./`). The deploy artifact is assembled by
+`tools/deploy` from the separate builds, so run `build` again after `build:with-app` before assembling.
 
 The looks tiles and the hero island are illustrations, labelled as such ("ILLUSTRATION · NOT A RENDER"), until the
 path tracer produces sample renders. The embed tile says the snippet arrives with the embed API.
 
-## Hosting contract (for MS-26)
+## Hosting
 
-- The landing page is served at `/` and the app at `/app/` of the same origin. The handoff below depends on it:
-  IndexedDB is per origin.
+[hosting.md](hosting.md) has the host, the layout and the deploy workflow. For the page:
+
+- The landing page is served at the site root and the app at `app/` of the same origin (`./app/?open=handoff`). The
+  handoff below depends on it: IndexedDB is per origin. All URLs are relative, so it works under `/ModelShot/`.
+- `index.html` carries a Content Security Policy meta (`default-src 'self'`, `worker-src 'none'`, no inline code).
 - The page makes no request to another origin: fonts, icons and the social preview come from the site itself. The
   only off-origin references are links to the GitHub repository.
-- `og:image` is relative (`/social-preview.png`) until the domain is known.
+- `og:image` is relative (`./social-preview.png`); social cards need an absolute URL, which waits for the final
+  domain.
 
 ## File handoff to the app
 

@@ -155,6 +155,12 @@ The specs cover the element and a plain iframe, lazy loading, CORS and other dow
 page staying responsive, the requests made and the background colour per look; no goldens (pixel checks are coarse
 differences after "Preview lit."). See [embed.md](embed.md#tests).
 
+The deploy suite (`tools/deploy/e2e`, `pnpm --filter @modelshot/deploy run test:browser`, part of the root
+`test:browser`) runs the assembled `tools/deploy/dist` (build it with `pnpm -r build`) on `MS_DEPLOY_PORT`, else a
+per-checkout port, under `/ModelShot/` like GitHub Pages, and a host page on that port plus 2000. With `MS_DEPLOY_URL`
+set it tests the deployed site instead; `pages.yml` runs it that way after each deploy (`ci.yml` does not run it yet).
+See [hosting.md](hosting.md#tests).
+
 ## Goldens
 
 - Location `tools/harness/goldens/`, one file per name for every platform.
