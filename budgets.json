@@ -23,7 +23,8 @@
   "bundleGzipBytes": {
     "app": { "max": 205300 },
     "app-entry": { "max": 66800 },
-    "embed": { "max": 2200 },
+    "embed": { "max": 3200 },
+    "embed-frame": { "max": 177200 },
     "site": { "max": 11600 },
     "site-assets": { "max": 110400 },
     "export": { "max": 8041 }
