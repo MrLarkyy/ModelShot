@@ -294,7 +294,7 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
   }) => {
     const reference = await referencePixels(page, TURNTABLE_X2_DENOISED);
     const query = 'variant=turntable-y030&seed=1&samples=16&supersample=2&denoise=1';
-    for (const extra of ['batch=7', 'batch=3&tile=64', 'tile=64']) {
+    for (const extra of ['batch=7', 'batch=3&tile=64', 'tile=64', 'batch=1', 'batch=1&tile=64']) {
       const { image, info } = await render(page, `${query}&${extra}`);
       expect(info.samplesDone, extra).toBe(16);
       expect(image.data.equals(reference), extra).toBe(true);
@@ -308,6 +308,75 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
     });
     expect(rendered).toBe(16);
     expect(decodePng(await readPng(page, info)).data.equals(reference), 'after a context restore').toBe(true);
+  });
+
+  for (const [tile, k] of [
+    [256, 1],
+    [64, 1],
+    [256, 4],
+  ] as const) {
+    test(`a denoised step(${k}) draws a bounded number of guide tiles (tile ${tile}) and no sample before the guide ends`, async ({
+      page,
+    }) => {
+      const reference = await referencePixels(page, TURNTABLE_X2_DENOISED);
+      const query = `variant=turntable-y030&seed=1&samples=16&supersample=2&denoise=1&track=1&tile=${tile}`;
+      const info = await openFixture(page, `/pt.html?${query}`);
+      const run = await page.evaluate((count) => {
+        const ptc = window.__msFixture!.pt!;
+        const [width, height] = ptc.accumulationSize;
+        ptc.restart();
+        ptc.drawCounts();
+        const steps: { drawn: number; guide: number; other: number; guiding: boolean; done: number }[] = [];
+        do {
+          const drawn = ptc.step(count);
+          steps.push({ drawn, ...ptc.drawCounts(), guiding: ptc.guiding, done: ptc.samplesDone });
+        } while (steps[steps.length - 1]!.drawn > 0 || steps[steps.length - 1]!.guiding);
+        return { width, height, steps };
+      }, k);
+      // Guide tiles are a eighth of the trace tile (at least 16): a full one costs one trace tile of sample pixels.
+      const side = Math.max(16, Math.floor(tile / 8));
+      const total = Math.ceil(run.width / side) * Math.ceil(run.height / side);
+      const bound = Math.max(1, Math.floor((k * run.width * run.height) / (side * side * 64)));
+      let guideDrawn = 0;
+      for (const [i, step] of run.steps.entries()) {
+        guideDrawn += step.guide;
+        expect(step.guide, `guide tiles in step ${i}`).toBeLessThanOrEqual(bound);
+        if (step.done === 0) {
+          expect(step.drawn, `step ${i} draws no sample`).toBe(0);
+          expect(step.other, `step ${i} traces and presents nothing`).toBe(0);
+          expect(step.guiding, `step ${i} is a guide step`).toBe(true);
+        } else {
+          expect(guideDrawn, `the guide is complete when sample ${step.done} is drawn`).toBe(total);
+        }
+      }
+      expect(guideDrawn).toBe(total);
+      expect(run.steps.filter((step) => step.drawn === 0 && !step.guiding)).toHaveLength(1);
+      expect(run.steps[run.steps.length - 1]!.done).toBe(16);
+      expect(decodePng(await readPng(page, info)).data.equals(reference), 'bytes of the one-step reference').toBe(true);
+    });
+  }
+
+  test('a context lost and restored in the middle of the guide redraws the whole guide', async ({ page }) => {
+    const reference = await referencePixels(page, TURNTABLE_X2_DENOISED);
+    const query = 'variant=turntable-y030&seed=1&samples=16&supersample=2&denoise=1&track=1';
+    const info = await openFixture(page, `/pt.html?${query}`);
+    const total = await page.evaluate(async () => {
+      const ptc = window.__msFixture!.pt!;
+      ptc.restart();
+      ptc.drawCounts();
+      for (let i = 0; i < 3; i++) ptc.step(1);
+      const partial = ptc.drawCounts().guide;
+      await ptc.lose();
+      await ptc.restore();
+      ptc.drawCounts();
+      while (ptc.step(1) > 0 || ptc.guiding);
+      return { partial, redrawn: ptc.drawCounts().guide, samplesDone: ptc.samplesDone };
+    });
+    // 512 x 512 traced pixels in guide tiles of 32: 256, whatever was drawn before the loss.
+    expect(total.partial).toBeGreaterThan(0);
+    expect(total.partial).toBeLessThan(256);
+    expect(total).toMatchObject({ redrawn: 256, samplesDone: 16 });
+    expect(decodePng(await readPng(page, info)).data.equals(reference), 'after a restore during the guide').toBe(true);
   });
 
   test('a noise threshold stops at a checkpoint at or under it; a lower one stops later; none draws all', async ({
@@ -342,15 +411,18 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
       const started = ptc.tryQuality({ supersample: 2, denoise: true });
       const read = () => ({ ...ptc.progress, running: ptc.running });
       const before = read();
-      ptc.step(8);
+      // The guide of a denoised request takes this step's budget (it is spread over steps), so no sample yet.
+      const guideOnly = { drawn: ptc.step(8), guiding: ptc.guiding };
+      while (ptc.samplesDone < 8) ptc.step(1);
       const partway = read();
-      while (ptc.step(8) > 0);
-      return { started, before, partway, done: read() };
+      while (ptc.step(8) > 0 || ptc.guiding);
+      return { started, before, guideOnly, partway, done: read() };
     });
     console.log(`[pt quality] progress: ${JSON.stringify(stages)}`);
     expect(stages.started).toBe('ok');
     expect(stages.before).toMatchObject({ samplesDone: 0, supersample: 2, noise: null, converged: false });
     expect(stages.before.remainingMs).toBeNull();
+    expect(stages.guideOnly).toEqual({ drawn: 0, guiding: true });
     expect(stages.partway).toMatchObject({ samplesDone: 8, targetSamples: 32, supersample: 2, running: true });
     expect(stages.partway.noise).toBeGreaterThan(0);
     expect(stages.partway.elapsedMs).toBeGreaterThan(0);

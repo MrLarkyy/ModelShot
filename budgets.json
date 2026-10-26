@@ -9,6 +9,7 @@
     "rt-load-first-frame-edges-hostile": { "max": 3500 },
     "rt-load-first-frame-edges-weld": { "max": 3500 },
     "rt-load-first-frame-200k-world": { "max": 3500 },
+    "pt-bench-128-x2-denoised-step": { "max": 1500 },
     "pt-load-200k": { "max": 10000 },
     "export-turntable-64-f4-n16": { "max": 9000 },
     "export-animation-64-f4-n16": { "max": 5000 },

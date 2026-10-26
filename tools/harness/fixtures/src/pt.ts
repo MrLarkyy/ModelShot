@@ -8,7 +8,7 @@ import {
   type SetSceneOptions,
 } from '@modelshot/pathtracer';
 import { cameraProjection, cameraView, mat4Multiply, type SceneDocument } from '@modelshot/scene';
-import { installSampleBench, installSampleReadout, installSceneBench } from './bench';
+import { installSampleBench, installSampleReadout, installSceneBench, installStepBench } from './bench';
 import { readDrawingBufferBase64 } from './context';
 import type { MsFixture, PtControls, PtProbe } from './fixtureApi';
 import { encodeRgbaPng } from './encodeRgbaPng';
@@ -184,7 +184,7 @@ async function start(): Promise<void> {
   const probes = (): PtProbe[] => computePtProbes(doc, sceneProbes(view.scene), (p) => project(...p));
   const render = (): number => {
     tracer.start({ seed, samples, ...quality });
-    while (tracer.step(batch) > 0);
+    while (tracer.step(batch) > 0 || tracer.guiding);
     return tracer.samplesDone;
   };
 
@@ -212,8 +212,15 @@ async function start(): Promise<void> {
 
   installSampleBench(api, gl, (count) => {
     tracer.start({ seed, samples: count, ...quality });
-    while (tracer.step(count) > 0);
+    while (tracer.step(count) > 0 || tracer.guiding);
   });
+  installStepBench(
+    api,
+    gl,
+    (count) => tracer.start({ seed, samples: count, ...quality }),
+    () => tracer.step(1),
+    () => tracer.guiding,
+  );
   installSceneBench(api, gl, async () => {
     doc = sceneOf('large-order');
     const loaded = await tracer.setScene(doc, { shadowCatcher: view.catcher });
@@ -278,7 +285,12 @@ async function start(): Promise<void> {
     livePrograms: () => tracker?.livePrograms() ?? -1,
     openBitmaps: () => tracker?.openBitmaps() ?? -1,
     render,
+    restart: () => tracer.start({ seed, samples, ...quality }),
     step: (maxSamples) => tracer.step(maxSamples),
+    get guiding() {
+      return tracer.guiding;
+    },
+    drawCounts: () => tracker?.drawCounts() ?? { guide: 0, other: 0 },
     cancelAfter: (count) => {
       tracer.start({ seed, samples, ...quality });
       tracer.step(count);

@@ -31,7 +31,7 @@ export async function renderFrame(
     if (renderer.samplesDone < done) throw contextLost();
     done = renderer.samplesDone;
     onSamples(done);
-    if (drawn === 0 || done >= request.samples) break;
+    if ((drawn === 0 && !renderer.guiding) || done >= request.samples) break;
     await yieldToEventLoop();
   }
   if (renderer.contextLost) throw contextLost();

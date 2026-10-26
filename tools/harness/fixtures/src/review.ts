@@ -121,7 +121,7 @@ async function run(): Promise<void> {
     await tracer.setScene(doc);
     tracer.setCamera(view);
     tracer.start({ seed: SEED, samples });
-    while (tracer.step(4) > 0) {
+    while (tracer.step(4) > 0 || tracer.guiding) {
       status.textContent = `Rendering ${name} under ${look.name}: ${tracer.samplesDone} / ${samples} samples`;
       await nextTask();
     }

@@ -706,7 +706,10 @@ widened.
   silhouette pixels); `accumulationSize` 512 x 512 and `progress.supersample` 2; the Marketplace backdrop at 2x in
   64-pixel tiles within 0.5 levels of its TS mirror (limit 2, as at 1x).
 - **Determinism**: the denoised 2x turntable (16 samples) gives the bytes of a one-pass reference rendered in the same
-  run in batches of 7 and 3, in 64-pixel tiles, and after a context loss and restore.
+  run in batches of 7, 3 and 1, in 64-pixel tiles, and after a context loss and restore, also one in the middle of the
+  guide (MS-56; the whole guide, 256 tiles, is drawn again). The guide is spread over steps: guide draws per `step(1)`
+  and `step(4)`, tile 256 and 64, stay within the budget bound and add up to every guide tile, no sample is drawn
+  before the last, a guide-only step returns 0 with `guiding` true and traces and presents nothing.
 - **Convergence** (64 x 64 closeup, maximum 1024 samples): `noise=0.1` stops at 368 with a noise of 0.0968, `noise=0.07`
   at 800 with 0.0686, each converged, not running, remaining 0, at a multiple of 16; denoised without a threshold
   draws all 1024. The plan's thresholds 0.05 and 0.0125 were for a 256-pixel closeup, which does not reach 0.05 within
@@ -996,6 +999,17 @@ round 7); its max was 750 ms then.
   resolve at the end, until the GPU finished, median of 3. Local SwiftShader median 7209 ms (one bench run, where
   `pt-bench-128-n256` measured 4703; 6657 and 4886 with RGBA32F filter images and lazy programs, round 2); max 73 000 ms is 10x, rounded up, as for `pt-bench-128-n256`, until a CI
   artefact allows 3-4x the CI median (the plan's 1.5x would fail on runners 3-5x slower than this machine).
+- `frameTimeMs.pt-bench-128-x2-denoised-step` (MS-56): the same request (64 samples at 2x, denoised) drawn by `step(1)`
+  calls, each timed until the GPU finished (a one-pixel read of the bound framebuffer, as a guide-only step presents
+  nothing), the longest step, median of 3 after one untimed run. Local SwiftShader, before the guide was spread: the first
+  step drew the whole guide, 2515, 2384, 2592 and 2477 ms in four runs (the guide plus the first sample, program
+  already linked). After: 251, 262, 253 and 264 ms, the slowest steps being a checkpoint's noise estimate and resolve
+  (about 250 ms) and single guide tiles (up to about 240 ms where a tile meets partial texels); the guide steps take 5 to
+  240 ms. Max 1500 ms, not the 10x of the median (2600 ms) that the other rows use: that would be above the 2.4 s of
+  the unspread guide and catch nothing; 1500 ms is about 6x the median, inside the 3-5x of a slower runner, and under
+  the old step. The browser test `a denoised step(k) draws a bounded number of guide tiles` counts guide draws per
+  step (`track=1`): never more than `max(1, floor(k x pixels / (side^2 x 64)))`, in total `ceil(W/side) x ceil(H/side)`,
+  and no sample, no trace draw and no present before the last one.
 - `frameTimeMs.pt-load-200k`: `setScene` of the generated 200 000-triangle scene of
   `rt-load-first-frame-200k-order` (validate, flatten, BVH build in JavaScript, upload) plus its first sample. Local
   SwiftShader 1554, 919 and 941 ms; max 10 000 ms (10x the middle run, rounded up). Since MS-40 the flatten and BVH

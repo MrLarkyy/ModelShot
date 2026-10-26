@@ -222,6 +222,9 @@ function recording(
     resize: (size) => tracer.resize(size),
     start: (request) => tracer.start(request),
     step: (max) => tracer.step(max),
+    get guiding() {
+      return tracer.guiding;
+    },
     cancel: () => tracer.cancel(),
     readImage: () => {
       const image = tracer.readImage();

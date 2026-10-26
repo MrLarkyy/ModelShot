@@ -57,6 +57,7 @@ import type { PathTracerWarning } from './PathTracerWarning';
 import { isCheckpoint, sampleTiles, samplesToDraw, type Tile } from './sampleSchedule';
 import { noiseQuantile } from './noiseQuantile';
 import { checkRenderQuality, supersampledScale, type RenderQuality, type TargetLimits } from './renderQuality';
+import { planGuideStep } from './guideSchedule';
 import { estimateRemainingMs, type RenderProgress } from './renderProgress';
 import { ResolveTargets, type ResolveLayout } from './resolveTargets';
 import { requireExactAccumulation } from './requireExactAccumulation';
@@ -224,8 +225,8 @@ export class PathTracer {
   /** The supersampling scale the current request traces at: set by `start`, `resize` and a restore, never on a read. */
   private scale = 1;
   private done = 0;
-  /** The denoiser's guides are drawn for the current request. */
-  private guided = false;
+  /** Guide tiles of the denoiser drawn so far for the current request; the guide is complete at the last one. */
+  private guideNext = 0;
   /** The 0.99 quantile of the noise estimate and the sample count it was measured at. */
   private noise: number | null = null;
   private noiseSamples = 0;
@@ -331,6 +332,15 @@ export class PathTracer {
   /** `step()` would draw more: a request is running, not cancelled, not converged and not complete. */
   get running(): boolean {
     return this.request !== null && !this.cancelled && !this.converged && this.done < this.request.samples;
+  }
+
+  /**
+   * A denoised request is still drawing its guide, or has finished it and not yet drawn a sample: `step()` may return
+   * 0 and the request is not done. False whenever `step()` would draw nothing (no camera, lost context, complete,
+   * cancelled, disposed).
+   */
+  get guiding(): boolean {
+    return this.canStep() && this.quality.denoise && this.done === 0;
   }
 
   /** Where the current request stands, with an estimate of the time left; times never change a pixel. */
@@ -663,7 +673,9 @@ export class PathTracer {
 
   /**
    * Draws up to `maxSamples` more samples of the current request (never past its count, nor past the checkpoint where
-   * it converged), presents the image and returns how many it drew. Supersampled or denoised, the image shown is the
+   * it converged), presents the image and returns how many it drew. A denoised request first draws its guide, at most
+   * `maxSamples` samples' worth of pixels per step (at least one guide tile), and presents nothing until the first
+   * sample: such a step returns 0 while `guiding` is true. Supersampled or denoised, the image shown is the
    * one resolved at the latest checkpoint or at the end. A no-op returning 0 without a camera, when complete,
    * converged, cancelled, while the context is lost or after `dispose()`. The first step of a request that needs a
    * quality program links it: a shader failure there throws `PathTracerError` `SHADER_COMPILE` or `SHADER_LINK`.
@@ -671,33 +683,49 @@ export class PathTracer {
   step(maxSamples = 1): number {
     const gpu = this.gpu;
     const request = this.request;
-    if (!gpu || !request || !this.camera || this.cancelled || this.lost || this.disposed || this.gl.isContextLost()) {
-      return 0;
-    }
+    const view = this.camera;
+    if (!gpu || !request || !view || !this.canStep()) return 0;
     const count = this.converged ? 0 : samplesToDraw(this.done, request.samples, maxSamples);
     if (count === 0) return 0;
     const targets = this.ensureTargets(gpu);
     this.startedAt ??= performance.now();
     const extra = gpu.resolve;
-    const camera = cameraUniforms(this.camera, this.canvas.width / this.canvas.height);
+    const camera = cameraUniforms(view, this.canvas.width / this.canvas.height);
     const tiles = sampleTiles(targets.width, targets.height, this.tileSize);
     const gl = this.gl;
-    if (extra?.guide && !this.guided) {
-      const guide = gpu.programs.get('guide');
-      this.bindScene(gpu, guide, camera, request.seed, targets);
-      gl.uniform1ui(guide.uniform('u_guideRays'), GUIDE_RAYS);
-      gl.uniform1ui(guide.uniform('u_partialGuideRays'), PARTIAL_GUIDE_RAYS);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, extra.guide.framebuffer);
+    let toDraw = count;
+    if (extra?.guide) {
       const guideTile = Math.max(16, Math.floor(this.tileSize / GUIDE_TILE_DIVISOR));
-      this.drawTiles(sampleTiles(targets.width, targets.height, guideTile));
-      this.guided = true;
+      const guideTiles = sampleTiles(targets.width, targets.height, guideTile);
+      const plan = planGuideStep({
+        tiles: guideTiles,
+        next: this.guideNext,
+        samples: count,
+        budget: maxSamples,
+        pixels: targets.width * targets.height,
+      });
+      if (plan.guideTiles > 0) {
+        const guide = gpu.programs.get('guide');
+        this.bindScene(gpu, guide, camera, request.seed, targets);
+        gl.uniform1ui(guide.uniform('u_guideRays'), GUIDE_RAYS);
+        gl.uniform1ui(guide.uniform('u_partialGuideRays'), PARTIAL_GUIDE_RAYS);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, extra.guide.framebuffer);
+        this.drawTiles(guideTiles.slice(this.guideNext, this.guideNext + plan.guideTiles));
+        this.guideNext += plan.guideTiles;
+      }
+      toDraw = plan.samples;
+      if (toDraw === 0) {
+        this.unbindTextures(UNIT_COVERAGE + 1);
+        this.lastStepAt = performance.now();
+        return 0;
+      }
     }
     this.bindTrace(gpu, camera, request.seed, targets);
     const trace = gpu.programs.trace;
     const threshold = this.quality.noiseThreshold;
     let drawn = 0;
     let checkpoint = false;
-    while (drawn < count) {
+    while (drawn < toDraw) {
       gl.uniform1ui(trace.uniform('u_sample'), this.done);
       gl.bindFramebuffer(gl.FRAMEBUFFER, targets.next.framebuffer);
       gl.activeTexture(gl.TEXTURE0 + UNIT_SUM);
@@ -949,6 +977,18 @@ export class PathTracer {
     return targets;
   }
 
+  /** The preconditions of a `step` that draws: a request, a camera, a live context, not cancelled, not converged, not complete. */
+  private canStep(): boolean {
+    return (
+      this.running &&
+      this.camera !== null &&
+      this.gpu !== null &&
+      !this.lost &&
+      !this.disposed &&
+      !this.gl.isContextLost()
+    );
+  }
+
   /** Back to sample 0 of the current request (scene, camera or size changed, or a new request). */
   private restart(): void {
     this.resetAccumulation();
@@ -957,7 +997,7 @@ export class PathTracer {
 
   private resetAccumulation(): void {
     this.done = 0;
-    this.guided = false;
+    this.guideNext = 0;
     this.noise = null;
     this.noiseSamples = 0;
     this.converged = false;

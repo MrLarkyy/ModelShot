@@ -11,6 +11,8 @@ export interface MsFixture {
   readRGBA: () => string;
   renderFrames?: (count: number) => number[];
   timeToSamples?: (samples: number) => number;
+  /** Draws a request of `samples` one `step(1)` at a time; the longest step in ms, each timed until the GPU finished. */
+  maxStepMs?: (samples: number) => number;
   /** Load-and-first-frame bench (rt.html): milliseconds until the GPU finished. */
   /** setScene and the first frame of a scene (the realtime fixture: default `large-order`, else that scene), in ms. */
   timeScene?: (scene?: string) => Promise<number>;
@@ -161,8 +163,14 @@ export interface PtControls {
   openBitmaps: () => number;
   /** Restarts the page's request and draws it to the end in the page's batches; returns the samples done. */
   render: () => number;
+  /** Starts the page's request again, drawing nothing. */
+  restart: () => void;
   /** One `step(maxSamples)` of the current request; returns the samples it drew. */
   step: (maxSamples: number) => number;
+  /** `PathTracer.guiding`: a denoised request is in its guide phase, where a step may draw 0 samples. */
+  readonly guiding: boolean;
+  /** Draw calls since the last call, guide and other; zeros unless the page was opened with track=1. */
+  drawCounts: () => { guide: number; other: number };
   /** Restarts the request, draws `samples`, cancels, then steps again: samples done after the cancel and after. */
   cancelAfter: (samples: number) => { cancelled: number; afterStep: number };
   /** WEBGL_lose_context: resolves once the context is lost, or restored. */

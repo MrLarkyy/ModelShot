@@ -114,7 +114,7 @@ export class RenderSession {
           if (tracer.contextLost) throw new Error('The graphics context was lost during the render.');
           const started = performance.now();
           do {
-            if (tracer.step(1) === 0) break;
+            if (tracer.step(1) === 0 && !tracer.guiding) break;
           } while (performance.now() - started < SLICE_MS);
           const { samplesDone, targetSamples } = tracer.progress;
           this.host.onProgress(samplesDone, targetSamples);
