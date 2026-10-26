@@ -18,6 +18,13 @@ export interface LoadOptions {
   readonly createWorker?: () => LoadWorker;
   /** E2E build only: the worker never answers. */
   readonly hang?: boolean;
+  /** Stops the read: the worker is killed and the load rejects with the signal's reason (an `AbortError`). */
+  readonly signal?: AbortSignal;
+}
+
+function abortReason(signal: AbortSignal | undefined): Error {
+  const reason: unknown = signal?.reason;
+  return reason instanceof Error ? reason : new DOMException('The model read was aborted.', 'AbortError');
 }
 
 function startWorker(): LoadWorker {
@@ -25,10 +32,15 @@ function startWorker(): LoadWorker {
 }
 
 // Parses in a worker: the loaders are synchronous, so a hostile file could hang the tab. The worker is killed after
-// `timeoutMs`, which is the only reliable stop; every load gets a fresh one.
+// `timeoutMs` or on abort, which is the only reliable stop; every load gets a fresh one.
 export function loadModel(request: LoadRequest, options: LoadOptions = {}): Promise<LoadedModel> {
   const timeoutMs = options.timeoutMs ?? LOAD_TIMEOUT_MS;
+  const { signal } = options;
   return new Promise<LoadedModel>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortReason(signal));
+      return;
+    }
     let worker: LoadWorker;
     try {
       worker = (options.createWorker ?? startWorker)();
@@ -36,11 +48,16 @@ export function loadModel(request: LoadRequest, options: LoadOptions = {}): Prom
       reject(new IntakeError('LOAD_FAILED', `The model reader could not start: ${String(error)}`));
       return;
     }
+    let done = false;
     const finish = (settle: () => void): void => {
+      if (done) return;
+      done = true;
       clearTimeout(timer);
+      signal?.removeEventListener('abort', aborted);
       worker.terminate();
       settle();
     };
+    const aborted = (): void => finish(() => reject(abortReason(signal)));
     const timer = setTimeout(
       () =>
         finish(() =>
@@ -64,6 +81,7 @@ export function loadModel(request: LoadRequest, options: LoadOptions = {}): Prom
       finish(() => reject(new IntakeError('LOAD_FAILED', 'The model reader stopped working.')));
     worker.addEventListener('error', crashed);
     worker.addEventListener('messageerror', crashed);
+    signal?.addEventListener('abort', aborted, { once: true });
     worker.postMessage({ request, arms: options.arms ?? 'classic', ...(options.hang ? { hang: true } : {}) });
   });
 }

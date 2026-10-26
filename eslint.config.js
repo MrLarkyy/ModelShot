@@ -65,7 +65,7 @@ export default defineConfig(
     },
   },
   {
-    files: ['packages/*/scripts/**/*.mjs', 'tools/wiki/**/*.mjs'],
+    files: ['packages/*/scripts/**/*.mjs', 'packages/*/e2e/**/*.mjs', 'tools/wiki/**/*.mjs'],
     languageOptions: { globals: globals.node },
   },
   {
