@@ -6,7 +6,7 @@ const ci = Boolean(process.env['CI']);
 const live = process.env['MS_DEPLOY_URL'] ?? '';
 const baseURL = live === '' ? `http://127.0.0.1:${ports.site}/ModelShot/` : live.replace(/\/*$/, '/');
 
-// Without MS_DEPLOY_URL the site is the assembled dist (pnpm -r build) served under /ModelShot/ the way GitHub Pages
+// Without MS_DEPLOY_URL the site is the assembled dist (built by the web server command below) served under /ModelShot/ the way GitHub Pages
 // serves it; with it, the deployed site, once its app/sw.js equals the one in dist (e2e/awaitDeploy.ts). Either way the
 // host page that embeds the viewer is a local server on another origin. The browser runs WebGL on SwiftShader like
 // the harness and the app.
