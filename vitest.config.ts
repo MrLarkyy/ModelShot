@@ -27,6 +27,15 @@ export default defineConfig({
       },
       {
         test: {
+          name: 'deploy',
+          root: 'tools/deploy',
+          include: ['test/**/*.test.ts'],
+          testTimeout: 60_000,
+          environment: 'node',
+        },
+      },
+      {
+        test: {
           name: 'wiki',
           root: 'tools/wiki',
           include: ['test/**/*.test.mjs'],

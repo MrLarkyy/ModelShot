@@ -1,4 +1,5 @@
 import { fileURLToPath } from 'node:url';
+import { devWithoutCsp } from '@modelshot/brand/devWithoutCsp';
 import { defineConfig } from 'vite';
 import { inlineBrandSvg } from './src/build/inlineBrandSvg.ts';
 
@@ -7,8 +8,11 @@ function brandAsset(path: string): string {
 }
 
 export default defineConfig({
+  // Relative URLs: one build works under /ModelShot/ on GitHub Pages and at a domain root (docs/hosting.md).
+  base: './',
   publicDir: '../brand/assets/public',
   plugins: [
+    devWithoutCsp(),
     inlineBrandSvg({
       mark: brandAsset('logo/mark.svg'),
       'hero-island': brandAsset('illustrations/hero-island.svg'),

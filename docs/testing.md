@@ -5,7 +5,7 @@
 
 1. `pnpm test:unit`: Vitest, every package plus `tools/harness/test` (comparator, golden store, budgets, bundle size,
    model-view helpers) and `tools/wiki/test` (page table, link and anchor check over the real docs, publish against a local bare repo).
-2. `pnpm test:browser`: Playwright in a pinned headless Chromium on software WebGL (SwiftShader), `tools/harness`, the landing page's suite in `packages/site` (its own Playwright config, docs/site.md) and the app's in `packages/app` (its own config, docs/app.md).
+2. `pnpm test:browser`: Playwright in a pinned headless Chromium on software WebGL (SwiftShader), `tools/harness`, the landing page's suite in `packages/site` (its own Playwright config, docs/site.md), the app's in `packages/app` (its own config, docs/app.md), the embed's in `packages/embed` and the deploy suite in `tools/deploy` (below).
 
 Run `pnpm browsers` once per machine (and after a Playwright version bump) to install the browser. Playwright is pinned
 to an exact version in `tools/harness/package.json`, which pins the Chromium revision.
@@ -154,6 +154,12 @@ bodies with and without `Content-Length`, a stalled body, a non-model) and lists
 The specs cover the element and a plain iframe, lazy loading, CORS and other download errors, limits with the host
 page staying responsive, the requests made and the background colour per look; no goldens (pixel checks are coarse
 differences after "Preview lit."). See [embed.md](embed.md#tests).
+
+The deploy suite (`tools/deploy/e2e`, `pnpm --filter @modelshot/deploy run test:browser`, part of the root
+`test:browser`) builds `@modelshot/deploy...` itself, then serves the assembled `tools/deploy/dist` on `MS_DEPLOY_PORT`, else a
+per-checkout port, under `/ModelShot/` like GitHub Pages, and a host page on that port plus 2000. With `MS_DEPLOY_URL`
+set it serves only the host page and tests the deployed site instead; `pages.yml` runs it that way after each deploy (`ci.yml` does not run it yet).
+See [hosting.md](hosting.md#tests).
 
 ## Goldens
 

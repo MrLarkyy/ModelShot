@@ -23,7 +23,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test:browser": "playwright test",
-    "serve:e2e": "vite build --mode e2e --base /app/ && vite preview --base /app/ --strictPort --host 127.0.0.1"
+    "serve:e2e": "vite build --mode e2e && vite preview --base /app/ --strictPort --host 127.0.0.1"
   },
   "dependencies": {
     "@modelshot/brand": "workspace:*",

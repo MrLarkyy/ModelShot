@@ -98,6 +98,12 @@ export const groups = [
         description: 'opening models, panels, shortcuts, render and export, local state, offline, limits',
       },
       {
+        file: 'hosting.md',
+        page: 'Hosting',
+        title: 'Hosting',
+        description: 'GitHub Pages, layout and URLs, CSP, caching, the deploy workflow and its opt-in switch',
+      },
+      {
         file: 'embed.md',
         page: 'Embed',
         title: 'Embed',
