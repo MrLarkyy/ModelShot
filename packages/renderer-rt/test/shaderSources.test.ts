@@ -202,6 +202,8 @@ describe('shader sources', () => {
         // Taken first in prepareShading, in uniform control flow: it reads screen derivatives.
         expect(fragment, label).toContain('void prepareShading() {\n  bool offMesh = silhouetteCrossed();');
         expect(fragment, label).toContain('if (offMesh || any(lessThan(edgeDistances, 0.5 * edgeFootprint))) {');
+        // A 0.25 px step is a sample pattern (an RTX 3080 kept 24 pixels at the centroid with a 0.25 bound).
+        expect(fragment, label).toContain('bool mapped = maxSkew < 1.0 && abs(det) > 0.0625;');
         if (depthKey === 'raster') {
           expect(vertex, label).toMatch(/^flat out uint v_silhouetteEdges;$/m);
           expect(fragment, label).toMatch(/^flat in uint v_silhouetteEdges;$/m);

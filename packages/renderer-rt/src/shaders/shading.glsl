@@ -48,7 +48,9 @@ void prepareShading() {
   // Neighbouring centroid samples lie up to 0.75 px off the unit steps dFdx and dFdy assume, which skews the footprint
   // (not the direction: distance and position are differenced over the same steps). Where the steps between the
   // samples' screen positions are not unit ones, toUnit (their matrix inverted) maps the derivatives back to unit
-  // steps. Sample offsets lie within half a pixel, so a step 1 px or more off is no sample pattern: kept as it is.
+  // steps. Sample offsets lie within half a pixel, so a step 1 px or more off is no sample pattern: kept as it is. Steps
+  // shortened to 0.25 px by opposite offsets are one (an RTX 3080's 4x pattern gives a determinant of 0.25 there):
+  // only a nearly singular matrix (below 1/16) is not.
   vec4 clip = u_viewProjection * vec4(v_worldPosition, 1.0);
   vec2 screen = (clip.xy / clip.w * 0.5 + 0.5) * u_viewportSize;
   vec2 sx = dFdx(screen);
@@ -56,7 +58,7 @@ void prepareShading() {
   vec4 skew = abs(vec4(abs(sx.x) - 1.0, sx.y, sy.x, abs(sy.y) - 1.0));
   float maxSkew = max(max(skew.x, skew.y), max(skew.z, skew.w));
   float det = sx.x * sy.y - sy.x * sx.y;
-  bool mapped = maxSkew < 1.0 && abs(det) > 0.25;
+  bool mapped = maxSkew < 1.0 && abs(det) > 0.0625;
   mat2 toUnit = maxSkew > 0.01 && mapped ? mat2(sy.y, -sx.y, -sy.x, sx.x) / det : mat2(1.0);
   edgeFootprint = abs(ddx * toUnit[0][0] + ddy * toUnit[0][1]) + abs(ddx * toUnit[1][0] + ddy * toUnit[1][1]);
   // Within 0.01 px nothing moves. Beyond, the step also takes up the rasterizer's vertex snapping (SwiftShader snaps to
