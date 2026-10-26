@@ -1,5 +1,5 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "noEmit": true },
-  "include": ["src", "test"]
+  "compilerOptions": { "noEmit": true, "allowImportingTsExtensions": true, "types": ["node", "vite/client"] },
+  "include": ["src", "test", "e2e", "*.config.ts"]
 }

@@ -24,6 +24,11 @@ uploaded ([privacy](#privacy)).
 
 The path tracer and the export code are loaded on first use and share one tracer (one context, one BVH).
 
+The embed reuses the viewer and the intake: `@modelshot/app/viewer` (`Viewer`) and `@modelshot/app/intake`
+(`checkIntake`, `groupFiles`, `loadModel`, `IntakeError`) are package exports for it ([embed.md](embed.md)).
+`loadModel` takes an optional `AbortSignal`: on abort it kills the read worker and rejects with an `AbortError` (the
+embed aborts a read its latest parameters no longer ask for); the app passes none.
+
 ## Files and limits
 
 At most 32 files, 256 MiB in total, extensions `.bbmodel .gltf .glb .bin .obj .mtl .png`. Error codes, shown in a

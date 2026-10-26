@@ -16,6 +16,19 @@ export const DEFAULT_PITCH_DEG = 20;
 export const DEFAULT_FOV_DEG = 35;
 const BAKE_SAMPLES = 64;
 
+/** The camera a new model starts at and `resetView` returns to. */
+export interface ViewerView {
+  readonly yawDeg: number;
+  readonly pitchDeg: number;
+  readonly fovYDeg: number;
+}
+
+export const DEFAULT_VIEW: ViewerView = {
+  yawDeg: DEFAULT_YAW_DEG,
+  pitchDeg: DEFAULT_PITCH_DEG,
+  fovYDeg: DEFAULT_FOV_DEG,
+};
+
 export interface ViewerOptions {
   /** Short messages about the lighting bake and the context. */
   readonly onStatus: (message: string) => void;
@@ -24,11 +37,21 @@ export interface ViewerOptions {
   /** The camera or scene shown changed, so a finished render no longer matches. */
   readonly onChange: () => void;
   readonly preserveDrawingBuffer?: boolean;
+  /** The starting view; the app's default. */
+  readonly view?: ViewerView;
+  /**
+   * A light bake of the shown document started (a new document or look); `onBakeSettled` follows unless another bake
+   * starts first. Both are called for the latest bake only.
+   */
+  readonly onBakeStarted?: () => void;
+  /** A light bake settled: `lit` when the preview carries its light, false when it shows unbaked light. */
+  readonly onBakeSettled?: (lit: boolean) => void;
 }
 
 // The realtime preview of the app: renderer, orbit camera and input, light bake. No panel DOM, so the embed reuses it.
 export class Viewer {
-  readonly orbit = new OrbitController({ yawDeg: DEFAULT_YAW_DEG, pitchDeg: DEFAULT_PITCH_DEG });
+  readonly orbit: OrbitController;
+  private fovYDeg: number;
   private doc: SceneDocument | null = null;
   private bounds: SceneBounds | null = null;
   private look: LookPreset = DEFAULT_LOOK;
@@ -44,6 +67,9 @@ export class Viewer {
     readonly renderer: RealtimeRenderer,
     private readonly options: ViewerOptions,
   ) {
+    const view = options.view ?? DEFAULT_VIEW;
+    this.fovYDeg = view.fovYDeg;
+    this.orbit = new OrbitController({ yawDeg: view.yawDeg, pitchDeg: view.pitchDeg, fovYDeg: view.fovYDeg });
     this.cleanups.push(
       bindOrbitInput(canvas, this.orbit, { onChange: () => this.changed() }),
       observeCanvasSize(canvas, (size) => {
@@ -82,8 +108,8 @@ export class Viewer {
     if (!result.applied || this.disposed) return result;
     this.doc = doc;
     if (reframe) {
-      // A new model starts at the default view: perspective, 35 degrees, the default angles.
-      this.orbit.setState({ projection: 'perspective', fovYDeg: DEFAULT_FOV_DEG });
+      // A new model starts at the starting view: perspective, its field of view and angles.
+      this.orbit.setState({ projection: 'perspective', fovYDeg: this.fovYDeg });
       this.bounds = sceneBounds(doc);
       this.orbit.reset(this.bounds);
     }
@@ -92,13 +118,19 @@ export class Viewer {
     return result;
   }
 
+  /** Changes the angles `resetView` and the angles and field of view the next model starts at; the camera stays. */
+  setView(view: ViewerView): void {
+    this.fovYDeg = view.fovYDeg;
+    this.orbit.setInitialAngles(view.yawDeg, view.pitchDeg);
+  }
+
   /** Frames the model again from the current angles. */
   frameModel(): void {
     this.orbit.frame();
     this.changed();
   }
 
-  /** The default view of the model (the initial angles, framed to fit). */
+  /** The starting view of the model (the initial angles, framed to fit). */
   resetView(): void {
     this.orbit.reset(this.bounds);
     this.changed();
@@ -175,8 +207,13 @@ export class Viewer {
     if (!doc) return;
     const generation = ++this.bakeGeneration;
     const look = this.look;
+    this.options.onBakeStarted?.();
     const baker = await this.lightBaker();
-    if (!baker || generation !== this.bakeGeneration || this.disposed) return;
+    if (generation !== this.bakeGeneration || this.disposed) return;
+    if (!baker) {
+      this.options.onBakeSettled?.(false);
+      return;
+    }
     this.options.onStatus('Lighting the preview…');
     try {
       const result = await baker.bake(doc, {
@@ -186,14 +223,20 @@ export class Viewer {
           if (generation === this.bakeGeneration && this.renderer.setLighting(progress.lighting)) this.requestRender();
         },
       });
-      if (!result.applied || generation !== this.bakeGeneration) return;
+      if (generation !== this.bakeGeneration) return;
+      if (!result.applied) {
+        this.options.onBakeSettled?.(false);
+        return;
+      }
       if (result.lighting && this.renderer.setLighting(result.lighting)) this.requestRender();
       this.options.onStatus('Preview lit.');
+      this.options.onBakeSettled?.(true);
     } catch (error) {
       if (generation === this.bakeGeneration) {
         this.options.onStatus(
           `The preview shows unbaked light: ${error instanceof Error ? error.message : String(error)}`,
         );
+        this.options.onBakeSettled?.(false);
       }
     }
   }
