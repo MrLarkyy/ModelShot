@@ -219,8 +219,9 @@ context restore; the failure comes before any target is made or cleared.
    nothing, as no sample exists yet. Every checkpoint and the final resolve come after the whole guide, and a guide
    pixel depends only on the seed and the pixel, so the bytes are those of drawing it in one step. A restart or a
    context restore resets the cursor and redraws the whole guide. A partial-texel tile (up to 1024 rays a pixel) can
-   cost up to about 1.6 times its charge; the per-step bench row below measures it. `step(1)` of a 128 × 128 request
-   at 2x takes 64 steps of one guide tile of 32 pixels instead of one step of the whole guide.
+   cost up to 16 times its charge (a pixel goes from 64 to 1024 rays); the per-step bench row below measures it.
+   `step(1)` of a 128 × 128 request
+   at 2x takes 64 steps of one guide tile of 32 × 32 pixels instead of one step of the whole guide.
 4. **Denoise** (`denoise.frag`, 5 iterations, taps 1, 2, 4, 8, 16 pixels apart): an edge-avoiding à-trous filter
    (Dammertz et al. 2010) with SVGF's edge-stopping (Schied et al. 2017) and none of its temporal part, on the
    demodulated radiance (the mean over the guide albedo). Weights: the 5-tap B3 spline, times exp(−|Δalbedo|²/0.5²),

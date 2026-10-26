@@ -428,7 +428,8 @@ export class App {
   private render(): void {
     if (!this.open || this.exporting || this.renderSession.busy) return;
     this.notices.clearAlert();
-    this.resultCanvas.hidden = false;
+    // The canvas keeps the previous render (preserveDrawingBuffer): shown again once this one has its first sample.
+    this.resultCanvas.hidden = true;
     this.progressBox.hidden = false;
     this.progress.value = 0;
     this.setActionsEnabled();
@@ -437,6 +438,7 @@ export class App {
   }
 
   private renderProgress(done: number, target: number): void {
+    if (done > 0) this.resultCanvas.hidden = false;
     this.progress.value = target > 0 ? done / target : 0;
     this.notices.status(`Rendering: ${done} of ${target} samples.`);
   }
@@ -444,6 +446,7 @@ export class App {
   private renderDone(warnings: readonly string[]): void {
     // A count of finished renders for the tests to wait on; a page has no use for it.
     this.resultCanvas.dataset['renders'] = String(Number(this.resultCanvas.dataset['renders'] ?? 0) + 1);
+    this.resultCanvas.hidden = false;
     this.progressBox.hidden = true;
     this.notices.status(warnings.length > 0 ? `Render done. ${warnings.join(' ')}` : 'Render done.');
     this.setActionsEnabled();

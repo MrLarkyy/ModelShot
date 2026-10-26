@@ -169,6 +169,17 @@ export interface PtControls {
   step: (maxSamples: number) => number;
   /** `PathTracer.guiding`: a denoised request is in its guide phase, where a step may draw 0 samples. */
   readonly guiding: boolean;
+  /** Cancels the current request. */
+  cancel: () => void;
+  /** Whether the default framebuffer is the one bound to FRAMEBUFFER. */
+  defaultFramebufferBound: () => boolean;
+  /**
+   * Loses the context in the middle of a request: what `step(1)` and `guiding` give straight after `loseContext()`
+   * and after the lost event.
+   */
+  loseProbe: () => Promise<{ sync: { drawn: number; guiding: boolean }; event: { drawn: number; guiding: boolean } }>;
+  /** Loses the context and restores it with the GPU rebuild failing: `step(1)` and `guiding` after the restore. */
+  failedRestoreProbe: () => Promise<{ drawn: number; guiding: boolean }>;
   /** Draw calls since the last call, guide and other; zeros unless the page was opened with track=1. */
   drawCounts: () => { guide: number; other: number };
   /** Restarts the request, draws `samples`, cancels, then steps again: samples done after the cancel and after. */

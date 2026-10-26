@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GUIDE_PIXEL_COST, planGuideStep } from '../src/guideSchedule';
+import { GUIDE_RAYS, planGuideStep } from '../src/guideSchedule';
 import { sampleTiles } from '../src/sampleSchedule';
 
 const SIZE = 256;
@@ -15,7 +15,7 @@ describe('planGuideStep', () => {
   });
 
   it('charges a full guide tile as one trace tile of the same side', () => {
-    expect(32 * 32 * GUIDE_PIXEL_COST).toBe(256 * 256);
+    expect(32 * 32 * GUIDE_RAYS).toBe(256 * 256);
     expect(planGuideStep({ tiles, next: 0, samples: 4, budget: 4, pixels: PIXELS }).guideTiles).toBe(4);
   });
 

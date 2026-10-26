@@ -79,6 +79,10 @@ export interface FakeRendererOptions {
   readonly maxSupersample?: number;
   /** Steps per frame that draw a guide only: they return 0 while `guiding` is true. */
   readonly guideSteps?: number;
+  /** The context is lost at this guide step (1-based). */
+  readonly loseAtGuideStep?: number;
+  /** The context is lost and restored at this guide step: the guide starts over, the request goes on. */
+  readonly restoreAtGuideStep?: number;
 }
 
 /**
@@ -90,7 +94,10 @@ export class FakeRenderer implements FrameRenderer {
   height = 1;
   samplesDone = 0;
   contextLost = false;
-  guiding = false;
+  /** A guide phase (`guideSteps`) is under way; false once cancelled or lost, like the tracer's. */
+  get guiding(): boolean {
+    return this.request !== null && !this.cancelled && !this.contextLost && this.inGuide;
+  }
   /** The traced width: `width` times the scale the request runs at (at most `maxSupersample`). */
   accumulationWidth = 1;
   readonly calls: string[] = [];
@@ -102,6 +109,8 @@ export class FakeRenderer implements FrameRenderer {
   private camera: SceneCamera | null = null;
   private cancelled = false;
   private guideLeft = 0;
+  private inGuide = false;
+  private guideStepsTaken = 0;
 
   constructor(private readonly options: FakeRendererOptions = {}) {}
 
@@ -134,19 +143,24 @@ export class FakeRenderer implements FrameRenderer {
     this.accumulationWidth = this.width * Math.min(request.supersample ?? 1, this.options.maxSupersample ?? 4);
     this.cancelled = false;
     this.guideLeft = this.options.guideSteps ?? 0;
-    this.guiding = this.guideLeft > 0;
+    this.inGuide = this.guideLeft > 0;
+    this.guideStepsTaken = 0;
   }
 
   step(maxSamples = 1): number {
     const request = this.request;
     if (!request || this.cancelled || this.contextLost) return 0;
     if (this.guideLeft > 0) {
+      this.guideStepsTaken++;
+      // A restore inside the guide redraws the whole guide and keeps the request; a loss ends the frame.
+      if (this.guideStepsTaken === this.options.restoreAtGuideStep) this.guideLeft = this.options.guideSteps ?? 0;
       this.guideLeft--;
+      if (this.guideStepsTaken === this.options.loseAtGuideStep) this.contextLost = true;
       return 0;
     }
     const count = Math.min(maxSamples, request.samples - this.samplesDone);
     this.samplesDone += count;
-    if (count > 0) this.guiding = false;
+    if (count > 0) this.inGuide = false;
     if (this.options.loseAtSample !== undefined && this.samplesDone >= this.options.loseAtSample) {
       this.contextLost = true;
     }

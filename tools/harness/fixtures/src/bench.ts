@@ -68,22 +68,6 @@ export function installFrameReadout(
   requestAnimationFrame(tick);
 }
 
-/** Waits for the GPU through a one-pixel read of whatever framebuffer is bound, in the format it offers. */
-function finishBound(gl: WebGL2RenderingContext): void {
-  gl.finish();
-  const format = gl.getParameter(gl.IMPLEMENTATION_COLOR_READ_FORMAT) as number;
-  const type = gl.getParameter(gl.IMPLEMENTATION_COLOR_READ_TYPE) as number;
-  const out =
-    type === gl.FLOAT
-      ? new Float32Array(4)
-      : type === gl.HALF_FLOAT
-        ? new Uint16Array(4)
-        : type === gl.UNSIGNED_BYTE
-          ? new Uint8Array(4)
-          : new Uint32Array(4);
-  gl.readPixels(0, 0, 1, 1, format, type, out);
-}
-
 /** The longest `step(1)` of a request drawn to the end, each timed until the GPU finished it. */
 export function installStepBench(
   api: MsFixture,
@@ -98,7 +82,7 @@ export function installStepBench(
     for (;;) {
       const began = performance.now();
       const drawn = step();
-      finishBound(gl);
+      finish(gl);
       longest = Math.max(longest, performance.now() - began);
       if (drawn === 0 && !guiding()) return longest;
     }

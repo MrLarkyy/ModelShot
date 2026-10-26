@@ -285,6 +285,51 @@ async function start(): Promise<void> {
     livePrograms: () => tracker?.livePrograms() ?? -1,
     openBitmaps: () => tracker?.openBitmaps() ?? -1,
     render,
+    cancel: () => tracer.cancel(),
+    defaultFramebufferBound: () => gl.getParameter(gl.FRAMEBUFFER_BINDING) === null,
+    loseProbe: () =>
+      new Promise((resolve, reject) => {
+        if (!lose) return reject(new Error('WEBGL_lose_context is not available'));
+        const sync = { drawn: 0, guiding: false };
+        canvas.addEventListener(
+          'webglcontextlost',
+          () =>
+            setTimeout(() => {
+              const event = { drawn: tracer.step(1), guiding: tracer.guiding };
+              resolve({ sync, event });
+            }, 0),
+          { once: true },
+        );
+        lose.loseContext();
+        Object.assign(sync, { drawn: tracer.step(1), guiding: tracer.guiding });
+      }),
+    failedRestoreProbe: () =>
+      new Promise((resolve, reject) => {
+        if (!lose) return reject(new Error('WEBGL_lose_context is not available'));
+        const proto = WebGL2RenderingContext.prototype;
+        const createVertexArray: unknown = Reflect.get(proto, 'createVertexArray');
+        canvas.addEventListener(
+          'webglcontextlost',
+          () =>
+            setTimeout(() => {
+              Reflect.set(proto, 'createVertexArray', () => {
+                throw new Error('vertex array refused');
+              });
+              canvas.addEventListener(
+                'webglcontextrestored',
+                () =>
+                  setTimeout(() => {
+                    Reflect.set(proto, 'createVertexArray', createVertexArray);
+                    resolve({ drawn: tracer.step(1), guiding: tracer.guiding });
+                  }, 0),
+                { once: true },
+              );
+              lose.restoreContext();
+            }, 0),
+          { once: true },
+        );
+        lose.loseContext();
+      }),
     restart: () => tracer.start({ seed, samples, ...quality }),
     step: (maxSamples) => tracer.step(maxSamples),
     get guiding() {

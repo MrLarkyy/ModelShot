@@ -57,7 +57,7 @@ import type { PathTracerWarning } from './PathTracerWarning';
 import { isCheckpoint, sampleTiles, samplesToDraw, type Tile } from './sampleSchedule';
 import { noiseQuantile } from './noiseQuantile';
 import { checkRenderQuality, supersampledScale, type RenderQuality, type TargetLimits } from './renderQuality';
-import { planGuideStep } from './guideSchedule';
+import { GUIDE_RAYS, planGuideStep } from './guideSchedule';
 import { estimateRemainingMs, type RenderProgress } from './renderProgress';
 import { ResolveTargets, type ResolveLayout } from './resolveTargets';
 import { requireExactAccumulation } from './requireExactAccumulation';
@@ -75,8 +75,7 @@ export const MAX_SEED = 2 ** 32 - 1;
 const DEFAULT_QUALITY: RenderQuality = { supersample: 1, denoise: false, noiseThreshold: null };
 // Iterations of the à-trous filter: taps 1, 2, 4, 8 and 16 pixels apart, a footprint of 125 pixels.
 const DENOISE_ITERATIONS = 5;
-// Camera rays per pixel of the denoiser's guides, and where one meets a partial texel (guide.frag).
-const GUIDE_RAYS = 64;
+// Camera rays per pixel of the denoiser's guides where one meets a partial texel (guide.frag); elsewhere GUIDE_RAYS.
 const PARTIAL_GUIDE_RAYS = 1024;
 // A guide pixel at a partial texel traces 1024 camera rays, a trace pixel about ten rays per sample: the guide draws
 // in tiles this many times narrower (64 times fewer pixels), so its draw calls stay as short as a sample's.
@@ -715,6 +714,8 @@ export class PathTracer {
       }
       toDraw = plan.samples;
       if (toDraw === 0) {
+        // Like every step that ends in present(): the default framebuffer bound, not the guide target.
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         this.unbindTextures(UNIT_COVERAGE + 1);
         this.lastStepAt = performance.now();
         return 0;

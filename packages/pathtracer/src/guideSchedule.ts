@@ -1,7 +1,10 @@
 import type { Tile } from './sampleSchedule';
 
-/** The guide traces 64 camera rays per pixel, so a guide pixel is charged as 64 sample pixels (one trace tile per full guide tile). */
-export const GUIDE_PIXEL_COST = 64;
+/**
+ * Camera rays per pixel of the denoiser's guides. A guide pixel is charged this many sample pixels, so a full guide
+ * tile (an eighth of a trace tile across) costs one trace tile.
+ */
+export const GUIDE_RAYS = 64;
 
 export interface GuideStepPlan {
   /** Guide tiles to draw, from the cursor on. */
@@ -28,7 +31,7 @@ export function planGuideStep(args: {
   let spent = 0;
   let count = 0;
   for (const tile of tiles.slice(next)) {
-    const cost = tile.width * tile.height * GUIDE_PIXEL_COST;
+    const cost = tile.width * tile.height * GUIDE_RAYS;
     if (count > 0 && spent + cost > budget) break;
     spent += cost;
     count++;

@@ -294,7 +294,7 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
   }) => {
     const reference = await referencePixels(page, TURNTABLE_X2_DENOISED);
     const query = 'variant=turntable-y030&seed=1&samples=16&supersample=2&denoise=1';
-    for (const extra of ['batch=7', 'batch=3&tile=64', 'tile=64', 'batch=1', 'batch=1&tile=64']) {
+    for (const extra of ['batch=7', 'batch=3&tile=64', 'tile=64']) {
       const { image, info } = await render(page, `${query}&${extra}`);
       expect(info.samplesDone, extra).toBe(16);
       expect(image.data.equals(reference), extra).toBe(true);
@@ -310,10 +310,23 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
     expect(decodePng(await readPng(page, info)).data.equals(reference), 'after a context restore').toBe(true);
   });
 
+  for (const extra of ['batch=1', 'batch=1&tile=64']) {
+    test(`a denoised 2x render drawn by ${extra} gives the one-pass reference bytes`, async ({ page }) => {
+      const reference = await referencePixels(page, TURNTABLE_X2_DENOISED);
+      const { image, info } = await render(
+        page,
+        `variant=turntable-y030&seed=1&samples=16&supersample=2&denoise=1&${extra}`,
+      );
+      expect(info.samplesDone, extra).toBe(16);
+      expect(image.data.equals(reference), extra).toBe(true);
+    });
+  }
+
   for (const [tile, k] of [
     [256, 1],
     [64, 1],
     [256, 4],
+    [64, 4],
   ] as const) {
     test(`a denoised step(${k}) draws a bounded number of guide tiles (tile ${tile}) and no sample before the guide ends`, async ({
       page,
@@ -326,10 +339,23 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
         const [width, height] = ptc.accumulationSize;
         ptc.restart();
         ptc.drawCounts();
-        const steps: { drawn: number; guide: number; other: number; guiding: boolean; done: number }[] = [];
+        const steps: {
+          drawn: number;
+          guide: number;
+          other: number;
+          guiding: boolean;
+          done: number;
+          bound: boolean;
+        }[] = [];
         do {
           const drawn = ptc.step(count);
-          steps.push({ drawn, ...ptc.drawCounts(), guiding: ptc.guiding, done: ptc.samplesDone });
+          steps.push({
+            drawn,
+            ...ptc.drawCounts(),
+            guiding: ptc.guiding,
+            done: ptc.samplesDone,
+            bound: ptc.defaultFramebufferBound(),
+          });
         } while (steps[steps.length - 1]!.drawn > 0 || steps[steps.length - 1]!.guiding);
         return { width, height, steps };
       }, k);
@@ -345,6 +371,7 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
           expect(step.drawn, `step ${i} draws no sample`).toBe(0);
           expect(step.other, `step ${i} traces and presents nothing`).toBe(0);
           expect(step.guiding, `step ${i} is a guide step`).toBe(true);
+          expect(step.bound, `step ${i} leaves the default framebuffer bound`).toBe(true);
         } else {
           expect(guideDrawn, `the guide is complete when sample ${step.done} is drawn`).toBe(total);
         }
@@ -355,6 +382,54 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
       expect(decodePng(await readPng(page, info)).data.equals(reference), 'bytes of the one-step reference').toBe(true);
     });
   }
+
+  test('guiding is false when a step would draw nothing: lost context, cancel, dispose, failed restore', async ({
+    page,
+  }) => {
+    test.setTimeout(300_000);
+    const query = 'variant=turntable-y030&seed=1&samples=4&supersample=2&denoise=1&size=64';
+    await openFixture(page, `/pt.html?${query}`);
+    const lost = await page.evaluate(async () => {
+      const ptc = window.__msFixture!.pt!;
+      ptc.restart();
+      for (let i = 0; i < 3; i++) ptc.step(1);
+      const before = ptc.guiding;
+      return { before, ...(await ptc.loseProbe()) };
+    });
+    expect(lost).toEqual({
+      before: true,
+      sync: { drawn: 0, guiding: false },
+      event: { drawn: 0, guiding: false },
+    });
+    await openFixture(page, `/pt.html?${query}`);
+    const cancelled = await page.evaluate(() => {
+      const ptc = window.__msFixture!.pt!;
+      ptc.restart();
+      for (let i = 0; i < 3; i++) ptc.step(1);
+      const before = ptc.guiding;
+      ptc.cancel();
+      return { before, drawn: ptc.step(1), guiding: ptc.guiding };
+    });
+    expect(cancelled).toEqual({ before: true, drawn: 0, guiding: false });
+    await openFixture(page, `/pt.html?${query}`);
+    const failed = await page.evaluate(async () => {
+      const ptc = window.__msFixture!.pt!;
+      ptc.restart();
+      for (let i = 0; i < 3; i++) ptc.step(1);
+      return ptc.failedRestoreProbe();
+    });
+    expect(failed).toEqual({ drawn: 0, guiding: false });
+    await openFixture(page, `/pt.html?${query}`);
+    const disposed = await page.evaluate(() => {
+      const ptc = window.__msFixture!.pt!;
+      ptc.restart();
+      for (let i = 0; i < 3; i++) ptc.step(1);
+      const before = ptc.guiding;
+      ptc.dispose();
+      return { before, drawn: ptc.step(1), guiding: ptc.guiding };
+    });
+    expect(disposed).toEqual({ before: true, drawn: 0, guiding: false });
+  });
 
   test('a context lost and restored in the middle of the guide redraws the whole guide', async ({ page }) => {
     const reference = await referencePixels(page, TURNTABLE_X2_DENOISED);
