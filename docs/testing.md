@@ -84,10 +84,9 @@ no state; with one worker nothing runs at once, it only lets a shard take part o
 depends on `golden` (a dependency put every golden test into the bench's shard: shard 1 had all 219 tests, 2-4
 none). Playwright shards a project into contiguous ranges by test count, not by time, so a block of slow tests
 lands in one or two shards; each block is its own project with its own shards. `golden` runs `environment`, `export`,
-`golden*`, `modelView` and `realtime.spec.ts` without the tests titled `baked lighting` (`grepInvert`), which `bake` runs;
+`golden*`, `modelView` and `realtime.spec.ts` without the tests titled `baked lighting` (`grepInvert`), which `bake` runs, apart from the three `@timing` ones, which `bench` runs;
 `golden-pt` runs `pathtracer.spec.ts` without the tests titled `like the baked preview`, which `pair` runs (the 13
-preview-vs-render pairing tests). Each test is in exactly one project, and the plain `playwright test` (and so
-`pnpm test`) runs every project.
+preview-vs-render pairing tests). Each test is in exactly one project, and the plain `playwright test` runs every project, while `pnpm test` runs them in the two phases above (`bench` last, alone).
 
 Shard sizes (MS-39, `--list --project <p> --shard <k>/<n>`), each with the sum of its tests' CI times: the per-test
 times of main's run 39878163371 (MS-30's merge, so its three cut-out seam tests are counted), MS-22's 31 export tests
@@ -133,7 +132,7 @@ unchanged.
 
 ## Browser tests
 
-`pnpm test:browser` in `tools/harness` (`src/runBrowserTests.ts`) runs two phases. Phase 1 is `playwright test --grep-invert @timing`: every golden, path-tracer, bake and pairing test with several workers. Phase 2 is `playwright test --project=bench --workers=1`: the `bench` project is every test tagged `@timing` (the budget test in `bench.spec.ts` and the three `baked lighting` tests that check the main-thread measures), run alone on an idle machine, with its own output directory `test-results/serial`. Phase 2 runs even when phase 1 failed; the exit code is non-zero if either failed. A plain `playwright test` mixes the two, so use the script for a full local run. A test whose result depends on how busy the machine is gets `{ tag: '@timing' }`; every other project excludes the tag. There is no project dependency: it would skip the timing tests after a golden failure and pull the goldens into the CI bench job.
+`pnpm test:browser` in `tools/harness` (`src/runBrowserTests.ts`) runs two phases. Phase 1 is `playwright test --grep-invert @timing`: every golden, path-tracer, bake and pairing test with several workers. Phase 2 is `playwright test --project=bench --workers=1`: the `bench` project is every test tagged `@timing` (the budget test in `bench.spec.ts` and the three `baked lighting` tests that check the main-thread measures), run alone on an idle machine, with its own output directory `test-results/serial`. Phase 2 runs after a failed phase 1 (exit 1) but not after a kill or interrupt (any other exit code, a signal or a failed launch), which stops the runner with that non-zero code; SIGINT, SIGTERM and SIGBREAK are forwarded to Playwright. The script takes no arguments: use `pnpm exec playwright test <filter>` for a filtered run. The exit code is non-zero if either phase failed. A plain `playwright test` mixes the two, so use the script for a full local run. A test whose result depends on how busy the machine is gets `{ tag: '@timing' }`; every other project excludes the tag. There is no project dependency: it would skip the timing tests after a golden failure and pull the goldens into the CI bench job.
 
 The worker count (`src/workerCount.ts`) is `MS_PW_WORKERS` (integer 1..32, anything else fails naming the variable), else 1 when `CI` is set, else the smaller of 6, one per four logical CPUs (SwiftShader runs several threads per page) and one per 2 GiB of RAM, at least 1. Timeouts stay fixed numbers; lower `MS_PW_WORKERS` if a loaded machine times out.
 
@@ -1280,7 +1279,7 @@ about 143 MB), in 264-419 ms. Of that the result kept with the mesh is 16.0 MB (
 buffers +38 MB before collection). The renderers keep one result per document (`sceneSharpEdges`, latest options).
 
 First CI run (2026-10-20, ubuntu-latest): frame time 0.9 ms (max 5, 5.5x), time to 64 samples 80.6 ms (max 300), gzip app 437 B, embed 115 B.
-Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact (in the e2e shard that ran
+Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact (`test-results/serial/` in the e2e shard that ran
 `bench.spec.ts`), with the numbers in the commit.
 Changing a `max` is a reviewed change: explain it in the commit with the measured numbers, never raise it to hide a
 regression.
