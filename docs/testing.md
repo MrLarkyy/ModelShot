@@ -372,7 +372,9 @@ within 3 %, the render's contact at most 0.8 of its open point, preview and rend
 - Pose: `player-hold-34` baked, re-posed to `wave` (same layout key): the old lighting stays until the re-bake's
   first update; the final image equals a fresh bake of the posed document (`pose=wave`), and differs from the old
   light under the moved arm.
-- Exact depth key (`render-order`, always exact): baking with and without the catcher changes no model pixel.
+- Exact depth key (`render-order`, always exact): baking with and without the catcher changes no model pixel at
+  `msaa=0`; on the converged frame (MS-35) none with no backdrop pixel within 1 px (a silhouette pixel mixes the model
+  with what lies behind it, the catcher included: 9 such pixels change).
 - Context loss: a lost and restored renderer re-uploads the light (same bytes); a lost and restored worker context
   restarts the bake and reaches the reference hash and image.
 - `dispose()` with `track=1`: no WebGL object or ImageBitmap left on the page, the worker terminated.

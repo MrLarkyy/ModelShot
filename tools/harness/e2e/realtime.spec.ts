@@ -1265,23 +1265,39 @@ test.describe('baked lighting', () => {
     expect(kept.data.equals(after.data), 'the old light differed under the moved arm').toBe(false);
   });
 
+  /**
+   * Single-sampled (msaa=0) every model pixel is the model's alone. A converged frame (4 rotated-grid passes, MS-35)
+   * mixes a silhouette pixel with what lies behind it, the catcher included, so there only pixels with no backdrop
+   * pixel within 1 px count.
+   */
   test('exact depth key: the catcher never draws over the model', async ({ page }) => {
-    const withCatcher = await render(page, 'variant=render-order&bake=16');
-    expect(await page.evaluate(() => window.__msFixture!.rt!.depthKeyMode())).toBe('exact');
-    const without = await render(page, 'variant=render-order&bake=16&catcher=0');
-    const unbaked = await render(page, 'variant=render-order');
-    const backdrop = pixel(unbaked.image, 0, 0);
-    let model = 0;
-    let changed = 0;
-    for (let i = 0; i < without.image.data.length; i += 4) {
-      const shown = [...without.image.data.subarray(i, i + 3)];
-      const plain = [...unbaked.image.data.subarray(i, i + 3)];
-      if (near(plain, backdrop, 0)) continue;
-      model++;
-      if (!withCatcher.image.data.subarray(i, i + 3).every((v, c) => v === shown[c])) changed++;
+    for (const [query, reach] of [
+      ['&msaa=0', 0],
+      ['', 1],
+    ] as const) {
+      const withCatcher = await render(page, `variant=render-order&bake=16${query}`);
+      expect(await page.evaluate(() => window.__msFixture!.rt!.depthKeyMode())).toBe('exact');
+      const without = await render(page, `variant=render-order&bake=16&catcher=0${query}`);
+      const unbaked = (await render(page, `variant=render-order${query}`)).image;
+      const backdrop = pixel(unbaked, 0, 0);
+      const isBackdrop = (x: number, y: number) => near(pixel(unbaked, x, y), backdrop, 0);
+      let model = 0;
+      let changed = 0;
+      for (let y = reach; y < unbaked.height - reach; y++) {
+        for (let x = reach; x < unbaked.width - reach; x++) {
+          let clear = true;
+          for (let dy = -reach; dy <= reach && clear; dy++) {
+            for (let dx = -reach; dx <= reach; dx++) if (isBackdrop(x + dx, y + dy)) clear = false;
+          }
+          if (!clear) continue;
+          model++;
+          const shown = pixel(without.image, x, y);
+          if (!pixel(withCatcher.image, x, y).every((v, c) => v === shown[c])) changed++;
+        }
+      }
+      expect(model, `model pixels${query}`).toBeGreaterThan(1000);
+      expect(changed, `model pixels the catcher changed${query}`).toBe(0);
     }
-    expect(model, 'model pixels').toBeGreaterThan(1000);
-    expect(changed, 'model pixels the catcher changed').toBe(0);
   });
 
   test('a lost renderer context re-uploads the light; a lost worker context restarts the bake to the same bytes', async ({
