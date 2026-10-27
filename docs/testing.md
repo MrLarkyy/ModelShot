@@ -1279,7 +1279,7 @@ about 143 MB), in 264-419 ms. Of that the result kept with the mesh is 16.0 MB (
 buffers +38 MB before collection). The renderers keep one result per document (`sceneSharpEdges`, latest options).
 
 First CI run (2026-10-20, ubuntu-latest): frame time 0.9 ms (max 5, 5.5x), time to 64 samples 80.6 ms (max 300), gzip app 437 B, embed 115 B.
-Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact (`test-results/serial/` in the e2e shard that ran
-`bench.spec.ts`), with the numbers in the commit.
+Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact (`test-results/serial/` in `browser-test-results-bench`,
+uploaded by the CI `bench` job), with the numbers in the commit.
 Changing a `max` is a reviewed change: explain it in the commit with the measured numbers, never raise it to hide a
 regression.
