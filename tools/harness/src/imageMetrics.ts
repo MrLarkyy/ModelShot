@@ -229,6 +229,39 @@ export function silhouettePixels(
   return { model, silhouette, interior };
 }
 
+/**
+ * The outline band of a preview and a render of the same view, row-major: pixels neither shows as backdrop
+ * (`backdropMask` with `backdropRow`) that have a backdrop pixel of `reference` within `reach` pixels in x and y.
+ */
+export function outlineBand(reference: Image, other: Image, backdropRow: BackdropRow, reach: number): Uint8Array {
+  sameSize(reference, other);
+  const a = backdropMask(reference, backdropRow);
+  const b = backdropMask(other, backdropRow);
+  const far = farFrom(a, reference.width, reference.height, reach);
+  return a.map((backdrop, p) => (backdrop || b[p] || far[p] ? 0 : 1));
+}
+
+/** The pixels of a 0/1 mask whose 3 x 3 neighbourhood holds both values: its boundary, on either side. */
+export function maskBoundary(mask: Uint8Array, width: number, height: number): Uint8Array {
+  const boundary = new Uint8Array(width * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const here = mask[y * width + x];
+      for (let dy = -1; dy <= 1 && !boundary[y * width + x]; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = Math.min(width - 1, Math.max(0, x + dx));
+          const ny = Math.min(height - 1, Math.max(0, y + dy));
+          if (mask[ny * width + nx] !== here) {
+            boundary[y * width + x] = 1;
+            break;
+          }
+        }
+      }
+    }
+  }
+  return boundary;
+}
+
 /** Pixels whose every channel is above `level` (near-white at 200, blown out at 249). */
 export function whiteCount(pixels: readonly (readonly number[])[], level: number): number {
   let count = 0;
