@@ -3,7 +3,16 @@ import { createGlProgram } from '../src/glProgram';
 import { RendererError } from '../src/index';
 import { shaderProgramSource, type ShaderProgramName } from '../src/shaderSources';
 
-const NAMES: ShaderProgramName[] = ['opaque', 'oitAccum', 'oitComposite', 'present', 'fallback', 'backdrop', 'catcher'];
+const NAMES: ShaderProgramName[] = [
+  'opaque',
+  'oitAccum',
+  'oitComposite',
+  'present',
+  'presentSamples',
+  'fallback',
+  'backdrop',
+  'catcher',
+];
 
 /** Just enough of WebGL2 to drive createGlProgram; compile fails for sources containing "BROKEN". */
 function fakeGl(): { gl: WebGL2RenderingContext; deleted: string[] } {
@@ -49,14 +58,20 @@ describe('shader sources', () => {
     expect(shaderProgramSource('fallback').fragment).toContain('vec3 agxToneMap(vec3 linearColor)');
   });
 
-  it('presents the box mean of the supersampled sub-pixels in linear HDR, before AgX', () => {
-    const { fragment } = shaderProgramSource('present');
-    expect(fragment).toContain('uniform int u_supersample;');
+  it('presents the sample history of an exact frame as the mean of its filled layers in linear HDR, before AgX', () => {
+    const { fragment } = shaderProgramSource('presentSamples');
+    expect(fragment).toContain('uniform sampler2DArray u_samples;');
+    expect(fragment).toContain('uniform int u_sampleCount;');
     const body = fragment.slice(fragment.indexOf('void main()'));
-    const mean = body.indexOf('vec3 linearColor = sum / float(s * s);');
-    expect(body.indexOf('texelFetch(u_hdr, base + ivec2(x, y), 0)')).toBeGreaterThan(-1);
-    expect(mean).toBeGreaterThan(body.indexOf('texelFetch(u_hdr'));
+    const fetch = body.indexOf('texelFetch(u_samples, ivec3(px, i), 0).rgb');
+    const mean = body.indexOf('vec3 linearColor = sum / float(count);');
+    expect(fetch).toBeGreaterThan(-1);
+    expect(mean).toBeGreaterThan(fetch);
     expect(body.indexOf('agxToneMap(linearColor)')).toBeGreaterThan(mean);
+    // Every other float frame keeps the single-texel present of before.
+    const present = shaderProgramSource('present').fragment;
+    expect(present).toContain('vec3 linearColor = texelFetch(u_hdr, ivec2(gl_FragCoord.xy), 0).rgb;');
+    expect(present).not.toContain('u_sample');
   });
 
   it('takes the depth key derivatives before the first discard in every mesh pass', () => {

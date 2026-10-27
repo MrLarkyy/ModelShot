@@ -328,7 +328,7 @@ test.describe('anti-aliased cutout seams (alpha-to-coverage, MS-30)', () => {
     expect(singleSeams.mixes, JSON.stringify(singleSeams)).toBe(0);
   });
 
-  test('the fallback keeps hard per-texel cutouts; exact-key frames anti-alias them by their 2 x 2 sub-pixels', async ({
+  test('the fallback keeps hard per-texel cutouts; exact-key frames anti-alias them by their 4 shifted passes', async ({
     page,
   }) => {
     const backdrop = (await render(page, 'scene=empty&look=edge&fallback=1')).image;
@@ -347,8 +347,8 @@ test.describe('anti-aliased cutout seams (alpha-to-coverage, MS-30)', () => {
     }
     expect(classChanges, 'pixels that change between model and backdrop with texel AA (fallback)').toBe(0);
 
-    // Exact frames (MS-35): every sub-pixel of the 2 x 2 target has its own key and its own per-texel discard, so the
-    // box mean antialiases the seams like the MSAA path, against the hard shape of a single-sampled frame.
+    // Exact frames (MS-35): each of the 4 rotated-grid passes of a still frame has its own keys and its own per-texel
+    // discard, so their mean antialiases the seams like the MSAA path, against the hard shape of a single-sampled frame.
     const floatBackdrop = (await render(page, 'scene=empty&look=edge&depth=inside')).image;
     const exactHard = (await render(page, 'variant=cutout-edge-inside&aa=0&msaa=0')).image;
     const exactSoft = (await render(page, 'variant=cutout-edge-inside')).image;
@@ -427,16 +427,16 @@ function pixelsApart(a: Image, b: Image, levels: number): number {
 
 /**
  * Entering the bounding sphere keeps silhouette anti-aliasing (MS-35): turntable-y030 with the raster key (framed
- * clip planes, MSAA) and with the exact key (near = far x 1e-4, 2 x 2 sub-pixels). Texel AA is off, so only the
+ * clip planes, MSAA) and with the exact key (near = far x 1e-4, 4 rotated-grid passes). Texel AA is off, so only the
  * silhouette mixes; the hard reference is the same view single-sampled (msaa=0). Mixed share: of the model/backdrop
  * neighbour pairs of the hard frame, those with a strict mix on either side (`cutoutSeams` over the whole image).
  */
 test('exact-key frames anti-alias silhouettes like raster frames', async ({ page }) => {
-  // Measured (SwiftShader): mixed share raster 0.664 (542 of 816), exact 0.722 (589); the shown frames 1409 pixels
-  // more than 8 levels apart, all on silhouettes and texel seams (MSAA and a 1 px texel ramp against the 2 x 2 box of
-  // a half-pixel ramp), held at measured x 1.25.
+  // Measured (SwiftShader, converged): mixed share raster 0.664 (542 of 816), exact 0.857 (699); the shown frames 774
+  // pixels more than 8 levels apart, on silhouettes and texel seams (MSAA and the 1 px texel ramp against the mean of
+  // 4 shifted passes of it), held at measured x 1.25.
   const minShare = 0.5;
-  const maxApart = 1762;
+  const maxApart = 968;
   const shares: Record<string, number> = {};
   const frames: Record<string, Image> = {};
   for (const [depth, mode] of [
@@ -600,8 +600,10 @@ test.describe('look presets', () => {
   }) => {
     test.setTimeout(240_000);
     // Measured: the worst interior share 0.00164 (yaw 60: the inner side of a thick band at a 45-degree silhouette),
-    // the fewest outline white pixels 89 (yaw 0, the player's back).
-    const worstShare = 0.00205;
+    // the fewest outline white pixels 89 (yaw 0, the player's back). MS-35, the exact-key frames converged (4
+    // rotated-grid passes): 0.00097 (yaw 60) and 85 (yaw 0, the render 92); the share tightened to x 1.25, the floor
+    // kept.
+    const worstShare = 0.00122;
     const minWhite = 71;
     const lines: string[] = [];
     for (let yaw = 0; yaw < 360; yaw += 30) {

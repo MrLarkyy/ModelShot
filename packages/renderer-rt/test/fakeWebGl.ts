@@ -21,8 +21,8 @@ export interface FakeWebGlFloat {
   readonly samples: number;
   /** `MAX_TEXTURE_SIZE`, `MAX_RENDERBUFFER_SIZE` and both `MAX_VIEWPORT_DIMS`. */
   readonly maxSize: number;
-  /** Framebuffers are incomplete while the last `texStorage2D` was of a size this returns true for. */
-  readonly rejects?: (width: number, height: number) => boolean;
+  /** Framebuffers are incomplete while the last texture storage was of a size this returns true for (layers 1: 2D). */
+  readonly rejects?: (width: number, height: number, layers: number) => boolean;
 }
 
 export interface FakeWebGlOptions {
@@ -51,8 +51,9 @@ export function fakeWebGl(options: FakeWebGlOptions = {}): FakeWebGl {
     return null;
   };
   const framebufferStatus = (): number => {
-    const storage = log.get('texStorage2D')?.at(-1);
-    const rejected = float?.rejects && storage && float.rejects(Number(storage[3]), Number(storage[4]));
+    const storage = ordered.findLast(([name]) => name === 'texStorage2D' || name === 'texStorage3D')?.[1];
+    const rejected =
+      float?.rejects && storage && float.rejects(Number(storage[3]), Number(storage[4]), Number(storage[5] ?? 1));
     return constant(rejected ? 'FRAMEBUFFER_INCOMPLETE_ATTACHMENT' : 'FRAMEBUFFER_COMPLETE');
   };
   const results: Readonly<Record<string, (...args: unknown[]) => unknown>> = {

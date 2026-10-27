@@ -42,15 +42,21 @@ export type MeshPassName = 'opaque' | 'oitAccum' | 'fallback';
 export interface RendererPrograms {
   /** Mesh passes in both depth-key variants; a frame uses one variant for all of them. */
   readonly meshPasses: Readonly<Record<DepthKeyMode, Readonly<Partial<Record<MeshPassName, MeshProgram>>>>>;
-  readonly fullscreen: Readonly<Partial<Record<'oitComposite' | 'present' | 'backdrop', FullscreenProgram>>>;
+  /** `presentSamples`: the present pass of an exact-key frame's sample history (`exactSampleCount`). */
+  readonly fullscreen: Readonly<
+    Partial<Record<'oitComposite' | 'present' | 'presentSamples' | 'backdrop', FullscreenProgram>>
+  >;
   /** The shadow catcher's quad, on both paths. */
   readonly catcher: FullscreenProgram;
   readonly all: readonly WebGLProgram[];
 }
 
-const FULLSCREEN_UNIFORMS: Readonly<Record<'oitComposite' | 'present' | 'backdrop' | 'catcher', readonly string[]>> = {
+type FullscreenProgramName = 'oitComposite' | 'present' | 'presentSamples' | 'backdrop' | 'catcher';
+
+const FULLSCREEN_UNIFORMS: Readonly<Record<FullscreenProgramName, readonly string[]>> = {
   oitComposite: ['u_accum', 'u_weight'],
-  present: ['u_hdr', 'u_supersample'],
+  present: ['u_hdr'],
+  presentSamples: ['u_samples', 'u_sampleCount'],
   backdrop: ['u_toneMap'],
   catcher: ['u_viewProjection', 'u_catcherLight', 'u_catcherRect', 'u_catcherSize', 'u_toneMap'],
 };
@@ -97,7 +103,7 @@ export function createRendererPrograms(gl: WebGL2RenderingContext, floatPath: bo
         alphaToCoverage: at('u_alphaToCoverage'),
       };
     };
-    const fullscreenProgram = (name: 'oitComposite' | 'present' | 'backdrop' | 'catcher'): FullscreenProgram => {
+    const fullscreenProgram = (name: FullscreenProgramName): FullscreenProgram => {
       const program = build(name, 'raster');
       const uniforms = Object.fromEntries(
         FULLSCREEN_UNIFORMS[name].map((uniform) => [uniform, gl.getUniformLocation(program, uniform)]),
@@ -116,6 +122,7 @@ export function createRendererPrograms(gl: WebGL2RenderingContext, floatPath: bo
         fullscreen: {
           oitComposite: fullscreenProgram('oitComposite'),
           present: fullscreenProgram('present'),
+          presentSamples: fullscreenProgram('presentSamples'),
           backdrop: fullscreenProgram('backdrop'),
         },
         catcher: fullscreenProgram('catcher'),

@@ -1,12 +1,16 @@
 import {
   animateScene,
+  cameraProjection,
+  cameraView,
   mat4Identity,
+  mat4Multiply,
   mat4NormalMatrix,
   worldMatrices,
   type SceneCamera,
   type SceneDocument,
 } from '@modelshot/scene';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { EXACT_SAMPLE_OFFSETS } from '../src/exactSupersample';
 import { RealtimeRenderer } from '../src/RealtimeRenderer';
 import { fakeWebGl, type FakeWebGl } from './fakeWebGl';
 import { quadScene, testTexture } from './testScene';
@@ -139,7 +143,7 @@ describe('RealtimeRenderer.setScene with another pose of the shown document', ()
   });
 });
 
-describe('RealtimeRenderer exact-key frames on the float path', () => {
+describe('RealtimeRenderer exact-key frames on the float path: progressive rotated-grid samples', () => {
   /** Inside the bounding sphere's depth range (near = far × 1e-4): exact. */
   const inside: SceneCamera = { ...camera, near: 0.001, far: 10 };
   const framed: SceneCamera = { ...camera, near: 1, far: 10 };
@@ -156,27 +160,30 @@ describe('RealtimeRenderer exact-key frames on the float path', () => {
     vi.unstubAllGlobals();
   });
 
-  /** The textures given storage of `width` × `height` (each `texStorage2D` goes to the texture bound last). */
-  const texturesOf = (fake: FakeWebGl, width: number, height: number): unknown[] => {
+  /** The array textures given storage, with their size (each `texStorage3D` goes to the array bound last). */
+  const histories = (fake: FakeWebGl): { texture: unknown; size: unknown[] }[] => {
     let bound: unknown = null;
-    const found: unknown[] = [];
+    const found: { texture: unknown; size: unknown[] }[] = [];
     for (const [name, args] of fake.history()) {
-      if (name === 'bindTexture') bound = args[1];
-      if (name === 'texStorage2D' && args[3] === width && args[4] === height) found.push(bound);
+      if (name === 'bindTexture' && args[0] === fake.gl.TEXTURE_2D_ARRAY) bound = args[1];
+      if (name === 'texStorage3D') found.push({ texture: bound, size: args.slice(2) });
     }
     return found;
   };
-  const deleted = (fake: FakeWebGl, textures: readonly unknown[]): number =>
-    fake.calls('deleteTexture').filter(([texture]) => textures.includes(texture)).length;
+  const deleted = (fake: FakeWebGl, texture: unknown): boolean =>
+    fake.calls('deleteTexture').some(([t]) => t === texture);
   const lastUniform = (fake: FakeWebGl, method: string, uniform: string): unknown[] =>
     fake
       .calls(method)
       .findLast(([location]) => (location as { name: string } | null)?.name === uniform)
       ?.slice(1) ?? [];
+  const uniformCalls = (fake: FakeWebGl, method: string, uniform: string): number =>
+    fake.calls(method).filter(([location]) => (location as { name: string } | null)?.name === uniform).length;
+  const lastLayer = (fake: FakeWebGl): unknown => fake.calls('framebufferTextureLayer').at(-1)?.[4];
 
   async function setUp(
     cameraOf: SceneCamera,
-    options: { maxMsaaSamples?: number; rejects?: (width: number, height: number) => boolean } = {},
+    options: { maxMsaaSamples?: number; rejects?: (width: number, height: number, layers: number) => boolean } = {},
   ): Promise<{ fake: FakeWebGl; renderer: RealtimeRenderer }> {
     const fake = fakeWebGl({ float: { ...float, ...(options.rejects ? { rejects: options.rejects } : {}) } });
     const renderer = RealtimeRenderer.create(
@@ -188,112 +195,189 @@ describe('RealtimeRenderer exact-key frames on the float path', () => {
     return { fake, renderer };
   }
 
-  it('draws an exact frame into one 0-sample target of 2W × 2H and presents its 2 × 2 mean at W × H', async () => {
+  /** `u_viewProjection` of `cam` on a 64 × 64 canvas, shifted by `offset` pixels. */
+  const viewProjection = (cam: SceneCamera, offset: readonly [number, number]): number[] => {
+    const shift = new Float64Array([
+      1,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      (2 * offset[0]) / 64,
+      (2 * offset[1]) / 64,
+      0,
+      1,
+    ]);
+    const projection = cameraProjection(cam, 1);
+    const shifted = offset[0] === 0 && offset[1] === 0 ? projection : mat4Multiply(shift, projection);
+    return Array.from(new Float32Array(mat4Multiply(shifted, cameraView(cam))));
+  };
+
+  it('draws one shifted pass per render into the next of 4 layers and presents the mean of the filled ones', async () => {
     const { fake, renderer } = await setUp(inside);
     expect(renderer.capabilities?.path).toBe('float');
+    const single = await setUp(inside, { maxMsaaSamples: 0 });
+    single.renderer.render();
+    const singleDraws = single.fake.count('drawElements', 'drawArrays');
+    single.renderer.dispose();
+    for (let pass = 0; pass < 4; pass++) {
+      const draws = fake.count('drawElements', 'drawArrays');
+      renderer.render();
+      expect(renderer.depthKeyMode).toBe('exact');
+      expect(lastLayer(fake), `pass ${pass}`).toBe(pass);
+      expect(lastUniform(fake, 'uniform1i', 'u_sampleCount'), `pass ${pass}`).toEqual([pass + 1]);
+      expect(Array.from(lastUniform(fake, 'uniformMatrix4fv', 'u_viewProjection')[1] as Float32Array)).toEqual(
+        viewProjection(inside, EXACT_SAMPLE_OFFSETS[pass] ?? [0, 0]),
+      );
+      expect(renderer.needsRender, `after pass ${pass}`).toBe(pass < 3);
+      // One pass a call: the draws of the single-sampled frame.
+      expect(fake.count('drawElements', 'drawArrays') - draws, `pass ${pass}`).toBe(singleDraws);
+    }
+    // RGBA16F, 64 × 64, 4 layers, allocated once.
+    expect(histories(fake).map(({ size }) => size)).toEqual([[fake.gl.RGBA16F, 64, 64, 4]]);
+    // A further call draws a pass again (into layer 0, with its offset): the same mean of 4.
     renderer.render();
-    expect(renderer.depthKeyMode).toBe('exact');
-    // hdr, accum and weight; one depth renderbuffer, no multisampled storage at that size.
-    expect(texturesOf(fake, 128, 128)).toHaveLength(3);
-    expect(fake.calls('renderbufferStorage').filter((args) => args[2] === 128 && args[3] === 128)).toHaveLength(1);
-    expect(fake.calls('renderbufferStorageMultisample').filter((args) => args[3] === 128)).toHaveLength(0);
-    expect(fake.calls('viewport')).toContainEqual([0, 0, 128, 128]);
-    expect(fake.calls('viewport').at(-1)).toEqual([0, 0, 64, 64]);
-    expect(lastUniform(fake, 'uniform2f', 'u_viewportSize')).toEqual([128, 128]);
-    expect(lastUniform(fake, 'uniform1f', 'u_lookFrameHeight')).toEqual([64]);
-    expect(lastUniform(fake, 'uniform1i', 'u_supersample')).toEqual([2]);
-
-    // Another frame of the same size reallocates nothing.
-    renderer.setCamera({ ...inside, position: [0, 0, 4] });
-    renderer.render();
-    expect(texturesOf(fake, 128, 128)).toHaveLength(3);
+    expect(lastLayer(fake)).toBe(0);
+    expect(lastUniform(fake, 'uniform1i', 'u_sampleCount')).toEqual([4]);
+    expect(renderer.needsRender).toBe(false);
     renderer.dispose();
   });
 
-  it('draws a raster frame at the canvas size and never allocates the 2 × 2 targets', async () => {
+  it('keeps the history for an equal camera and starts it again on a change or a resize', async () => {
+    const { fake, renderer } = await setUp(inside);
+    for (let pass = 0; pass < 4; pass++) renderer.render();
+    renderer.setCamera({ ...inside, position: [0, 0, 5], up: [0, 1, 0] });
+    expect(renderer.needsRender).toBe(false);
+
+    renderer.setCamera({ ...inside, position: [0, 0, 4] });
+    expect(renderer.needsRender).toBe(true);
+    renderer.render();
+    expect(lastLayer(fake)).toBe(0);
+    expect(lastUniform(fake, 'uniform1i', 'u_sampleCount')).toEqual([1]);
+
+    const before = histories(fake)[0]?.texture;
+    renderer.resize({ cssWidth: 80, cssHeight: 64, devicePixelRatio: 1 });
+    renderer.render();
+    expect(histories(fake).map(({ size }) => size)).toEqual([
+      [fake.gl.RGBA16F, 64, 64, 4],
+      [fake.gl.RGBA16F, 80, 64, 4],
+    ]);
+    expect(deleted(fake, before)).toBe(true);
+    expect(lastUniform(fake, 'uniform1i', 'u_sampleCount')).toEqual([1]);
+    renderer.dispose();
+  });
+
+  it('starts again after a raster frame and after a look change', async () => {
+    const { fake, renderer } = await setUp(inside);
+    for (let pass = 0; pass < 4; pass++) renderer.render();
+    renderer.setCamera(framed);
+    renderer.render();
+    expect(renderer.depthKeyMode).toBe('raster');
+    renderer.setCamera(inside);
+    renderer.render();
+    expect(lastUniform(fake, 'uniform1i', 'u_sampleCount')).toEqual([1]);
+    for (let pass = 1; pass < 4; pass++) renderer.render();
+    renderer.setEdges({ width: 0.25 });
+    renderer.render();
+    expect(lastUniform(fake, 'uniform1i', 'u_sampleCount')).toEqual([1]);
+    renderer.dispose();
+  });
+
+  it('draws a raster frame once at the pixel centre and never allocates a history', async () => {
     const { fake, renderer } = await setUp(framed);
     renderer.render();
     expect(renderer.depthKeyMode).toBe('raster');
-    expect(texturesOf(fake, 128, 128)).toHaveLength(0);
-    expect(fake.calls('viewport').every((args) => args[2] === 64 && args[3] === 64)).toBe(true);
-    expect(lastUniform(fake, 'uniform2f', 'u_viewportSize')).toEqual([64, 64]);
-    expect(lastUniform(fake, 'uniform1i', 'u_supersample')).toEqual([1]);
+    expect(renderer.needsRender).toBe(false);
+    expect(histories(fake)).toEqual([]);
+    expect(uniformCalls(fake, 'uniform1i', 'u_sampleCount')).toBe(0);
+    expect(uniformCalls(fake, 'uniform1i', 'u_hdr')).toBe(1);
+    expect(Array.from(lastUniform(fake, 'uniformMatrix4fv', 'u_viewProjection')[1] as Float32Array)).toEqual(
+      viewProjection(framed, [0, 0]),
+    );
     renderer.dispose();
   });
 
-  it('draws exact frames single-sampled without MSAA', async () => {
+  it('draws exact frames once at the pixel centre without MSAA', async () => {
     const { fake, renderer } = await setUp(inside, { maxMsaaSamples: 0 });
     renderer.render();
     expect(renderer.depthKeyMode).toBe('exact');
-    expect(texturesOf(fake, 128, 128)).toHaveLength(0);
-    expect(lastUniform(fake, 'uniform1i', 'u_supersample')).toEqual([1]);
+    expect(renderer.needsRender).toBe(false);
+    expect(histories(fake)).toEqual([]);
+    expect(uniformCalls(fake, 'uniform1i', 'u_hdr')).toBe(1);
+    expect(Array.from(lastUniform(fake, 'uniformMatrix4fv', 'u_viewProjection')[1] as Float32Array)).toEqual(
+      viewProjection(inside, [0, 0]),
+    );
     renderer.dispose();
   });
 
-  it('keeps the float path single-sampled when the driver rejects the 2 × 2 size, and does not retry it', async () => {
-    const { fake, renderer } = await setUp(inside, { rejects: (width) => width === 128 });
+  it('keeps the float path single-sampled when the driver rejects the history, and does not retry that size', async () => {
+    const { fake, renderer } = await setUp(inside, {
+      rejects: (width, _height, layers) => layers === 4 && width === 64,
+    });
     renderer.render();
     renderer.render();
     expect(renderer.capabilities?.path).toBe('float');
-    const rejected = texturesOf(fake, 128, 128);
-    expect(rejected).toHaveLength(3);
-    expect(deleted(fake, rejected)).toBe(3);
-    expect(lastUniform(fake, 'uniform2f', 'u_viewportSize')).toEqual([64, 64]);
-    expect(lastUniform(fake, 'uniform1i', 'u_supersample')).toEqual([1]);
+    const rejected = histories(fake);
+    expect(rejected).toHaveLength(1);
+    expect(deleted(fake, rejected[0]?.texture)).toBe(true);
+    expect(renderer.needsRender).toBe(false);
+    expect(uniformCalls(fake, 'uniform1i', 'u_sampleCount')).toBe(0);
 
     // Another size is tried again.
     fake.canvas.width = 80;
     renderer.render();
-    expect(texturesOf(fake, 160, 128)).toHaveLength(3);
-    expect(lastUniform(fake, 'uniform1i', 'u_supersample')).toEqual([2]);
+    expect(histories(fake)).toHaveLength(2);
+    expect(lastUniform(fake, 'uniform1i', 'u_sampleCount')).toEqual([1]);
     renderer.dispose();
   });
 
-  it('reallocates once on resize and frees the targets when the size no longer fits', async () => {
-    const { fake, renderer } = await setUp(inside);
-    renderer.render();
-    const first = texturesOf(fake, 128, 128);
-    fake.canvas.width = 80;
-    renderer.render();
-    renderer.render();
-    expect(texturesOf(fake, 160, 128)).toHaveLength(3);
-    expect(deleted(fake, first)).toBe(3);
+  it('frees the history when the size no longer takes one, on dispose and on a switch to the no-float path', async () => {
+    const oversize = await setUp(inside);
+    oversize.renderer.render();
+    const first = histories(oversize.fake)[0]?.texture;
+    // 4 slots of 2049 × 1024 are over 2^23 pixels.
+    oversize.fake.canvas.width = 2049;
+    oversize.fake.canvas.height = 1024;
+    oversize.renderer.render();
+    expect(deleted(oversize.fake, first)).toBe(true);
+    expect(histories(oversize.fake)).toHaveLength(1);
+    expect(oversize.renderer.needsRender).toBe(false);
+    oversize.renderer.dispose();
 
-    // 2W over MAX_RENDERBUFFER_SIZE (4096): single-sampled, targets freed.
-    const second = texturesOf(fake, 160, 128);
-    fake.canvas.width = 2049;
-    renderer.render();
-    expect(deleted(fake, second)).toBe(3);
-    expect(texturesOf(fake, 4098, 128)).toHaveLength(0);
-    expect(lastUniform(fake, 'uniform1i', 'u_supersample')).toEqual([1]);
-    renderer.dispose();
-  });
-
-  it('frees the targets on dispose and on a switch to the no-float path', async () => {
     const disposed = await setUp(inside);
     disposed.renderer.render();
-    const targets = texturesOf(disposed.fake, 128, 128);
+    const texture = histories(disposed.fake)[0]?.texture;
     disposed.renderer.dispose();
-    expect(deleted(disposed.fake, targets)).toBe(3);
+    expect(deleted(disposed.fake, texture)).toBe(true);
 
-    const switched = await setUp(inside, { rejects: (width) => width === 80 });
+    const switched = await setUp(inside, { rejects: (width, _height, layers) => layers === 1 && width === 80 });
     switched.renderer.render();
-    const before = texturesOf(switched.fake, 128, 128);
+    const before = histories(switched.fake)[0]?.texture;
     switched.fake.canvas.width = 80;
     switched.renderer.render();
     expect(switched.renderer.capabilities?.path).toBe('fallback');
-    expect(deleted(switched.fake, before)).toBe(3);
+    expect(deleted(switched.fake, before)).toBe(true);
     switched.renderer.dispose();
   });
 
-  it('allocates new targets after a context restore without deleting the dead ones', async () => {
+  it('allocates a new history after a context restore without deleting the dead one', async () => {
     const { fake, renderer } = await setUp(inside);
     renderer.render();
-    const dead = texturesOf(fake, 128, 128);
+    const dead = histories(fake)[0]?.texture;
     fake.fire('webglcontextlost');
+    expect(renderer.needsRender).toBe(false);
     fake.fire('webglcontextrestored');
-    expect(texturesOf(fake, 128, 128)).toHaveLength(6);
-    expect(deleted(fake, dead)).toBe(0);
+    expect(histories(fake)).toHaveLength(2);
+    expect(deleted(fake, dead)).toBe(false);
+    expect(lastUniform(fake, 'uniform1i', 'u_sampleCount')).toEqual([1]);
+    expect(renderer.needsRender).toBe(true);
     renderer.dispose();
   });
 });
