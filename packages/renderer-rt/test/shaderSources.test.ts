@@ -237,8 +237,9 @@ describe('shader sources', () => {
         // Every varying counted as a whole vector, the most it can take after packing.
         const varyings = vertex.match(/^\s*((flat|centroid) )?out \w+ v_\w+;/gm) ?? [];
         expect(varyings.length, `${name} ${depthKey}`).toBeLessThanOrEqual(15);
-        // Raster: the 9 shading varyings; exact: the view position, the three corners and the shared-edge bits too.
-        expect(varyings.length, `${name} ${depthKey}`).toBe(depthKey === 'raster' ? 9 : 14);
+        // Raster: the 9 shading varyings and the texture flags; exact: the view position, the three corners and the
+        // shared-edge bits too.
+        expect(varyings.length, `${name} ${depthKey}`).toBe(depthKey === 'raster' ? 10 : 15);
         for (const varying of ['v_normal', 'v_worldPosition', 'v_edgeDistances']) {
           expect(
             varyings.some((line) => line.includes(` ${varying};`)),
