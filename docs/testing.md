@@ -71,8 +71,8 @@ CPU ms per converted test, the maximum of 3 runs on an idle machine (Windows, No
   `--project=golden-pt --shard=<k>/6`, pair 1-3 of `--project=pair --shard=<k>/3`, bake 1-3 of
   `--project=bake --shard=<k>/3`) (`fail-fast: false`), each on its own VM: install, the pinned Chromium, `pnpm -r build`,
   then `playwright test --project=<project> --shard=<k>/<n>`, then on golden shard 1 only `pnpm --filter @modelshot/site run test:browser` and `pnpm --filter @modelshot/app run test:browser` (each runs even when an earlier step failed), uploading `tools/harness/test-results/`, `packages/site/test-results/` and `packages/app/test-results/` as `browser-test-results-<golden-k|golden-pt-k|pair-k|bake-k>`.
-- `bench`: its own VM, same install and build, `playwright test --project=bench` (the one budget test), uploading
-  `browser-test-results-bench`; the budgets are measured on a machine that runs nothing else.
+- `bench`: its own VM, same install and build, `playwright test --project=bench` (the budget test and the three `@timing` measure tests of `realtime.spec.ts`), uploading
+  `browser-test-results-bench` (its measurements are in `serial/`); the budgets are measured on a machine that runs nothing else.
 
 `.github/workflows/wiki.yml` builds the GitHub wiki from `docs/` (`tools/wiki`, with a link check) and publishes it on a push to `main` that touches `docs/` or `tools/wiki/` (`contents: write` on that job only). A new docs page needs its row in `tools/wiki/pages.mjs`, or the check fails.
 
@@ -132,6 +132,10 @@ mirror (`playwright.download.prss.microsoft.com`) does not resolve on the runner
 unchanged.
 
 ## Browser tests
+
+`pnpm test:browser` in `tools/harness` (`src/runBrowserTests.ts`) runs two phases. Phase 1 is `playwright test --grep-invert @timing`: every golden, path-tracer, bake and pairing test with several workers. Phase 2 is `playwright test --project=bench --workers=1`: the `bench` project is every test tagged `@timing` (the budget test in `bench.spec.ts` and the three `baked lighting` tests that check the main-thread measures), run alone on an idle machine, with its own output directory `test-results/serial`. Phase 2 runs even when phase 1 failed; the exit code is non-zero if either failed. A plain `playwright test` mixes the two, so use the script for a full local run. A test whose result depends on how busy the machine is gets `{ tag: '@timing' }`; every other project excludes the tag. There is no project dependency: it would skip the timing tests after a golden failure and pull the goldens into the CI bench job.
+
+The worker count (`src/workerCount.ts`) is `MS_PW_WORKERS` (integer 1..32, anything else fails naming the variable), else 1 when `CI` is set, else the smaller of 6, one per four logical CPUs (SwiftShader runs several threads per page) and one per 2 GiB of RAM, at least 1. Timeouts stay fixed numbers; lower `MS_PW_WORKERS` if a loaded machine times out.
 
 Fixtures in `tools/harness/fixtures` are self-contained WebGL2 pages served by a local Vite server on
 `127.0.0.1:<port>`. The port is `MS_HARNESS_PORT`, else a stable per-checkout port in 4410..4909 derived from the harness
@@ -1062,7 +1066,7 @@ attached vertex formula in four poses, re-posing, nesting, index remapping, ever
 `budgets.json` (root, `"version": 1`) holds `max` values for frame time, load time, time to N samples and gzip bundle
 size of `app`, `app-entry`, `embed`, `embed-frame`, `site`, `site-assets` and `export`. `embed` is the element script `modelshot-embed.js` (its own Vite lib build, `vite.element.config.ts`) with any chunk it imports statically, what a host page loads; `embed-frame` is every JS, CSS and HTML file of the frame page's build (entry, lazy bake chunk, load and bake workers), what the iframe loads. `app` is every JS and CSS file of `packages/app`'s build (the entry, the lazy path tracer and export chunks, the loaders and the workers); `app-entry` is `index.html`, the stylesheet and the entry script with the chunks it imports statically, what the page loads before a model is opened. `site` is a plain `vite build` of `packages/site` without the `/app/` copy that `build:with-app` adds; `site-assets` is the same build's woff2 and svg files; `export` is `@modelshot/export` built as a library (Vite lib mode, the workspace packages external), the entry chunk and the chunks it imports statically, each gzipped, so the encoders, loaded on demand, are not counted. `pnpm test` measures them (`bench.spec.ts`; the bundle is built fresh into a temporary directory, so
 it does not depend on `pnpm -r build`) and fails when a value exceeds its `max`, when a budget has no measurement, or
-a measurement has no budget. The measured values are in `tools/harness/test-results/budgets-measured.json`, and
+a measurement has no budget. The measured values are in `tools/harness/test-results/serial/budgets-measured.json`, and
 every run prints each one against its max (`[budget] <group>.<key>: measured … / max …`, from `bench.spec.ts` and
 `test/bundleSize.test.ts`; Vitest runs with `silent: false` so passing tests print too). Both measure every target in `BUNDLE_TARGETS`
 (`tools/harness/src/bundleSize.ts`), and `test/bundleSize.test.ts` fails when that list and the `bundleGzipBytes` rows

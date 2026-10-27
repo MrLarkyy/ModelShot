@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test:browser": "playwright test",
-    "golden:update": "playwright test --update-snapshots=all",
+    "test:browser": "node src/runBrowserTests.ts",
+    "golden:update": "playwright test --update-snapshots=all --grep-invert @timing",
     "browsers": "playwright install --only-shell chromium"
   },
   "dependencies": {
