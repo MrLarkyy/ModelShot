@@ -142,7 +142,7 @@ grading share baked light.
 | ----------- | ----------------------------------- | --------------------------------------------------- | ------------------------------------------ | -------------------------------------- |
 | Studio      | v0: above, behind right, warm white | none (black)                                        | v0 grey dome, flat grey (0.14, 0.15, 0.17) | neutral                                |
 | Marketplace | front, above, warm                  | narrow white rim screen left, behind; dim blue fill | dim blue dome; navy gradient, lighter low  | exposure 0, power 1.1, saturation 1.15 |
-| Rim         | weak, front                         | white rim screen right, behind                      | low dome; dark grey gradient               | power 1.25                             |
+| Rim         | weak, front                         | white rim screen right, from behind                 | low dome; dark grey gradient               | power 1.25                             |
 
 Studio is the v0 look number for number (`LIGHT_RIG_V0`, `EDGE_LOOK_V0`; tested), so every golden from before look
 presets holds unregenerated. Every preset rounds edges at 30°, so switching presets never detects sharp edges again.
@@ -150,15 +150,14 @@ Marketplace's numbers are matched by the look review page (`tools/harness/fixtur
 [testing.md](testing.md#look-presets)) against reference renders kept outside the repository. Its rim (view direction
 (−0.9, 0.12, −0.42): screen left, a little up, behind; colour (12, 13, 15), exponent 6, albedo share 0.15) draws a
 thin near-white line along the rounded edges of the silhouettes from any yaw, as the references do, on light and
-saturated textures alike; faces turned to the camera or up (pitch 20) keep their texel colour. Rim's rim mirrors the
-direction to screen right (colour 4, exponent 5, albedo share 0.3). **Known loss**: it greys the side faces turned
-screen right. On the test player's head the right side goes from (32, 8, 9) to (95, 83, 83) at yaw 210 and from
-(97, 13, 14) to (117, 69, 69) at yaw 30, so its red texel is mostly lost in the dark look. Every Rim rim that spares
-those faces and still draws a white line puts the preview-vs-render pair over its limits (from behind, (0.45, 0.12,
-−0.88), exponent 5: side faces untouched, pair ratio 0.0267 against 0.0241), and every one that fits the limits and
-spares them draws no white line ([testing.md](testing.md#look-presets)). The reason is the silhouette: the render's
-jittered rays catch the rim on pixels the face only partly covers, while the player's preview frames use the exact
-depth key (its outer layer has a render order) and draw single-sampled, so such a pixel shows the face or the backdrop
-by its centre alone (at 256 px, (170, 60) of `preset-rim` is backdrop in the preview, the rim line in the render), and a
-thin silhouette rim adds pixels that differ. Anti-aliasing exact-key silhouettes is MS-35's. Studio's rim is black (exponent 4, albedo share 1:
+saturated textures alike; faces turned to the camera or up (pitch 20) keep their texel colour. Rim's rim comes from
+behind on the right (view direction (0.45, 0.12, −0.88), colour 8, exponent 5, albedo share 0.3, MS-35): it lights
+only normals turned away from the camera, so side faces turned screen right keep their texel colour (the test
+player's head side (32, 8, 9) at yaw 210 and (97, 13, 14) at yaw 30, the same with the rim black, 0 levels) while the
+rounded silhouette edges still draw a near-white line (512 px: 418 preview / 371 render pixels at yaw 210, 437 / 403
+at yaw 30; preview-vs-render pair 0.01582, mean delta 0.810, [testing.md](testing.md#look-presets)). MS-19 shipped it
+from the side ((0.9, 0.12, −0.42), colour 4), which greyed those faces to (95, 83, 83) and (117, 69, 69): every rim
+that spared them put the pair over its limits, because the player's preview frames (exact depth key) drew
+single-sampled silhouettes the render's jittered rays do not. Since MS-35 they draw 2 × 2 sub-pixels
+([realtime-renderer.md](realtime-renderer.md#passes)). Studio's rim is black (exponent 4, albedo share 1:
 inert).

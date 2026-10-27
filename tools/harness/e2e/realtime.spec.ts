@@ -622,11 +622,10 @@ test.describe('look presets', () => {
    * held-cube player's head top, (0, 32, 0), and of its screen-right side, the face x = -4 from yaw 210 and x = 4
    * from yaw 30, unbaked, 512 px, pitch 20, with the preset's rim against the rim black, at most `FACE_LEVELS` apart
    * per channel. The round-4 Marketplace rim turned the head top from (255, 95, 95) to (232, 208, 214). Measured 0
-   * levels everywhere but Rim's right side, which its rim greys: (32, 8, 9) to (95, 83, 83) at yaw 210, (97, 13, 14)
-   * to (117, 69, 69) at yaw 30, worst 75 levels; a known loss (docs/look-presets.md, presets), held at measured
-   * x 1.25 so it cannot grow.
+   * levels everywhere, Rim's right side included since MS-35 moved its rim behind the model: (32, 8, 9) at yaw 210 and
+   * (97, 13, 14) at yaw 30 with and without the rim (MS-19's rim greyed them to (95, 83, 83) and (117, 69, 69)).
    */
-  const FACE_LEVELS: Readonly<Record<string, readonly [number, number]>> = { marketplace: [3, 3], rim: [3, 94] };
+  const FACE_LEVELS: Readonly<Record<string, readonly [number, number]>> = { marketplace: [3, 3], rim: [3, 3] };
   const FACES = [
     { face: 'head top', at: (): [number, number, number] => [0, 32, 0] },
     { face: 'head right side', at: (yaw: number): [number, number, number] => [yaw === 210 ? -4 : 4, 28, 0] },
