@@ -106,7 +106,8 @@ export interface RtView {
   readonly look: RtLook | null;
   /**
    * `framed`: clip planes around the content (the raster depth key holds); `inside`: near = far × 1e-4, as for a
-   * camera inside the bounding sphere (the renderer switches to the exact depth key).
+   * camera inside the bounding sphere (the renderer switches to the exact depth key). The orbit keeps its own planes
+   * when `framed` and takes the same near plane when `inside`.
    */
   readonly depth: 'framed' | 'inside';
   /** Hides every mesh of this name (it must exist in the scene); null hides nothing. */
@@ -501,7 +502,8 @@ export function rtCamera(doc: SceneDocument, view: RtView, aspect: number): Scen
   controller.reset(sceneBounds(doc));
   if (view.isometric) controller.isometric();
   controller.zoom(view.zoom);
-  return controller.camera();
+  const camera = controller.camera();
+  return view.depth === 'inside' ? { ...camera, near: camera.far * 1e-4 } : camera;
 }
 
 /** Parses the fixture URL: `variant` picks a preset, explicit parameters override it. Unknown values throw. */

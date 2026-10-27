@@ -290,6 +290,18 @@ async function cutoutEdgeRegion(page: Page): Promise<[number, number][]> {
   return Promise.all(corners.map((corner) => projectPoint(page, corner)));
 }
 
+/** Texel centres of the cutout-edge quad: a cut-out texel shows the backdrop exactly, an opaque one its colour. */
+async function expectCutoutTexelCentres(page: Page, frame: Image, hard: Image, backdrop: Image): Promise<void> {
+  for (let row = 1; row < CUTOUT_EDGE_TEXELS - 1; row++) {
+    for (let column = 1; column < CUTOUT_EDGE_TEXELS - 1; column++) {
+      const [x, y] = await projectPoint(page, cutoutEdgePoint(column + 0.5, row + 0.5));
+      const label = `texel ${column}, ${row}`;
+      if (cutoutEdgeOpaque(column, row)) expect(near(pixel(frame, x, y), pixel(hard, x, y), 1), label).toBe(true);
+      else expect(pixel(frame, x, y), label).toEqual(pixel(backdrop, x, y));
+    }
+  }
+}
+
 test.describe('anti-aliased cutout seams (alpha-to-coverage, MS-30)', () => {
   test('cutout edges on the MSAA path are anti-aliased, the cut-out texels unchanged', async ({ page }) => {
     const backdrop = (await render(page, 'scene=empty&look=edge')).image;
@@ -308,15 +320,7 @@ test.describe('anti-aliased cutout seams (alpha-to-coverage, MS-30)', () => {
     // (c) The covered area is the hard shape's: the 50 % contour lies on the texel boundaries.
     expect(Math.abs(seams.area - seams.hardArea), summary).toBeLessThanOrEqual(0.5 * seams.boundaryRows);
     // (d) Texel centres: a cut-out texel shows the backdrop exactly, an opaque one its colour.
-    for (let row = 1; row < CUTOUT_EDGE_TEXELS - 1; row++) {
-      for (let column = 1; column < CUTOUT_EDGE_TEXELS - 1; column++) {
-        const [x, y] = await projectPoint(page, cutoutEdgePoint(column + 0.5, row + 0.5));
-        const label = `texel ${column}, ${row}`;
-        if (cutoutEdgeOpaque(column, row))
-          expect(near(pixel(soft.image, x, y), pixel(hard, x, y), 1), label).toBe(true);
-        else expect(pixel(soft.image, x, y), label).toEqual(pixel(backdrop, x, y));
-      }
-    }
+    await expectCutoutTexelCentres(page, soft.image, hard, backdrop);
     // Without sample buffers the seams stay hard.
     const single = await render(page, 'variant=cutout-edge&msaa=0');
     expect(await page.evaluate(() => window.__msFixture?.rt?.msaaSamples)).toBe(0);
@@ -324,7 +328,9 @@ test.describe('anti-aliased cutout seams (alpha-to-coverage, MS-30)', () => {
     expect(singleSeams.mixes, JSON.stringify(singleSeams)).toBe(0);
   });
 
-  test('the fallback and exact-key frames keep hard per-texel cutouts', async ({ page }) => {
+  test('the fallback keeps hard per-texel cutouts; exact-key frames anti-alias them by their 2 x 2 sub-pixels', async ({
+    page,
+  }) => {
     const backdrop = (await render(page, 'scene=empty&look=edge&fallback=1')).image;
     const hard = (await render(page, 'variant=cutout-edge&aa=0&fallback=1')).image;
     const soft = (await render(page, 'variant=cutout-edge&fallback=1')).image;
@@ -341,13 +347,26 @@ test.describe('anti-aliased cutout seams (alpha-to-coverage, MS-30)', () => {
     }
     expect(classChanges, 'pixels that change between model and backdrop with texel AA (fallback)').toBe(0);
 
+    // Exact frames (MS-35): every sub-pixel of the 2 x 2 target has its own key and its own per-texel discard, so the
+    // box mean antialiases the seams like the MSAA path, against the hard shape of a single-sampled frame.
     const floatBackdrop = (await render(page, 'scene=empty&look=edge&depth=inside')).image;
-    const exactHard = (await render(page, 'variant=cutout-edge-inside&aa=0')).image;
+    const exactHard = (await render(page, 'variant=cutout-edge-inside&aa=0&msaa=0')).image;
     const exactSoft = (await render(page, 'variant=cutout-edge-inside')).image;
     expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('exact');
-    const exact = cutoutSeams(exactSoft, exactHard, floatBackdrop, region, studioLinear);
-    expect(exact.boundary, JSON.stringify(exact)).toBeGreaterThan(200);
-    expect(exact.mixes, JSON.stringify(exact)).toBe(0);
+    const exactRegion = await cutoutEdgeRegion(page);
+    const exact = cutoutSeams(exactSoft, exactHard, floatBackdrop, exactRegion, studioLinear);
+    const summary = JSON.stringify(exact);
+    console.log(`[rt probe] cutout-edge-inside seams: ${summary}`);
+    expect(exact.farChanges, summary).toBe(0);
+    expect(exact.transitions, summary).toBeGreaterThan(200);
+    expect(exact.mixedTransitions, summary).toBeGreaterThanOrEqual(exact.transitions * 0.5);
+    expect(Math.abs(exact.area - exact.hardArea), summary).toBeLessThanOrEqual(0.5 * exact.boundaryRows);
+    await expectCutoutTexelCentres(page, exactSoft, exactHard, floatBackdrop);
+    // Without sample buffers an exact frame is drawn single-sampled: its seams stay hard.
+    const single = (await render(page, 'variant=cutout-edge-inside&msaa=0')).image;
+    expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('exact');
+    const singleSeams = cutoutSeams(single, exactHard, floatBackdrop, exactRegion, studioLinear);
+    expect(singleSeams.mixes, JSON.stringify(singleSeams)).toBe(0);
   });
 
   test('alpha-to-coverage is on only for the opaque pass into a multisampled target', async ({ page }) => {
@@ -390,6 +409,68 @@ test.describe('anti-aliased cutout seams (alpha-to-coverage, MS-30)', () => {
     const baked = await page.evaluate(() => window.__msFixture!.rt!.drawStatesPerFrame());
     expect(baked.some((state) => state.program === 'catcher' && !state.alphaToCoverage)).toBe(true);
   });
+});
+
+/** Pixels where some channel of `a` and `b` differs by more than `levels`. */
+function pixelsApart(a: Image, b: Image, levels: number): number {
+  let count = 0;
+  for (let i = 0; i < a.data.length; i += 4) {
+    for (let c = 0; c < 3; c++) {
+      if (Math.abs((a.data[i + c] ?? 0) - (b.data[i + c] ?? 0)) > levels) {
+        count++;
+        break;
+      }
+    }
+  }
+  return count;
+}
+
+/**
+ * Entering the bounding sphere keeps silhouette anti-aliasing (MS-35): turntable-y030 with the raster key (framed
+ * clip planes, MSAA) and with the exact key (near = far x 1e-4, 2 x 2 sub-pixels). Texel AA is off, so only the
+ * silhouette mixes; the hard reference is the same view single-sampled (msaa=0). Mixed share: of the model/backdrop
+ * neighbour pairs of the hard frame, those with a strict mix on either side (`cutoutSeams` over the whole image).
+ */
+test('exact-key frames anti-alias silhouettes like raster frames', async ({ page }) => {
+  // Measured (SwiftShader): mixed share raster 0.664 (542 of 816), exact 0.722 (589); the shown frames 1409 pixels
+  // more than 8 levels apart, all on silhouettes and texel seams (MSAA and a 1 px texel ramp against the 2 x 2 box of
+  // a half-pixel ramp), held at measured x 1.25.
+  const minShare = 0.5;
+  const maxApart = 1762;
+  const shares: Record<string, number> = {};
+  const frames: Record<string, Image> = {};
+  for (const [depth, mode] of [
+    ['framed', 'raster'],
+    ['inside', 'exact'],
+  ] as const) {
+    const query = `variant=turntable-y030&depth=${depth}&aa=0`;
+    const backdrop = (await render(page, `variant=turntable-y030&scene=empty&depth=${depth}`)).image;
+    const hard = (await render(page, `${query}&msaa=0`)).image;
+    const soft = (await render(page, query)).image;
+    expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode()), depth).toBe(mode);
+    const whole: [number, number][] = [
+      [0, 0],
+      [soft.width, 0],
+      [soft.width, soft.height],
+      [0, soft.height],
+    ];
+    const seams = cutoutSeams(soft, hard, backdrop, whole, studioLinear);
+    shares[mode] = seams.mixedTransitions / seams.transitions;
+    console.log(`[rt probe] turntable-y030 ${mode} silhouette: ${JSON.stringify(seams)}`);
+    expect(shares[mode], mode).toBeGreaterThanOrEqual(minShare);
+    if (mode === 'exact') {
+      // One sample is no MSAA: the exact frame stays single-sampled, its silhouette hard (msaa=0 is the reference).
+      const single = (await render(page, `${query}&msaa=1`)).image;
+      const singleSeams = cutoutSeams(single, hard, backdrop, whole, studioLinear);
+      expect(singleSeams.mixes, JSON.stringify(singleSeams)).toBe(0);
+    }
+    // The frame as shown, texel AA on.
+    frames[mode] = (await render(page, `variant=turntable-y030&depth=${depth}`)).image;
+  }
+  expect(shares['exact']).toBeGreaterThanOrEqual(0.8 * (shares['raster'] ?? 0));
+  const apart = pixelsApart(frames['raster']!, frames['exact']!, 8);
+  console.log(`[rt probe] turntable-y030 raster vs exact: ${apart} pixels more than 8 levels apart`);
+  expect(apart).toBeLessThanOrEqual(maxApart);
 });
 
 test('the context comes back after a loss without a reload', async ({ page }) => {

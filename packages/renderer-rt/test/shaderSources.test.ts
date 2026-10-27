@@ -49,6 +49,16 @@ describe('shader sources', () => {
     expect(shaderProgramSource('fallback').fragment).toContain('vec3 agxToneMap(vec3 linearColor)');
   });
 
+  it('presents the box mean of the supersampled sub-pixels in linear HDR, before AgX', () => {
+    const { fragment } = shaderProgramSource('present');
+    expect(fragment).toContain('uniform int u_supersample;');
+    const body = fragment.slice(fragment.indexOf('void main()'));
+    const mean = body.indexOf('vec3 linearColor = sum / float(s * s);');
+    expect(body.indexOf('texelFetch(u_hdr, base + ivec2(x, y), 0)')).toBeGreaterThan(-1);
+    expect(mean).toBeGreaterThan(body.indexOf('texelFetch(u_hdr'));
+    expect(body.indexOf('agxToneMap(linearColor)')).toBeGreaterThan(mean);
+  });
+
   it('takes the depth key derivatives before the first discard in every mesh pass', () => {
     for (const name of ['opaque', 'oitAccum', 'fallback'] as const) {
       for (const depthKey of ['raster', 'exact'] as const) {

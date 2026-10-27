@@ -31,6 +31,7 @@ import { canvasSize, type CanvasCssSize, type CanvasSize } from './canvasSize';
 import { DEFAULT_MAX_TEXTURE_PIXELS_TOTAL, decodeTextures, type TextureLimits } from './decodeTextures';
 import { queryGlLimits, type GlLimits } from './glLimits';
 import { depthKeyMode, depthPull, exactDepthRange, type DepthKeyMode } from './depthKeyMode';
+import { exactSupersampleScale } from './exactSupersample';
 import { invertMat4 } from './invertMat4';
 import { lightmapLayout, type LightmapLayoutSummary } from './lightmapLayout';
 import { poseOnlyChange } from './poseOnlyChange';
@@ -160,13 +161,20 @@ interface FrameView {
   /** The camera as the look's rim follows it. */
   readonly lookView: LookView;
   readonly mode: DepthKeyMode;
-  /** Viewport of every mesh pass (the float targets and the fallback both draw at the canvas size). */
+  /**
+   * Viewport of every mesh pass: the canvas size, or twice it on each side for an exact frame the float path
+   * supersamples (`exactSupersampleScale`).
+   */
   readonly viewport: readonly [number, number];
 }
 
 interface GpuResources {
   programs: RendererPrograms;
   targets: RenderTargets | null;
+  /** Single-sampled 2 × 2 targets of exact frames, allocated on the first one that fits (`exactSupersampleScale`). */
+  exactTargets: RenderTargets | null;
+  /** `width x height` of the canvas whose 2 × 2 targets the driver rejected; not retried until the size changes. */
+  exactRejected: string | null;
   readonly fullscreenVao: WebGLVertexArrayObject;
   readonly placeholder: WebGLTexture;
   readonly untextured: WebGLTexture;
@@ -469,8 +477,41 @@ export class RealtimeRenderer {
     if (gpu.targets && !gpu.targets.ensure(width, height)) this.switchToFallback(gpu);
     const frame = this.frameView(gpu, width, height);
     this.frameDepthKey = frame?.mode ?? null;
-    if (gpu.targets) this.drawFloatPath(gpu, gpu.targets, frame);
-    else this.drawFallbackPath(gpu, frame);
+    if (!gpu.targets) {
+      this.drawFallbackPath(gpu, frame);
+      return;
+    }
+    const exact = frame?.mode === 'exact' ? this.exactTargets(gpu, gpu.targets, width, height) : null;
+    if (exact && frame) this.drawFloatPath(gpu, exact, 2, { ...frame, viewport: [exact.width, exact.height] });
+    else this.drawFloatPath(gpu, gpu.targets, 1, frame);
+  }
+
+  /**
+   * The 2 × 2 targets of an exact frame of `width` × `height`, or `null` to draw it single-sampled into `targets`: the
+   * scale is 1 there, or the driver rejected the size. Kept across raster frames; freed when the size no longer fits.
+   */
+  private exactTargets(gpu: GpuResources, targets: RenderTargets, width: number, height: number): RenderTargets | null {
+    const size = `${width}x${height}`;
+    if (
+      exactSupersampleScale(width, height, targets.samples, gpu.capabilities.limits) === 1 ||
+      gpu.exactRejected === size
+    ) {
+      this.releaseExactTargets(gpu);
+      return null;
+    }
+    gpu.exactTargets ??= new RenderTargets(this.gl, 0);
+    if (gpu.exactTargets.ensure(2 * width, 2 * height)) {
+      gpu.exactRejected = null;
+      return gpu.exactTargets;
+    }
+    this.releaseExactTargets(gpu);
+    gpu.exactRejected = size;
+    return null;
+  }
+
+  private releaseExactTargets(gpu: GpuResources): void {
+    gpu.exactTargets?.dispose();
+    gpu.exactTargets = null;
   }
 
   /** The camera of this frame, and the depth-key variant the scene and this depth range need (`depthKeyMode`). */
@@ -558,6 +599,8 @@ export class RealtimeRenderer {
     return {
       programs,
       targets,
+      exactTargets: null,
+      exactRejected: null,
       fullscreenVao: gl.createVertexArray(),
       placeholder: uploadTexture(gl, PLACEHOLDER_IMAGE),
       untextured: uploadTexture(gl, UNTEXTURED_IMAGE),
@@ -660,6 +703,7 @@ export class RealtimeRenderer {
     const gl = this.gl;
     gpu.targets?.dispose();
     gpu.targets = null;
+    this.releaseExactTargets(gpu);
     for (const program of gpu.programs.all) gl.deleteProgram(program);
     gpu.programs = createRendererPrograms(gl, false);
     gpu.capabilities = { ...gpu.capabilities, path: 'fallback', msaaSamples: 0 };
@@ -721,6 +765,7 @@ export class RealtimeRenderer {
     for (const texture of gpu.sceneTextures) if (texture) gl.deleteTexture(texture);
     for (const program of gpu.programs.all) gl.deleteProgram(program);
     gpu.targets?.dispose();
+    this.releaseExactTargets(gpu);
     gl.deleteVertexArray(gpu.fullscreenVao);
     gl.deleteTexture(gpu.placeholder);
     gl.deleteTexture(gpu.untextured);
@@ -900,7 +945,11 @@ export class RealtimeRenderer {
     gl.bindVertexArray(null);
   }
 
-  private drawFloatPath(gpu: GpuResources, targets: RenderTargets, frame: FrameView | null): void {
+  /**
+   * Draws `frame` into `targets` at their size, `scale` × `scale` sub-pixels per canvas pixel, and presents their box
+   * mean (in linear HDR, before tone mapping, as the MSAA resolve) at the canvas size.
+   */
+  private drawFloatPath(gpu: GpuResources, targets: RenderTargets, scale: 1 | 2, frame: FrameView | null): void {
     const gl = this.gl;
     const { width, height } = targets;
     const scene = frame ? gpu.scene : null;
@@ -909,7 +958,8 @@ export class RealtimeRenderer {
 
     // Exact frames draw single-sampled: their per-fragment key is the depth at the pixel centre, which is the only
     // sample there; with MSAA it would stand for every covered sample, wrongly for a face whose depth changes a lot
-    // inside one pixel (grazing angles), letting a hidden face win samples.
+    // inside one pixel (grazing angles), letting a hidden face win samples. Their silhouettes are antialiased by
+    // drawing them at 2 × 2 (`exactTargets`), where every sub-pixel has its own centre and key.
     const msaa = frame?.mode === 'exact' ? null : targets.msaaFramebuffer;
     gl.bindFramebuffer(gl.FRAMEBUFFER, msaa ?? targets.resolveFramebuffer);
     gl.viewport(0, 0, width, height);
@@ -983,15 +1033,16 @@ export class RealtimeRenderer {
     }
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, width, height);
+    gl.viewport(0, 0, width / scale, height / scale);
     gl.disable(gl.BLEND);
     gl.disable(gl.DEPTH_TEST);
     gl.depthMask(true);
     gl.useProgram(present.program);
-    this.uploadLook(present.look, height, LOOK_VIEW_NONE);
+    this.uploadLook(present.look, height / scale, LOOK_VIEW_NONE);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, targets.hdr);
     gl.uniform1i(present.uniforms['u_hdr'] ?? null, 0);
+    gl.uniform1i(present.uniforms['u_supersample'] ?? null, scale);
     gl.bindVertexArray(gpu.fullscreenVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);

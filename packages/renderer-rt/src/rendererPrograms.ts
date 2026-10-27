@@ -50,7 +50,7 @@ export interface RendererPrograms {
 
 const FULLSCREEN_UNIFORMS: Readonly<Record<'oitComposite' | 'present' | 'backdrop' | 'catcher', readonly string[]>> = {
   oitComposite: ['u_accum', 'u_weight'],
-  present: ['u_hdr'],
+  present: ['u_hdr', 'u_supersample'],
   backdrop: ['u_toneMap'],
   catcher: ['u_viewProjection', 'u_catcherLight', 'u_catcherRect', 'u_catcherSize', 'u_toneMap'],
 };
