@@ -131,18 +131,26 @@ export async function readImageTiming(
   }
 }
 
+/** How long a seek may take to present its frame: a clear failure well inside the test's timeout, never a hang. */
+const SEEK_FRAME_WAIT_MS = 20_000;
+
 /**
- * What a video element makes of the file: its size and duration, and the frame shown at `seconds` (RGBA, drawn through
- * a canvas); `null` when the browser says it cannot play `type`.
+ * What a video element makes of the file: its size and duration, and frame `frame` of a `fps` clip as the element
+ * presents it after a seek into the middle of the frame (RGBA, drawn through a canvas); `null` when the browser says it
+ * cannot play `type`.
  */
 export async function playVideo(
   file: Uint8Array,
   type: string,
-  seconds: number,
+  frame: number,
+  fps: number,
 ): Promise<{ width: number; height: number; duration: number; rgba: Uint8Array } | null> {
   const video = document.createElement('video');
   if (video.canPlayType(type) === '') return null;
   const url = URL.createObjectURL(new Blob([new Uint8Array(file)], { type }));
+  // Frame callbacks run for frames sent to the compositor, so the element is in the document (1 px, out of the way).
+  video.style.cssText = 'position: fixed; left: 0; top: 0; width: 1px; height: 1px; pointer-events: none';
+  document.body.append(video);
   try {
     video.muted = true;
     video.preload = 'auto';
@@ -154,16 +162,39 @@ export async function playVideo(
     });
     video.src = url;
     await loaded;
-    const seeked = new Promise<void>((resolve) => video.addEventListener('seeked', () => resolve(), { once: true }));
-    video.currentTime = seconds;
-    await seeked;
-    const canvas = new OffscreenCanvas(video.videoWidth, video.videoHeight);
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) throw new Error('no 2D context');
-    context.drawImage(video, 0, 0);
-    const rgba = new Uint8Array(context.getImageData(0, 0, video.videoWidth, video.videoHeight).data);
+    // Chromium can fire `seeked` before the seeked frame is presented, so a draw then shows the previous frame under
+    // load. The draw happens in the frame callback whose media time is the target frame instead.
+    const drawn = new Promise<Uint8Array>((resolve, reject) => {
+      let seen = 'none';
+      const timer = setTimeout(
+        () =>
+          reject(new Error(`video frame ${frame} not presented in ${SEEK_FRAME_WAIT_MS} ms (last media time ${seen})`)),
+        SEEK_FRAME_WAIT_MS,
+      );
+      const onFrame = (_now: number, metadata: VideoFrameCallbackMetadata): void => {
+        seen = `${metadata.mediaTime}`;
+        if (Math.floor(metadata.mediaTime * fps + 1e-3) !== frame) {
+          video.requestVideoFrameCallback(onFrame);
+          return;
+        }
+        clearTimeout(timer);
+        try {
+          const canvas = new OffscreenCanvas(video.videoWidth, video.videoHeight);
+          const context = canvas.getContext('2d', { willReadFrequently: true });
+          if (!context) throw new Error('no 2D context');
+          context.drawImage(video, 0, 0);
+          resolve(new Uint8Array(context.getImageData(0, 0, video.videoWidth, video.videoHeight).data));
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error(String(error)));
+        }
+      };
+      video.requestVideoFrameCallback(onFrame);
+    });
+    video.currentTime = (frame + 0.5) / fps;
+    const rgba = await drawn;
     return { width: video.videoWidth, height: video.videoHeight, duration: video.duration, rgba };
   } finally {
+    video.remove();
     URL.revokeObjectURL(url);
   }
 }
