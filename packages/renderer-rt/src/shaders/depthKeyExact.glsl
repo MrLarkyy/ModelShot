@@ -10,7 +10,7 @@
 uniform float u_orderPull;
 uniform vec2 u_depthRange;
 uniform mat4 u_inverseProjection;
-uniform vec2 u_viewportSize;
+#include "viewport"
 in vec3 v_viewPosition;
 flat in vec3 v_corner0;
 flat in vec3 v_corner1;

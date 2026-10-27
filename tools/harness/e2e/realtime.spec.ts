@@ -12,10 +12,13 @@ import { expect, test } from '../src/harnessTest';
 import { differenceMask, pixelsFarFrom } from '../src/edgeProbes';
 import {
   decodePng,
+  farFrom,
   hueMatch,
   luminance,
+  maskBoundary,
   modelBox,
   near,
+  outlineBand,
   pixel,
   sentinelPixels,
   silhouettePixels,
@@ -136,6 +139,58 @@ test('the float path uses MSAA and the fallback reports itself', async ({ page }
   const fallback = await openFixture(page, '/rt.html?variant=turntable-y030&fallback=1');
   expect(await page.evaluate(() => window.__msFixture?.rt?.path)).toBe('fallback');
   expect(fallback.floatRenderTargets).toBe(true);
+});
+
+/**
+ * MSAA silhouette pixels over a sharp edge (all of this Blockbench model's) are shaded at a covered sample (centroid
+ * normal, position and edge distances, MS-54), as the render's rays hit the face: the baked turntable-y030 preview
+ * (raster key, 4 samples) against its pair render pt-turntable-y030 (seed 1, 64 samples, the golden PNG), the mean of
+ * the largest channel difference over the 2 px outline band both draw. Shaded at the pixel centre the band's normal
+ * and edge rounding extrapolated past the face.
+ * Exact-key frames (a render order: the player's outer layer) draw single-sampled and are not concerned.
+ */
+test('MSAA silhouette pixels are shaded on the face: the outline band of turntable-y030 against its render', async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  // Measured mean 1.6961 over 4 028 px against the MS-59 render; 1.7219 when shaded at the pixel centre (before MS-54).
+  // The bound is their midpoint, so a revert of the centroid qualifiers fails it.
+  const maxMean = 2.12;
+  const midpoint = 1.709;
+  const traced = decodePng(
+    readFileSync(
+      goldenPath({
+        kind: 'pathtraced',
+        fixture: 'pt',
+        name: 'pt-turntable-y030',
+        variant: 'turntable-y030',
+        seed: 1,
+        samples: 64,
+      }),
+    ),
+  );
+  const { image } = await render(page, 'variant=turntable-y030&bake=64&catcher=1');
+  expect(await page.evaluate(() => window.__msFixture!.rt!.depthKeyMode())).toBe('raster');
+  expect(await page.evaluate(() => window.__msFixture!.rt!.msaaSamples)).toBeGreaterThan(1);
+  const look = lookPresetFile('studio');
+  const row = (y: number, height: number) =>
+    agxToneMap(backdropColor(look, (height - y - 0.5) / height), look.toneMapping).map((v) => v * 255);
+  const band = outlineBand(image, traced, row, 2);
+  let sum = 0;
+  let count = 0;
+  band.forEach((inBand, p) => {
+    if (!inBand) return;
+    const [x, y] = [p % image.width, Math.floor(p / image.width)];
+    const a = pixel(image, x, y);
+    const b = pixel(traced, x, y);
+    sum += Math.max(...a.map((v, c) => Math.abs(v - (b[c] ?? 0))));
+    count++;
+  });
+  const mean = sum / count;
+  console.log(`[rt probe] outline band: ${count} px, mean largest-channel delta ${mean.toFixed(4)} / max ${maxMean}`);
+  expect(count, 'outline band pixels').toBeGreaterThan(3000);
+  expect(mean).toBeLessThanOrEqual(maxMean);
+  expect(mean, 'below the midpoint to the pixel-centre shading').toBeLessThan(midpoint);
 });
 
 test('the fixture rejects unknown or malformed parameters', async ({ page }) => {
@@ -1508,6 +1563,50 @@ test.describe('rounded edges', () => {
       expect(far, 'changed pixels away from every sharp edge').toBe(0);
     });
   }
+
+  /**
+   * Centroid edge distances (MS-54) are differenced over steps up to 0.75 px off the unit ones where a pixel's samples
+   * fall on two triangles; prepareShading maps the gradient back to unit steps, so the band keeps its box-filter width,
+   * and shades at the pixel centre unless the pixel reaches over a sharp edge.
+   * The edges view with 4 samples against pixel-centre sampling (msaa=0), off every mesh's outline (more than 1 px from
+   * where a mesh's own pixels, from hiding it, begin), where a pixel differs only along a triangle edge inside a face:
+   * at the look's width no pixel more than 2 levels apart; at width 0.1, where a band is a fraction of a pixel and the
+   * footprint decides its brightness, the pixels differing at all at most the limit below.
+   */
+  test('the edge band keeps its width across quad diagonals', async ({ page }) => {
+    // Measured 0 pixels over 2 levels at the look's width; 133 differing pixels at width 0.1 (227 with the skewed
+    // footprint, 147 shaded at the centroid inside faces too, 142 at the pixel centre before MS-54). The limit is the
+    // midpoint to 147 (below 133 x 1.25), so shading inside faces at the centroid fails it. SwiftShader only: a GPU's
+    // centroid is one covered sample, docs/testing.md gives its numbers.
+    const maxNarrow = 140;
+    const centre = (await render(page, 'variant=edges&msaa=0')).image;
+    const { width, height } = centre;
+    const outlines = new Uint8Array(width * height);
+    for (const mesh of ['cube', 'wedge', 'plane', 'card', 'sphere']) {
+      const own = differenceMask(centre, (await render(page, `variant=edges&msaa=0&hide=${mesh}`)).image);
+      maskBoundary(own, width, height).forEach((v, p) => (outlines[p] = outlines[p] || v));
+    }
+    const inside = farFrom(outlines, width, height, 1);
+    expect(inside.reduce((sum, v) => sum + v, 0)).toBeGreaterThan(20_000);
+    const differing = async (query: string, levels: number): Promise<number> => {
+      const a = (await render(page, `variant=edges${query}`)).image;
+      const b = (await render(page, `variant=edges${query}&msaa=0`)).image;
+      let count = 0;
+      inside.forEach((v, p) => {
+        const [x, y] = [p % width, Math.floor(p / width)];
+        if (v && !near(pixel(a, x, y), pixel(b, x, y), levels)) count++;
+      });
+      return count;
+    };
+    const wide = await differing('', 2);
+    const narrow = await differing('&edges=0.1', 0);
+    console.log(
+      `[edges probe] MSAA vs pixel centre off the outlines: ${wide} px over 2 levels / max 0, ` +
+        `${narrow} px differing at width 0.1 / max ${maxNarrow}`,
+    );
+    expect(wide).toBe(0);
+    expect(narrow).toBeLessThanOrEqual(maxNarrow);
+  });
 
   test('a cube edge facing the key is brighter than its face centre', async ({ page }) => {
     const { image } = await render(page, 'variant=edges');

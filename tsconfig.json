@@ -32,6 +32,9 @@
       "path": "packages/site"
     },
     {
+      "path": "tools/deploy"
+    },
+    {
       "path": "tools/harness"
     },
     {

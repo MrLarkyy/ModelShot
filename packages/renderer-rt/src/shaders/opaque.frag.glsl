@@ -16,7 +16,6 @@ uniform int u_alphaCutoffByte;
 // kept below would grow the cutout shape by half a pixel.
 uniform bool u_alphaToCoverage;
 
-in vec3 v_normal;
 in vec2 v_uv;
 flat in vec4 v_uvRect;
 flat in int v_textureFlags;
@@ -29,7 +28,7 @@ out vec4 outColor;
 // mix of that texel and what lies behind, its 50 % contour on the texel boundary.
 void main() {
   prepareDepthKey();
-  prepareEdges();
+  prepareShading();
   TexelSample s =
     sampleTexels(u_texture, v_uv, v_uvRect, v_textureFlags, u_texelAntialias, u_alphaMode, u_alphaCutoffByte);
   vec4 light = vec4(1.0);
@@ -40,6 +39,6 @@ void main() {
     discard;
   }
   float alpha = u_alphaToCoverage ? s.opaqueCoverage : 1.0;
-  outColor = vec4(shadeLit(sampleColor(s), shadingNormal(v_normal), light), alpha);
+  outColor = vec4(shadeLit(sampleColor(s), shadingNormal(), light), alpha);
   writeDepthKey();
 }

@@ -83,6 +83,15 @@ test('opens a model, switches the look, renders and exports a transparent PNG', 
   await page.getByRole('button', { name: 'Render' }).click();
   await expect(page.getByRole('status')).toContainText('Render done', { timeout: 90_000 });
   await expect(page.locator('#result')).toBeVisible();
+  // A second render shows no image until its first sample: the canvas still holds the first render.
+  const hiddenAtClick = await page.evaluate(() => {
+    const button = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Render');
+    button?.click();
+    return document.getElementById('result')?.hidden;
+  });
+  expect(hiddenAtClick, 'the previous render is hidden from the click').toBe(true);
+  await expect(page.locator('#result')).toHaveAttribute('data-renders', '2', { timeout: 90_000 });
+  await expect(page.locator('#result')).toBeVisible();
 
   await page.getByRole('button', { name: 'Export…' }).click();
   const dialog = page.getByRole('dialog', { name: 'Export' });

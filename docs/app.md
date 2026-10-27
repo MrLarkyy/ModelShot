@@ -15,9 +15,10 @@ uploaded ([privacy](#privacy)).
    any failure.
 4. The viewer draws the scene with `RealtimeRenderer`, orbit controls ([camera.md](camera.md)) and the baked lighting
    of the chosen look, re-baked when the scene, look or visibility changes.
-5. Render runs the path tracer in slices of about 8 ms on the main thread (seed 1; samples, supersampling and
-   denoise from the Render panel), with a progress element; Esc cancels. The result stays until the camera or scene
-   changes.
+5. Render runs the path tracer on the main thread (seed 1; samples, supersampling and denoise from the Render
+   panel), with a progress element: one `step(4)` per animation frame while a denoised request draws its guide, else
+   slices of about 8 ms; Esc cancels. The result canvas is hidden from the Render click until the first sample, and
+   stays hidden after a cancel or a failure; a finished render stays until the camera or scene changes.
 6. Export opens a dialog: still PNG (transparent), turntable or animation (only for a model with animations) as GIF,
    APNG or the other clip formats of [export.md](export.md). Options are checked with `checkExportOptions`; a
    failure names the field. The file is a download of a Blob URL, revoked afterwards.
@@ -77,11 +78,13 @@ fields are optional; a breaking change bumps the version and ships a migration o
 
 ## Offline
 
-A production build emits `sw.js` (scope `/app/`, same origin) listing every file of the build with a version hash.
+A production build emits `sw.js` (scope `<site>/app/`, same origin; the landing page and the embed frame are not
+controlled) listing every file of the build with a version hash.
 Install caches them; activate deletes older caches; same-origin GET requests are answered cache-first with the network
 as fallback; other origins and methods are untouched. A new version waits until the open tabs are closed, because they
-hold the old file names. After one visit the whole flow, including export, works offline. A Content Security Policy
-needs `worker-src 'self'`.
+hold the old file names. After one visit the whole flow, including export, works offline. `index.html` carries the
+Content Security Policy (`default-src 'self'`, `worker-src 'self'`, no inline code) right after the charset meta; see
+[hosting.md](hosting.md).
 
 ## Privacy
 

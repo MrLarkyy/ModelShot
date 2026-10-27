@@ -5,7 +5,7 @@
 
 1. `pnpm test:unit`: Vitest, every package plus `tools/harness/test` (comparator, golden store, budgets, bundle size,
    model-view helpers) and `tools/wiki/test` (page table, link and anchor check over the real docs, publish against a local bare repo).
-2. `pnpm test:browser`: Playwright in a pinned headless Chromium on software WebGL (SwiftShader), `tools/harness`, the landing page's suite in `packages/site` (its own Playwright config, docs/site.md) and the app's in `packages/app` (its own config, docs/app.md).
+2. `pnpm test:browser`: Playwright in a pinned headless Chromium on software WebGL (SwiftShader), `tools/harness`, the landing page's suite in `packages/site` (its own Playwright config, docs/site.md), the app's in `packages/app` (its own config, docs/app.md), the embed's in `packages/embed` and the deploy suite in `tools/deploy` (below).
 
 Run `pnpm browsers` once per machine (and after a Playwright version bump) to install the browser. Playwright is pinned
 to an exact version in `tools/harness/package.json`, which pins the Chromium revision.
@@ -155,6 +155,12 @@ bodies with and without `Content-Length`, a stalled body, a non-model) and lists
 The specs cover the element and a plain iframe, lazy loading, CORS and other download errors, limits with the host
 page staying responsive, the requests made and the background colour per look; no goldens (pixel checks are coarse
 differences after "Preview lit."). See [embed.md](embed.md#tests).
+
+The deploy suite (`tools/deploy/e2e`, `pnpm --filter @modelshot/deploy run test:browser`, part of the root
+`test:browser`) builds `@modelshot/deploy...` itself, then serves the assembled `tools/deploy/dist` on `MS_DEPLOY_PORT`, else a
+per-checkout port, under `/ModelShot/` like GitHub Pages, and a host page on that port plus 2000. With `MS_DEPLOY_URL`
+set it serves only the host page and tests the deployed site instead; `pages.yml` runs it that way after each deploy (`ci.yml` does not run it yet).
+See [hosting.md](hosting.md#tests).
 
 ## Goldens
 
@@ -386,7 +392,7 @@ pitch 35°). Golden `rt-edges`, default tolerance.
 - Planes, cards and smooth areas: the pixels of the plane, the card and the sphere (those that change when the mesh is
   hidden, `hide=`, less the cube's and the wedge's MSAA silhouette pixels) are byte-identical with rounding on and
   `edges=0`, float and fallback (0 of 1 014 / 1 272 / 1 584 float, 982 / 1 210 / 1 544 fallback).
-- Sharp-edged meshes change only beside their edges: every pixel that rounding changes (1 895 float, 1 729 fallback)
+- Sharp-edged meshes change only beside their edges: every pixel that rounding changes (1 886 float since MS-54 round 4, 1 895 before MS-54; 1 723 fallback, 1 729 before MS-54)
   lies within the band's projected width plus 2 px (4.82 px) of a projected sharp edge of the cube or the wedge.
 - The cube's up face 0.15 units from its south edge, which faces the key, is brighter than the face centre (120.4 vs
   117.4 levels; unrounded it equals the centre).
@@ -427,6 +433,94 @@ model-view golden. The `cutout-edge` test measured 1 742 transitions inside the 
 `rt-bench-512` median 389 ms against 361 ms with A2C gated off (`rt-bench-order-512`, exact frames, never A2C: 313
 against 298, the run-to-run spread); budget 2 000.
 
+Goldens regenerated on purpose in MS-54 (centroid normal, world position and edge distances, the edge footprint
+mapped back to unit steps; same views, bake seed and samples): the raster-key MSAA frames, where the change lies on
+silhouettes and on triangle edges inside faces (quad diagonals, the sphere's facets), judged as diff images. Pixels
+against the same views rendered with origin/main's shaders (count, largest level): `rt-turntable-y000` 253 (7),
+`-y030` 391 (6), `-y060` 390 (8), `-y090` 368 (7), `rt-iso` 411 (7), `rt-closeup` 557 (7), `rt-far` 185 (13),
+`rt-edges` 681 (20), `rt-gltf-nodes-y030` 248 (12), `rt-obj-shapes-y030` 219 (10), `rt-outline-hull` 531 (11),
+`rt-bake-turntable-y030` 350 (6), `rt-bake-alpha-plane` 131 (9, the ground's far silhouette; the cut-out squares
+unchanged), `rt-bake-cutout-checker` 163 (3), `rt-bake-gltf-contact` 91 (1); with the baked vertex light centroid too, the
+same two move again, 34 (max 3) and 254 pixels (max 4), along silhouettes and triangle edges only. `rt-far`, `rt-turntable-y000`, `-y030`
+and `-y090` also take up drift main had left within tolerance (against their old golden 487, 449, 660 and 498 pixels,
+up to 102 levels). Drift explained and regenerated too, so every rt golden equals the current output (the same view
+rendered twice gives the same bytes; diff images judged): MS-15 left `rt-player-hold-34` (2 340 pixels, up to 47
+levels, all along the rounded cube edges) and `rt-player-legacy-opaque-hat-34` (1 497, 43) in tolerance, MS-30 left
+`rt-fit-flat-cube` (107, 37, its cut-out seams), and with them `rt-far` (rounded edges and seams) and
+`rt-turntable-y000`, `-y030`, `-y090` (the flower's and the frame's cut-out seams). The exact-key player and preset
+frames, single-sampled, moved in round 1 at most 4 pixels by 1 level (rounding in the changed program): rewritten with
+the drift are `rt-player-classic-front` (1), `-classic-back` (1), `-walk-hold-34` (4), `-wave-front` (2),
+`rt-preset-marketplace` (2) and `rt-preset-marketplace-fallback` (2). Unchanged: the other rt goldens, every `pt-*`
+and model-view golden; `export-animation-f0.s1.n16` renders 2 pixels 1 level off its golden, twice alike (not an rt
+golden, left). Round 3 (the shading point back at the pixel centre wherever the pixel lies on the face,
+`prepareShading`) rewrote 29 rt goldens, pixels (max levels) against round 2: `rt-bake-alpha-plane` 1 614 (3),
+`rt-bake-gltf-contact` 1 846 (4), `rt-bake-turntable-y030` 307 (2), `rt-bake-cutout-checker` 105 (1) and `-fallback`
+100 (1), `rt-closeup` 553 (3), `rt-edges` 635 (20), `rt-fallback` 316 (1), `rt-far` 40 (1), `rt-gltf-nodes-y030` 141
+(2), `rt-iso` 372 (1), `rt-obj-shapes-y030` 113 (2), `rt-outline-hull` 661 (3), `rt-turntable-y000` 553 (2), `-y030`
+337 (2), `-y060` 370 (2), `-y090` 441 (1), the exact-key frames `rt-player-classic-back` 731 (2), `-classic-front` 241
+(1), `-hold-34` 281 (1), `-legacy-34` 170 (1), `-legacy-opaque-hat-34` 133 (1), `-slim-34` 229 (1), `-slim-fallback`
+225 (1), `-walk-hold-34` 308 (1), `-wave-front` 111 (1), `rt-preset-marketplace` 1 320 (9) and `-fallback` 1 313 (9),
+`rt-preset-rim` 939 (16) (against origin/main: `rt-preset-rim` 939 (16), `rt-preset-marketplace` 1 320 (9),
+`rt-player-classic-back` 732 (2)). Diff images judged: the rounded-edge bands along sharp edges, the sphere's triangle
+edges and silhouettes; nothing else. Round 4 (the step back to the centre on any sample pattern, determinant bound 1/16
+(1/32 since round 5, no golden moved) instead of 0.25) rewrote 6 rt goldens by a few pixels along triangle edges inside faces, pixels (max levels) against
+round 3: `rt-edges` 13 (3, inside the sphere), `rt-far` 12 (3), `rt-turntable-y060` 4 (2), `-y000` 2 (1),
+`rt-bake-cutout-checker` 2 (1), `rt-outline-hull` 1 (1); every exact-key, fallback and `pt-*` golden byte-unchanged.
+A round-4 trial that kept the centroid at smooth silhouettes too (corners and neighbour normals per triangle) was
+measured and reverted: the `edges` view's sphere outline band (704 pixels, either side of its `msaa=0` pixels) gave
+14.1790 against `pt-edges` (14.1520 at the centre) and 1.2233 against a 4 x 4 supersampled `msaa=0` preview (1.1282),
+26 pixels moved, 16 of them farther from the render; the RTX 3080 alike (14.1903 / 14.1548). The rule and the reason
+are in docs/realtime-renderer.md; the `rt-edges` golden pins the centre on smooth silhouettes.
+Single-sampled frames move too: SwiftShader snaps vertices to 1/16 px, so even fully
+covered pixels interpolate up to 0.04 px off `gl_FragCoord`, and the step to the centre takes that up (a 0.0625 px
+threshold that left it measured 168 pixels at width 0.1 in the edge-band probe below, against round 3's 135). Pairs re-measured
+after the MS-59 merge, round 4 (13, `pair` project; pixels differing, ratio, mean delta), all within their limits,
+none changed: `turntable-y030` 141, 0.00215, 0.713, `iso` 265, 0.00404, 0.879, `alpha-plane` 232, 0.00354, 1.335,
+`player-hold-34` 1 208, 0.01843, 1.290, `cutout-checker` 223, 0.00340, 0.611, `edges` 41, 0.00063, 0.373,
+`preset-marketplace` 1 271, 0.01939, 1.237, `preset-rim` 1 401, 0.02138, 1.103, `preset-marketplace-yaw30` 1 389,
+0.02119, 1.279, `outline-hull` 172, 0.00262, 0.423, `gltf-contact` 6 988, 0.10663, 5.628, `obj-shapes-y030` 245,
+0.00374, 0.461, `gltf-nodes-y030` 316, 0.00482, 0.948.
+Probes: **MSAA silhouette pixels are shaded on the face**:
+the baked `turntable-y030` preview against its render (the `pt-turntable-y030` golden PNG), the mean largest-channel
+difference over the 2 px outline band both draw (`outlineBand`), 1.6961 over 4 028 pixels against the render MS-59
+regenerated (1.7219 when shaded at the pixel centre; before MS-59 1.7461 and 1.7726 over 3 919), at most measured x 1.25
+= 2.12 and below the midpoint 1.709 (a revert of the centroid qualifiers measures 1.7219 and fails); frame on the raster
+key with MSAA (asserted). **The edge band keeps its width across quad diagonals**: the `edges` view with MSAA against
+`msaa=0`, off every mesh's outline (more than 1 px from a `maskBoundary` of the mesh's pixels from `hide=`): 0 pixels
+over 2 levels at the look's width; at width 0.1 133 pixels differ at all (135 with the 0.25 determinant bound in round 3, 227
+with the skewed footprint, 147 with the shading point at the centroid inside faces too, 142 when shaded at the pixel
+centre), at most 140, the midpoint to 147 (below 133 x 1.25), so a shading point left at the centroid inside faces
+fails.
+
+Both probes, like every golden, are calibrated on SwiftShader (`assertSwiftShader`). Measured once on a real GPU (MS-54,
+ANGLE (NVIDIA, NVIDIA GeForce RTX 3080 Direct3D11 vs_5_0 ps_5_0, D3D11), a throwaway Playwright config with
+`--use-angle=d3d11 --enable-gpu --ignore-gpu-blocklist` and the SwiftShader assertion bypassed locally, nothing
+committed), pixels over 2 levels / pixels differing at width 0.1 / outline band mean (against the render before
+MS-59), against SwiftShader:
+
+| Shaders                                            | RTX 3080          | SwiftShader      |
+| -------------------------------------------------- | ----------------- | ---------------- |
+| before MS-54 (pixel centre)                        | 0 / 142 / 1.7569  | 0 / 142 / 1.7726 |
+| centroid, footprint not mapped                     | 9 / 510 / -       | 0 / 227 / 1.7402 |
+| centroid, footprint mapped (round 2)               | 10 / 431 / 1.7515 | 0 / 147 / 1.7443 |
+| centroid, shading point at the centre inside faces | 2 / 173 / 1.7515  | 0 / 135 / 1.7461 |
+| the same, determinant bound 1/16 (round 4)         | 1 / 152 / 1.6997  | 0 / 133 / 1.6961 |
+| the same, determinant bound 1/32 (round 5, final)  | 1 / 151 / 1.6997  | 0 / 133 / 1.6961 |
+
+A GPU's centroid is a covered sample position: inside a face, along a quad's diagonal, shading there moved the pixel
+against `msaa=0` (8 of round 2's 10 pixels came from the centroid normal: 8 / 422 with only `v_normal` centroid).
+`prepareShading` steps each centroid input back to the pixel centre unless the pixel reaches over a sharp edge. Round
+3's residual (2 / 173) was read out per fragment on the GPU (debug colours for kept-by-slot, `mapped`, skew,
+determinant, distance to the centre): 24 of the 34 pixels differing at width 0.1 that the pixel-centre shaders did not,
+among them (199, 149) inside the sphere, had a fragment with `mapped` false, its determinant at 0.25: the GPU's 4x
+offsets shorten a lane step to 0.25 px, so the bound 0.25 skipped the step back and left the centroid. With the bound at
+1/16, 1 / 152; at 1/32, below the smallest non-zero pattern determinant 1/16, 1 / 151. The pixel left over 2
+levels, (69, 129) at 3 levels, and the cube's and wedge's pixels at x 70-73 reach
+over a sharp edge, where the centroid sample is kept by design (stepping back there too leaves the pixel but loses the
+outline band on SwiftShader, 1.7696); 3 more differ by 1 level from rounding in the changed program. The outline band
+in the last two rows is against the render MS-59 regenerated (1.6997 on the GPU); the revert checks hold on
+SwiftShader only.
+
 For a manual run on real hardware open `rt.html?scene=bench&size=512&fps=1`: it draws continuously and shows the
 median frame work (draw until the GPU finished) and display interval over the last 120 frames, with the renderer
 string.
@@ -436,8 +530,8 @@ board inside a Blockbench cube with from > to on every axis (an inverted hull, `
 and `cameraOnly`); variant `outline-hull` (yaw 30°, pitch 30°). Golden `rt-outline-hull`, default tolerance. Probes
 (`src/outlineHullProbe.ts`) against `scene=outline-hull-board` (the shell keeps its vertices, so the same framing, but
 draws nothing): the board-centre luminance (3 x 3) within 2 levels of the board alone (measured equal), and over 200
-pixels the hull darkens to below 50 (the rim; measured 2 385); the same unbaked and baked (`bake=16`, measured equal,
-rim 2 289).
+pixels the hull darkens to below 50 (the rim; measured 2 383, 2 385 before MS-54); the same unbaked and baked (`bake=16`, measured equal,
+rim 2 284, 2 289 before MS-54).
 
 **Texture wrap** (MS-52, `e2e/textureWrap.spec.ts`, project `golden`): `fixtures/src/textureWrapScene.ts` builds a
 hytale_prop and a free .bbmodel in code (generated images, no asset file) with faces past their texture: three
@@ -581,26 +675,33 @@ has interreflection and noise. Logged as `[pt pair] <view>: ...`, values in `tes
 Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with rounded edges and the mirrored bounce
 (MS-16's values in brackets; every limit stayed, none widened, `edges` is new at measured x 1.25):
 
-| view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta                                | limit: `maxDiffRatio`, `maxMeanDelta`      |
-| -------------------------- | ----------------------------------- | ------------------------------------------------------------------ | ------------------------------------------ |
-| `turntable-y030`           | 0 (1 627)                           | 142, 0.00217, 0.724 (MS-30; before 201, 0.00307, 0.772)            | 0.00271, 0.905 (MS-30; was 0.00353, 0.953) |
-| `iso`                      | 0 (1 533)                           | 268, 0.00409, 0.889 (MS-30; before 366, 0.00558, 0.959)            | 0.00512, 1.12 (MS-30; was 0.00639, 1.18)   |
-| `alpha-plane`              | 0 (692)                             | 232, 0.00354, 1.334 (MS-30; before 682, 0.01041, 1.567)            | 0.00443, 1.67 (MS-30; was 0.013, 1.96)     |
-| `player-hold-34`           | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295)                      | 0.0232, 1.62                               |
-| `cutout-checker`           | 0 (3 295)                           | 223, 0.00340, 0.623 (MS-30; before 293, 0.00447, 0.731)            | 0.00426, 0.78 (MS-30; was 0.00525, 0.908)  |
-| `edges`                    | 0 (1 971)                           | 40, 0.00061, 0.390 (MS-41; before 43, 0.00066, 0.397)              | 0.00082, 0.496                             |
-| `preset-marketplace`       | 0 (1 322)                           | 1 269, 0.01936, 1.237                                              | 0.0223, 1.43                               |
-| `preset-rim`               | 0 (1 322)                           | 1 407, 0.02147, 1.109                                              | 0.0241, 1.13                               |
-| `preset-marketplace-yaw30` | 0 (1 304)                           | 1 387, 0.02116, 1.281                                              | 0.0265, 1.52                               |
-| `outline-hull`             | 0 (1 448)                           | 174, 0.00266, 0.438 (MS-50 1 076, 0.01642, 0.912)                  | 0.00333, 0.548 (MS-39; was 0.0205, 1.14)   |
-| `gltf-contact`             | 0 (629)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)                     | 0.133, 7.03                                |
-| `obj-shapes-y030`          | 0 (1 852)                           | 245, 0.00374, 0.470 (MS-39, new; 463, 0.00706, 0.558 before MS-30) | 0.00468, 0.588                             |
-| `gltf-nodes-y030`          | 0 (2 218)                           | 320, 0.00488, 0.956 (MS-39, new; 435, 0.00664, 1.008 before MS-30) | 0.0061, 1.2                                |
-| `texture-wrap`             | 0 (3 444)                           | 46, 0.00070, 0.671 (MS-52, new; in `textureWrap.spec.ts`)          | 0.00088, 0.839                             |
+| view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta                     | limit: `maxDiffRatio`, `maxMeanDelta`      |
+| -------------------------- | ----------------------------------- | ------------------------------------------------------- | ------------------------------------------ |
+| `turntable-y030`           | 0 (1 627)                           | 142, 0.00217, 0.723 (MS-54; MS-30 142, 0.00217, 0.724)  | 0.00271, 0.904 (MS-54; was 0.00271, 0.905) |
+| `iso`                      | 0 (1 533)                           | 266, 0.00406, 0.888 (MS-54; MS-30 268, 0.00409, 0.889)  | 0.00508, 1.111 (MS-54; was 0.00512, 1.12)  |
+| `alpha-plane`              | 0 (692)                             | 232, 0.00354, 1.335 (MS-54; MS-30 232, 0.00354, 1.334)  | 0.00443, 1.669 (MS-54; was 0.00443, 1.67)  |
+| `player-hold-34`           | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295)           | 0.0232, 1.62                               |
+| `cutout-checker`           | 0 (3 295)                           | 223, 0.00340, 0.623 (MS-30; before 293, 0.00447, 0.731) | 0.00426, 0.78 (MS-30; was 0.00525, 0.908)  |
+| `edges`                    | 0 (1 971)                           | 41, 0.00063, 0.386 (MS-54; MS-41 40, 0.00061, 0.390)    | 0.00079, 0.483 (MS-54; was 0.00082, 0.496) |
+| `preset-marketplace`       | 0 (1 322)                           | 1 269, 0.01936, 1.237                                   | 0.0223, 1.43                               |
+| `preset-rim`               | 0 (1 322)                           | 1 407, 0.02147, 1.109                                   | 0.0241, 1.13                               |
+| `preset-marketplace-yaw30` | 0 (1 304)                           | 1 387, 0.02116, 1.281                                   | 0.0265, 1.52                               |
+| `outline-hull`             | 0 (1 448)                           | 172, 0.00262, 0.437 (MS-54; MS-39 174, 0.00266, 0.438)  | 0.00329, 0.547 (MS-54; was 0.00333, 0.548) |
+| `gltf-contact`             | 0 (629)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)          | 0.133, 7.03                                |
+| `obj-shapes-y030`          | 0 (1 852)                           | 246, 0.00375, 0.469 (MS-54; MS-39 245, 0.00374, 0.470)  | 0.00468, 0.587 (MS-54; was 0.00468, 0.588) |
+| `gltf-nodes-y030`          | 0 (2 218)                           | 319, 0.00487, 0.955 (MS-54; MS-39 320, 0.00488, 0.956)  | 0.00609, 1.194 (MS-54; was 0.0061, 1.2)    |
+| `texture-wrap`             | 0 (3 444)                           | 46, 0.00070, 0.671 (MS-52, new; textureWrap.spec.ts)    | 0.00088, 0.839                             |
 
 MS-30 (anti-aliased cut-out seams in the preview's MSAA frames, as the render anti-aliases them by sampling)
 re-measured every pair: `turntable-y030`, `iso`, `alpha-plane` and `cutout-checker` came closer to the render (rows
 above), so their limits are tightened to measured x 1.25; every other view measured as before, its limit stays.
+
+MS-54 (the preview's MSAA edge pixels shaded at a covered sample: centroid normal, position and edge distances,
+docs/realtime-renderer.md) re-measured every pair. `turntable-y030`, `iso`, `alpha-plane`, `edges`, `outline-hull`,
+`obj-shapes-y030` and `gltf-nodes-y030` moved by a pixel or two and up to 0.004 levels (rows above), so their limits
+are min(previous, measured x 1.25); `player-hold-34`, the three `preset-*` views (exact depth key: single-sampled, the
+centroid is the centre), `cutout-checker` and `gltf-contact` measured exactly as before and keep theirs. The denoised
+2x turntable pair: 113 px, 0.00172, 0.618 under the turntable's limits.
 
 Framing takes the preview at `msaa=0` since MS-39: with MS-30's 4-sample alpha-to-coverage, `obj-shapes-y030` had 1
 mismatch at (191, 135), on the wedge's cut-out slope seen at a grazing angle, where an opaque texel row covers about 2 %
@@ -732,7 +833,14 @@ widened.
   silhouette pixels); `accumulationSize` 512 x 512 and `progress.supersample` 2; the Marketplace backdrop at 2x in
   64-pixel tiles within 0.5 levels of its TS mirror (limit 2, as at 1x).
 - **Determinism**: the denoised 2x turntable (16 samples) gives the bytes of a one-pass reference rendered in the same
-  run in batches of 7 and 3, in 64-pixel tiles, and after a context loss and restore.
+  run in batches of 7, 3 and 1, in 64-pixel tiles, and after a context loss and restore, also one in the middle of the
+  guide (MS-56; the whole guide, 256 tiles, is drawn again). The guide is spread over steps: guide draws per `step(1)`
+  and `step(4)`, tile 256 and 64, stay within the budget bound and add up to every guide tile, no sample is drawn
+  before the last, a guide-only step returns 0 with `guiding` true and traces and presents nothing and leaves the
+  default framebuffer bound.
+- **Guiding** (MS-56): `guiding` is false and `step(1)` draws 0 after a context lost mid-guide (straight after
+  `loseContext()` and after the event), after `cancel()`, after `dispose()` and after a restore whose GPU rebuild
+  failed.
 - **Convergence** (64 x 64 closeup, maximum 1024 samples): `noise=0.1` stops at 368 with a noise of 0.0968, `noise=0.07`
   at 800 with 0.0686, each converged, not running, remaining 0, at a multiple of 16; denoised without a threshold
   draws all 1024. The plan's thresholds 0.05 and 0.0125 were for a 256-pixel closeup, which does not reach 0.05 within
@@ -743,8 +851,8 @@ widened.
 - **Fields**: `supersample` 0, 5, 2.5, NaN, "2"; `denoise` 1, "yes", null; `noiseThreshold` 0, −1, 1.5, NaN, Infinity
   each throw a `RangeError` naming the field.
 - **Pair**: the denoised 2x turntable (16 samples) against `rt-turntable-y030` baked, under the turntable's pair
-  limits (0.00353, 0.953): framing 0 mismatches, 168 pixels differ, ratio 0.00256, mean delta 0.670 (the plain
-  64-sample render measures 0.00307, 0.772).
+  limits (0.00271, 0.904 since MS-54): framing 0 mismatches, 113 pixels differ, ratio 0.00172, mean delta 0.618 (MS-54;
+  the plain 64-sample render measures 0.00217, 0.723; at MS-18 168 px, 0.00256, 0.670 under 0.00353, 0.953).
 - **Lifetime**: `dispose()` after a denoised 2x request with a threshold leaves no WebGL object (`track=1`).
 - **Defaults**: `supersample=1&denoise=0` (the fields given explicitly) renders the bytes of the turntable request
   without them.
@@ -1022,6 +1130,19 @@ round 7); its max was 750 ms then.
   resolve at the end, until the GPU finished, median of 3. Local SwiftShader median 7209 ms (one bench run, where
   `pt-bench-128-n256` measured 4703; 6657 and 4886 with RGBA32F filter images and lazy programs, round 2); max 73 000 ms is 10x, rounded up, as for `pt-bench-128-n256`, until a CI
   artefact allows 3-4x the CI median (the plan's 1.5x would fail on runners 3-5x slower than this machine).
+- `frameTimeMs.pt-bench-128-x2-denoised-step` (MS-56): the same request (64 samples at 2x, denoised) drawn by `step(1)`
+  calls, each timed until the GPU finished (`finish()`: a guide-only step ends with the default framebuffer bound,
+  checked by the guide-tile test), the longest step, median of 3 after one untimed run. Local SwiftShader, before the
+  guide was spread: the first
+  step drew the whole guide, 2515, 2384, 2592 and 2477 ms in four runs (the guide plus the first sample, program
+  already linked). After: 229, 231, 238 and 230 ms, the slowest steps being a checkpoint's noise estimate and resolve
+  (about 250 ms) and single guide tiles (up to about 240 ms where a tile meets partial texels); the guide steps take 5
+  to
+  240 ms. Max 1500 ms, not the 10x of the median (2600 ms) that the other rows use: that would be above the 2.4 s of
+  the unspread guide and catch nothing; 1500 ms is about 6x the median, inside the 3-5x of a slower runner, and under
+  the old step. The browser test `a denoised step(k) draws a bounded number of guide tiles` counts guide draws per
+  step (`track=1`): never more than `max(1, floor(k x pixels / (side^2 x 64)))`, in total `ceil(W/side) x ceil(H/side)`,
+  and no sample, no trace draw and no present before the last one.
 - `frameTimeMs.pt-load-200k`: `setScene` of the generated 200 000-triangle scene of
   `rt-load-first-frame-200k-order` (validate, flatten, BVH build in JavaScript, upload) plus its first sample. Local
   SwiftShader 1554, 919 and 941 ms; max 10 000 ms (10x the middle run, rounded up). Since MS-40 the flatten and BVH

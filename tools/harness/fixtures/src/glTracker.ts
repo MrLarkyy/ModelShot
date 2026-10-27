@@ -2,6 +2,8 @@ export interface GlTracker {
   liveGlObjects: () => number;
   livePrograms: () => number;
   openBitmaps: () => number;
+  /** Draw calls since the last call, split by whether the bound program is the denoiser guide (has `u_guideRays`). */
+  drawCounts: () => { guide: number; other: number };
 }
 
 const GL_KINDS = ['Buffer', 'Texture', 'Framebuffer', 'Renderbuffer', 'VertexArray', 'Program', 'Shader'] as const;
@@ -33,6 +35,28 @@ export function installGlTracker(): GlTracker {
     };
   }
 
+  const guidePrograms = new Set<unknown>();
+  let current: unknown = null;
+  let counts = { guide: 0, other: 0 };
+  const use = proto['useProgram'];
+  const locate = proto['getUniformLocation'];
+  const draw = proto['drawArrays'];
+  if (!use || !locate || !draw) throw new Error('WebGL2 lacks useProgram, getUniformLocation or drawArrays');
+  proto['useProgram'] = function (this: WebGL2RenderingContext, ...args: unknown[]): unknown {
+    current = args[0];
+    return use.apply(this, args);
+  };
+  proto['getUniformLocation'] = function (this: WebGL2RenderingContext, ...args: unknown[]): unknown {
+    const location = locate.apply(this, args);
+    if (location && args[1] === 'u_guideRays') guidePrograms.add(args[0]);
+    return location;
+  };
+  proto['drawArrays'] = function (this: WebGL2RenderingContext, ...args: unknown[]): unknown {
+    if (guidePrograms.has(current)) counts.guide++;
+    else counts.other++;
+    return draw.apply(this, args);
+  };
+
   const bitmaps = new Set<ImageBitmap>();
   const createBitmap = window.createImageBitmap.bind(window) as (...args: unknown[]) => Promise<ImageBitmap>;
   const trackedCreate = async (...args: unknown[]): Promise<ImageBitmap> => {
@@ -48,5 +72,14 @@ export function installGlTracker(): GlTracker {
     close.call(this);
   };
 
-  return { liveGlObjects: () => live.size, livePrograms: () => programs.size, openBitmaps: () => bitmaps.size };
+  return {
+    liveGlObjects: () => live.size,
+    livePrograms: () => programs.size,
+    openBitmaps: () => bitmaps.size,
+    drawCounts: () => {
+      const result = counts;
+      counts = { guide: 0, other: 0 };
+      return result;
+    },
+  };
 }

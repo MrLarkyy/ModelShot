@@ -26,7 +26,13 @@ uniform vec4 u_depthPull;
 uniform highp sampler2D u_lightmap;
 uniform bool u_bakeOn;
 
-out vec3 v_normal;
+// Centroid: under MSAA a pixel a triangle only partly covers reads the normal at a covered sample, on the face, not at
+// the pixel centre past the triangle's edge, where it extrapolates; v_worldPosition, v_edgeDistances and the baked
+// vertex light (which at that centre would carry the light of a point beyond the face) likewise. prepareShading
+// (shading.glsl) keeps that sample only where the pixel reaches over a sharp edge and returns to the centre elsewhere.
+// The UV stays at the centre: texel anti-aliasing, the alpha-to-coverage contour and the hashed alpha cell are defined
+// there, and v_uvRect keeps the texel on the face.
+centroid out vec3 v_normal;
 out vec2 v_uv;
 // Every vertex of a face carries the same rectangle; flat avoids interpolation error at the clamp bounds.
 flat out vec4 v_uvRect;
@@ -35,10 +41,10 @@ flat out vec4 v_lightmap;
 // Vertex charts: the vertex's light for the front and the back side. World charts reuse them, as more varyings would
 // pass the minimum MAX_VARYING_VECTORS (15) with the exact depth key's (it uses all 15, each counted whole): the
 // corner's lightmap point in xy, and the chart rectangle.
-out vec4 v_vertexLight;
-out vec4 v_vertexLightBack;
-out vec3 v_worldPosition;
-out vec4 v_edgeDistances;
+centroid out vec4 v_vertexLight;
+centroid out vec4 v_vertexLightBack;
+centroid out vec3 v_worldPosition;
+centroid out vec4 v_edgeDistances;
 // The same on every corner of a triangle.
 flat out vec4 v_edgeAngles;
 #include "depthKeyVertex"

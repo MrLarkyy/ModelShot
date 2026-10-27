@@ -6,6 +6,9 @@ import { loadPathTracer } from '../lazyPathTracer';
 import { RENDER_SEED, type RenderSettingsValues } from './RenderSettings';
 
 const SLICE_MS = 8;
+// A step of the denoiser's guide is cheap to submit and costly to run, so a slice by submit time alone would queue the
+// whole guide into one frame: while guiding, a slice is one step of this many samples' worth of GPU work.
+const GUIDE_SLICE_SAMPLES = 4;
 
 export interface RenderSessionHost {
   readonly document: () => SceneDocument | null;
@@ -114,7 +117,9 @@ export class RenderSession {
           if (tracer.contextLost) throw new Error('The graphics context was lost during the render.');
           const started = performance.now();
           do {
-            if (tracer.step(1) === 0) break;
+            const guiding = tracer.guiding;
+            const drawn = tracer.step(guiding ? GUIDE_SLICE_SAMPLES : 1);
+            if (guiding || drawn === 0) break;
           } while (performance.now() - started < SLICE_MS);
           const { samplesDone, targetSamples } = tracer.progress;
           this.host.onProgress(samplesDone, targetSamples);

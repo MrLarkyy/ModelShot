@@ -13,8 +13,8 @@ uniform vec2 u_lightmapTextureSize;
 // (chart x, chart y, texture texels per lightmap texel, back offset); z 0: vertex mode, -1: no light, -2: world
 // mode (x, y then the provoking corner's point, unused).
 flat in vec4 v_lightmap;
-in vec4 v_vertexLight;
-in vec4 v_vertexLightBack;
+centroid in vec4 v_vertexLight;
+centroid in vec4 v_vertexLightBack;
 
 const float LIGHTMAP_NONE = -1.0;
 const float LIGHTMAP_WORLD = -2.0;
@@ -23,20 +23,23 @@ vec4 lightmapTexel(ivec2 origin, ivec2 local, ivec2 size) {
   return texelFetch(u_lightmap, origin + clamp(local, ivec2(0), size - 1), 0);
 }
 
-// Called before any discard: the derivatives need uniform control flow.
+// Called before any discard, after prepareShading: the derivatives need uniform control flow.
 vec4 sampleBakedLight(vec2 uv, vec4 uvRect) {
   vec2 p = uv * u_lightmapTextureSize;
   vec2 texelsPerPixel = abs(dFdx(p)) + abs(dFdy(p));
+  // Centroid-sampled like the normal: read at the same shading point.
+  vec4 vertexLight = atShadingPoint(v_vertexLight);
+  vec4 vertexLightBack = atShadingPoint(v_vertexLightBack);
   vec4 chart = v_lightmap;
   if (chart.z == LIGHTMAP_NONE) return vec4(1.0);
-  if (chart.z == 0.0) return gl_FrontFacing ? v_vertexLight : v_vertexLightBack;
+  if (chart.z == 0.0) return gl_FrontFacing ? vertexLight : vertexLightBack;
   if (chart.z == LIGHTMAP_WORLD) {
     // Interpolated, the rectangle may miss its integers by a rounding error.
-    vec4 rect = floor(v_vertexLightBack + 0.5);
+    vec4 rect = floor(vertexLightBack + 0.5);
     ivec2 worldSize = ivec2(rect.zw);
     ivec2 worldOrigin = ivec2(rect.xy) + (gl_FrontFacing ? ivec2(0) : ivec2(int(chart.w), 0));
     // Texel i holds the light around its centre i + 0.5 (the bake's jittered point).
-    vec2 at = v_vertexLight.xy - rect.xy - 0.5;
+    vec2 at = vertexLight.xy - rect.xy - 0.5;
     ivec2 base = ivec2(floor(at));
     vec2 f = at - floor(at);
     vec4 w00 = lightmapTexel(worldOrigin, base, worldSize);

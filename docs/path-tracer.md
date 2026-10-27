@@ -14,7 +14,7 @@ const { warnings, triangles } = await tracer.setScene(doc, { emission: [undefine
 tracer.setCamera(camera); // the shared SceneCamera
 tracer.start({ seed: 1, samples: 256 });
 const frame = () => {
-  if (tracer.step(4) > 0) requestAnimationFrame(frame);
+  if (tracer.step(4) > 0 || tracer.guiding) requestAnimationFrame(frame);
 };
 requestAnimationFrame(frame);
 ```
@@ -62,10 +62,16 @@ requestAnimationFrame(frame);
   throws a `RangeError` naming the field.
 - `step(maxSamples = 1)`: draws up to `maxSamples` more samples, never past the request, presents the image and
   returns how many it drew. The caller paces it (there is no clock or animation loop inside); a no-op returning 0
-  without a camera, when complete, converged, cancelled, while the context is lost or after `dispose()`. The first
+  without a camera, when complete, converged, cancelled, while the context is lost or after `dispose()`. A denoised
+  request first draws its guide, spread over steps (Render quality): a step then returns 0 while `guiding` is true,
+  so drive it until it returns 0 and `guiding` is false. The first
   step of a request that needs a quality program links it (Render quality), so a shader failure there throws
   `PathTracerError` `SHADER_COMPILE` / `SHADER_LINK` from `step`.
 - `contextLost`: true from the moment the context is lost (`isContextLost()`, before its event too) until a restore.
+- `guiding`: a denoised request is drawing its guide, or has finished it and not yet drawn a sample, so `step` may
+  return
+  0 while the request is unfinished. False whenever `step` would draw nothing (no camera, lost context, complete,
+  converged, cancelled, disposed).
 - `samplesDone`, `targetSamples`, `running` (false once complete, converged or cancelled); `cancel()` stops the
   request and keeps the image shown: the mean of the samples done, or with `supersample` or `denoise` the image
   resolved at the end of the latest step that crossed a checkpoint (Render quality), which may hold fewer samples.
@@ -197,7 +203,8 @@ context restore; the failure comes before any target is made or cleared.
 2. **Moments** (denoise or a threshold): the trace writes a second target (`layout(location = 1)`, R32F, ping-pong like
    the sum, gated by `u_moments`) with the running sum of each sample's squared Rec. 709 luminance, so each pixel has
    the variance of its mean. Exact float adds in sample order, as the radiance sum.
-3. **Guides** (denoise), once per request on its first step (`guide.frag`, in tiles an eighth of `tileSize` across, at least 16, as a pixel may trace 1024 rays): the mean albedo
+3. **Guides** (denoise), once per request, before its first sample (`guide.frag`, in tiles an eighth of `tileSize`
+   across, at least 16, as a pixel may trace 1024 rays), spread over steps (below): the mean albedo
    (floored at 0.01), shading normal and view depth of 64 camera rays per pixel through the points of a
    (0,2)-sequence (Van der Corput by Sobol', rotated per pixel), into two RGBA16F targets. They are camera rays, so they
    see camera-only faces (outline hulls) as the trace's primary rays do. Each ray accepts partial
@@ -207,6 +214,16 @@ context restore; the failure comes before any target is made or cleared.
    edge or a partial texel becomes noise in the quotient below, which the filter removes, and resolve multiplies the
    right mix back in. An escaped ray gives the backdrop colour, normal 0 and no depth, a ray on the shadow catcher the
    backdrop colour, normal up and its depth.
+   **Guide scheduling (MS-56).** `step(k)` has a budget of `k` samples' worth of pixels (`k` × traced width × height;
+   `Infinity` is unbounded). The guide comes first, tile by tile from a cursor, each tile charged 64 times its pixels
+   (a full guide tile costs one trace tile of the same side), as many as fit and at least one per step. A step that
+   finishes the guide spends what is left on samples; a step that does not returns 0 with `guiding` true and presents
+   nothing, as no sample exists yet. Every checkpoint and the final resolve come after the whole guide, and a guide
+   pixel depends only on the seed and the pixel, so the bytes are those of drawing it in one step. A restart or a
+   context restore resets the cursor and redraws the whole guide. A partial-texel tile (up to 1024 rays a pixel) can
+   cost up to 16 times its charge (a pixel goes from 64 to 1024 rays); the per-step bench row below measures it.
+   `step(1)` of a 128 × 128 request at 2x
+   takes 64 steps of one guide tile of 32 × 32 pixels instead of one step of the whole guide.
 4. **Denoise** (`denoise.frag`, 5 iterations, taps 1, 2, 4, 8, 16 pixels apart): an edge-avoiding à-trous filter
    (Dammertz et al. 2010) with SVGF's edge-stopping (Schied et al. 2017) and none of its temporal part, on the
    demodulated radiance (the mean over the guide albedo). Weights: the 5-tap B3 spline, times exp(−|Δalbedo|²/0.5²),
@@ -250,8 +267,9 @@ dimension; there is no clock and no `Math.random`. Accumulation adds exact float
 (no `EXT_float_blend`, no RGBA16F rounding), and every pixel's value depends only on its own coordinates, so batching
 and tiling change no byte (tested: one pass of 64, batches of 1 and 7, tiles of 64). With the quality fields the final
 image is a function of the final sums and the guides (both depending on the samples only), and checkpoints are sample
-counts, so a denoised 2x render gives the same bytes in batches of 7 and 3, tiles of 64 and after a context restore
-(tested). Where a threshold stops depends on the noise, hence on the GPU's floats: goldens and the exports use a
+counts, so a denoised 2x render gives the same bytes in batches of 1, 7 and 3, tiles of 64 and after a context restore,
+also one lost in the middle of the guide (tested). Where a threshold stops depends on the noise, hence on the GPU's
+floats: goldens and the exports use a
 fixed sample count. A request without `transparent` runs the same arithmetic as before that field existed (the trace's
 radiance sum, the present's opaque line and resolve's colour are unchanged; no path-tracer golden changed), and a
 transparent one draws no extra random number, so its radiance of the model is the opaque one's.
@@ -440,7 +458,8 @@ Drawing pauses (`step` returns 0) while the context is lost. On restore every GP
 retained CPU data (packed geometry, material table, layer plan and decoded images) and the current request restarts at
 sample 0; rendering it again gives the same bytes (tested against the golden). The quality path's targets (moments,
 guides, filter, resolved image, noise blocks) and the programs the request needs are recreated on the first step
-after the restore and the guides drawn again, so a denoised 2x render also gives its bytes again (tested); `dispose()` deletes them with the rest.
+after the restore and the guides drawn again from the first tile, so a denoised 2x render also gives its bytes again
+(tested); `dispose()` deletes them with the rest.
 
 ## Budgets
 
@@ -449,7 +468,8 @@ after the restore and the guides drawn again, so a denoised 2x render also gives
 `mainThreadBlockMs.pt-setscene-200k` (the most one main-thread task blocked during that `setScene`, max 50 ms, MS-40),
 and for the final-render
 path `timeToSamplesMs.pt-bench-128-n64-x2-denoised` (64 samples at 2x with the guides, noise checkpoints and the
-denoised resolve; MS-18); numbers in
+denoised resolve; MS-18) and `frameTimeMs.pt-bench-128-x2-denoised-step` (the longest `step(1)` of that request; MS-56);
+numbers in
 [testing.md](testing.md#budgets). On real hardware (RTX 3080, ANGLE D3D11, Windows) 256 samples of the benchmark scene
 take about 234 ms at 512 × 512 and 88 ms at 128 × 128 (`pt.html?scene=bench&size=512&samples=256&timing=1` shows
 the paced manual readout).
