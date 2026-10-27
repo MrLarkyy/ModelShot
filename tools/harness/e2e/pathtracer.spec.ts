@@ -988,17 +988,18 @@ const RIM_PROBES: Readonly<
   Record<string, Readonly<Record<number, { outlineFloor: number; interiorWhite: number; blownShare: number }>>>
 > = {
   marketplace: {
-    // Measured outline white 575 preview / 548 render, interior white 309 / 394, interior blown out 0 / 0.
+    // Measured outline white 575 preview / 548 render, interior white 309 / 394, interior blown out 0 / 0; MS-35 (the
+    // preview converged) 574 / 548, 375 / 394, 0 / 0.
     210: { outlineFloor: 438, interiorWhite: 493, blownShare: 0 },
-    // Measured outline white 412 / 448, interior white 101 / 113, interior blown out 0 / 0.
+    // Measured outline white 412 / 448, interior white 101 / 113, interior blown out 0 / 0; MS-35 453 / 448, 105 / 113.
     30: { outlineFloor: 330, interiorWhite: 141, blownShare: 0 },
   },
-  // MS-35, the rim from behind (colour 8): measured outline white 418 preview / 371 render, interior white 220 / 187,
-  // blown out 0 / 0.
+  // MS-35, the rim from behind (colour 8), the preview converged: measured outline white 371 preview / 371 render,
+  // interior white 194 / 187, blown out 0 / 0.
   rim: {
-    210: { outlineFloor: 296, interiorWhite: 275, blownShare: 0 },
-    // Measured outline white 437 / 403, interior white 146 / 137, blown out 0 / 0.
-    30: { outlineFloor: 322, interiorWhite: 183, blownShare: 0 },
+    210: { outlineFloor: 296, interiorWhite: 243, blownShare: 0 },
+    // Measured outline white 395 / 403, interior white 134 / 137, blown out 0 / 0.
+    30: { outlineFloor: 316, interiorWhite: 172, blownShare: 0 },
   },
 };
 

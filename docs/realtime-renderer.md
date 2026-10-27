@@ -2,7 +2,8 @@
 
 `@modelshot/renderer-rt` draws a `SceneDocument` with WebGL2: crisp pixel art, per-texel transparency and the AgX
 view transform. It draws only when `render()` is called; `needsRender` tells the caller's animation loop whether a
-scene, camera or size change is waiting.
+scene, camera or size change is waiting, or a still exact-key frame has not drawn all its samples yet (Passes): render
+until it is false before reading the canvas (the app's `Viewer.renderNow` does, through `renderSettled`).
 
 ```ts
 const renderer = RealtimeRenderer.create(canvas, { look: LOOK_PRESETS['marketplace'] });
@@ -36,21 +37,28 @@ Float path (needs `EXT_color_buffer_float`):
 3. Composite of the transparency average over the opaque image.
 4. Present: AgX and the display encoding into the canvas.
 
-Exact-key frames (Transparency, sides and render order, below) cannot use MSAA: their key is the depth at a pixel centre. On the float path
-they draw passes 0-3 instead single-sampled into a second set of these targets at 2W × 2H (`RenderTargets` with 0
-samples; the backdrop, the look's frame height and `u_viewportSize` at that size, the projection unchanged), so every
-sub-pixel has its own centre ray and key, and the present pass takes the mean of each 2 × 2 block in linear HDR
-before AgX, as the MSAA resolve does (`u_supersample`; 1 for every other frame, which is then the same arithmetic as
-before, byte for byte). That antialiases their silhouettes and cut-out seams with 4 sub-samples per pixel, of which
-no hidden face can win one. `exactSupersampleScale` allows it only when MSAA would have run (at least 2 samples) and
-2W and 2H fit `MAX_RENDERBUFFER_SIZE`, `MAX_TEXTURE_SIZE` and `MAX_VIEWPORT_DIMS`, and caps it at 2²³ sub-pixels
-(`EXACT_SUPERSAMPLE_MAX_PIXELS`: 1920 × 1080 fits; colour, OIT and depth hold about 22 bytes per sub-pixel, so
-4 × 22 = 88 bytes per canvas pixel, at most about 184 MB); otherwise the frame draws single-sampled at the canvas
-size, as before. The targets are allocated on the first exact frame, kept across raster frames, reallocated only on a
-size change, and freed on `dispose`, on a switch to the no-float path and when the size no longer fits; a size the
-driver rejects draws single-sampled and is not tried again until the size changes (never a switch to the no-float
-path for it). After a context restore they are allocated again on the next exact frame. The no-float path stays
-single-sampled.
+Exact-key frames (Transparency, sides and render order, below) cannot use MSAA: their key is the depth at a pixel
+centre. On the float path a still one is antialiased over several `render()` calls instead (progressive rotated-grid
+accumulation, `ExactSampleHistory`): each call draws passes 0-3 once, single-sampled as before, with the projection
+shifted by the next of 4 sub-pixel offsets (`EXACT_SAMPLE_OFFSETS`, pixels: (−1/8, −3/8), (1/8, 3/8), (3/8, −1/8),
+(−3/8, 1/8), a rotated grid, so a horizontal or vertical edge crosses 4 sample rows) in `u_viewProjection` and the
+key's `u_inverseProjection` (the look, the rim and the depth pull are unshifted), copies the result into that slot of a
+4-layer RGBA16F `TEXTURE_2D_ARRAY` (a blit), and presents the mean of the filled slots in linear HDR before AgX, as the
+MSAA resolve does (`presentSamples.frag.glsl`, summed in a fixed order). Every sample has its own centre ray and key, so
+no hidden face can win one, and silhouettes and cut-out seams settle to 4 samples per pixel after 4 calls; a frame in
+motion shows one sample, as before. `needsRender` stays true until the 4 slots hold the current view; anything that
+sets it (camera, scene or pose, look, edges, lighting once its upload completes, resize) starts the history again, as
+do a raster frame, a context restore and a switch to the no-float path. `setCamera` with a camera of the same view and
+projection matrices changes nothing, so a caller that sets the camera every tick still converges. Once full, further
+calls keep drawing one pass each into the next slot (the same image): every call costs one pass, never four.
+`exactSampleCount` allows it only when MSAA would have run (at least 2 samples), a slot fits `MAX_TEXTURE_SIZE`, and
+caps it at 2²³ pixels × slots (`EXACT_SUPERSAMPLE_MAX_PIXELS`: 1920 × 1080 fits; 8 bytes per pixel and slot, 32 per
+pixel, at most 64 MB); otherwise the frame draws single-sampled at the pixel centre, as before. The history is
+allocated on the first exact frame, kept across raster frames, reallocated (empty) on a size change, and freed on
+`dispose`, on a switch to the no-float path and when the size no longer takes one; a size the driver rejects draws
+single-sampled and is not tried again until the size changes (never a switch to the no-float path for it). After a
+context restore it is allocated again on the next exact frame. Raster frames keep the single-texel present
+(`present.frag.glsl`), so their bytes are unchanged; the no-float path stays single-sampled.
 
 No-float path (`capabilities.path === 'fallback'`): the backdrop, the shadow catcher (tone-mapped in its shader), then
 one pass into the canvas with AgX in the fragment shader, partial
@@ -171,7 +179,7 @@ The rules are the scene format's ([scene-format.md](scene-format.md): `SceneMate
   on the texel boundary, so the covered area equals the hard per-texel shape while edge pixels resolve to a mix of
   texel and background; fragments of a cut-out texel in that half-pixel band are kept with the opaque neighbour's
   colour and write depth only at their covered samples. Which texels are cut out does not change: texel centres show
-  the background exactly. Exact-key frames (each 2 × 2 sub-pixel single-sampled: the box of the present pass
+  the background exactly. Exact-key frames (each pass single-sampled: the mean of a still frame's shifted passes
   antialiases their seams, Passes), 0 or 1 MSAA samples, `texelAntialias: false`, the
   fallback, OIT, the shadow catcher and the light bake (its own pass in `@modelshot/pathtracer`) keep the binary
   per-texel cutout; without sample buffers GL ignores A2C, which would grow the shape by half a pixel, so a uniform
@@ -209,14 +217,15 @@ The rules are the scene format's ([scene-format.md](scene-format.md): `SceneMate
     `[−(1024 + 1) × TIE, far + (1024 + 1) × TIE]` mapped to `[0, 1]` (`exactDepthRange`), so no order is clamped at
     the near or far plane. Exact frames draw without MSAA: one key per pixel can only be right for every sample when
     the pixel centre is the only sample, since a grazing face spans a large depth range inside one pixel. On the
-    float path they draw at 2 × 2 sub-pixels instead, each with its own centre and key (Passes). The key is the view depth where the pixel centre's ray meets the triangle's plane (three corners
+    float path a still frame accumulates 4 shifted passes instead, each with its own centres and keys (Passes). The key
+    is the view depth where the pixel centre's ray meets the triangle's plane (three corners
     in view space, from a de-indexed copy of the geometry), so any two triangles of one plane, coincident faces of any
     triangulation included, key a pixel alike. Where that hit lies on or past an outline edge (an edge not shared with
     a coplanar triangle of the batch: per-triangle flags computed at upload; past it because the rasteriser covers
     with snapped vertices, which at a grazing angle is far along the plane) a front face keys at the nearer of the hit
     and the nearest point of the outline, and a back face keys at that outline point plus two pixels' worth of its
-    depth change; shared edges keep the plain hit. Costs early depth testing in those frames, and on the float path
-    4 times the fragments of the canvas instead of MSAA.
+    depth change; shared edges keep the plain hit. Costs early depth testing and MSAA edge smoothing in those frames
+    (a still one gets its edges back over 4 calls).
     Used for every draw of a frame when the scene has a visible mesh with render order ≠ 0 (decided at scene upload,
     which then builds the de-indexed geometry and its flags: about 440 ms for load and first frame at the loader's
     200 000 triangles on SwiftShader, `rt-load-first-frame-200k-order`) or when the depth buffer cannot resolve the
@@ -304,7 +313,8 @@ option `edges` (a `Partial<EdgeLook>`, out of range a `RangeError` naming `edges
   added (the exact variant uses 14 of the minimum 15). Exact-key frames draw single-sampled, where the centroid is the
   centre, but the snapping correction moves them along rounded-edge bands against origin/main: `rt-preset-rim` 939
   pixels (up to 16 levels, a sub-pixel band on the head's grazing top face), `rt-preset-marketplace` 1 320 (9),
-  `rt-player-classic-back` 732 (2). Since MS-35 they draw at 2 × 2 sub-pixels (Passes), each still single-sampled.
+  `rt-player-classic-back` 732 (2). Since MS-35 a still one accumulates 4 shifted passes (Passes), each still
+  single-sampled.
 - Only the normal changes: texels, UVs, alpha and the depth key are untouched. The baked light is computed for the
   unrounded surface (bake width 0) and multiplies the rounded shading as before.
 - A width change is a uniform; a sharp-angle change detects again and uploads the geometry again.

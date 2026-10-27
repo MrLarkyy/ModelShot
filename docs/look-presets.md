@@ -154,10 +154,10 @@ saturated textures alike; faces turned to the camera or up (pitch 20) keep their
 behind on the right (view direction (0.45, 0.12, −0.88), colour 8, exponent 5, albedo share 0.3, MS-35): it lights
 only normals turned away from the camera, so side faces turned screen right keep their texel colour (the test
 player's head side (32, 8, 9) at yaw 210 and (97, 13, 14) at yaw 30, the same with the rim black, 0 levels) while the
-rounded silhouette edges still draw a near-white line (512 px: 418 preview / 371 render pixels at yaw 210, 437 / 403
-at yaw 30; preview-vs-render pair 0.01582, mean delta 0.810, [testing.md](testing.md#look-presets)). MS-19 shipped it
+rounded silhouette edges still draw a near-white line (512 px: 371 preview / 371 render pixels at yaw 210, 395 / 403
+at yaw 30; preview-vs-render pair 0.01312, mean delta 0.704, [testing.md](testing.md#look-presets)). MS-19 shipped it
 from the side ((0.9, 0.12, −0.42), colour 4), which greyed those faces to (95, 83, 83) and (117, 69, 69): every rim
 that spared them put the pair over its limits, because the player's preview frames (exact depth key) drew
-single-sampled silhouettes the render's jittered rays do not. Since MS-35 they draw 2 × 2 sub-pixels
-([realtime-renderer.md](realtime-renderer.md#passes)). Studio's rim is black (exponent 4, albedo share 1:
+single-sampled silhouettes the render's jittered rays do not. Since MS-35 a still frame of them accumulates 4
+rotated-grid samples ([realtime-renderer.md](realtime-renderer.md#passes)). Studio's rim is black (exponent 4, albedo share 1:
 inert).
