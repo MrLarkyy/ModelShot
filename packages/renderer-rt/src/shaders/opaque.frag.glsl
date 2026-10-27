@@ -18,6 +18,7 @@ uniform bool u_alphaToCoverage;
 
 in vec2 v_uv;
 flat in vec4 v_uvRect;
+flat in int v_textureFlags;
 
 out vec4 outColor;
 
@@ -28,7 +29,8 @@ out vec4 outColor;
 void main() {
   prepareDepthKey();
   prepareShading();
-  TexelSample s = sampleTexels(u_texture, v_uv, v_uvRect, u_texelAntialias, u_alphaMode, u_alphaCutoffByte);
+  TexelSample s =
+    sampleTexels(u_texture, v_uv, v_uvRect, v_textureFlags, u_texelAntialias, u_alphaMode, u_alphaCutoffByte);
   vec4 light = vec4(1.0);
   if (u_bakeOn) light = sampleBakedLight(v_uv, v_uvRect);
   if (u_alphaToCoverage) {

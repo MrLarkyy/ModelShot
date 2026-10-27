@@ -84,7 +84,8 @@ no state; with one worker nothing runs at once, it only lets a shard take part o
 depends on `golden` (a dependency put every golden test into the bench's shard: shard 1 had all 219 tests, 2-4
 none). Playwright shards a project into contiguous ranges by test count, not by time, so a block of slow tests
 lands in one or two shards; each block is its own project with its own shards. `golden` runs `environment`, `export`,
-`golden*`, `modelView` and `realtime.spec.ts` without the tests titled `baked lighting` (`grepInvert`), which `bake` runs;
+`golden*`, `modelView`, `realtime.spec.ts` and `textureWrap.spec.ts` without the tests titled `baked lighting`
+(`grepInvert`), which `bake` runs;
 `golden-pt` runs `pathtracer.spec.ts` without the tests titled `like the baked preview`, which `pair` runs (the 13
 preview-vs-render pairing tests). Each test is in exactly one project, and the plain `playwright test` (and so
 `pnpm test`) runs every project.
@@ -532,6 +533,19 @@ draws nothing): the board-centre luminance (3 x 3) within 2 levels of the board 
 pixels the hull darkens to below 50 (the rim; measured 2 383, 2 385 before MS-54); the same unbaked and baked (`bake=16`, measured equal,
 rim 2 284, 2 289 before MS-54).
 
+**Texture wrap** (MS-52, `e2e/textureWrap.spec.ts`, project `golden`): `fixtures/src/textureWrapScene.ts` builds a
+hytale_prop and a free .bbmodel in code (generated images, no asset file) with faces past their texture: three
+24 x 8 boxes showing u -4 .. 20 of a 16 x 16 still texture (Hytale default, free default: clamp; stored
+`wrap_mode: "repeat"`) and two boxes showing v -3 .. 11 of frame 0 of a two-frame strip (clamp, repeat), its frame 1
+the sentinel; a sentinel image follows each still texture, so it lies beside it in the path tracer's texture layers.
+Variants `texture-wrap` (fixed look `wrap`) and `texture-wrap-inside` (`depth=inside`, the exact depth key, whose mesh
+pass carries the most varyings). Goldens `rt-texture-wrap`, `rt-texture-wrap-inside` (default tolerance) and
+`pt-texture-wrap.s1.n64` (threshold 0). Probes (`textureWrapLayout.ts` points, 3 x 3 means): each probe past the
+image or frame matches the texel inside it that its wrap mode reads (hue >= 0.995, luminance within 8 levels) and not
+the one the other mode would read; 0 `sentinelPixels` in all three images. Its preview-vs-render pair (the pair rules
+below, limit kept in the spec so `pathtracer.spec.ts` keeps its list): framing 0 mismatches (3 444), radiance 46 px,
+0.00070, 0.671, limit 0.00088, 0.839 (measured x 1.25).
+
 ## Path-tracer goldens
 
 Fix the seed, the sample count, the resolution and the camera. The accumulation stops after exactly N samples, never
@@ -569,6 +583,7 @@ golden says them (`-x2-denoised`).
 | `pt-gltf-contact.s1.n128`              | contact-shadow.gltf, `contact`, no catcher            | golden; contact probes; pair (MS-41)             |
 | `pt-gltf-nodes-y030.s1.n128`           | scene-nodes.gltf, perspective 35°, pitch 20°, yaw 30° | golden; sentinel bleeding; catcher; pair (MS-39) |
 | `pt-obj-shapes-y030.s1.n128`           | shapes.obj, same view                                 | golden; pair (MS-39)                             |
+| `pt-texture-wrap.s1.n64`               | generated wrap boxes, `wrap` look (MS-52)             | golden; wrap and frame probes; sentinel; pair    |
 
 MS-40 (`geometry worker`): the accumulated float sums (`readAccumulation`, base64) of the `edges` view at 16 samples
 and of the 200 000-triangle `large-order` document at 4 samples are the same bytes with the geometry worker and with
@@ -589,7 +604,8 @@ samples and size; changed pixels, max channel delta, mean delta per channel): `p
 0.001; `pt-emissive` 7 147, 4, 0.052; `pt-player-hold-34` 8 490, 3, 0.071; `pt-cutout-checker` 10 900, 2, 0.072;
 `pt-edges` 8 011, 3, 0.052; `pt-preset-marketplace` 3 377, 1, 0.020; `pt-preset-rim` 1 780, 1, 0.013;
 `pt-outline-hull` 7 984, 1, 0.057; `pt-closeup-denoised` 653, 3, 0.005; `pt-turntable-y030-x2-denoised` 1 096, 2,
-0.006; `pt-gltf-nodes-y030` 4 001, 2, 0.025; `pt-obj-shapes-y030` 2 269, 1, 0.015; `pt-closeup-reference` (re-rendered
+0.006; `pt-gltf-nodes-y030` 4 001, 2, 0.025; `pt-obj-shapes-y030` 2 269, 1, 0.015;
+`pt-texture-wrap` 6 455, 3, 0.048 (MS-52, regenerated after the MS-59 merge); `pt-closeup-reference` (re-rendered
 on the update) 408, 1, 0.002; the export goldens (alpha included) `export-still-transparent` 1 461, 11, 0.040 and the
 turntable and animation frames 826-1 030, at most 9, at most 0.012. Every change lies on the catcher (and the glass
 panes that show it); no model pixel and no shadow shape moved. `pt-alpha-plane` (its ground hides the catcher; 29
@@ -674,6 +690,7 @@ Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with r
 | `gltf-contact`             | 0 (629)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)          | 0.133, 7.03                                |
 | `obj-shapes-y030`          | 0 (1 852)                           | 246, 0.00375, 0.469 (MS-54; MS-39 245, 0.00374, 0.470)  | 0.00468, 0.587 (MS-54; was 0.00468, 0.588) |
 | `gltf-nodes-y030`          | 0 (2 218)                           | 319, 0.00487, 0.955 (MS-54; MS-39 320, 0.00488, 0.956)  | 0.00609, 1.194 (MS-54; was 0.0061, 1.2)    |
+| `texture-wrap`             | 0 (3 444)                           | 46, 0.00070, 0.671 (MS-52, new; textureWrap.spec.ts)    | 0.00088, 0.839                             |
 
 MS-30 (anti-aliased cut-out seams in the preview's MSAA frames, as the render anti-aliases them by sampling)
 re-measured every pair: `turntable-y030`, `iso`, `alpha-plane` and `cutout-checker` came closer to the render (rows
@@ -1141,6 +1158,8 @@ round 7); its max was 750 ms then.
   largest GPU wait 13.1 ms in one task, a band's `texSubImage2D`), the call to applied 3238 ms.
 - `bundleGzipBytes` embed 3200 and embed-frame 177 200 (MS-24: the element and the frame page; measured 2949 and
   161 810 B, gzip level 9, plus 10 %, rounded up to 100). Before MS-24 embed was a 115 B stub with a max of 2200.
+  embed-frame 195 100 (MS-52: the frame grew with MS-54, MS-56 and MS-52's texture wrap to 177 303 B, over the 177 200;
+  re-measured plus 10 %, rounded up to 100).
   `app` 205 300 and `app-entry` 66 800 (MS-23: the app opens, looks, renders and exports; measured 186 590 and 60 655 B, gzip level 9, plus 10 %, rounded up to 100). The app-entry row is what loads before a model is opened; the lazy tracer and export chunks count only in `app`.
   `site` 11 600 (MS-31: the landing page's js, css and html, gzip level 9; measured 9595, 9595, 9595 bytes, plus about
   2 kB) and `site-assets` 110 400 (its woff2 fonts and svg, each gzipped; measured 100 311 three times, times 1.1

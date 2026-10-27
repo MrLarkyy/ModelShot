@@ -1,5 +1,11 @@
-import { ALPHA_MODE_ID } from '@modelshot/looks';
-import { resolveMaterialAlpha, type SceneDocument, type SceneMesh } from '@modelshot/scene';
+import { ALPHA_MODE_ID, TEXTURE_FLAG_REPEAT, TEXTURE_FRAMES_SHIFT, textureSamplingFlags } from '@modelshot/looks';
+import {
+  resolveMaterialAlpha,
+  textureSampling,
+  type SceneDocument,
+  type SceneMesh,
+  type TextureSampling,
+} from '@modelshot/scene';
 
 /**
  * Raster frames skip the back pass of a mesh that is a closed solid wound outward (every shell encloses positive
@@ -221,22 +227,59 @@ export function textureOpacityOf(rgba: Uint8Array, width: number, height: number
 }
 
 /**
- * Translucent texels a face samples: those in its texel range, from the normalised UV rectangle
- * `[uMin, vMin, uMax, vMax]` the way `faceTexelRange` (faceTexels.glsl of @modelshot/looks) computes it, clamped to
- * the image.
+ * The inclusive texel segments of one axis a face reads (`faceTexel` of faceTexels.glsl, @modelshot/looks): its range
+ * from `faceTexelRange` in an image of `image` texels, clamped to the first `size` of them or, with `repeat`, wrapped
+ * into them (one segment, two where the range crosses the edge, the whole span where it covers it).
  */
-export function translucentTexelsIn(table: TranslucentTexels, rect: ArrayLike<number>): number {
-  const { width, height, sums } = table;
-  const range = (min: number, max: number, size: number): [number, number] => {
-    const lo = Math.floor(Math.min(min, max) * size + 1e-3);
-    const hi = Math.max(Math.ceil(Math.max(min, max) * size - 1e-3) - 1, lo);
-    return [Math.min(Math.max(lo, 0), size - 1), Math.min(Math.max(hi, 0), size - 1)];
-  };
-  const [x0, x1] = range(rect[0] ?? 0, rect[2] ?? 0, width);
-  const [y0, y1] = range(rect[1] ?? 0, rect[3] ?? 0, height);
+function axisSegments(min: number, max: number, image: number, size: number, repeat: boolean): [number, number][] {
+  const lo = Math.floor(Math.min(min, max) * image + 1e-3);
+  const hi = Math.max(Math.ceil(Math.max(min, max) * image - 1e-3) - 1, lo);
+  if (!repeat) return [[Math.min(Math.max(lo, 0), size - 1), Math.min(Math.max(hi, 0), size - 1)]];
+  if (hi - lo + 1 >= size) return [[0, size - 1]];
+  const start = ((lo % size) + size) % size;
+  const end = start + hi - lo;
+  return end < size
+    ? [[start, end]]
+    : [
+        [start, size - 1],
+        [0, end - size],
+      ];
+}
+
+const STILL_CLAMPED: TextureSampling = { wrap: 'clamp', frames: 1 };
+
+/** Texel rows a lookup may read in an image of `height` rows: frame 0 of a strip (`wrapSize` of faceTexels.glsl). */
+function wrapRows(height: number, frames: number): number {
+  if (frames <= 1) return height;
+  return Math.min(Math.max(Math.ceil(height / frames - 1e-3), 1), height);
+}
+
+/**
+ * Translucent texels a face samples: those its normalised UV rectangle `[uMin, vMin, uMax, vMax]` addresses the way
+ * `faceTexel` (faceTexels.glsl of @modelshot/looks) does under the texture's `sampling` (`textureSampling`): clamped to
+ * the image or repeated over it, a strip's lookups within frame 0. A repeated texel the range reaches twice counts
+ * once.
+ */
+export function translucentTexelsIn(
+  table: TranslucentTexels,
+  rect: ArrayLike<number>,
+  sampling: TextureSampling = STILL_CLAMPED,
+): number {
+  const { width, sums } = table;
+  // Read from the flags word the shaders get, so a frame count they treat as a still image is one here too.
+  const flags = textureSamplingFlags(sampling);
+  const repeat = (flags & TEXTURE_FLAG_REPEAT) !== 0;
+  // v is normalised by the whole image, so the range is taken in its rows and only the bound is the frame's.
+  const rows = wrapRows(table.height, (flags >> TEXTURE_FRAMES_SHIFT) + 1);
   const stride = width + 1;
   const at = (x: number, y: number) => sums[y * stride + x] ?? 0;
-  return at(x1 + 1, y1 + 1) - at(x0, y1 + 1) - at(x1 + 1, y0) + at(x0, y0);
+  let count = 0;
+  for (const [x0, x1] of axisSegments(rect[0] ?? 0, rect[2] ?? 0, width, width, repeat)) {
+    for (const [y0, y1] of axisSegments(rect[1] ?? 0, rect[3] ?? 0, table.height, rows, repeat)) {
+      count += at(x1 + 1, y1 + 1) - at(x0, y1 + 1) - at(x1 + 1, y0) + at(x0, y0);
+    }
+  }
+  return count;
 }
 
 /** The drawn triangles of a mesh: its groups' index ranges, or every index without groups. */
@@ -266,9 +309,10 @@ export function meshFacesOpaque(doc: SceneDocument, mesh: SceneMesh, opacity: re
     const table = opacity[texture] ?? 'unknown';
     if (table === 'opaque') continue;
     if (table === 'unknown') return false;
+    const sampling = textureSampling(doc.textures[texture]);
     for (let i = group.start; i < group.start + group.count; i += 3) {
       const corner = mesh.indices[i] ?? 0;
-      if (translucentTexelsIn(table, mesh.uvRects.subarray(corner * 4, corner * 4 + 4)) > 0) return false;
+      if (translucentTexelsIn(table, mesh.uvRects.subarray(corner * 4, corner * 4 + 4), sampling) > 0) return false;
     }
   }
   return true;

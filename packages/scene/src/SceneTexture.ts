@@ -1,4 +1,5 @@
 import type { SceneTextureFrames } from './SceneTextureFrames';
+import type { SceneTextureWrap } from './SceneTextureSampling';
 
 /**
  * A PNG image carried as its encoded bytes, unchanged by the loader (only `loadSkin` decodes pixels, of a legacy skin,
@@ -23,4 +24,9 @@ export interface SceneTexture {
    * using it already map into frame 0, so v spans [0, 1 / `frames.count`] there.
    */
   readonly frames?: SceneTextureFrames;
+  /**
+   * What a lookup past the image reads (`textureSampling`; added within version 1, MS-52); absent:
+   * `DEFAULT_TEXTURE_WRAP`, the edge texel.
+   */
+  readonly wrap?: SceneTextureWrap;
 }
