@@ -19,6 +19,10 @@ describe('playwright config projects', () => {
     expect(bench?.outputDir).toMatch(/test-results\/serial$/);
   });
 
+  it('lists the projects with the longest tests first, so phase 1 does not end on one long test', () => {
+    expect(projects.map((p) => p.name)).toEqual(['pair', 'bake', 'golden-pt', 'golden', 'bench']);
+  });
+
   it('has no project dependency', () => {
     for (const project of projects) expect(project.dependencies, project.name).toBeUndefined();
   });

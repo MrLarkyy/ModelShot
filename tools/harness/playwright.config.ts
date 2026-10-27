@@ -39,26 +39,28 @@ export default defineConfig({
   // src/workerCount.ts, then the bench project alone with one worker. The bench project is every @timing test, so a
   // measure never shares the machine with another test. It has no dependency on the goldens: that would skip it after
   // a golden failure and pull every golden test into its CI shard.
+  // Playwright queues the test groups of one run in project order, so the projects with the longest tests come first
+  // and the short golden tests fill the workers at the end of phase 1 instead of one long test running on alone.
   projects: [
-    {
-      name: 'golden',
-      fullyParallel: true,
-      grepInvert: [/baked lighting/, /@timing/],
-      testMatch: ['environment.spec.ts', 'export.spec.ts', 'golden*.spec.ts', 'modelView.spec.ts', 'realtime.spec.ts'],
-    },
-    {
-      name: 'golden-pt',
-      fullyParallel: true,
-      testMatch: 'pathtracer.spec.ts',
-      grepInvert: [/like the baked preview/, /@timing/],
-    },
-    { name: 'bake', fullyParallel: true, testMatch: 'realtime.spec.ts', grep: /baked lighting/, grepInvert: /@timing/ },
     {
       name: 'pair',
       fullyParallel: true,
       testMatch: 'pathtracer.spec.ts',
       grep: /like the baked preview/,
       grepInvert: /@timing/,
+    },
+    { name: 'bake', fullyParallel: true, testMatch: 'realtime.spec.ts', grep: /baked lighting/, grepInvert: /@timing/ },
+    {
+      name: 'golden-pt',
+      fullyParallel: true,
+      testMatch: 'pathtracer.spec.ts',
+      grepInvert: [/like the baked preview/, /@timing/],
+    },
+    {
+      name: 'golden',
+      fullyParallel: true,
+      grepInvert: [/baked lighting/, /@timing/],
+      testMatch: ['environment.spec.ts', 'export.spec.ts', 'golden*.spec.ts', 'modelView.spec.ts', 'realtime.spec.ts'],
     },
     { name: 'bench', grep: /@timing/, workers: 1, outputDir: 'test-results/serial' },
   ],
