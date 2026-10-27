@@ -85,7 +85,11 @@ describe('shader sources', () => {
     expect(vertex).toContain('v_vertexLightBack = a_lightmapChart;');
     expect(fragment).toContain('if (chart.z == LIGHTMAP_NONE) return vec4(1.0);');
     expect(fragment).toContain('if (chart.z == LIGHTMAP_WORLD) {');
-    expect(fragment).toContain('vec2 at = v_vertexLight.xy - rect.xy - 0.5;');
+    expect(fragment).toContain('vec2 at = vertexLight.xy - rect.xy - 0.5;');
+    // The vertex light is read at the shading point, as the normal and the edge distances.
+    expect(fragment).toContain('vec4 vertexLight = atShadingPoint(v_vertexLight);');
+    expect(fragment).toContain('vec4 vertexLightBack = atShadingPoint(v_vertexLightBack);');
+    expect(fragment).toContain('interpolatedNormal = atShadingPoint(vec4(v_normal, 0.0)).xyz;');
     expect(fragment).not.toContain('chart.z < 0.0');
     // Light and albedo share the seam taps.
     expect(shaderProgramSource('opaque').fragment.match(/seamTaps\(/g)?.length).toBe(3);
@@ -139,19 +143,61 @@ describe('shader sources', () => {
     }
   });
 
-  it('prepares the edge derivatives before the first discard and shades with the rounded normal', () => {
+  it('prepares the shading point and edge derivatives before the first discard and shades with the rounded normal', () => {
     for (const name of ['opaque', 'oitAccum', 'fallback'] as const) {
       for (const depthKey of ['raster', 'exact'] as const) {
         const { fragment } = shaderProgramSource(name, depthKey);
         const body = fragment.slice(fragment.indexOf('void main()'));
-        const prepare = body.indexOf('prepareEdges();');
+        const prepare = body.indexOf('prepareShading();');
         expect(prepare, `${name} ${depthKey}`).toBeGreaterThan(-1);
         expect(prepare, `${name} ${depthKey}`).toBeLessThan(body.indexOf('discard'));
-        expect(body).toContain('shadingNormal(v_normal)');
+        expect(body).toContain('shadingNormal()');
+        expect(prepare, `${name} ${depthKey}`).toBeLessThan(body.indexOf('sampleBakedLight('));
         expect(body).not.toContain('surfaceNormal(');
         expect(fragment).toContain(
           'vec3 roundedNormal(vec3 n, vec4 d, vec4 angle, vec3 t[4], float width, vec4 footprint)',
         );
+      }
+    }
+  });
+
+  it('samples the normal, position, edge distances and baked light at the centroid in every mesh pass, the UV at the centre', () => {
+    for (const name of ['opaque', 'oitAccum', 'fallback'] as const) {
+      for (const depthKey of ['raster', 'exact'] as const) {
+        const { vertex, fragment } = shaderProgramSource(name, depthKey);
+        const label = `${name} ${depthKey}`;
+        for (const [type, varying] of [
+          ['vec3', 'v_normal'],
+          ['vec3', 'v_worldPosition'],
+          ['vec4', 'v_edgeDistances'],
+          ['vec4', 'v_vertexLight'],
+          ['vec4', 'v_vertexLightBack'],
+        ] as const) {
+          expect(vertex, label).toMatch(new RegExp(`^centroid out ${type} ${varying};$`, 'm'));
+          expect(fragment, label).toMatch(new RegExp(`^centroid in ${type} ${varying};$`, 'm'));
+        }
+        for (const varying of ['v_uv', 'v_uvRect', 'v_lightmap']) {
+          expect(vertex, label).toMatch(new RegExp(`^(flat )?out vec\\d ${varying};$`, 'm'));
+          expect(fragment, label).toMatch(new RegExp(`^(flat )?in vec\\d ${varying};$`, 'm'));
+        }
+        expect(vertex.match(/^centroid /gm)?.length, label).toBe(5);
+        expect(fragment.match(/^centroid /gm)?.length, label).toBe(5);
+        expect(vertex, label).not.toMatch(/^centroid out vec\d (v_uv|v_uvRect|v_lightmap);$/m);
+        expect(fragment.match(/^uniform vec2 u_viewportSize;$/gm)?.length, label).toBe(1);
+        expect(vertex.match(/u_viewportSize/g)?.length ?? 0, label).toBe(0);
+      }
+    }
+  });
+
+  it('keeps the centroid only where the pixel reaches over a sharp edge, and steps back on any sample pattern', () => {
+    for (const name of ['opaque', 'oitAccum', 'fallback'] as const) {
+      for (const depthKey of ['raster', 'exact'] as const) {
+        const { fragment } = shaderProgramSource(name, depthKey);
+        const label = `${name} ${depthKey}`;
+        expect(fragment, label).toContain('if (any(lessThan(edgeDistances, 0.5 * edgeFootprint))) {');
+        // Every non-singular 4x sample pattern (determinant 1/16 or more) steps back: an RTX 3080 kept 24 pixels at the
+        // centroid with a 0.25 bound.
+        expect(fragment, label).toContain('bool mapped = maxSkew < 1.0 && abs(det) > 0.03125;');
       }
     }
   });
@@ -166,8 +212,16 @@ describe('shader sources', () => {
         expect(locations).toContain(10);
         expect(locations).toContain(11);
         // Every varying counted as a whole vector, the most it can take after packing.
-        const varyings = vertex.match(/^\s*(flat )?out \w+ v_\w+;/gm) ?? [];
+        const varyings = vertex.match(/^\s*((flat|centroid) )?out \w+ v_\w+;/gm) ?? [];
         expect(varyings.length, `${name} ${depthKey}`).toBeLessThanOrEqual(15);
+        // Raster: the 9 shading varyings; exact: the view position, the three corners and the shared-edge bits too.
+        expect(varyings.length, `${name} ${depthKey}`).toBe(depthKey === 'raster' ? 9 : 14);
+        for (const varying of ['v_normal', 'v_worldPosition', 'v_edgeDistances']) {
+          expect(
+            varyings.some((line) => line.includes(` ${varying};`)),
+            `${varying} counted`,
+          ).toBe(true);
+        }
         for (const varying of ['v_worldPosition', 'v_edgeDistances', 'v_edgeAngles']) {
           expect(vertex).toContain(varying);
           expect(fragment).toContain(varying);

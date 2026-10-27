@@ -240,7 +240,7 @@ option `edges` (a `Partial<EdgeLook>`, out of range a `RangeError` naming `edges
   `vertexOf` (positions, normals, UVs, UV rectangles and lightmap data alike) and takes its split `indices`; the
   distances and angles go to attribute locations 9 (`a_edgeDistances`) and 10 (`a_edgeAngles`, flat), in the exact
   key's de-indexed copy too. A context restore uploads them again from the retained scene.
-- `shading.glsl`: `prepareEdges()` runs first in `main`, before any discard (derivatives need uniform control flow,
+- `shading.glsl`: `prepareShading()` runs first in `main`, before any discard (derivatives need uniform control flow,
   as `prepareDepthKey`): each slot's direction toward its edge is minus the in-surface gradient of its distance,
   from `dFdx`/`dFdy` of distance and world position (`v_worldPosition`), and its footprint is the distance one pixel
   spans. `shadingNormal()` replaces the plain normal in the opaque, OIT and fallback passes: the shared
@@ -248,6 +248,45 @@ option `edges` (a `Partial<EdgeLook>`, out of range a `RangeError` naming `edges
   sin(θ / 2), so both faces reach the bisector at the edge; the linear ramp is box-filtered over the pixel's
   footprint, so the band does not shimmer when it is narrower than a pixel. Where no slot bends the normal the
   function returns it unchanged, so planes, cards and smooth areas are byte-identical with rounding on and off.
+- MSAA shading point (MS-54): the fragment shader runs once per triangle and pixel, by default with its inputs at the
+  pixel centre, which for a pixel the triangle only partly covers lies off the face: the normal, the world position
+  and the edge distances extrapolate there. `v_normal`, `v_worldPosition` and `v_edgeDistances` are therefore
+  `centroid` (vertex `centroid out`, fragment `centroid in` in the opaque, OIT and fallback passes, both depth-key
+  variants; a mismatch fails to link), read at a covered sample as the render's rays hit the face. The centroid
+  values of neighbouring pixels lie up to 0.75 px off the unit steps `dFdx`/`dFdy` assume. The directions toward the
+  edges are unaffected (distance and position are differenced over the same steps); the footprint is not, so
+  `prepareShading` projects `v_worldPosition` to the drawing buffer (`u_viewProjection`, `u_viewportSize` from the
+  `viewport` chunk) and, where those steps are not unit ones (more than 0.01 px and less than 1 px off, determinant
+  above 1/32), maps the distance gradient back to unit steps with the inverse of their matrix. Opposite sample
+  offsets shorten a step to 0.25 px, and the determinants of the standard 4x pattern's lane steps are multiples of
+  1/16 (0, 1/16, 1/8, ...): only 0 is singular, so the bound sits halfway below the smallest non-zero one, where float
+  rounding cannot decide. An RTX 3080 gives 0.25 inside faces, and the earlier bound of 0.25 left 24 pixels inside the
+  edges view's sphere at the centroid (docs/testing.md). The baked
+  vertex light (`v_vertexLight`, `v_vertexLightBack`, which world charts reuse for their lightmap point) is centroid
+  too: at the pixel centre it would show the light of a point beyond the face. Shading point: a GPU's centroid is a
+  covered sample position, so inside a face, along a quad's diagonal, each triangle would be shaded at a point other
+  than the pixel centre and the pixel would change (measured on an RTX 3080, docs/testing.md). `prepareShading`
+  therefore steps the normal, the edge distances and, through `atShadingPoint`, the baked light back to the pixel
+  centre (`gl_FragCoord` less the sample's projected position, mapped to derivative units; exact for inputs affine in
+  screen space, to first order under perspective), unless the pixel reaches over one of the triangle's sharp edges
+  (some slot's distance at the centre below half its footprint: a sharp silhouette or a crease), where the centroid
+  sample stays. The view direction (`towardEye(v_worldPosition)`) stays at the centroid, a difference far below a
+  level. Everywhere else the shading point is the centre, also on the silhouette of a smooth mesh, of an open boundary
+  or of a cube edge past the sharp angle, where the centre lies off the face: keeping the centroid there (round 4, a
+  per-triangle stream of corners and neighbour normals that found those silhouette edges exactly) moved 26 pixels of
+  the `edges` view's sphere outline but matched neither reference better, over its 704-pixel outline band 14.1790
+  against the render (14.1520 at the centre) and 1.2233 against a 4 x 4 supersampled `msaa=0` preview (1.1282), the
+  same on an RTX 3080; the contour facet of a coarse sphere is foreshortened under a pixel, so one shading point,
+  centroid or centre, is as far from the area average, and the coverage error of 4 samples dominates. It was reverted.
+  The step applies beyond 0.01 px, so it also takes up the rasterizer's vertex snapping: SwiftShader snaps to 1/16 px,
+  and its fully covered pixels interpolate up to 0.04 px off `gl_FragCoord`; they move by that much.
+  `sampleBakedLight` runs after `prepareShading`. Only `v_uv` and `v_uvRect` stay at the pixel centre: texel
+  anti-aliasing (`texelSample`), the alpha-to-coverage contour on the texel boundary and the hashed-alpha cell are
+  defined on the texel grid there, and `v_uvRect` keeps the texel on its face. `v_lightmap` is flat. No varying is
+  added (the exact variant uses 14 of the minimum 15). Exact-key frames draw single-sampled, where the centroid is the
+  centre, but the snapping correction moves them along rounded-edge bands against origin/main: `rt-preset-rim` 939
+  pixels (up to 16 levels, a sub-pixel band on the head's grazing top face), `rt-preset-marketplace` 1 320 (9),
+  `rt-player-classic-back` 732 (2); anti-aliasing their silhouettes is MS-35's.
 - Only the normal changes: texels, UVs, alpha and the depth key are untouched. The baked light is computed for the
   unrounded surface (bake width 0) and multiplies the rounded shading as before.
 - A width change is a uniform; a sharp-angle change detects again and uploads the geometry again.

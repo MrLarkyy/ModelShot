@@ -157,6 +157,8 @@ screen right. On the test player's head the right side goes from (32, 8, 9) to (
 those faces and still draws a white line puts the preview-vs-render pair over its limits (from behind, (0.45, 0.12,
 −0.88), exponent 5: side faces untouched, pair ratio 0.0267 against 0.0241), and every one that fits the limits and
 spares them draws no white line ([testing.md](testing.md#look-presets)). The reason is the silhouette: the render's
-jittered rays catch the rim on pixels the face only partly covers, the preview shades such pixels at their centre,
-off the face, so a thin silhouette rim adds pixels that differ. Studio's rim is black (exponent 4, albedo share 1:
+jittered rays catch the rim on pixels the face only partly covers, while the player's preview frames use the exact
+depth key (its outer layer has a render order) and draw single-sampled, so such a pixel shows the face or the backdrop
+by its centre alone (at 256 px, (170, 60) of `preset-rim` is backdrop in the preview, the rim line in the render), and a
+thin silhouette rim adds pixels that differ. Anti-aliasing exact-key silhouettes is MS-35's. Studio's rim is black (exponent 4, albedo share 1:
 inert).
