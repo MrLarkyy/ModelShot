@@ -22,6 +22,11 @@ export interface CutoutSeams {
   readonly area: number;
   /** Rows of the region with a boundary pixel. */
   readonly boundaryRows: number;
+  /**
+   * Columns of the region crossed by a near-horizontal boundary (a model/backdrop pair of vertical neighbours): with
+   * `boundaryRows` the length scale of a region whose boundaries run both ways.
+   */
+  readonly boundaryColumns: number;
 }
 
 const model = (image: Image, backdrop: Image, x: number, y: number): boolean =>
@@ -43,9 +48,12 @@ function inside(region: readonly Point2[], x: number, y: number): boolean {
 
 /**
  * Compares `frame` with `hard`, the same view with hard cutouts, over `backdrop` (the view with nothing drawn). The
- * texel colour at a pixel is the hard frame's colour of the nearest model pixel in its 3 x 3 neighbourhood; coverage
- * projects a pixel onto the backdrop-to-texel segment after `linear` (8-bit display colour to linear light). Mixes,
- * transitions and area count inside `region` only.
+ * texel colour at a pixel is the hard frame's colour of the nearest model pixel in its 3 x 3 neighbourhood, so a
+ * partial texel's is its colour over what lies behind; coverage projects a pixel onto the backdrop-to-texel segment
+ * after `linear` (8-bit display colour to linear light). Mixes, transitions and area count inside `region` only.
+ * `backdrop` may be any view of what a texel covers (the partial texel under an opaque one: its seam's `backdrop`);
+ * `alsoBoundaryOf` adds the model boundaries against another such view to those `farChanges` keeps a pixel away from,
+ * for a frame with seams of both kinds.
  */
 export function cutoutSeams(
   frame: Image,
@@ -53,6 +61,7 @@ export function cutoutSeams(
   backdrop: Image,
   region: readonly Point2[],
   linear: (display: readonly [number, number, number]) => readonly [number, number, number],
+  alsoBoundaryOf?: Image,
 ): CutoutSeams {
   const linearCache = new Map<number, readonly [number, number, number]>();
   const toLinear = (rgb: [number, number, number]): readonly [number, number, number] => {
@@ -65,18 +74,38 @@ export function cutoutSeams(
     return value;
   };
   const { width, height } = hard;
-  const isModel = new Uint8Array(width * height);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) isModel[y * width + x] = model(hard, backdrop, x, y) ? 1 : 0;
-  }
-  const at = (x: number, y: number): number =>
-    x < 0 || y < 0 || x >= width || y >= height ? -1 : (isModel[y * width + x] ?? 0);
-  const isBoundary = (x: number, y: number): boolean => {
-    const self = at(x, y);
-    return [at(x - 1, y), at(x + 1, y), at(x, y - 1), at(x, y + 1)].some((n) => n !== -1 && n !== self);
+  const classify = (behind: Image): Uint8Array => {
+    const classes = new Uint8Array(width * height);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) classes[y * width + x] = model(hard, behind, x, y) ? 1 : 0;
+    }
+    return classes;
   };
+  const isModel = classify(backdrop);
+  const otherModel = alsoBoundaryOf ? classify(alsoBoundaryOf) : null;
+  const classAt = (classes: Uint8Array, x: number, y: number): number =>
+    x < 0 || y < 0 || x >= width || y >= height ? -1 : (classes[y * width + x] ?? 0);
+  const at = (x: number, y: number): number => classAt(isModel, x, y);
+  const boundaryIn = (classes: Uint8Array, x: number, y: number): boolean => {
+    const self = classAt(classes, x, y);
+    return [
+      [x - 1, y],
+      [x + 1, y],
+      [x, y - 1],
+      [x, y + 1],
+    ].some(([nx, ny]) => {
+      const n = classAt(classes, nx ?? 0, ny ?? 0);
+      return n !== -1 && n !== self;
+    });
+  };
+  const isBoundary = (x: number, y: number): boolean => boundaryIn(isModel, x, y);
   const nearBoundary = (x: number, y: number): boolean => {
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (isBoundary(x + dx, y + dy)) return true;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (isBoundary(x + dx, y + dy)) return true;
+        if (otherModel && boundaryIn(otherModel, x + dx, y + dy)) return true;
+      }
+    }
     return false;
   };
   const texel = (x: number, y: number): [number, number, number] | null => {
@@ -131,6 +160,7 @@ export function cutoutSeams(
   }
   let transitions = 0;
   let mixedTransitions = 0;
+  const crossedColumns = new Set<number>();
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       if (!inside(region, x, y)) continue;
@@ -141,9 +171,11 @@ export function cutoutSeams(
         const other = at(nx, ny);
         if (other === -1 || other === at(x, y) || !inside(region, nx, ny)) continue;
         transitions++;
+        if (ny !== y) crossedColumns.add(x);
         if (mixed[y * width + x] || mixed[ny * width + nx]) mixedTransitions++;
       }
     }
   }
-  return { farChanges, boundary, mixes, transitions, mixedTransitions, hardArea, area, boundaryRows };
+  const boundaryColumns = crossedColumns.size;
+  return { farChanges, boundary, mixes, transitions, mixedTransitions, hardArea, area, boundaryRows, boundaryColumns };
 }

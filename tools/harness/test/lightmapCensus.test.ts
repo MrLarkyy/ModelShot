@@ -35,6 +35,8 @@ const CENSUS: Readonly<Record<string, { world: readonly string[]; key?: string }
   'obj-shapes-y030': { world: ['floor', 'star'] },
   // MS-52: the wrap boxes, baked by textureWrap.spec.ts's pair test; every face per texel.
   'texture-wrap': { world: [], key: '8aeb28781ff695aa' },
+  // MS-60: the textured partial-edge quad, per texel; new, so no key from before world charts.
+  'partial-edge': { world: [] },
 };
 
 describe('lightmap chart census of the baked fixture views', () => {

@@ -225,7 +225,8 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
   isometric), `rt-closeup` (half the fit distance, atlas texels about 28 px), `rt-far` (three times the fit
   distance, brick texels about 0.45 px), `rt-fallback` (no-float path), `rt-fit-flat-cube` (frame-to-fit of a plate
   with zero height), `rt-gltf-nodes-y030` and `rt-obj-shapes-y030` (perspective 35°, pitch 20°, yaw 30°: the glTF
-  and OBJ loader fixtures, below). Default tolerance.
+  and OBJ loader fixtures, below), `rt-partial-edge` (MS-60, the partial-edge quad at 4x MSAA: partial seams, a
+  partial outline and opaque|partial seams anti-aliased). Default tolerance.
 - Bleeding: no turntable frame has a pixel whose red and blue both exceed green by more than 24 levels (the magenta
   sentinel after lighting and AgX). Without the face-rectangle clamp the 0° frame has 441 such pixels. The same holds
   for `gltf-nodes` at yaw 0°, 30°, 60°, 90°, 180° and 270°; with every UV rectangle widened to the whole image its 0°
@@ -271,6 +272,25 @@ anti-alias silhouettes like raster frames`): `turntable-y030` at `aa=0`, framed 
   framebuffer's `SAMPLES` at every draw: on only in opaque draws into a target with at least 2 samples (turntable,
   `cutout-edge`, a baked checker), off in every draw of `aa=0`, exact, fallback frames, and for backdrop, catcher, OIT
   and present (either present program).
+- Anti-aliased partial-alpha seams in the OIT pass (MS-60), scene `partial-edge` (`fixtures/src/partialEdge.ts`: the
+  `cutout-edge` quad and camera with `BLEND`, a generated texture of white texels: a ring of alpha-128 texels around
+  a checker of alpha-128 and alpha-0 texels in rows 1-4 and of alpha-128 and opaque texels in rows 5-6, so
+  partial|invisible seams, opaque|partial seams and a face outline of partial texels only; `partial-edge-under` has
+  the opaque texels partial, what an opaque texel covers), against the same view at `aa=0&msaa=0` (nearest texels at
+  pixel centres) with `cutoutSeams`: (a) 0 far changes (also away from the boundaries against `partial-edge-under`),
+  (b) at least half of the transitions mixed, (c) the covered area within 0.5 px per boundary row and per column a
+  near-horizontal boundary crosses (`boundaryColumns`), (d) texel centres within 1 level, alpha-0 centres exactly the
+  backdrop. Regions: rows 0-4 with a texel past the outline (partial seams and outline: 1 238 of 1 473 transitions
+  mixed, area 15 152.0 against 15 161, 123 rows, 195 columns), the left outline alone (82 of 113, 1 029.9 against
+  1 033, 108 rows) and the opaque|partial strip between the centres of rows 5 and 6 over `partial-edge-under` (183 of
+  280, 1 442.5 against 1 416, 34 rows, 132 columns: A2C's 4 levels on the opaque side, docs/realtime-renderer.md; 0.78
+  px per boundary row, the plan's per-row bound is met only with the columns). `msaa=0`: the seams inside the ring
+  still ramp (903 of 1 038 mixed, 10 156.3 against 10 170, 92 rows), the outline and the strip stay hard (0 mixes).
+  Exact key: the converged `partial-edge-inside` equals its `aa=0` frame within 2 levels in rows 0-4 (no ramp of its
+  own, the 4 passes' mean antialiases), and `partial-edge-inside&msaa=0` (drawn once) ramps (875 of 1 038, 10 154.4
+  against 10 170). The fallback keeps the same model/backdrop map with and without texel AA, and `breakFramebuffers`
+  with partial geometry switches to it without a page error. `scene=partial-edge-pair` (a second quad overlapping
+  the first) is byte-identical with `reverse=1` at 4 samples, `msaa=0`, `depth=inside` and both.
 - Context loss through `WEBGL_lose_context`: the image after the restore matches `rt-turntable-y030`, without a
   reload or a page error.
 - Device pixel ratio 2 doubles the backing store; an element resize reallocates and keeps the projection unstretched.
@@ -427,6 +447,16 @@ edges (largest `rt-closeup`: 7 013 pixels, mean 0.93 levels; `pt-closeup` 9 754,
 rewritten: `rt-far`, `rt-gltf-nodes-y030`, `rt-obj-shapes-y030`, `rt-player-hold-34`, `rt-player-legacy-opaque-hat-34`,
 `rt-bake-cutout-checker`, `rt-bake-alpha-plane`, and as required `rt-fit-flat-cube`, `pt-alpha-ramp-blend`,
 `gradient`, `progressive.s7.n64` and every model-view golden (their fixture has its own shaders).
+
+MS-60 (anti-aliased partial seams and partial outlines in the OIT pass) regenerated no golden: every existing one
+passes its comparison, so none was rewritten; new are `rt-partial-edge` and `pt-partial-edge.s1.n128`. Against the
+committed goldens (pixels with any channel changed, largest change in levels), all on partial texels (the showcase's
+glass panes and 50 % texels, the glTF and OBJ fixtures' partial faces): `rt-turntable-y000` 470 (44), `-y030` 381
+(79), `-y060` 251 (43), `-y090` 166 (34), `rt-iso` 343 (82), `rt-closeup` 1 065 (79), `rt-far` 100 (62),
+`rt-gltf-nodes-y030` 210 (20), `rt-obj-shapes-y030` 138 (49), `rt-bake-turntable-y030` 286 (89). Unchanged (0
+pixels): the fallback, player, preset, cut-out (`rt-bake-cutout-checker`), `rt-edges`, `rt-outline-hull`,
+`rt-bake-alpha-plane`, `rt-bake-gltf-contact`, `rt-fit-flat-cube` and `rt-texture-wrap-inside` frames; `rt-texture-wrap`
+(opaque textures only, no OIT draw) differs from its golden by 2 531 pixels (17) with origin/main's renderer too.
 
 Goldens regenerated on purpose in MS-30 (anti-aliased cut-out seams on the MSAA path; same views, bake seed and
 samples), the ones that failed their comparison, each set by its own `build golden --update --filter`:
@@ -605,6 +635,7 @@ golden says them (`-x2-denoised`).
 | `pt-gltf-contact.s1.n128`              | contact-shadow.gltf, `contact`, no catcher            | golden; contact probes; pair (MS-41)             |
 | `pt-gltf-nodes-y030.s1.n128`           | scene-nodes.gltf, perspective 35°, pitch 20°, yaw 30° | golden; sentinel bleeding; catcher; pair (MS-39) |
 | `pt-obj-shapes-y030.s1.n128`           | shapes.obj, same view                                 | golden; pair (MS-39)                             |
+| `pt-partial-edge.s1.n128`              | generated partial-alpha checker quad, `edge` (MS-60)  | golden; pair; per-row seam area                  |
 | `pt-texture-wrap.s1.n64`               | generated wrap boxes, `wrap` look (MS-52)             | golden; wrap and frame probes; sentinel; pair    |
 
 MS-40 (`geometry worker`): the accumulated float sums (`readAccumulation`, base64) of the `edges` view at 16 samples
@@ -697,22 +728,33 @@ has interreflection and noise. Logged as `[pt pair] <view>: ...`, values in `tes
 Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with rounded edges and the mirrored bounce
 (MS-16's values in brackets; every limit stayed, none widened, `edges` is new at measured x 1.25):
 
-| view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta                     | limit: `maxDiffRatio`, `maxMeanDelta`      |
-| -------------------------- | ----------------------------------- | ------------------------------------------------------- | ------------------------------------------ |
-| `turntable-y030`           | 0 (1 627)                           | 142, 0.00217, 0.723 (MS-54; MS-30 142, 0.00217, 0.724)  | 0.00271, 0.904 (MS-54; was 0.00271, 0.905) |
-| `iso`                      | 0 (1 533)                           | 266, 0.00406, 0.888 (MS-54; MS-30 268, 0.00409, 0.889)  | 0.00508, 1.111 (MS-54; was 0.00512, 1.12)  |
-| `alpha-plane`              | 0 (692)                             | 232, 0.00354, 1.335 (MS-54; MS-30 232, 0.00354, 1.334)  | 0.00443, 1.669 (MS-54; was 0.00443, 1.67)  |
-| `player-hold-34`           | 0 (1 322)                           | 683, 0.01042, 0.999 (MS-35; 1 208, 0.01843, 1.293)      | 0.01304, 1.25 (MS-35; was 0.0232, 1.62)    |
-| `cutout-checker`           | 0 (3 295)                           | 223, 0.00340, 0.623 (MS-30; before 293, 0.00447, 0.731) | 0.00426, 0.78 (MS-30; was 0.00525, 0.908)  |
-| `edges`                    | 0 (1 971)                           | 41, 0.00063, 0.386 (MS-54; MS-41 40, 0.00061, 0.390)    | 0.00079, 0.483 (MS-54; was 0.00082, 0.496) |
-| `preset-marketplace`       | 0 (1 322)                           | 598, 0.00912, 0.793 (MS-35; 1 269, 0.01936, 1.237)      | 0.01141, 0.992 (MS-35; was 0.0223, 1.43)   |
-| `preset-rim`               | 0 (1 322)                           | 860, 0.01312, 0.704 (MS-35; 1 407, 0.02147, 1.109)      | 0.01641, 0.881 (MS-35; was 0.0241, 1.13)   |
-| `preset-marketplace-yaw30` | 0 (1 304)                           | 723, 0.01103, 0.856 (MS-35; 1 387, 0.02116, 1.281)      | 0.0138, 1.071 (MS-35; was 0.0265, 1.52)    |
-| `outline-hull`             | 0 (1 448)                           | 172, 0.00262, 0.437 (MS-54; MS-39 174, 0.00266, 0.438)  | 0.00329, 0.547 (MS-54; was 0.00333, 0.548) |
-| `gltf-contact`             | 0 (629)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)          | 0.133, 7.03                                |
-| `obj-shapes-y030`          | 0 (1 852)                           | 246, 0.00375, 0.469 (MS-54; MS-39 245, 0.00374, 0.470)  | 0.00468, 0.587 (MS-54; was 0.00468, 0.588) |
-| `gltf-nodes-y030`          | 0 (2 218)                           | 319, 0.00487, 0.955 (MS-54; MS-39 320, 0.00488, 0.956)  | 0.00609, 1.194 (MS-54; was 0.0061, 1.2)    |
-| `texture-wrap`             | 0 (3 444)                           | 46, 0.00070, 0.671 (MS-52, new; textureWrap.spec.ts)    | 0.00088, 0.839                             |
+| view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta                    | limit: `maxDiffRatio`, `maxMeanDelta`      |
+| -------------------------- | ----------------------------------- | ------------------------------------------------------ | ------------------------------------------ |
+| `turntable-y030`           | 0 (1 627)                           | 123, 0.00188, 0.697 (MS-60; MS-54 142, 0.00217, 0.723) | 0.00235, 0.871 (MS-60; was 0.00271, 0.904) |
+| `iso`                      | 0 (1 517)                           | 250, 0.00381, 0.869 (MS-60; MS-54 266, 0.00406, 0.888) | 0.00476, 1.086 (MS-60; was 0.00508, 1.111) |
+| `alpha-plane`              | 0 (692)                             | 232, 0.00354, 1.335 (MS-54; MS-30 232, 0.00354, 1.334) | 0.00443, 1.669 (MS-54; was 0.00443, 1.67)  |
+| `player-hold-34`           | 0 (1 322)                           | 683, 0.01042, 0.999 (MS-35; 1 208, 0.01843, 1.293)     | 0.01304, 1.25 (MS-35; was 0.0232, 1.62)    |
+| `cutout-checker`           | 0 (3 295)                           | 223, 0.00340, 0.611 (MS-60; MS-30 223, 0.00340, 0.623) | 0.00426, 0.764 (MS-60; was 0.00426, 0.78)  |
+| `edges`                    | 0 (1 971)                           | 41, 0.00063, 0.373 (MS-60; MS-54 41, 0.00063, 0.386)   | 0.00079, 0.466 (MS-60; was 0.00079, 0.483) |
+| `preset-marketplace`       | 0 (1 322)                           | 598, 0.00912, 0.793 (MS-35; 1 269, 0.01936, 1.237)     | 0.01141, 0.992 (MS-35; was 0.0223, 1.43)   |
+| `preset-rim`               | 0 (1 322)                           | 860, 0.01312, 0.704 (MS-35; 1 407, 0.02147, 1.109)     | 0.01641, 0.881 (MS-35; was 0.0241, 1.13)   |
+| `preset-marketplace-yaw30` | 0 (1 304)                           | 723, 0.01103, 0.856 (MS-35; 1 387, 0.02116, 1.281)     | 0.0138, 1.071 (MS-35; was 0.0265, 1.52)    |
+| `outline-hull`             | 0 (1 448)                           | 172, 0.00262, 0.423 (MS-60; MS-54 172, 0.00262, 0.437) | 0.00329, 0.529 (MS-60; was 0.00329, 0.547) |
+| `gltf-contact`             | 0 (629)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)         | 0.133, 7.03                                |
+| `obj-shapes-y030`          | 0 (1 852)                           | 241, 0.00368, 0.455 (MS-60; MS-54 246, 0.00375, 0.469) | 0.0046, 0.569 (MS-60; was 0.00468, 0.587)  |
+| `gltf-nodes-y030`          | 0 (2 218)                           | 291, 0.00444, 0.943 (MS-60; MS-54 319, 0.00487, 0.955) | 0.00555, 1.179 (MS-60; was 0.00609, 1.194) |
+| `texture-wrap`             | 0 (3 444)                           | 46, 0.00070, 0.671 (MS-52, new; textureWrap.spec.ts)   | 0.00088, 0.839                             |
+| `partial-edge`             | 0 (3 844)                           | 2, 0.00003, 1.124 (MS-60, new)                         | 0.00004, 1.405                             |
+
+MS-60 (anti-aliased partial seams, opaque|partial seams and partial outlines in the preview's raster frames)
+re-measured every pair: `turntable-y030`, `iso`, `cutout-checker`, `edges`, `outline-hull`, `obj-shapes-y030` and
+`gltf-nodes-y030` came closer to the render (rows above; `iso`'s framing preview at `msaa=0` now ramps its partial
+seams, 1 517 silhouette pixels against 1 533), so their limits are tightened to measured x 1.25; `alpha-plane`, the
+player and preset views, `gltf-contact` and `texture-wrap` measured as before. `partial-edge` adds a per-row check
+(`src/rowCoverage.ts`): in rows inside texel rows 1-4 (partial|invisible seams and the outline) and 5-6
+(opaque|partial seams), the covered area of preview and render, each against its own texel colours, within 0.5 px
+plus the render's noise, 1.06 px (seed 1 against seed 2 at most 0.851 px a row, x 1.25); measured at most 1.127 px
+over 152 rows (row 1; rows 2-4 0.761, 0.678, 0.739; the strip 0.612 and 0.492).
 
 MS-30 (anti-aliased cut-out seams in the preview's MSAA frames, as the render anti-aliases them by sampling)
 re-measured every pair: `turntable-y030`, `iso`, `alpha-plane` and `cutout-checker` came closer to the render (rows
@@ -1147,6 +1189,15 @@ middle run, rounded up; renderer work since (MS-12's double-sided cubes and cove
 edges) raised the local median about 5x, so that max had shrunk to 1.2x a normal CI median. SwiftShader cannot
 stand in for a laptop GPU: the 60 fps criterion is evidenced by a manual run of the `fps=1` page on real hardware
 (16.7 ms or less of frame work), recorded with the machine and GPU in the task.
+
+`frameTimeMs.rt-frame-partial-edge-512` (MS-60): the `partial-edge` view at 512 x 512, raster key, 4x MSAA, the
+quad filling most of the frame, so the transparency pass runs per sample into its multisampled targets with the seam
+ramp, plus their two resolve blits; median of 30 frames after 5. Local SwiftShader medians 128.1 (the bench run),
+142.8 and 165.2 ms against 80.5 ms with origin/main's renderer in the same session (SwiftShader blends and resolves
+every sample; on GPU hardware that is the MSAA resolve's cost); max 1500 ms, 10x the middle run, rounded up, until a
+CI artefact allows 3-4x the CI median. `rt-bench-512` in the same session: 926.6 and 931.1 ms against 899.9 ms on
+origin/main (+3 %, the run-to-run spread; the machine was loaded, `rt-bench-order-512` 666.5 and 684.8 against 637.8).
+The bundle grew by 826 B (`app`) and 823 B (`app-entry`) gzip, within their rows.
 
 `frameTimeMs.rt-load-first-frame-200k-order` times `setScene` plus the first frame of a generated scene at the
 loader's limits (100 000 quads, 200 000 triangles, 400 000 vertices) at render order 1, which builds the exact key's

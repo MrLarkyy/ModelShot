@@ -25,6 +25,11 @@ import {
   type Image,
 } from '../src/imageMetrics';
 import { PT_PAIR_TOLERANCE } from '../src/ptPairTolerance';
+import { rowCoverage } from '../src/rowCoverage';
+import { agxInverse } from '../src/agxInverse';
+import { near } from '../src/imageMetrics';
+import { cutoutEdgePoint } from '../fixtures/src/cutoutEdge';
+import { PARTIAL_EDGE_STRIP_ROW, PARTIAL_EDGE_TEXELS } from '../fixtures/src/partialEdge';
 import { shadowStep } from '../src/shadowStep';
 import { OUTLINE_HULL_BOARD_LEVELS, outlineHullProbe } from '../src/outlineHullProbe';
 import { differenceMask, maskedPng } from '../src/edgeProbes';
@@ -84,6 +89,8 @@ const GOLDENS: readonly PathTracedGoldenSpec[] = [
   // MS-39: MS-13 loader fixtures, paired with rt-<v>.
   pt('gltf-nodes-y030', 'gltf-nodes-y030', 128),
   pt('obj-shapes-y030', 'obj-shapes-y030', 128),
+  // MS-60: partial-alpha seams, a partial face outline and opaque|partial seams; paired with rt-partial-edge.
+  pt('partial-edge', 'partial-edge', 128),
 ];
 
 /** The look preset of a fixture variant (rtScenes.ts RT_VARIANTS), Studio unless the variant names one. */
@@ -1423,5 +1430,85 @@ test.describe('outline hull', () => {
     console.log(`[pt probe] outline hull: ${JSON.stringify(probe)}`);
     expect(Math.abs(probe.boardWithHull - probe.boardAlone)).toBeLessThanOrEqual(OUTLINE_HULL_BOARD_LEVELS);
     expect(probe.rimPixels).toBeGreaterThan(200);
+  });
+});
+
+/**
+ * MS-60: the area partial texels cover per image row, in the 4x MSAA preview of the partial-edge view and in its render
+ * (seed 1, 128 samples, no shadow catcher, so what lies behind is the backdrop in both). Rows run inside one texel
+ * row, between its centre band's edges (a quarter texel from either seam), so every boundary they cross is
+ * near-vertical: the partial|invisible seams and the partial outline of texel rows 1-4, and the opaque|partial seams of
+ * rows 5-6 (`rowCoverage`, each image against its own texel colours). The hard shape (nearest texels at pixel
+ * centres) is the preview's with aa=0 and msaa=0.
+ */
+/**
+ * The render's own noise in `rowCoverage`'s per-row area of the partial-edge view (128 samples): the largest per-row
+ * difference between seed 1 and seed 2 over the same rows, 0.851 px (rows 1-4: 0.577, 0.851, 0.501, 0.405; strip rows
+ * 5-6: 0.689, 0.368), x 1.25.
+ */
+const PARTIAL_EDGE_ROW_NOISE = 1.06;
+
+test.describe('partial-alpha seams: the render covers each row like the baked preview (MS-60)', () => {
+  test('partial-edge: per-row covered area of preview and render within 0.5 px plus the render noise', async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    const linear = (rgb: readonly [number, number, number]) =>
+      agxInverse([rgb[0] / 255, rgb[1] / 255, rgb[2] / 255], lookPresetFile('studio').toneMapping);
+    const rt = async (query: string): Promise<Image> =>
+      decodePng(encodeFlipped(await openFixture(page, `/rt.html?${query}`)));
+    const backdrop = await rt('scene=empty&look=edge');
+    const under = await rt('scene=partial-edge-under&look=edge&aa=0&msaa=0');
+    const hard = await rt('variant=partial-edge&aa=0&msaa=0');
+    const preview = await rt('variant=partial-edge');
+    const project = (u: number, v: number): Promise<[number, number]> =>
+      page.evaluate(([x, y, z]) => window.__msFixture!.rt!.project(x, y, z), cutoutEdgePoint(u, v));
+    const band = async (u0: number, u1: number, row: number): Promise<[number, number][]> =>
+      Promise.all([project(u0, row + 0.25), project(u1, row + 0.25), project(u1, row + 0.75), project(u0, row + 0.75)]);
+    const classes = (behind: Image): Uint8Array => {
+      const covered = new Uint8Array(hard.width * hard.height);
+      for (let y = 0; y < hard.height; y++) {
+        for (let x = 0; x < hard.width; x++)
+          covered[y * hard.width + x] = near(pixel(hard, x, y), pixel(behind, x, y), 2) ? 0 : 1;
+      }
+      return covered;
+    };
+    const overBackdrop = classes(backdrop);
+    const overUnder = classes(under);
+    const regions: { label: string; region: [number, number][]; covered: Uint8Array }[] = [];
+    for (let row = 1; row < PARTIAL_EDGE_STRIP_ROW; row++) {
+      regions.push({
+        label: `row ${row}`,
+        region: await band(-0.5, PARTIAL_EDGE_TEXELS + 0.5, row),
+        covered: overBackdrop,
+      });
+    }
+    for (let row = PARTIAL_EDGE_STRIP_ROW; row < PARTIAL_EDGE_TEXELS - 1; row++) {
+      regions.push({
+        label: `strip row ${row}`,
+        region: await band(0.5, PARTIAL_EDGE_TEXELS - 0.5, row),
+        covered: overUnder,
+      });
+    }
+    const traced = (await render(page, 'variant=partial-edge&seed=1&samples=128&catcher=0')).image;
+    let worst = 0;
+    let rows = 0;
+    const lines: string[] = [];
+    for (const { label, region, covered } of regions) {
+      const a = rowCoverage(preview, covered, region, linear);
+      const b = rowCoverage(traced, covered, region, linear);
+      let regionWorst = 0;
+      for (const y of a.boundaryRows) {
+        const d = Math.abs((a.area.get(y) ?? 0) - (b.area.get(y) ?? 0));
+        regionWorst = Math.max(regionWorst, d);
+        rows++;
+      }
+      worst = Math.max(worst, regionWorst);
+      lines.push(`${label}: ${a.boundaryRows.length} rows, worst ${regionWorst.toFixed(3)} px`);
+    }
+    // Measured worst 1.127 px (row 1); rows 2-4 0.761, 0.678, 0.739; strip rows 0.612, 0.492.
+    console.log(`[pt pair] partial-edge per-row area, preview vs render: ${lines.join('; ')}`);
+    expect(rows, 'boundary rows compared').toBeGreaterThan(100);
+    expect(worst).toBeLessThanOrEqual(0.5 + PARTIAL_EDGE_ROW_NOISE);
   });
 });
