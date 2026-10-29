@@ -4,6 +4,7 @@ import type { SceneDocument, SceneMesh } from '@modelshot/scene';
 import type { BakeReply, BakeRequest } from './bake/bakeMessages';
 import { streamMeshes } from './bake/meshStream';
 import { DEFAULT_MAX_TRIANGLES } from './flattenScene';
+import { nextTask } from './nextTask';
 import { MAX_SEED } from './PathTracer';
 import { PathTracerError, type PathTracerErrorCode } from './PathTracerError';
 import type { PathTracerWarning } from './PathTracerWarning';
@@ -74,8 +75,6 @@ interface Pending {
 }
 
 const NOT_APPLIED: BakeResult = Object.freeze({ applied: false, warnings: [], lighting: null });
-
-const nextTask = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 function checkInteger(label: string, value: unknown, min: number, max: number): number {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) {
