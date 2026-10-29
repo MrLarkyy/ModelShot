@@ -895,7 +895,7 @@ took, so a decoded file is compared with the very frames that were encoded.
   shadow catcher (`7c67fd6`); that merge moved the frame's pixels (26, 43) and (26, 44) by 1 level, inside tolerance, so
   the golden stayed until MS-59 regenerated the export goldens with its catcher change (`98a3451`). The main before
   MS-39 renders the MS-22 golden byte for byte, the main after it the 2 pixels off, and `golden:update` on `48c4e08`
-  rewrites all export goldens with identical bytes: f1..f3 never moved, nothing is nondeterministic.
+  rewrites all export goldens with identical bytes: f1..f3 did not move under MS-39, nothing is nondeterministic.
 - Still: the PNG decodes (the formats package's `decodePngRgba`) to exactly the bytes of `readImage()`; alpha is 255 at
   the opaque texel probe, 0 at the cut-out texel probe and at the corners where camera rays escape (catcher off); with
   the catcher on, its shadow under the opaque texel is black with alpha 1 − shade (191 measured; 188 before MS-59).
