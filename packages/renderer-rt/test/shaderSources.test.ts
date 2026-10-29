@@ -127,7 +127,12 @@ describe('shader sources', () => {
       const body = opaque.slice(opaque.indexOf('void main()'));
       expect(body).toContain('if (s.coverage == COVERAGE_PARTIAL || s.opaqueCoverage <= 0.0) discard;');
       expect(body).toContain('} else if (s.coverage != COVERAGE_OPAQUE) {');
-      expect(body).toContain('float alpha = u_alphaToCoverage ? s.opaqueCoverage : 1.0;');
+      expect(body).toContain('float alpha = 1.0;');
+      // An opaque texel's samples carry the taps' alpha-weighted coverage (a partial neighbour's share by its alpha);
+      // an invisible one's the opaque taps' alone.
+      expect(body).toContain(
+        'if (u_alphaToCoverage) alpha = s.coverage == COVERAGE_OPAQUE ? s.premultiplied.a : s.opaqueCoverage;',
+      );
       for (const name of ['oitAccum', 'fallback'] as const) {
         const { fragment } = shaderProgramSource(name, depthKey);
         expect(fragment, `${name} ${depthKey}`).not.toContain('u_alphaToCoverage');
@@ -141,6 +146,34 @@ describe('shader sources', () => {
     expect(texel).toContain(
       'opaque = coverage == COVERAGE_OPAQUE || (coverage == COVERAGE_PARTIAL && nearestOpaque) ? 1.0 : 0.0;',
     );
+  });
+
+  it('gives only the OIT pass the seam coverage mode; off, the nearest texel decides as before', () => {
+    for (const depthKey of ['raster', 'exact'] as const) {
+      const oit = shaderProgramSource('oitAccum', depthKey).fragment;
+      expect(oit).toContain('uniform int u_seamCoverage;');
+      expect(oit).not.toContain('hashAlpha');
+      const body = oit.slice(oit.indexOf('void main()'));
+      // The derivatives and every texel and light lookup come before the first discard.
+      const discard = body.indexOf('discard');
+      for (const call of ['prepareDepthKey();', 'prepareShading();', 'sampleTexels(', 'sampleBakedLight(']) {
+        expect(body.indexOf(call), `${call} ${depthKey}`).toBeGreaterThan(-1);
+        expect(body.indexOf(call), `${call} ${depthKey}`).toBeLessThan(discard);
+      }
+      expect(body).toContain('if (u_seamCoverage == 0) {\n    if (s.coverage != COVERAGE_PARTIAL) discard;');
+      expect(body).toContain('if (s.coverage == COVERAGE_OPAQUE) discard;');
+      expect(body).toContain('coverage = partialSeamCoverage(s);\n    if (coverage <= 0.0) discard;');
+      expect(body).toContain('float alpha = 1.0 - toHalf(1.0 - coverage);');
+      // Partial taps alone, plus the opaque taps at the partial texel's alpha (mode 1) or 1 (mode 2), clamped.
+      expect(oit).toContain('float partialTaps = s.premultiplied.a - s.opaqueCoverage;');
+      expect(oit).toContain(
+        'float opaqueTaps = s.coverage != COVERAGE_PARTIAL ? 0.0 : u_seamCoverage == 2 ? 1.0 : s.nearestAlpha;',
+      );
+      expect(oit).toContain('return clamp(partialTaps + s.opaqueCoverage * opaqueTaps, 0.0, 1.0);');
+      for (const name of ['opaque', 'fallback'] as const) {
+        expect(shaderProgramSource(name, depthKey).fragment, `${name} ${depthKey}`).not.toContain('u_seamCoverage');
+      }
+    }
   });
 
   it('addresses every texture texel through faceTexel with the batch texture flags', () => {

@@ -449,3 +449,174 @@ describe('RealtimeRenderer exact-key frames on the float path: progressive rotat
     renderer.dispose();
   });
 });
+
+describe('RealtimeRenderer OIT pass: partial seam coverage and multisampled targets', () => {
+  /** Inside the bounding sphere's depth range (near = far × 1e-4): exact. */
+  const inside: SceneCamera = { ...camera, near: 0.001, far: 10 };
+  const framed: SceneCamera = { ...camera, near: 1, far: 10 };
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(() => Promise.resolve({ width: 16, height: 16, close: () => undefined })),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** The quad scene with every texel at alpha 128 (the readback), so the transparency pass draws it. */
+  async function setUp(
+    cameraOf: SceneCamera,
+    options: {
+      maxMsaaSamples?: number;
+      texelAntialias?: boolean;
+      samples?: number;
+      rejectsRenderbuffer?: (format: number, samples: number) => boolean;
+    } = {},
+  ): Promise<{ fake: FakeWebGl; renderer: RealtimeRenderer }> {
+    const fake = fakeWebGl({
+      float: {
+        samples: options.samples ?? 4,
+        maxSize: 4096,
+        ...(options.rejectsRenderbuffer ? { rejectsRenderbuffer: options.rejectsRenderbuffer } : {}),
+      },
+      pixelByte: 128,
+    });
+    const renderer = RealtimeRenderer.create(fake.canvas, {
+      ...(options.maxMsaaSamples !== undefined ? { maxMsaaSamples: options.maxMsaaSamples } : {}),
+      ...(options.texelAntialias !== undefined ? { texelAntialias: options.texelAntialias } : {}),
+    });
+    renderer.setCamera(cameraOf);
+    await renderer.setScene(quadScene());
+    return { fake, renderer };
+  }
+
+  /** Values of `u_seamCoverage` set since call index `from` (the OIT program's location only). */
+  const seamModes = (fake: FakeWebGl, from = 0): unknown[] =>
+    fake
+      .history()
+      .slice(from)
+      .filter(([name, args]) => name === 'uniform1i' && (args[0] as { name: string } | null)?.name === 'u_seamCoverage')
+      .map(([, args]) => args[1]);
+  /** Multisampled renderbuffer storages as [samples, format, width, height]. */
+  const multisampled = (fake: FakeWebGl, format: number): unknown[][] =>
+    fake
+      .calls('renderbufferStorageMultisample')
+      .filter((args) => args[2] === format)
+      .map((args) => args.slice(1));
+
+  it('ramps raster frames with the opaque pass under alpha-to-coverage (mode 2), and mode 1 without MSAA', async () => {
+    const { fake, renderer } = await setUp(framed);
+    renderer.render();
+    expect(renderer.depthKeyMode).toBe('raster');
+    expect(seamModes(fake)).toEqual([2]);
+    renderer.dispose();
+
+    const single = await setUp(framed, { maxMsaaSamples: 0 });
+    single.renderer.render();
+    expect(seamModes(single.fake)).toEqual([1]);
+    single.renderer.dispose();
+  });
+
+  it('is off for the passes of an accumulated exact frame and on for one drawn once at the pixel centre', async () => {
+    const { fake, renderer } = await setUp(inside);
+    for (let pass = 0; pass < 4; pass++) renderer.render();
+    expect(renderer.depthKeyMode).toBe('exact');
+    expect(seamModes(fake)).toEqual([0, 0, 0, 0]);
+    renderer.dispose();
+
+    const single = await setUp(inside, { maxMsaaSamples: 0 });
+    single.renderer.render();
+    expect(single.renderer.depthKeyMode).toBe('exact');
+    expect(seamModes(single.fake)).toEqual([1]);
+    single.renderer.dispose();
+  });
+
+  it('is off without texel anti-aliasing', async () => {
+    for (const cam of [framed, inside]) {
+      const { fake, renderer } = await setUp(cam, { texelAntialias: false });
+      renderer.render();
+      expect(seamModes(fake)).toEqual([0]);
+      renderer.dispose();
+    }
+  });
+
+  it('draws raster frames into multisampled OIT targets, allocated once, and resolves each attachment', async () => {
+    const { fake, renderer } = await setUp(framed);
+    const { gl } = fake;
+    const blits = fake.count('blitFramebuffer');
+    renderer.render();
+    renderer.render();
+    // The MSAA colour target (1 × 1 at creation, then the canvas) and the OIT accumulation, once.
+    expect(multisampled(fake, gl.RGBA16F)).toEqual([
+      [4, gl.RGBA16F, 1, 1],
+      [4, gl.RGBA16F, 64, 64],
+      [4, gl.RGBA16F, 64, 64],
+    ]);
+    expect(multisampled(fake, gl.R16F)).toEqual([[4, gl.R16F, 64, 64]]);
+    // Per frame: the opaque resolve and one blit per OIT attachment, colour only.
+    const frameBlits = fake.calls('blitFramebuffer').slice(blits);
+    expect(frameBlits).toHaveLength(6);
+    expect(frameBlits.filter((args) => args[8] === gl.COLOR_BUFFER_BIT)).toHaveLength(4);
+    expect(fake.calls('readBuffer').slice(0, 3)).toEqual([
+      [gl.COLOR_ATTACHMENT0],
+      [gl.COLOR_ATTACHMENT1],
+      [gl.COLOR_ATTACHMENT0],
+    ]);
+    expect(fake.calls('drawBuffers').slice(-3)).toEqual([
+      [[gl.COLOR_ATTACHMENT0, gl.NONE]],
+      [[gl.NONE, gl.COLOR_ATTACHMENT1]],
+      [[gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]],
+    ]);
+    // A resize allocates them again, at the new size.
+    renderer.resize({ cssWidth: 80, cssHeight: 64, devicePixelRatio: 1 });
+    renderer.render();
+    expect(multisampled(fake, gl.R16F)).toEqual([
+      [4, gl.R16F, 64, 64],
+      [4, gl.R16F, 80, 64],
+    ]);
+    renderer.dispose();
+  });
+
+  it('keeps exact frames, MSAA-less frames and canvases over the cap single-sampled in the OIT pass', async () => {
+    const exact = await setUp(inside);
+    exact.renderer.render();
+    expect(multisampled(exact.fake, exact.fake.gl.R16F)).toEqual([]);
+    exact.renderer.dispose();
+
+    const single = await setUp(framed, { maxMsaaSamples: 0 });
+    single.renderer.render();
+    expect(single.fake.count('renderbufferStorageMultisample', 'blitFramebuffer')).toBe(0);
+    single.renderer.dispose();
+
+    const large = await setUp(framed);
+    // 4 samples of 2048 × 1025 are over 2^23.
+    large.fake.canvas.width = 2048;
+    large.fake.canvas.height = 1025;
+    large.renderer.render();
+    expect(multisampled(large.fake, large.fake.gl.R16F)).toEqual([]);
+    expect(seamModes(large.fake)).toEqual([2]);
+    large.renderer.dispose();
+  });
+
+  it('falls back to the single-sampled OIT pass when the driver rejects the targets, once per size', async () => {
+    let rejected = -1;
+    const { fake, renderer } = await setUp(framed, { rejectsRenderbuffer: (format) => format === rejected });
+    const { gl } = fake;
+    rejected = gl.R16F;
+    renderer.render();
+    renderer.render();
+    expect(renderer.capabilities?.path).toBe('float');
+    expect(multisampled(fake, gl.R16F)).toHaveLength(1);
+    expect(fake.count('deleteRenderbuffer')).toBeGreaterThanOrEqual(2);
+    // Only the opaque resolve blits.
+    expect(fake.count('blitFramebuffer')).toBe(2);
+    expect(seamModes(fake)).toEqual([2, 2]);
+    renderer.resize({ cssWidth: 80, cssHeight: 64, devicePixelRatio: 1 });
+    renderer.render();
+    expect(multisampled(fake, gl.R16F)).toHaveLength(2);
+    renderer.dispose();
+  });
+});

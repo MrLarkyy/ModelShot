@@ -33,7 +33,14 @@ Float path (needs `EXT_color_buffer_float`):
 2. Weighted blended order-independent transparency (McGuire and Bavoil 2013, weight of equation 10) for partial
    texels: an RGBA16F target (rgb: weighted premultiplied colour, a: product of 1 − alpha) and an R16F target (sum of
    weighted alpha), depth-tested against the resolved depth with depth writes off. Only batches whose texture has
-   partial alpha are drawn here (one readback per texture at load decides it).
+   partial alpha are drawn here (one readback per texture at load decides it). Raster frames with at least 2 MSAA
+   samples draw it into multisampled RGBA16F and R16F renderbuffers at the opaque pass's sample count, tested per
+   sample against the opaque pass's MSAA depth, and resolve each into its texture by its own blit (`oitMsaaActive`:
+   within the R16F sample limit and 2^23 samples x pixels, about 80 MB, so 4 samples up to 1920 x 1080; allocated on
+   the first frame that needs them, an incomplete target is not tried again at that size). The composite then reads
+   the per-pixel mean of every sample's sums, so the outline of a face with only partial texels is anti-aliased like
+   an opaque one; above the cap, without MSAA and in exact-key frames the pass stays single-sampled and those outlines
+   hard.
 3. Composite of the transparency average over the opaque image.
 4. Present: AgX and the display encoding into the canvas.
 
@@ -190,7 +197,25 @@ The rules are the scene format's ([scene-format.md](scene-format.md): `SceneMate
   per-texel cutout; without sample buffers GL ignores A2C, which would grow the shape by half a pixel, so a uniform
   tells the shader. GLSL ES 3.00 has no `gl_SampleMask`, so A2C is the only per-sample route in WebGL2. Measured on
   SwiftShader (4 samples, 5 coverage levels per pixel); real GPUs may dither A2C per 2 x 2 pixel quad, and that check
-  is manual.
+  is manual. Under A2C an opaque nearest texel writes the taps' alpha-weighted coverage (`premultiplied.a`) instead:
+  beside cut-out texels alone the same value bit for bit, beside a partial texel its share times that texel's alpha,
+  so the samples it covers carry the opaque and partial shares and the uncovered ones what lies behind (MS-60).
+- **Anti-aliased partial seams** (MS-60): the OIT pass weighs a fragment by an anti-aliased coverage instead of its
+  nearest texel's alpha (`u_seamCoverage`, `oitSeamCoverageMode`): the partial taps' share of the seam taps
+  (`premultiplied.a − opaqueCoverage`, with no opaque nearest texel), so a partial|invisible seam ramps from the
+  texel's alpha a to 0 over one pixel, a/2 on the texel boundary, and a partial|partial seam ramps linearly; the
+  covered area is the hard per-texel shape's. Fragments of a cut-out texel within that band are kept with the partial
+  neighbour's colour (premultiplied taps: no dark fringe); inside a texel the alpha is its own bit for bit, and which
+  texels are visible does not change. Opaque taps count 0 beside a cut-out nearest texel (the opaque pass's band).
+  Beside a partial nearest texel they count as its alpha in mode 1 (raster frames without MSAA, exact frames drawn once
+  at the pixel centre: the opaque pass keeps its hard side, so the opaque|partial seam stays as before) and 1 in mode
+  2 (the opaque pass under A2C covers the opaque side, above). Mode 0, the nearest texel's rule, is kept for the
+  passes of an accumulated exact frame (their mean antialiases the seams already; a ramp in each would filter twice)
+  and for `texelAntialias: false`. The fallback, shadows, the AO and the light bake do not change. A2C quantises the
+  opaque side of an opaque|partial seam to the 4 samples' levels, and an opaque texel beside an alpha-128 one only
+  spans coverage 0.75-1, so one level is half its ramp: on SwiftShader the opaque|partial strip of the partial-edge
+  test covers 26.5 px more than the hard shape (0.78 px per boundary row; partial|invisible seams 0.07)
+  (docs/testing.md).
 - **Sides**: single-sided groups are drawn with back faces culled in every pass. Double-sided groups are drawn twice
   per render order: front faces, then back faces (front faces culled), the back lit with the flipped normal.
 - **Render order**: draws are sorted by render order, descending; per order the front pass, then the back pass of
