@@ -493,8 +493,9 @@ export class PathTracer {
       closeOwn();
       return NOT_APPLIED;
     }
-    // A restore replaced the scene the upload borrowed handles from: they are gone. An upload that borrowed nothing
-    // owns its textures, and its attribute rows are brought to the current angle at the swap (below).
+    // Invariant guard: setEdges keeps the shown scene, and a restore is caught above (the generation check or a band
+    // abort), so the scene borrowed from is the shown one. An upload that borrowed nothing owns its textures; its
+    // attribute rows are brought to the current angle at the swap (below).
     if (uploaded && borrowed && this.gpu?.scene !== borrowed) {
       disposeGpuScene(this.gl, uploaded, this.gpu?.scene);
       uploaded = null;

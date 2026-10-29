@@ -58,7 +58,8 @@ export function stubGl(options: StubGlOptions = {}): { gl: WebGL2RenderingContex
 
 /**
  * Records what the 2D data textures hold: `onCall` is fed each stub call; `texStorage2D` sizes the bound handle and
- * `texSubImage2D` copies its data at call time (the caller's array is mutated later), so equal contents mean equal bytes.
+ * `texSubImage2D` copies its data at call time (the caller's array is mutated later), so equal contents mean equal
+ * bytes.
  */
 export function dataTextureRecorder(rowFloats = 2048 * 4) {
   const contents = new Map<unknown, Float32Array>();

@@ -282,17 +282,24 @@ describe('setScene with the textures of the shown scene', () => {
     const at = calls.length;
     edit = () => {
       edit = null;
-      pt.setEdges({ sharpAngleDeg: 60 });
+      pt.setEdges({ sharpAngleDeg: 100 });
     };
     const posed = pose(doc, 1);
     expect((await pt.setScene(posed)).applied).toBe(true);
     expect(closed).toHaveLength(0);
     const expected = prepareGeometry(posed, {
       maxTriangles: 200_000,
-      edges: { sharpAngleDeg: 60, reach: MAX_EDGE_WIDTH },
+      edges: { sharpAngleDeg: 100, reach: MAX_EDGE_WIDTH },
       maxTextureSize: 4096,
       sceneBounds: true,
     });
+    const atStart = prepareGeometry(posed, {
+      maxTriangles: 200_000,
+      edges: { sharpAngleDeg: 30, reach: MAX_EDGE_WIDTH },
+      maxTextureSize: 4096,
+      sceneBounds: true,
+    });
+    expect(expected.geometry.triAttributes.data).not.toEqual(atStart.geometry.triAttributes.data);
     expect(internals.loaded?.geometry.triAttributes.data).toEqual(expected.geometry.triAttributes.data);
     const final = handles(internals.gpu?.scene);
     expect(final).toHaveLength(5);
@@ -322,7 +329,7 @@ describe('setScene with the textures of the shown scene', () => {
     const at = calls.length;
     edit = () => {
       edit = null;
-      pt.setEdges({ sharpAngleDeg: 60 });
+      pt.setEdges({ sharpAngleDeg: 100 });
       pt.setEdges({ sharpAngleDeg: 30 });
     };
     const posed = pose(doc, 1);
@@ -409,7 +416,7 @@ describe('setScene with the textures of the shown scene', () => {
       if (disturb) {
         edit = () => {
           edit = null;
-          pt.setEdges({ sharpAngleDeg: 60 });
+          pt.setEdges({ sharpAngleDeg: 100 });
           pt.setEdges({ sharpAngleDeg: 30 });
         };
       }
