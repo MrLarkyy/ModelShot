@@ -6,9 +6,10 @@ ivec4 faceTexelRange(vec4 uvRect, vec2 size) {
   return ivec4(lo, hi);
 }
 
-// Bits of a texture's sampling flags (textureSamplingFlags.ts): lookups past the image repeat it; from bit 8 up, the
-// frame count of a strip minus 1.
+// Bits of a texture's sampling flags (textureSamplingFlags.ts): lookups past the image repeat it; the colour is
+// filtered linearly (texelFilter); from bit 8 up, the frame count of a strip minus 1.
 const int TEXTURE_FLAG_REPEAT = 1;
+const int TEXTURE_FLAG_LINEAR = 2;
 const int TEXTURE_FRAMES_SHIFT = 8;
 
 // t modulo s in [0, s), s > 0. GLSL ES 3.00 leaves % undefined for a negative operand, so both operands stay >= 0.

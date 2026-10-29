@@ -14,6 +14,7 @@ export type GltfWarningCode =
   | 'UNSUPPORTED_IMAGE'
   | 'EXTRA_SCENES_IGNORED'
   | 'NO_SCENE'
+  /** A sampler asks magFilter NEAREST with a linear-family minFilter; the texture is drawn nearest (MS-38). */
   | 'TEXTURE_FILTER_NEAREST'
   | 'UV_WRAP_CLAMPED'
   | 'BASE_COLOR_FACTOR_IGNORED'

@@ -1,4 +1,10 @@
-import { MAX_ABS_RENDER_ORDER, SCENE_TEXTURE_WRAPS, type SceneDocument, type SceneMesh } from '@modelshot/scene';
+import {
+  MAX_ABS_RENDER_ORDER,
+  SCENE_TEXTURE_FILTERS,
+  SCENE_TEXTURE_WRAPS,
+  type SceneDocument,
+  type SceneMesh,
+} from '@modelshot/scene';
 import { RendererError } from './RendererError';
 
 function fail(path: string, message: string): never {
@@ -80,7 +86,7 @@ function validateMesh(mesh: SceneMesh, path: string, doc: SceneDocument): void {
  * Checks every cross reference, buffer length and node transform (finite `pivot`, `rotation`, `translation` and
  * `restRotation`; `scale` finite and positive, so no matrix mirrors or collapses) the renderer relies on, so a malformed document fails with a
  * `RendererError` `INVALID_SCENE` naming the path instead of reading out of bounds on the GPU; also `renderOrder`
- * (an integer in ±1024, the range the exact depth key maps into depth, `exactDepthRange`), `doubleSided` and `cameraOnly` (booleans), texture `wrap` (absent, clamp or repeat). Material
+ * (an integer in ±1024, the range the exact depth key maps into depth, `exactDepthRange`), `doubleSided` and `cameraOnly` (booleans), texture `wrap` (absent, clamp or repeat) and `filter` (absent, nearest or linear). Material
  * `alphaMode` / `alphaCutoff` are not checked: `resolveMaterialAlpha` turns any value into a valid rule.
  *
  * `validated`, a document this function accepted before: when `doc` shares its meshes, materials and textures arrays
@@ -122,6 +128,11 @@ export function validateScene(doc: SceneDocument, validated: SceneDocument | nul
     const wrap: unknown = texture.wrap;
     if (wrap !== undefined && !SCENE_TEXTURE_WRAPS.includes(wrap as 'clamp')) {
       fail(`textures[${t}].wrap`, `expected clamp or repeat, got ${typeof wrap === 'string' ? wrap : typeof wrap}`);
+    }
+    const filter: unknown = texture.filter;
+    if (filter !== undefined && !SCENE_TEXTURE_FILTERS.includes(filter as 'nearest')) {
+      const got = typeof filter === 'string' ? filter : typeof filter;
+      fail(`textures[${t}].filter`, `expected nearest or linear, got ${got}`);
     }
   });
 }

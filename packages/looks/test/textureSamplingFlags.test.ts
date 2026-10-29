@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import faceTexelsGlsl from '../src/glsl/faceTexels.glsl?raw';
-import { MAX_TEXTURE_FLAG_FRAMES, TEXTURE_FLAG_REPEAT, TEXTURE_FRAMES_SHIFT, textureSamplingFlags } from '../src/index';
+import {
+  MAX_TEXTURE_FLAG_FRAMES,
+  TEXTURE_FLAG_LINEAR,
+  TEXTURE_FLAG_REPEAT,
+  TEXTURE_FRAMES_SHIFT,
+  textureSamplingFlags,
+} from '../src/index';
 
 describe('textureSamplingFlags', () => {
   it('the GLSL bits equal the TypeScript bits', () => {
     for (const [name, value] of [
       ['TEXTURE_FLAG_REPEAT', TEXTURE_FLAG_REPEAT],
+      ['TEXTURE_FLAG_LINEAR', TEXTURE_FLAG_LINEAR],
       ['TEXTURE_FRAMES_SHIFT', TEXTURE_FRAMES_SHIFT],
     ] as const) {
       const match = new RegExp(`const int ${name} = (\\d+);`).exec(faceTexelsGlsl);
@@ -30,5 +37,17 @@ describe('textureSamplingFlags', () => {
 
   it.each([0, 1.5, -3, Number.NaN, MAX_TEXTURE_FLAG_FRAMES + 1])('frames %s counts as a still image', (frames) => {
     expect(textureSamplingFlags({ wrap: 'clamp', frames })).toBe(0);
+  });
+
+  it('linear sets bit 1, nearest or no filter none, beside repeat and the most frames', () => {
+    expect(TEXTURE_FLAG_LINEAR).toBe(2);
+    expect(textureSamplingFlags({ wrap: 'clamp', frames: 1, filter: 'linear' })).toBe(TEXTURE_FLAG_LINEAR);
+    expect(textureSamplingFlags({ wrap: 'clamp', frames: 1, filter: 'nearest' })).toBe(0);
+    const most = textureSamplingFlags({ wrap: 'repeat', frames: MAX_TEXTURE_FLAG_FRAMES, filter: 'linear' });
+    expect(most).toBeLessThan(2 ** 24);
+    expect(Math.fround(most)).toBe(most);
+    expect(most & TEXTURE_FLAG_LINEAR).toBe(TEXTURE_FLAG_LINEAR);
+    expect(most & TEXTURE_FLAG_REPEAT).toBe(TEXTURE_FLAG_REPEAT);
+    expect(most >> TEXTURE_FRAMES_SHIFT).toBe(MAX_TEXTURE_FLAG_FRAMES - 1);
   });
 });

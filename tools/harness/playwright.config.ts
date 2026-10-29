@@ -46,6 +46,7 @@ export default defineConfig({
         'golden*.spec.ts',
         'modelView.spec.ts',
         'realtime.spec.ts',
+        'textureFilter.spec.ts',
         'textureWrap.spec.ts',
       ],
     },

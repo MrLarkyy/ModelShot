@@ -27,9 +27,12 @@ export type { SceneNode } from './SceneNode';
 export type { SceneTexture } from './SceneTexture';
 export { DEFAULT_TEXTURE_FRAME_TIME, type SceneTextureFrames } from './SceneTextureFrames';
 export {
+  DEFAULT_TEXTURE_FILTER,
   DEFAULT_TEXTURE_WRAP,
+  SCENE_TEXTURE_FILTERS,
   SCENE_TEXTURE_WRAPS,
   textureSampling,
+  type SceneTextureFilter,
   type SceneTextureWrap,
   type TextureSampling,
 } from './SceneTextureSampling';

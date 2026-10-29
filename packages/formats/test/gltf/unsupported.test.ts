@@ -158,9 +158,9 @@ const ROWS: Readonly<Record<string, Row>> = {
     doc: () => gltfDoc({ scenes: null }),
     expected: ['warning', 'NO_SCENE', '$'],
   },
-  'linear filter': {
-    covers: ['sampler.magFilter', 'sampler.minFilter'],
-    doc: () => withTexture(TRIANGLE, { magFilter: 9729 }),
+  'nearest magnification, linear minification': {
+    covers: ['sampler.minFilter'],
+    doc: () => withTexture(TRIANGLE, { magFilter: 9728, minFilter: 9729 }),
     expected: ['warning', 'TEXTURE_FILTER_NEAREST', '$.samplers[0]'],
   },
   'repeat wrapping': {

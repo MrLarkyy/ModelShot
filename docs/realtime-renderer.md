@@ -132,12 +132,20 @@ without depth test lets the model cover it in either depth-key variant. A scene 
   the face's UVs pass the image, repeated into it for a texture with `wrap: 'repeat'` or clamped to its edge texel
   otherwise ([`SceneTexture.wrap`](scene-format.md#scenetexture)); on a strip the image is its frame 0. So no texel of a neighbouring atlas region or
   outside the image is ever read, with any face UV rotation or mirroring, and at a clamped edge the seam taps blend
-  the edge texel with itself. The texture's flags (`textureSamplingFlags`: bit `TEXTURE_FLAG_REPEAT`, the frame count − 1 from bit 8) come per vertex
+  the edge texel with itself. The texture's flags (`textureSamplingFlags`: bit `TEXTURE_FLAG_REPEAT`, bit `TEXTURE_FLAG_LINEAR`, the frame count − 1 from bit 8) come per vertex
   (attribute 12, the same on every vertex of a batch, 4 bytes each) into a flat varying; the closed-opaque check on
   the CPU (`translucentTexelsIn`) counts the same repeated texels.
 - Minified (more than one texel per pixel): the same addressed lookup at a rotated 2 × 2 grid inside the pixel, which
   keeps far views from shimmering.
 - `texelAntialias: false` samples plain nearest texels (used by the shimmer test as its reference).
+- Linear textures (MS-38, [`SceneTexture.filter`](scene-format.md#scenetexture) `'linear'`, from a glTF sampler): the
+  colour is the bilinear blend of the four texels whose centres surround the point (`linearTaps` and `bilinearColor`
+  of the `texelFilter` chunk of `@modelshot/looks`, which the path tracer blends with too), each tap addressed by
+  `faceTexel` like any other, every tap weighted by its coverage (`coverageWeighted` of `texelAlpha`), so a cut-out
+  texel's colour adds no fringe. Only the colour changes: coverage, the pass a fragment goes to, the alpha the seam
+  taps give an opaque|cut-out edge and the closed-opaque check all stay the nearest texel's, as for a pixel-art
+  texture. Minified, the colour is the mean of the blend at the same rotated 2 × 2 grid. The filter is the texture's,
+  so `texelAntialias: false` keeps it. Four more `texelFetch` taps per fragment (16 minified), only for such textures.
 
 ## Transparency, sides and render order
 

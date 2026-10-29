@@ -162,7 +162,7 @@ reads them yet.
 
 ### `SceneTexture`
 
-`{ name, mimeType: 'image/png', bytes, width, height, uvWidth, uvHeight, missing, frames?, wrap? }`
+`{ name, mimeType: 'image/png', bytes, width, height, uvWidth, uvHeight, missing, frames?, wrap?, filter? }`
 
 `bytes` is the encoded PNG as the file had it; model loaders only check its header, and `loadSkin` decodes a legacy
 skin's pixels once to set `legacyHatOpaque` ([player.md](player.md#legacy-hat)). `width` × `height` is the pixel size
@@ -188,9 +188,21 @@ texel lookup past the image reads. Every renderer first keeps a lookup inside th
 `repeat` the texture repeated (texel coordinates modulo `width` and `height`). On a strip (`frames`) the image is
 frame 0, the frame the UVs map into: rows 0 to ceil(`height` / `frames.count`) − 1, so a lookup never reads another
 frame (a player of frames must offset this by the played frame). `textureSampling(texture)` resolves `wrap` and the
-frame count with their defaults (`{ wrap, frames }`); renderers read them only through that function. The bbmodel loader stores `'repeat'` for a
+frame count with their defaults (`{ wrap, frames, filter }`); renderers read them only through that function. The bbmodel loader stores `'repeat'` for a
 texture whose `wrap_mode` is `repeat` and leaves the key out otherwise ([bbmodel.md](bbmodel.md)); the glTF and OBJ
 loaders leave it out (their images clamp).
+
+`filter` (`SceneTextureFilter`, optional: `'nearest'` or `'linear'`; absent: `DEFAULT_TEXTURE_FILTER`, `'nearest'`)
+says how the colour is read between texel centres. `nearest` reads the one texel a point lies in (pixel art; the
+preview anti-aliases its seams over one screen pixel). `linear` blends the four texels whose centres surround the point
+(bilinear, in linear light), each addressed exactly as a nearest lookup is: inside the face's texel rectangle, then
+clamped or repeated per `wrap`, on a strip within frame 0; so the blend never reads a texel of another face region,
+another frame or another image. Only the colour is filtered: whether a point is cut out, partly transparent or opaque
+stays the nearest texel's coverage under the material's alpha rule, for camera, shadow, ambient-occlusion and bake
+rays alike, and a cut-out texel weighs nothing in the blend (no dark fringe from its colour). There are no mipmaps;
+minified, both modes average the texels a pixel covers. The glTF loader stores `'linear'` from a linear sampler
+([gltf.md](gltf.md)) and leaves the key out otherwise; the bbmodel, OBJ and skin loaders never write it (Blockbench
+draws nearest, MTL has no filter statement).
 
 ## Poses
 
@@ -376,6 +388,12 @@ faces draw: a lookup past the image used to be undefined in the realtime rendere
 path tracer, and on a strip (`frames`) a face past frame 0 read frame 1's texels in both renderers; it now clamps (or
 repeats) within the image, and on a strip within frame 0. Loaders leave the key out except for a repeating bbmodel
 texture; no migration.
+Added within version 1 (MS-38), optional: `SceneTexture.filter` (absent: `'nearest'`), with the type
+`SceneTextureFilter`, the exports `DEFAULT_TEXTURE_FILTER` and `SCENE_TEXTURE_FILTERS`, and
+`TextureSampling.filter`. A document without it is drawn as before, every texture nearest; renderer-rt's
+`validateScene` rejects any other value (`RendererError` `INVALID_SCENE`). Only the glTF loader writes it, for a
+texture under a linear sampler, which used to be drawn nearest with the warning `TEXTURE_FILTER_NEAREST`: such models
+now draw smooth (reload them); no migration.
 
 ## Loaders
 

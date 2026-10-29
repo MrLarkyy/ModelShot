@@ -291,8 +291,13 @@ one set of ray rules. A camera-only face (`SceneMeshGroup.cameraOnly`) counts fo
 - The texel is the nearest one of the hit's UV, addressed by `faceTexel` (the preview's chunk): clamped to the face's
   texel rectangle (`faceTexelRange`), then into the image, repeated for a texture with `wrap: 'repeat'` and clamped to
   the edge texel otherwise ([`SceneTexture.wrap`](scene-format.md#scenetexture); a strip's image is its frame 0), before the image's place in the
-  texture layers is added; read with `texelFetch`: no filtering, no mipmaps, nothing from a neighbouring atlas region
-  even where a face's UVs pass its image. The flags ride in the material row (texel 1 w, `textureSamplingFlags`).
+  texture layers is added; read with `texelFetch`: no mipmaps, nothing from a neighbouring atlas region even where a
+  face's UVs pass its image. The flags ride in the material row (texel 1 w, `textureSamplingFlags`). A linear texture
+  ([`SceneTexture.filter`](scene-format.md#scenetexture), MS-38; flag `TEXTURE_FLAG_LINEAR`) takes its albedo
+  (`materialColor` of `surfaceHit.glsl`) from the bilinear blend of the four texels around the hit, each addressed the
+  same way before the placement offset (`texelFilter` chunk, the preview's blend, cut-out taps weighing nothing); its
+  coverage stays the nearest texel's for camera, shadow, bounce and bake rays (`hitCoverage`), so cut-out shapes and
+  shadows are those of the nearest texels.
   Texel edges come out area-averaged because every sample jitters its camera ray uniformly inside the pixel (a box
   filter).
 - Stochastic transparency draws one number per (sample, path vertex, triangle), so each partial surface a ray meets is

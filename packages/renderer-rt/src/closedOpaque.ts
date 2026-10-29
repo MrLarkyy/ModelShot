@@ -246,7 +246,7 @@ function axisSegments(min: number, max: number, image: number, size: number, rep
       ];
 }
 
-const STILL_CLAMPED: TextureSampling = { wrap: 'clamp', frames: 1 };
+const STILL_CLAMPED: TextureSampling = { wrap: 'clamp', frames: 1, filter: 'nearest' };
 
 /** Texel rows a lookup may read in an image of `height` rows: frame 0 of a strip (`wrapSize` of faceTexels.glsl). */
 function wrapRows(height: number, frames: number): number {

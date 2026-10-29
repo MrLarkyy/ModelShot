@@ -67,4 +67,15 @@ describe('linkShader', () => {
     expect(out.indexOf('#version')).toBe(0);
     expect(out).not.toMatch(/#\s*include/);
   });
+
+  it('links texelFilter on its own, pulling in texelAlpha once', () => {
+    const alone = linkShader('#version 300 es\n#include "texelFilter"', lookShaderChunks);
+    expect(alone).toContain('vec4 coverageWeighted(vec4 c, int mode, int cutoffByte)');
+    expect(alone).toContain('LinearTaps linearTaps(vec2 p)');
+    expect(alone).toContain(
+      'vec3 bilinearColor(vec4 c00, vec4 c10, vec4 c01, vec4 c11, vec2 f, int mode, int cutoffByte, vec3 fallback)',
+    );
+    const both = linkShader('#version 300 es\n#include "texelAlpha"\n#include "texelFilter"', lookShaderChunks);
+    expect(both.split('int texelCoverage(').length).toBe(2);
+  });
 });

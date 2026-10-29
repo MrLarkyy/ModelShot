@@ -1,17 +1,11 @@
 // Pixel-art texture lookup: nearest texels with an anti-aliased seam one screen pixel wide, every tap addressed by
 // faceTexel (the face's texel rectangle, then the texture's wrap), so no texel of a neighbouring atlas region or outside
-// the image is ever read. Textures are SRGB8_ALPHA8 with NEAREST filtering and no mipmaps; texelFetch returns linear
-// colour, so the taps blend in linear space.
+// the image is ever read. A texture whose flags carry TEXTURE_FLAG_LINEAR takes its colour from the bilinear blend of
+// the same addressed texels (texelFilter), its coverage still from the nearest texel. Textures are SRGB8_ALPHA8 with
+// NEAREST filtering and no mipmaps; texelFetch returns linear colour, so the taps blend in linear space.
 #include "texelAlpha"
 #include "faceTexels"
-
-// A tap weighs by its coverage (texelAlpha): invisible 0, opaque 1, partial its alpha. In the opaque mode every texel
-// is opaque, so alpha never darkens or fringes it.
-vec4 tapWeight(vec4 c, int mode, int cutoffByte) {
-  int coverage = texelCoverage(c.a, mode, cutoffByte);
-  float w = coverage == COVERAGE_INVISIBLE ? 0.0 : coverage == COVERAGE_OPAQUE ? 1.0 : c.a;
-  return vec4(c.rgb * w, w);
-}
+#include "texelFilter"
 
 // How a face addresses its texture's texels: its texel range, the image size and the texture's sampling flags.
 struct TexelAddress {
@@ -37,7 +31,7 @@ vec4 fetchPremultiplied(sampler2D tex, ivec2 texel, TexelAddress a, int mode, in
   vec4 c = fetchTexel(tex, texel, a);
   int coverage = texelCoverage(c.a, mode, cutoffByte);
   opaque = coverage == COVERAGE_OPAQUE || (coverage == COVERAGE_PARTIAL && nearestOpaque) ? 1.0 : 0.0;
-  return tapWeight(c, mode, cutoffByte);
+  return coverageWeighted(c, mode, cutoffByte);
 }
 
 // The anti-aliased seam's taps: texels base, base + (1, 0), (0, 1), (1, 1), blended by f. p: position in texel units;
@@ -75,6 +69,17 @@ vec4 texelAntialiased(sampler2D tex, vec2 p, vec2 texelsPerPixel, TexelAddress a
   return mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
 }
 
+// Straight bilinear colour at p (texelFilter) of the four texels around it, each addressed by faceTexel; fallback where
+// every one is invisible.
+vec3 linearTexelColor(sampler2D tex, vec2 p, TexelAddress a, int mode, int cutoffByte, vec3 fallback) {
+  LinearTaps taps = linearTaps(p);
+  vec4 c00 = fetchTexel(tex, taps.base, a);
+  vec4 c10 = fetchTexel(tex, taps.base + ivec2(1, 0), a);
+  vec4 c01 = fetchTexel(tex, taps.base + ivec2(0, 1), a);
+  vec4 c11 = fetchTexel(tex, taps.base + ivec2(1, 1), a);
+  return bilinearColor(c00, c10, c01, c11, taps.f, mode, cutoffByte, fallback);
+}
+
 struct TexelSample {
   // Anti-aliased colour, premultiplied by alpha.
   vec4 premultiplied;
@@ -86,6 +91,11 @@ struct TexelSample {
   // Only the opaque pass reads it, and only under alpha-to-coverage.
   float opaqueCoverage;
 };
+
+// Straight (not premultiplied) colour of a sample; black where every tap was cut out.
+vec3 sampleColor(TexelSample s) {
+  return s.premultiplied.a > 0.0 ? s.premultiplied.rgb / s.premultiplied.a : vec3(0.0);
+}
 
 // flags: the texture's sampling flags (faceTexel); mode and cutoffByte: the material's alpha mode id and cutoff byte
 // (texelAlpha).
@@ -102,7 +112,7 @@ TexelSample sampleTexels(sampler2D tex, vec2 uv, vec4 uvRect, int flags, bool an
   s.nearestAlpha = nearest.a;
   bool nearestOpaque = s.coverage == COVERAGE_OPAQUE;
   if (!antialias) {
-    s.premultiplied = tapWeight(nearest, mode, cutoffByte);
+    s.premultiplied = coverageWeighted(nearest, mode, cutoffByte);
     s.opaqueCoverage = nearestOpaque ? 1.0 : 0.0;
   } else if (max(texelsPerPixel.x, texelsPerPixel.y) <= 1.0) {
     s.premultiplied = texelAntialiased(tex, p, texelsPerPixel, a, mode, cutoffByte, nearestOpaque, s.opaqueCoverage);
@@ -124,12 +134,23 @@ TexelSample sampleTexels(sampler2D tex, vec2 uv, vec4 uvRect, int flags, bool an
         o3));
     s.opaqueCoverage = 0.25 * (o0 + o1 + o2 + o3);
   }
+  if ((flags & TEXTURE_FLAG_LINEAR) != 0) {
+    // Only the colour is filtered: the alpha above, seam-shaped at a cut-out edge, stays. The texel AA (a view option)
+    // does not turn the filter (a texture property) off. Minified, the same rotated grid averages the filtered colour.
+    vec3 fallback = sampleColor(s);
+    vec3 color;
+    if (max(texelsPerPixel.x, texelsPerPixel.y) <= 1.0) {
+      color = linearTexelColor(tex, p, a, mode, cutoffByte, fallback);
+    } else {
+      color = 0.25 * (
+        linearTexelColor(tex, p + dx * -0.125 + dy * -0.375, a, mode, cutoffByte, fallback) +
+        linearTexelColor(tex, p + dx * 0.375 + dy * -0.125, a, mode, cutoffByte, fallback) +
+        linearTexelColor(tex, p + dx * 0.125 + dy * 0.375, a, mode, cutoffByte, fallback) +
+        linearTexelColor(tex, p + dx * -0.375 + dy * 0.125, a, mode, cutoffByte, fallback));
+    }
+    s.premultiplied.rgb = color * s.premultiplied.a;
+  }
   return s;
-}
-
-// Straight (not premultiplied) colour of a sample; black where every tap was cut out.
-vec3 sampleColor(TexelSample s) {
-  return s.premultiplied.a > 0.0 ? s.premultiplied.rgb / s.premultiplied.a : vec3(0.0);
 }
 
 // Nearest texel coordinate of uv as sampleTexels reads it, for per-texel decisions such as hashed alpha.

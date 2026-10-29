@@ -84,7 +84,7 @@ no state; with one worker nothing runs at once, it only lets a shard take part o
 depends on `golden` (a dependency put every golden test into the bench's shard: shard 1 had all 219 tests, 2-4
 none). Playwright shards a project into contiguous ranges by test count, not by time, so a block of slow tests
 lands in one or two shards; each block is its own project with its own shards. `golden` runs `environment`, `export`,
-`golden*`, `modelView`, `realtime.spec.ts` and `textureWrap.spec.ts` without the tests titled `baked lighting`
+`golden*`, `modelView`, `realtime.spec.ts`, `textureFilter.spec.ts` and `textureWrap.spec.ts` without the tests titled `baked lighting`
 (`grepInvert`), which `bake` runs;
 `golden-pt` runs `pathtracer.spec.ts` without the tests titled `like the baked preview`, which `pair` runs (the 13
 preview-vs-render pairing tests). Each test is in exactly one project, and the plain `playwright test` (and so
@@ -546,6 +546,28 @@ the one the other mode would read; 0 `sentinelPixels` in all three images. Its p
 below, limit kept in the spec so `pathtracer.spec.ts` keeps its list): framing 0 mismatches (3 444), radiance 46 px,
 0.00070, 0.671, limit 0.00088, 0.839 (measured x 1.25).
 
+**Texture filter** (MS-38, `e2e/textureFilter.spec.ts`, project `golden`): `fixtures/src/textureFilterScene.ts` builds
+a glTF in code (generated 8 x 8 PNGs, no asset file) and loads it through `loadGltf`, so the filters come from its
+samplers: quads facing +z (`textureFilterLayout.ts`) showing a yellow/teal checker under a LINEAR sampler and the same
+image under a NEAREST one (two scene textures sharing bytes), a LINEAR `MASK` texture with a cut-out 2 x 2 block whose
+texels are black, a LINEAR texture shown at u -2 .. 10 with `wrap: 'repeat'` set on the loaded document (column 0
+white, column 7 orange), and the checker LINEAR and repeated at 8 texels per unit (minified); a sentinel image follows
+each linear texture, so it lies right of it in the path tracer's texture layers. Variants `texture-filter` (look
+`filter`, about 7 pixels per texel) and `texture-filter-far` (look `filter-far`, three times as far: the minified quad
+at about 3 texels per pixel, realtime only). Goldens `rt-texture-filter`, `rt-texture-filter-far` (default tolerance)
+and `pt-texture-filter.s1.n64` (threshold 0). Probes read the one pixel at a `filterQuadPoint` (a 3 x 3 mean flattens
+the blend's peak at a texel centre and reaches the one-pixel alpha seam), in the preview and the render: at a checker
+texel centre the linear quad's neighbours weigh at most 0.25 in linear light (measured up to 0.091 preview, 0.147
+render; taps shifted by half a texel would weigh 0.5); a quarter texel off the centre and on the seam the linear quad
+lies a tenth or more of the way between the two texels in every channel where they differ by over 40 levels, the
+nearest quad equals its texel (hue >= 0.995, luminance within 8); the cut block's centre equals the backdrop of its row
+within 10 levels, and 0.3 texel off each side of the block the mask is no darker than 1.5 texels further away (within
+3 levels; measured equal: the black of the cut texels adds no fringe); on the repeat quad u 8.5 reads column 0, u -0.5
+column 7, u 8 lies between them (the blend crosses the wrap seam); 0 `sentinelPixels`. Far view: the minified quad's
+inner 60 % stays within 5.3 levels of its mean in every channel (measured 4.2, x 1.25) and 0 sentinel pixels. Its
+preview-vs-render pair (limit kept in the spec, as for texture wrap): framing 0 mismatches (2 600), radiance 7 px,
+0.00011, 0.396, limit 0.00014, 0.495 (measured x 1.25).
+
 ## Path-tracer goldens
 
 Fix the seed, the sample count, the resolution and the camera. The accumulation stops after exactly N samples, never
@@ -584,6 +606,7 @@ golden says them (`-x2-denoised`).
 | `pt-gltf-nodes-y030.s1.n128`           | scene-nodes.gltf, perspective 35°, pitch 20°, yaw 30° | golden; sentinel bleeding; catcher; pair (MS-39) |
 | `pt-obj-shapes-y030.s1.n128`           | shapes.obj, same view                                 | golden; pair (MS-39)                             |
 | `pt-texture-wrap.s1.n64`               | generated wrap boxes, `wrap` look (MS-52)             | golden; wrap and frame probes; sentinel; pair    |
+| `pt-texture-filter.s1.n64`             | generated glTF filter quads, `filter` look (MS-38)    | golden; filter and fringe probes; sentinel; pair |
 
 MS-40 (`geometry worker`): the accumulated float sums (`readAccumulation`, base64) of the `edges` view at 16 samples
 and of the 200 000-triangle `large-order` document at 4 samples are the same bytes with the geometry worker and with
@@ -691,6 +714,7 @@ Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with r
 | `obj-shapes-y030`          | 0 (1 852)                           | 246, 0.00375, 0.469 (MS-54; MS-39 245, 0.00374, 0.470)  | 0.00468, 0.587 (MS-54; was 0.00468, 0.588) |
 | `gltf-nodes-y030`          | 0 (2 218)                           | 319, 0.00487, 0.955 (MS-54; MS-39 320, 0.00488, 0.956)  | 0.00609, 1.194 (MS-54; was 0.0061, 1.2)    |
 | `texture-wrap`             | 0 (3 444)                           | 46, 0.00070, 0.671 (MS-52, new; textureWrap.spec.ts)    | 0.00088, 0.839                             |
+| `texture-filter`           | 0 (2 600)                           | 7, 0.00011, 0.396 (MS-38, new; textureFilter.spec.ts)   | 0.00014, 0.495                             |
 
 MS-30 (anti-aliased cut-out seams in the preview's MSAA frames, as the render anti-aliases them by sampling)
 re-measured every pair: `turntable-y030`, `iso`, `alpha-plane` and `cutout-checker` came closer to the render (rows
@@ -1161,6 +1185,8 @@ round 7); its max was 750 ms then.
   embed-frame 195 100 (MS-52: the frame grew with MS-54, MS-56 and MS-52's texture wrap to 177 303 B, over the 177 200;
   re-measured plus 10 %, rounded up to 100).
   `app` 205 300 and `app-entry` 66 800 (MS-23: the app opens, looks, renders and exports; measured 186 590 and 60 655 B, gzip level 9, plus 10 %, rounded up to 100). The app-entry row is what loads before a model is opened; the lazy tracer and export chunks count only in `app`.
+  `app` 226 300 (MS-38: the app grew with later tasks and MS-38's linear texture filtering, its shared GLSL chunk in
+  both renderers, to 205 708 B, over the 205 300; re-measured plus 10 %, rounded up to 100).
   `site` 11 600 (MS-31: the landing page's js, css and html, gzip level 9; measured 9595, 9595, 9595 bytes, plus about
   2 kB) and `site-assets` 110 400 (its woff2 fonts and svg, each gzipped; measured 100 311 three times, times 1.1
   rounded up). The landing page's browser tests are described in docs/site.md.

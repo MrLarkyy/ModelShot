@@ -1,4 +1,4 @@
-import { ALPHA_MODE_ID, TEXTURE_FLAG_REPEAT, alphaCutoffByte } from '@modelshot/looks';
+import { ALPHA_MODE_ID, TEXTURE_FLAG_LINEAR, TEXTURE_FLAG_REPEAT, alphaCutoffByte } from '@modelshot/looks';
 import { describe, expect, it } from 'vitest';
 import { buildBvh, NODE_FLOATS } from '../src/buildBvh';
 import { flattenScene } from '../src/flattenScene';
@@ -14,7 +14,7 @@ import {
   type MaterialTextures,
 } from '../src/packSceneData';
 import { PathTracerError } from '../src/PathTracerError';
-import { NO_EDGE } from '@modelshot/scene';
+import { NO_EDGE, type SceneTexture } from '@modelshot/scene';
 import { boxMesh, randomTriangles, sceneOf, triangleMesh } from './testScenes';
 
 const place = (layer: number, x: number) => ({ layer, x, y: 2, width: 16, height: 8 });
@@ -156,5 +156,36 @@ describe('packMaterials', () => {
     expect(flags(1)).toBe(
       packMaterials(doc, { ...placed, textures: [null, null, null, null] }).data[MATERIAL_TEXELS * 4 + 7],
     );
+  });
+
+  it('writes a linear texture as bit 1 of the flags, beside repeat and a strip; nearest or no filter adds none', () => {
+    const texture = (extra: Pick<SceneTexture, 'filter' | 'wrap' | 'frames'>): SceneTexture => ({
+      name: 't',
+      mimeType: 'image/png' as const,
+      bytes: null,
+      width: 16,
+      height: 8,
+      uvWidth: 16,
+      uvHeight: 8,
+      missing: false,
+      ...extra,
+    });
+    const doc = {
+      ...sceneOf([]),
+      textures: [
+        texture({ filter: 'linear' }),
+        texture({ filter: 'nearest' }),
+        texture({ filter: 'linear', wrap: 'repeat', frames: { count: 4 } }),
+      ],
+      materials: [
+        { name: 'linear', texture: 0 },
+        { name: 'nearest', texture: 1 },
+        { name: 'strip', texture: 2 },
+      ],
+    };
+    const placed: MaterialTextures = { ...textures, textures: [place(1, 32), place(1, 48), place(1, 64)] };
+    const table = packMaterials(doc, placed).data;
+    const flags = (s: number) => table[s * MATERIAL_TEXELS * 4 + 7];
+    expect([1, 2, 3].map(flags)).toEqual([TEXTURE_FLAG_LINEAR, 0, 3 * 256 + TEXTURE_FLAG_LINEAR + TEXTURE_FLAG_REPEAT]);
   });
 });
