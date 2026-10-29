@@ -224,8 +224,8 @@ test('no turntable frame shows a texel from outside its face rectangle', async (
 });
 
 test('texel anti-aliasing halves shimmer against nearest sampling', async ({ page }) => {
-  // Eight renders: 22-35 s locally, past the 30 s default under full-suite load (docs/testing.md).
-  test.setTimeout(53_000);
+  // Eight renders: 22-35 s alone locally, 30-31 s in the full serial suite (docs/testing.md).
+  test.setTimeout(120_000);
   for (const framing of ['far', 'closeup']) {
     const share = async (aa: 0 | 1): Promise<number> => {
       const a = await render(page, `variant=${framing}&aa=${aa}&yaw=30`);
@@ -434,8 +434,8 @@ function pixelsApart(a: Image, b: Image, levels: number): number {
  * neighbour pairs of the hard frame, those with a strict mix on either side (`cutoutSeams` over the whole image).
  */
 test('exact-key frames anti-alias silhouettes like raster frames', async ({ page }) => {
-  // Nine renders, the exact ones converging over 4 passes: 29.5 s measured of the default 30 s.
-  test.setTimeout(120_000);
+  // Nine renders, the exact ones converging over 4 passes: 28-29.5 s serial, 5-7x that at six parallel workers (MS-74).
+  test.setTimeout(300_000);
   // Measured (SwiftShader, converged): mixed share raster 0.664 (542 of 816), exact 0.857 (699); the shown frames 774
   // pixels more than 8 levels apart, on silhouettes and texel seams (MSAA and the 1 px texel ramp against the mean of
   // 4 shifted passes of it), held at measured x 1.25.
@@ -1225,8 +1225,9 @@ test.describe('baked lighting', () => {
   test('a bake is deterministic: repeated, in 32 or 64 texel tiles, and its progress equals a shorter bake', async ({
     page,
   }) => {
-    // 1.6 m on a normal runner, 3.0 m (the old 180 s limit) on a slow one: several 64-sample bakes in a row.
-    test.setTimeout(480_000);
+    // 1.6 m on a normal runner, 3.0 m (the old 180 s limit) on a slow one: several 64-sample bakes in a row;
+    // up to 5.2 m at six parallel workers (MS-74).
+    test.setTimeout(720_000);
     await openFixture(page, '/rt.html?variant=turntable-y030');
     const first = await rtBake(page, { samples: 64 });
     const again = await rtBake(page, { samples: 64 });
@@ -1275,6 +1276,8 @@ test.describe('baked lighting', () => {
    * pixel within 1 px count.
    */
   test('exact depth key: the catcher never draws over the model', async ({ page }) => {
+    // Four baked renders: up to 49 s serial, 5-7x that at six parallel workers (MS-74).
+    test.setTimeout(600_000);
     for (const [query, reach] of [
       ['&msaa=0', 0],
       ['', 1],
@@ -1416,105 +1419,113 @@ test.describe('baked lighting', () => {
     for (const result of results) expect(result.error).toMatch(/^WEBGL2_UNAVAILABLE: test hook/);
   });
 
-  test('the main-thread block measure sees a long task outside the timed bake work', async ({ page }) => {
-    await openFixture(page, '/rt.html?variant=turntable-y030&lag=1');
-    await page.evaluate(() => {
-      window.__msFixture!.rt!.resetLag();
-      return window.__msFixture!.rt!.spinMainThread(80);
-    });
-    // Read in a later task: the long-task entry exists once the busy task ended.
-    const block = await page.evaluate(() => window.__msFixture!.rt!.mainThreadBlock());
-    console.log(`[rt probe] 80 ms busy task: block ${block.toFixed(1)} ms`);
-    expect(block).toBeGreaterThanOrEqual(80);
-  });
-
-  test('the budgeted measure (max CPU per main-thread task, traced) sees >= 80 ms of busy work in a timer task and in an evaluate', async ({
-    page,
-  }) => {
-    await openFixture(page, '/rt.html?variant=turntable-y030&lag=1');
-    // CPU work, not wall time (an interrupted wall-clock spin gets less CPU than its wall time): the iterations one
-    // millisecond holds at best, over several samples, times 100, so the task does at least 80 ms of CPU work even if
-    // it runs up to 20 % slower than the fastest sample.
-    const iterations = await page.evaluate(() => {
-      let best = 0;
-      for (let sample = 0; sample < 20; sample++) {
-        let count = 0;
-        let x = 0;
-        const end = performance.now() + 5;
-        while (performance.now() < end) {
-          for (let i = 0; i < 1000; i++) x += Math.sqrt(i + x);
-          count++;
-        }
-        best = Math.max(best, count / 5);
-        if (x < 0) return 0;
-      }
-      return Math.ceil(best * 100);
-    });
-    const timer = await traceMainThread(page, () =>
-      page.evaluate(
-        (count) =>
-          new Promise<number>((resolve) =>
-            setTimeout(() => {
-              let x = 0;
-              for (let n = 0; n < count; n++) for (let i = 0; i < 1000; i++) x += Math.sqrt(i + x);
-              resolve(x);
-            }, 0),
-          ),
-        iterations,
-      ),
-    );
-    // The bench calls bake() from a Playwright evaluate, which the Long Tasks API does not report: the trace must.
-    const evaluate = await traceMainThread(page, () =>
-      page.evaluate((count) => {
-        let x = 0;
-        for (let n = 0; n < count; n++) for (let i = 0; i < 1000; i++) x += Math.sqrt(i + x);
-        return x;
-      }, iterations),
-    );
-    console.log(
-      `[rt probe] 100 ms of busy work at best speed, max CPU per task: timer task ${timer.maxCpu.toFixed(1)} ms, evaluate ` +
-        `${evaluate.maxCpu.toFixed(1)} ms`,
-    );
-    expect(timer.maxCpu).toBeGreaterThanOrEqual(80);
-    expect(evaluate.maxCpu).toBeGreaterThanOrEqual(80);
-    expect(timer.maxBlocking).toBeGreaterThanOrEqual(80);
-    expect(evaluate.maxBlocking).toBeGreaterThanOrEqual(80);
-  });
-
-  test('the budgeted measure also counts a synchronous wait for the GPU process, which CPU time alone misses', async ({
-    page,
-  }) => {
-    await openFixture(page, '/rt.html?scene=bench&size=512');
-    let call = 0;
-    // Heavy draws queued, then a readback: the main thread waits until the GPU process has drawn them.
-    const trace = await traceMainThread(page, async () => {
-      call = await page.evaluate(() => {
-        const rt = window.__msFixture!.rt!;
-        const canvas = document.querySelector('canvas')!;
-        const gl = canvas.getContext('webgl2')!;
-        for (let i = 0; i < 4; i++) rt.render();
-        const start = performance.now();
-        gl.readPixels(
-          0,
-          0,
-          canvas.width,
-          canvas.height,
-          gl.RGBA,
-          gl.UNSIGNED_BYTE,
-          new Uint8Array(canvas.width * canvas.height * 4),
-        );
-        return performance.now() - start;
+  test(
+    'the main-thread block measure sees a long task outside the timed bake work',
+    { tag: '@timing' },
+    async ({ page }) => {
+      await openFixture(page, '/rt.html?variant=turntable-y030&lag=1');
+      await page.evaluate(() => {
+        window.__msFixture!.rt!.resetLag();
+        return window.__msFixture!.rt!.spinMainThread(80);
       });
-    });
-    console.log(
-      `[rt probe] readPixels after heavy draws: call ${call.toFixed(1)} ms, traced GPU wait ` +
-        `${trace.maxGpuWait.toFixed(1)} ms, CPU ${trace.maxCpu.toFixed(1)} ms, blocking ${trace.maxBlocking.toFixed(1)} ms`,
-    );
-    expect(call, 'the readback really waits').toBeGreaterThan(100);
-    expect(trace.maxGpuWait, 'the trace sees the wait').toBeGreaterThanOrEqual(0.9 * call);
-    expect(trace.maxCpu, 'CPU time alone would not').toBeLessThan(trace.maxGpuWait / 2);
-    expect(trace.maxBlocking).toBeGreaterThanOrEqual(0.9 * call);
-  });
+      // Read in a later task: the long-task entry exists once the busy task ended.
+      const block = await page.evaluate(() => window.__msFixture!.rt!.mainThreadBlock());
+      console.log(`[rt probe] 80 ms busy task: block ${block.toFixed(1)} ms`);
+      expect(block).toBeGreaterThanOrEqual(80);
+    },
+  );
+
+  test(
+    'the budgeted measure (max CPU per main-thread task, traced) sees >= 80 ms of busy work in a timer task and in an evaluate',
+    { tag: '@timing' },
+    async ({ page }) => {
+      await openFixture(page, '/rt.html?variant=turntable-y030&lag=1');
+      // CPU work, not wall time (an interrupted wall-clock spin gets less CPU than its wall time): the iterations one
+      // millisecond holds at best, over several samples, times 100, so the task does at least 80 ms of CPU work even if
+      // it runs up to 20 % slower than the fastest sample.
+      const iterations = await page.evaluate(() => {
+        let best = 0;
+        for (let sample = 0; sample < 20; sample++) {
+          let count = 0;
+          let x = 0;
+          const end = performance.now() + 5;
+          while (performance.now() < end) {
+            for (let i = 0; i < 1000; i++) x += Math.sqrt(i + x);
+            count++;
+          }
+          best = Math.max(best, count / 5);
+          if (x < 0) return 0;
+        }
+        return Math.ceil(best * 100);
+      });
+      const timer = await traceMainThread(page, () =>
+        page.evaluate(
+          (count) =>
+            new Promise<number>((resolve) =>
+              setTimeout(() => {
+                let x = 0;
+                for (let n = 0; n < count; n++) for (let i = 0; i < 1000; i++) x += Math.sqrt(i + x);
+                resolve(x);
+              }, 0),
+            ),
+          iterations,
+        ),
+      );
+      // The bench calls bake() from a Playwright evaluate, which the Long Tasks API does not report: the trace must.
+      const evaluate = await traceMainThread(page, () =>
+        page.evaluate((count) => {
+          let x = 0;
+          for (let n = 0; n < count; n++) for (let i = 0; i < 1000; i++) x += Math.sqrt(i + x);
+          return x;
+        }, iterations),
+      );
+      console.log(
+        `[rt probe] 100 ms of busy work at best speed, max CPU per task: timer task ${timer.maxCpu.toFixed(1)} ms, evaluate ` +
+          `${evaluate.maxCpu.toFixed(1)} ms`,
+      );
+      expect(timer.maxCpu).toBeGreaterThanOrEqual(80);
+      expect(evaluate.maxCpu).toBeGreaterThanOrEqual(80);
+      expect(timer.maxBlocking).toBeGreaterThanOrEqual(80);
+      expect(evaluate.maxBlocking).toBeGreaterThanOrEqual(80);
+    },
+  );
+
+  test(
+    'the budgeted measure also counts a synchronous wait for the GPU process, which CPU time alone misses',
+    { tag: '@timing' },
+    async ({ page }) => {
+      await openFixture(page, '/rt.html?scene=bench&size=512');
+      let call = 0;
+      // Heavy draws queued, then a readback: the main thread waits until the GPU process has drawn them.
+      const trace = await traceMainThread(page, async () => {
+        call = await page.evaluate(() => {
+          const rt = window.__msFixture!.rt!;
+          const canvas = document.querySelector('canvas')!;
+          const gl = canvas.getContext('webgl2')!;
+          for (let i = 0; i < 4; i++) rt.render();
+          const start = performance.now();
+          gl.readPixels(
+            0,
+            0,
+            canvas.width,
+            canvas.height,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            new Uint8Array(canvas.width * canvas.height * 4),
+          );
+          return performance.now() - start;
+        });
+      });
+      console.log(
+        `[rt probe] readPixels after heavy draws: call ${call.toFixed(1)} ms, traced GPU wait ` +
+          `${trace.maxGpuWait.toFixed(1)} ms, CPU ${trace.maxCpu.toFixed(1)} ms, blocking ${trace.maxBlocking.toFixed(1)} ms`,
+      );
+      expect(call, 'the readback really waits').toBeGreaterThan(100);
+      expect(trace.maxGpuWait, 'the trace sees the wait').toBeGreaterThanOrEqual(0.9 * call);
+      expect(trace.maxCpu, 'CPU time alone would not').toBeLessThan(trace.maxGpuWait / 2);
+      expect(trace.maxBlocking).toBeGreaterThanOrEqual(0.9 * call);
+    },
+  );
 
   test('banded light upload: frames keep the complete light until the next is in, whatever happens mid-upload', async ({
     page,

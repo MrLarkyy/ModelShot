@@ -71,8 +71,8 @@ CPU ms per converted test, the maximum of 3 runs on an idle machine (Windows, No
   `--project=golden-pt --shard=<k>/6`, pair 1-3 of `--project=pair --shard=<k>/3`, bake 1-3 of
   `--project=bake --shard=<k>/3`) (`fail-fast: false`), each on its own VM: install, the pinned Chromium, `pnpm -r build`,
   then `playwright test --project=<project> --shard=<k>/<n>`, then on golden shard 1 only `pnpm --filter @modelshot/site run test:browser` and `pnpm --filter @modelshot/app run test:browser` (each runs even when an earlier step failed), uploading `tools/harness/test-results/`, `packages/site/test-results/` and `packages/app/test-results/` as `browser-test-results-<golden-k|golden-pt-k|pair-k|bake-k>`.
-- `bench`: its own VM, same install and build, `playwright test --project=bench` (the one budget test), uploading
-  `browser-test-results-bench`; the budgets are measured on a machine that runs nothing else.
+- `bench`: its own VM, same install and build, `playwright test --project=bench` (the budget test and the three `@timing` measure tests of `realtime.spec.ts`), uploading
+  `browser-test-results-bench` (its measurements are in `serial/`); the budgets are measured on a machine that runs nothing else.
 
 `.github/workflows/wiki.yml` builds the GitHub wiki from `docs/` (`tools/wiki`, with a link check) and publishes it on a push to `main` that touches `docs/` or `tools/wiki/` (`contents: write` on that job only). A new docs page needs its row in `tools/wiki/pages.mjs`, or the check fails.
 
@@ -85,10 +85,9 @@ depends on `golden` (a dependency put every golden test into the bench's shard: 
 none). Playwright shards a project into contiguous ranges by test count, not by time, so a block of slow tests
 lands in one or two shards; each block is its own project with its own shards. `golden` runs `environment`, `export`,
 `golden*`, `modelView`, `realtime.spec.ts`, `textureFilter.spec.ts` and `textureWrap.spec.ts` without the tests titled `baked lighting`
-(`grepInvert`), which `bake` runs;
-`golden-pt` runs `pathtracer.spec.ts` without the tests titled `like the baked preview`, which `pair` runs (the 13
-preview-vs-render pairing tests). Each test is in exactly one project, and the plain `playwright test` (and so
-`pnpm test`) runs every project.
+(`grepInvert`), which `bake` runs, apart from the three `@timing` ones, which `bench` runs, and without the one titled
+`like the baked preview`; `golden-pt` runs `pathtracer.spec.ts` without the tests titled `like the baked preview`,
+which `pair` runs (the 15 preview-vs-render pairing tests of `pathtracer.spec.ts`, `textureFilter.spec.ts` and `textureWrap.spec.ts`). Each test is in exactly one project, and the plain `playwright test` runs every project, while `pnpm test` runs them in the two phases above (`bench` last, alone).
 
 Shard sizes (MS-39, `--list --project <p> --shard <k>/<n>`), each with the sum of its tests' CI times: the per-test
 times of main's run 39878163371 (MS-30's merge, so its three cut-out seam tests are counted), MS-22's 31 export tests
@@ -129,14 +128,15 @@ alone are about 11 minutes together on a normal VM. The VMs differ in speed by u
 cut-out checker bake took 1.3 minutes on one, 39 s on another), so a shard needs room for the slow case; the bench no
 longer shares a VM with the bakes.
 
-Timeouts: the Playwright default is 30 s and stays. On the runners (SwiftShader, 3-5x slower than local) some tests
+Timeouts: the harness default is 60 s (30 s until MS-74: six parallel local workers stretched a 3.4 s test to 24 s). On the runners (SwiftShader, 3-5x slower than local) some tests
 came near or over it; the worst of runs 39594658979 and 39612706830 per test: the baked goldens
 `rt-bake-cutout-checker` and its fallback over 30 s, `rt-bake-turntable-y030` over 30 s, `rt-bake-alpha-plane` 24.5 s;
 the path-tracer determinism batches test 35.0 s (over 30 s), its same-seed test 15.2 s, `pt-alpha-plane` 22.4 s, the
 transparency tests up to 22.5 s, the lifetime tests 14.9-18.6 s, the 10 000 coincident cubes test 10.0 s. A suite or
-test whose CI time reaches a third of the default carries a timeout: 180 s for the baked goldens (bakes took 33-42 s in run 39624802150), 300 s for the baked lighting describe, 480 s for its determinism test (1.6 minutes on a normal runner, over 3 on a slow one), 300 s for the baked-preview pairing tests (up to 1.3 minutes, about 2.6 on a slow VM), 120 s for the path-tracer goldens, determinism, transparency and lifetime describes and the coincident cubes
-test (at least 3x the worst measured time), 53 s for the realtime shimmer test (`texel anti-aliasing halves shimmer`,
-eight renders: 22-35 s alone locally, 30.3 and 31.1 s in the full local suite, which timed it out; 1.5x the worst). A hang now fails after that time, not after 30 s; several hangs in one
+test whose CI time reaches a third of the default carries a timeout: 180 s for the baked goldens (bakes took 33-42 s in run 39624802150), 300 s for the baked lighting describe, 720 s for its determinism test (1.6 minutes on a normal runner, over 3 on a slow one, 5.2 at six local workers), 300 s for the baked-preview pairing tests (up to 1.3 minutes, about 2.6 on a slow VM), 120 s for the path-tracer goldens, determinism and lifetime describes and the coincident cubes test, 180 s for the
+transparency describe (66 s at six local workers), 300 s for the exact-key silhouette test (29.5 s serial), 600 s for the
+exact-key catcher test (49 s serial) and the preset rim probes (42.6 s serial), 120 s for the realtime shimmer test (`texel anti-aliasing halves shimmer`, eight renders: 22-35 s alone locally, 30.3 and 31.1 s in the full serial suite); each at least 3x the worst CI time and twice the worst local time. A
+hang now fails after that time, not after the 60 s default; several hangs in one
 shard can reach the 20-minute job limit, and the job is then cancelled instead of reporting the failures.
 
 FFmpeg: `playwright install` fetches FFmpeg with every browser (playwright-core has no flag to skip it). The first
@@ -146,6 +146,10 @@ unchanged.
 
 ## Browser tests
 
+`pnpm test:browser` in `tools/harness` (`src/runBrowserTests.ts`) runs two phases. Phase 1 is `playwright test --grep-invert @timing`: every golden, path-tracer, bake and pairing test with several workers. Playwright hands out the tests of one run in the order of the `projects` list, so the list starts with the projects whose tests run longest (`pair`, `bake`, `golden-pt`, then `golden`): the many short golden tests fill the workers at the end instead of one long test running on alone. Phase 2 is `playwright test --project=bench --workers=1`: the `bench` project is every test tagged `@timing` (the budget test in `bench.spec.ts` and the three `baked lighting` tests that check the main-thread measures), run alone on an idle machine, with its own output directory `test-results/serial`. Phase 2 runs after a failed phase 1 (exit 1) but not after a kill or interrupt (any other exit code, a signal or a failed launch), which stops the runner with that non-zero code; SIGINT, SIGTERM and SIGBREAK are forwarded to Playwright. The script takes no arguments: use `pnpm exec playwright test <filter>` for a filtered run. The exit code is non-zero if either phase failed. A plain `playwright test` mixes the two, so use the script for a full local run. A test whose result depends on how busy the machine is gets `{ tag: '@timing' }`; every other project excludes the tag. There is no project dependency: it would skip the timing tests after a golden failure and pull the goldens into the CI bench job.
+
+The worker count (`src/workerCount.ts`) is `MS_PW_WORKERS` (integer 1..32, anything else fails naming the variable), else 1 when `CI` is set, else the smaller of 6, one per four logical CPUs (SwiftShader runs several threads per page) and one per 2 GiB of RAM, at least 1. Timeouts stay fixed numbers; lower `MS_PW_WORKERS` if a loaded machine times out.
+
 Fixtures in `tools/harness/fixtures` are self-contained WebGL2 pages served by a local Vite server on
 `127.0.0.1:<port>`. The port is `MS_HARNESS_PORT`, else a stable per-checkout port in 4410..4909 derived from the harness
 directory, so two worktrees can test at once; a server already on that port is never reused. A fixture publishes `window.__msFixture`; the spec waits for `ready`, reads the drawing buffer with
@@ -154,9 +158,7 @@ never produces or checks a golden. Every spec uses the shared `test` from `src/h
 and every `openFixture` asserts SwiftShader. `openFixture` waits 20 s for `__msFixture` (the module sets it as it
 evaluates). On a timeout it prints the page's failed requests, responses >= 400, console errors and page errors under
 `[fixture reload]`. If the page threw (a page error), it fails at once; otherwise it reloads once. A second boot timeout
-fails with that list only in a test whose timeout leaves room for it (45 s or more, such as the 120 s path-tracer
-describes); under the 30 s default the test timeout ends the second wait first, and the `[fixture reload]` line is the
-trace. A page once loaded without running its module (pt-gltf-contact in a full `pathtracer.spec.ts`
+fails with that list when the test has 40 s left for both waits (a fixture opened early under the 60 s default). A page once loaded without running its module (pt-gltf-contact in a full `pathtracer.spec.ts`
 run); the cause is unknown, so the reload is a guard and the printed list is the trace to find it. Fixture image code uses no clock or random source (lint rule; timing lives in `fixtures/src/bench.ts` only).
 
 The embed suite (`packages/embed/e2e`, `pnpm --filter @modelshot/embed run test:browser`, part of the root
@@ -1001,7 +1003,10 @@ took, so a decoded file is compared with the very frames that were encoded.
   (convertToBlob), the clip comes back as APNG with one `FORMAT_FALLBACK` warning naming both, and decodes exactly.
 - Independent readers: WebM and MP4 played by a `<video>` element (MP4 where `canPlayType` accepts its codec): 64 x 64,
   duration 0.5 s (4 frames at 8 fps), the frame seeked to at 2.5 / 8 s within the video mean bound of frame 2 (2.4 and
-  1.8 measured); the APNG through the browser's ImageDecoder: 4 frames of 125 000 µs, opaque pixels exact.
+  1.8 measured). The frame is drawn in the element's `requestVideoFrameCallback` once the presented media time is frame
+  2, not on `seeked` (Chromium can fire it before the new frame is presented, so a busy machine drew the frame from
+  before the seek), and the read fails after 20 s naming the last media time instead of hanging; the APNG through the
+  browser's ImageDecoder: 4 frames of 125 000 µs, opaque pixels exact.
 - Animation: one `setScene` per pose, every one with the same `catcherBounds` (the union of the poses: floor y 0, top
   23 with the bob); decoded frames exactly `readImage()`.
 - Transparent quality paths: stills plain, with `supersample: 2` and with `denoise`, catcher off and on: PNG = readImage,
@@ -1170,7 +1175,7 @@ attached vertex formula in four poses, re-posing, nesting, index remapping, ever
 `budgets.json` (root, `"version": 1`) holds `max` values for frame time, load time, time to N samples and gzip bundle
 size of `app`, `app-entry`, `embed`, `embed-frame`, `site`, `site-assets` and `export`. `embed` is the element script `modelshot-embed.js` (its own Vite lib build, `vite.element.config.ts`) with any chunk it imports statically, what a host page loads; `embed-frame` is every JS, CSS and HTML file of the frame page's build (entry, lazy bake chunk, load and bake workers), what the iframe loads. `app` is every JS and CSS file of `packages/app`'s build (the entry, the lazy path tracer and export chunks, the loaders and the workers); `app-entry` is `index.html`, the stylesheet and the entry script with the chunks it imports statically, what the page loads before a model is opened. `site` is a plain `vite build` of `packages/site` without the `/app/` copy that `build:with-app` adds; `site-assets` is the same build's woff2 and svg files; `export` is `@modelshot/export` built as a library (Vite lib mode, the workspace packages external), the entry chunk and the chunks it imports statically, each gzipped, so the encoders, loaded on demand, are not counted. `pnpm test` measures them (`bench.spec.ts`; the bundle is built fresh into a temporary directory, so
 it does not depend on `pnpm -r build`) and fails when a value exceeds its `max`, when a budget has no measurement, or
-a measurement has no budget. The measured values are in `tools/harness/test-results/budgets-measured.json`, and
+a measurement has no budget. The measured values are in `tools/harness/test-results/serial/budgets-measured.json`, and
 every run prints each one against its max (`[budget] <group>.<key>: measured … / max …`, from `bench.spec.ts` and
 `test/bundleSize.test.ts`; Vitest runs with `silent: false` so passing tests print too). Both measure every target in `BUNDLE_TARGETS`
 (`tools/harness/src/bundleSize.ts`), and `test/bundleSize.test.ts` fails when that list and the `bundleGzipBytes` rows
@@ -1394,7 +1399,7 @@ about 143 MB), in 264-419 ms. Of that the result kept with the mesh is 16.0 MB (
 buffers +38 MB before collection). The renderers keep one result per document (`sceneSharpEdges`, latest options).
 
 First CI run (2026-10-20, ubuntu-latest): frame time 0.9 ms (max 5, 5.5x), time to 64 samples 80.6 ms (max 300), gzip app 437 B, embed 115 B.
-Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact (in the e2e shard that ran
-`bench.spec.ts`), with the numbers in the commit.
+Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact (`test-results/serial/` in `browser-test-results-bench`,
+uploaded by the CI `bench` job), with the numbers in the commit.
 Changing a `max` is a reviewed change: explain it in the commit with the measured numbers, never raise it to hide a
 regression.

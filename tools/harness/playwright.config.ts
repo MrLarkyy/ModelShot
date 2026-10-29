@@ -1,5 +1,7 @@
+import { availableParallelism, totalmem } from 'node:os';
 import { defineConfig } from '@playwright/test';
 import { harnessPort } from './src/harnessPort';
+import { playwrightWorkers } from './src/workerCount';
 
 const port = harnessPort();
 const origin = `http://127.0.0.1:${port}`;
@@ -8,8 +10,9 @@ const ci = Boolean(process.env['CI']);
 export default defineConfig({
   testDir: 'e2e',
   outputDir: 'test-results',
-  timeout: 30_000,
-  workers: 1,
+  // Six parallel SwiftShader workers stretch a 3.4 s test to 24 s (MS-74); the limit keeps that under half of it.
+  timeout: 60_000,
+  workers: playwrightWorkers(process.env, availableParallelism(), totalmem()),
   retries: 0,
   forbidOnly: ci,
   updateSnapshots: 'none',
@@ -30,16 +33,34 @@ export default defineConfig({
     },
   },
   // CI runs the suite in separate jobs, one VM per shard (docs/testing.md, CI). Shards split whole files unless tests
-  // are independent units: the golden tests share no state, so they shard per test; workers stay 1, so nothing runs in
-  // parallel. Shards are contiguous ranges by test count, not by time, so each block of slow tests is its own project
-  // with its own shards: the path-tracer tests (golden-pt, about 20 minutes together on CI), the baked lighting tests
-  // (bake, 13-15 minutes on a slow VM) and the preview-vs-render pairing tests (pair, about 2.4 minutes per three). The
-  // bench has no dependency on the goldens, which would pull every golden test into its shard.
+  // are independent units: the golden tests share no state, so they shard per test (CI sets workers 1). Shards are
+  // contiguous ranges by test count, not by time, so each block of slow tests is its own project with its own shards:
+  // the path-tracer tests (golden-pt), the baked lighting tests (bake) and the preview-vs-render pairing tests (pair).
+  // Locally 'test:browser' runs two phases (src/browserPhases.ts): every test without @timing with the worker count of
+  // src/workerCount.ts, then the bench project alone with one worker. The bench project is every @timing test, so a
+  // measure never shares the machine with another test. It has no dependency on the goldens: that would skip it after
+  // a golden failure and pull every golden test into its CI shard.
+  // Playwright queues the test groups of one run in project order, so the projects with the longest tests come first
+  // and the short golden tests fill the workers at the end of phase 1 instead of one long test running on alone.
   projects: [
+    {
+      name: 'pair',
+      fullyParallel: true,
+      testMatch: ['pathtracer.spec.ts', 'textureFilter.spec.ts', 'textureWrap.spec.ts'],
+      grep: /like the baked preview/,
+      grepInvert: /@timing/,
+    },
+    { name: 'bake', fullyParallel: true, testMatch: 'realtime.spec.ts', grep: /baked lighting/, grepInvert: /@timing/ },
+    {
+      name: 'golden-pt',
+      fullyParallel: true,
+      testMatch: 'pathtracer.spec.ts',
+      grepInvert: [/like the baked preview/, /@timing/],
+    },
     {
       name: 'golden',
       fullyParallel: true,
-      grepInvert: /baked lighting/,
+      grepInvert: [/baked lighting/, /like the baked preview/, /@timing/],
       testMatch: [
         'environment.spec.ts',
         'export.spec.ts',
@@ -50,9 +71,6 @@ export default defineConfig({
         'textureWrap.spec.ts',
       ],
     },
-    { name: 'golden-pt', fullyParallel: true, testMatch: 'pathtracer.spec.ts', grepInvert: /like the baked preview/ },
-    { name: 'bake', fullyParallel: true, testMatch: 'realtime.spec.ts', grep: /baked lighting/ },
-    { name: 'pair', fullyParallel: true, testMatch: 'pathtracer.spec.ts', grep: /like the baked preview/ },
-    { name: 'bench', testMatch: 'bench.spec.ts' },
+    { name: 'bench', grep: /@timing/, workers: 1, outputDir: 'test-results/serial' },
   ],
 });
