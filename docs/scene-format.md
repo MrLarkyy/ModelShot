@@ -195,9 +195,10 @@ loaders leave it out (their images clamp).
 `filter` (`SceneTextureFilter`, optional: `'nearest'` or `'linear'`; absent: `DEFAULT_TEXTURE_FILTER`, `'nearest'`)
 says how the colour is read between texel centres. `nearest` reads the one texel a point lies in (pixel art; the
 preview anti-aliases its seams over one screen pixel). `linear` blends the four texels whose centres surround the point
-(bilinear, in linear light), each addressed exactly as a nearest lookup is: inside the face's texel rectangle, then
-clamped or repeated per `wrap`, on a strip within frame 0; so the blend never reads a texel of another face region,
-another frame or another image. Only the colour is filtered: whether a point is cut out, partly transparent or opaque
+(bilinear, in linear light), each addressed as a nearest lookup is, except that the face's texel rectangle is one texel wider per side (as hardware
+filtering reads past a UV rectangle; a glTF face's rectangle is per vertex, so a tighter one would clamp differently on
+either side of an edge two triangles share and show a seam), then clamped or repeated per `wrap`, on a strip within
+frame 0; so the blend never reads a texel of another frame or another image. Only the colour is filtered: whether a point is cut out, partly transparent or opaque
 stays the nearest texel's coverage under the material's alpha rule, for camera, shadow, ambient-occlusion and bake
 rays alike, and a cut-out texel weighs nothing in the blend (no dark fringe from its colour). There are no mipmaps;
 minified, both modes average the texels a pixel covers. The glTF loader stores `'linear'` from a linear sampler

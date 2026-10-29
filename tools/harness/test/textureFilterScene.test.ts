@@ -32,14 +32,22 @@ describe('texture-filter fixture scene', () => {
     for (const quad of FILTER_QUADS) {
       const mesh = doc.meshes.find((m) => m.name === quad.name);
       if (!mesh) throw new Error(`no mesh ${quad.name}`);
-      expect(mesh.positions.length / 3, quad.name).toBe(4);
-      for (let k = 0; k < 4; k++) {
+      const vertices = (quad.cells + 1) ** 2;
+      expect(mesh.positions.length / 3, quad.name).toBe(vertices);
+      expect(mesh.indices.length, quad.name).toBe(quad.cells * quad.cells * 6);
+      for (let k = 0; k < vertices; k++) {
         const [u, v] = [(mesh.uvs[k * 2] ?? 0) * FILTER_TEXELS, (mesh.uvs[k * 2 + 1] ?? 0) * FILTER_TEXELS];
         const [x, y] = filterQuadPoint(quad, u, v);
         expect(x).toBeCloseTo(mesh.positions[k * 3] ?? NaN, 5);
         expect(y).toBeCloseTo(mesh.positions[k * 3 + 1] ?? NaN, 5);
         const rect = [...mesh.uvRects.subarray(k * 4, k * 4 + 4)].map((t) => t * FILTER_TEXELS);
-        expect(rect, quad.name).toEqual([...quad.uv]);
+        if (quad.cells === 1) expect(rect, quad.name).toEqual([...quad.uv]);
+        // A subdivided quad's vertex rect is that of the triangles using it, inside the quad's UV range.
+        else {
+          expect(rect[0]!, quad.name).toBeGreaterThanOrEqual(quad.uv[0]);
+          expect(rect[2]!, quad.name).toBeLessThanOrEqual(quad.uv[2]);
+          expect(rect[2]! - rect[0]!, quad.name).toBeGreaterThanOrEqual((quad.uv[2] - quad.uv[0]) / quad.cells);
+        }
       }
       expect(mesh.normals[2]).toBe(1);
     }

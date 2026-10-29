@@ -1,6 +1,6 @@
 // Linear colour filtering of a texture whose sampling flags carry TEXTURE_FLAG_LINEAR (faceTexels): the bilinear blend
-// of the four texels around a point. The caller addresses each tap through faceTexel, so the blend never reads a texel
-// outside the face's range, the image (per wrap and frame) or, in the path tracer, another image of the atlas. Only the
+// of the four texels around a point. The caller addresses each tap through faceTexel with linearTexelRange, so the
+// blend never reads a texel outside the image (per wrap and frame) or, in the path tracer, another image of the atlas. Only the
 // colour is filtered; coverage stays the nearest texel's (texelAlpha) in every pass and ray type.
 #include "texelAlpha"
 
@@ -10,6 +10,13 @@ struct LinearTaps {
   ivec2 base;
   vec2 f;
 };
+
+// The face's texel range for linear taps: one texel wider per side, as hardware filtering reads past a UV rectangle. A
+// tap is thus limited by the image, not by a face rectangle, which on a glTF triangle is per vertex and would differ
+// across a shared edge (a seam).
+ivec4 linearTexelRange(ivec4 range) {
+  return ivec4(range.xy - 1, range.zw + 1);
+}
 
 LinearTaps linearTaps(vec2 p) {
   vec2 q = p - 0.5;

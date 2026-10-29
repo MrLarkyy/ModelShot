@@ -69,10 +69,11 @@ vec4 texelAntialiased(sampler2D tex, vec2 p, vec2 texelsPerPixel, TexelAddress a
   return mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
 }
 
-// Straight bilinear colour at p (texelFilter) of the four texels around it, each addressed by faceTexel; fallback where
-// every one is invisible.
+// Straight bilinear colour at p (texelFilter) of the four texels around it, each addressed by faceTexel within the
+// widened range (linearTexelRange); fallback where every one is invisible.
 vec3 linearTexelColor(sampler2D tex, vec2 p, TexelAddress a, int mode, int cutoffByte, vec3 fallback) {
   LinearTaps taps = linearTaps(p);
+  a.range = linearTexelRange(a.range);
   vec4 c00 = fetchTexel(tex, taps.base, a);
   vec4 c10 = fetchTexel(tex, taps.base + ivec2(1, 0), a);
   vec4 c01 = fetchTexel(tex, taps.base + ivec2(0, 1), a);

@@ -1,7 +1,8 @@
 /**
  * Per-vertex UV rectangles `[uMin, vMin, uMax, vMax]` for a run of indexed triangles: each vertex gets the union of the
  * UV bounding boxes of the triangles that use it. For an atlas export with one face per region this is the face's
- * region; it is never narrower than a triangle's own texels, so texel anti-aliasing never clamps inside a face. A
+ * region; it is never narrower than a triangle's own texels, so texel anti-aliasing never clamps inside a face. Linear
+ * filtering reads one texel past it (`linearTexelRange`), as a rectangle that differs across a shared edge would seam. A
  * vertex no triangle uses gets the point rectangle of its own UV. Writes `rects` for the vertices in
  * `[firstVertex, endVertex)` from the triangles in `indices[start, start + count)`.
  */

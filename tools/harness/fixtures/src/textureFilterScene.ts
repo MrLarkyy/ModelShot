@@ -49,30 +49,55 @@ function quadBuffers(quads: readonly FilterQuad[]) {
     });
     return accessors.length - 1;
   };
+  const indexLists: number[][] = [];
   const primitives = quads.map((quad) => {
     const [x0, x1] = quad.x;
     const [y0, y1] = quad.y;
     const [u0, v0, u1, v1] = quad.uv.map((t) => t / FILTER_TEXELS) as [number, number, number, number];
-    // Top left, top right, bottom right, bottom left.
-    const positions = [x0, y1, 0, x1, y1, 0, x1, y0, 0, x0, y0, 0];
+    const n = quad.cells;
+    const positions: number[] = [];
+    const normals: number[] = [];
+    const uvs: number[] = [];
+    // (n + 1)^2 vertices, row by row from the top left.
+    for (let j = 0; j <= n; j++) {
+      for (let i = 0; i <= n; i++) {
+        positions.push(x0 + ((x1 - x0) * i) / n, y1 - ((y1 - y0) * j) / n, 0);
+        normals.push(0, 0, 1);
+        uvs.push(u0 + ((u1 - u0) * i) / n, v0 + ((v1 - v0) * j) / n);
+      }
+    }
+    // Both triangles of a cell counter-clockwise from +z: top left, bottom left, bottom right and top left, bottom
+    // right, top right.
+    const indices: number[] = [];
+    for (let j = 0; j < n; j++) {
+      for (let i = 0; i < n; i++) {
+        const tl = j * (n + 1) + i;
+        const bl = tl + n + 1;
+        indices.push(tl, bl, bl + 1, tl, bl + 1, tl + 1);
+      }
+    }
+    indexLists.push(indices);
     const position = view(positions, 'VEC3', { min: [x0, y0, 0], max: [x1, y1, 0] });
-    const normal = view([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], 'VEC3');
-    const uv = view([u0, v0, u1, v0, u1, v1, u0, v1], 'VEC2');
+    const normal = view(normals, 'VEC3');
+    const uv = view(uvs, 'VEC2');
     return { position, normal, uv };
   });
-  // Both triangles counter-clockwise from +z: 0 3 2 and 0 2 1 (top left, bottom left, bottom right, top right).
-  const indexBytes = new Uint8Array(new Uint16Array([0, 3, 2, 0, 2, 1]).buffer);
   const floatBytes = new Uint8Array(new Float32Array(floats).buffer);
-  bufferViews.push({ buffer: 0, byteOffset: floatBytes.byteLength, byteLength: indexBytes.byteLength });
-  accessors.push({ bufferView: bufferViews.length - 1, componentType: 5123, count: 6, type: 'SCALAR' });
-  const indices = accessors.length - 1;
+  const indexBytes = new Uint8Array(new Uint32Array(indexLists.flat()).buffer);
+  let first = 0;
+  const indexAccessors = indexLists.map((list) => {
+    bufferViews.push({ buffer: 0, byteOffset: floatBytes.byteLength + first * 4, byteLength: list.length * 4 });
+    first += list.length;
+    accessors.push({ bufferView: bufferViews.length - 1, componentType: 5125, count: list.length, type: 'SCALAR' });
+    return accessors.length - 1;
+  });
   const bytes = new Uint8Array(floatBytes.byteLength + indexBytes.byteLength);
   bytes.set(floatBytes);
   bytes.set(indexBytes, floatBytes.byteLength);
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
   const buffer = { byteLength: bytes.byteLength, uri: `data:application/octet-stream;base64,${btoa(binary)}` };
-  return { buffer, bufferViews, accessors, primitives, indices };
+  return { buffer, bufferViews, accessors, primitives, indexAccessors };
 }
 
 /**
@@ -133,7 +158,7 @@ export function textureFilterScene(): SceneDocument {
     minified: 6,
     nearest: 8,
   };
-  const { buffer, bufferViews, accessors, primitives, indices } = quadBuffers(FILTER_QUADS);
+  const { buffer, bufferViews, accessors, primitives, indexAccessors } = quadBuffers(FILTER_QUADS);
   const gltf = {
     asset: { version: '2.0', generator: 'modelshot harness textureFilterScene' },
     scene: 0,
@@ -148,7 +173,7 @@ export function textureFilterScene(): SceneDocument {
             NORMAL: primitives[k]!.normal,
             TEXCOORD_0: primitives[k]!.uv,
           },
-          indices,
+          indices: indexAccessors[k],
           material: materialOf[quad.name],
         },
       ],

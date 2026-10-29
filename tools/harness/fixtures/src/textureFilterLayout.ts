@@ -3,7 +3,8 @@
  * read them. Quads in the plane z = 0 facing +z, each showing an 8 x 8 texture: top row, left to right, the checker
  * filtered linearly, the same image nearest (a second sampler) and a linear mask with a cut-out 2 x 2 block; bottom row
  * a linear texture repeated past its image (u -2 .. 10) and the checker linear, repeated and minified (eight texels per
- * model unit).
+ * model unit). The first, linear quad is subdivided (2 x 2 cells with inner diagonals): a linear tap must not stop at a
+ * face's UV rectangle, which differs across the edge two triangles share.
  */
 export const FILTER_TEXELS = 8;
 
@@ -18,14 +19,16 @@ export interface FilterQuad {
   readonly y: readonly [number, number];
   /** UVs [u0, v0, u1, v1] in texels of the image: (u0, v0) at the top left corner, (u1, v1) at the bottom right. */
   readonly uv: readonly [number, number, number, number];
+  /** The quad is `cells` x `cells` cells of two triangles each, so its inner edges and diagonals are shared by triangles. */
+  readonly cells: number;
 }
 
 export const FILTER_QUADS: readonly FilterQuad[] = [
-  { name: 'linear', filter: 'linear', wrap: 'clamp', x: [-14, -6], y: [10, 18], uv: [0, 0, 8, 8] },
-  { name: 'nearest', filter: 'nearest', wrap: 'clamp', x: [-4, 4], y: [10, 18], uv: [0, 0, 8, 8] },
-  { name: 'cutout', filter: 'linear', wrap: 'clamp', x: [6, 14], y: [10, 18], uv: [0, 0, 8, 8] },
-  { name: 'repeat', filter: 'linear', wrap: 'repeat', x: [-14, -2], y: [0, 8], uv: [-2, 0, 10, 8] },
-  { name: 'minified', filter: 'linear', wrap: 'repeat', x: [2, 14], y: [0, 8], uv: [0, 0, 96, 64] },
+  { name: 'linear', filter: 'linear', wrap: 'clamp', x: [-14, -6], y: [10, 18], uv: [0, 0, 8, 8], cells: 2 },
+  { name: 'nearest', filter: 'nearest', wrap: 'clamp', x: [-4, 4], y: [10, 18], uv: [0, 0, 8, 8], cells: 1 },
+  { name: 'cutout', filter: 'linear', wrap: 'clamp', x: [6, 14], y: [10, 18], uv: [0, 0, 8, 8], cells: 1 },
+  { name: 'repeat', filter: 'linear', wrap: 'repeat', x: [-14, -2], y: [0, 8], uv: [-2, 0, 10, 8], cells: 1 },
+  { name: 'minified', filter: 'linear', wrap: 'repeat', x: [2, 14], y: [0, 8], uv: [0, 0, 96, 64], cells: 1 },
 ];
 
 export function filterQuad(name: FilterQuadName): FilterQuad {

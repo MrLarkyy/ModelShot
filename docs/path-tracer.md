@@ -295,7 +295,7 @@ one set of ray rules. A camera-only face (`SceneMeshGroup.cameraOnly`) counts fo
   face's UVs pass its image. The flags ride in the material row (texel 1 w, `textureSamplingFlags`). A linear texture
   ([`SceneTexture.filter`](scene-format.md#scenetexture), MS-38; flag `TEXTURE_FLAG_LINEAR`) takes its albedo
   (`materialColor` of `surfaceHit.glsl`) from the bilinear blend of the four texels around the hit, each addressed the
-  same way before the placement offset (`texelFilter` chunk, the preview's blend, cut-out taps weighing nothing); its
+  same way (the face's range one texel wider, `linearTexelRange`) before the placement offset (`texelFilter` chunk, the preview's blend, cut-out taps weighing nothing); its
   coverage stays the nearest texel's for camera, shadow, bounce and bake rays (`hitCoverage`), so cut-out shapes and
   shadows are those of the nearest texels.
   Texel edges come out area-averaged because every sample jitters its camera ray uniformly inside the pixel (a box

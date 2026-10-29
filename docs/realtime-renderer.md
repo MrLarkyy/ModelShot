@@ -141,7 +141,7 @@ without depth test lets the model cover it in either depth-key variant. A scene 
 - Linear textures (MS-38, [`SceneTexture.filter`](scene-format.md#scenetexture) `'linear'`, from a glTF sampler): the
   colour is the bilinear blend of the four texels whose centres surround the point (`linearTaps` and `bilinearColor`
   of the `texelFilter` chunk of `@modelshot/looks`, which the path tracer blends with too), each tap addressed by
-  `faceTexel` like any other, every tap weighted by its coverage (`coverageWeighted` of `texelAlpha`), so a cut-out
+  `faceTexel` within the face's range widened by one texel (`linearTexelRange`: no seam on a triangle edge two faces share), every tap weighted by its coverage (`coverageWeighted` of `texelAlpha`), so a cut-out
   texel's colour adds no fringe. Only the colour changes: coverage, the pass a fragment goes to, the alpha the seam
   taps give an opaque|cut-out edge and the closed-opaque check all stay the nearest texel's, as for a pixel-art
   texture. Minified, the colour is the mean of the blend at the same rotated 2 × 2 grid. The filter is the texture's,

@@ -53,7 +53,7 @@ vec4 materialTexel(Material m, int triangle, vec2 b) {
 // the hit for a linear texture (texelFilter); where every tap is invisible, the nearest one's colour.
 vec3 materialColor(Material m, int triangle, vec2 b) {
   if ((m.textureFlags & TEXTURE_FLAG_LINEAR) == 0) return materialTexel(m, triangle, b).rgb;
-  ivec4 range = materialTexelRange(m, triangle);
+  ivec4 range = linearTexelRange(materialTexelRange(m, triangle));
   LinearTaps taps = linearTaps(hitUv(triangle, b) * vec2(m.size));
   vec4 c00 = layerTexel(m, taps.base, range);
   vec4 c10 = layerTexel(m, taps.base + ivec2(1, 0), range);

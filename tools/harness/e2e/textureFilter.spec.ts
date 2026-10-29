@@ -165,6 +165,38 @@ async function checkProbes(page: Page, label: string): Promise<void> {
     check(same(nearest, like), `nearest (${at.join(', ')}) ${text(nearest)} = its texel ${text(like)}`);
   }
 
+  // The linear quad is two by two cells of two triangles (texel borders at 4, diagonals u = v and u + v = 4 or 8): a tap
+  // is limited by the image, not by a triangle's UV rectangle, so the blend stays the bilinear one on either side of
+  // every shared edge. Teal's weight at (u, v) over the checker's four texels, as hardware filtering gives it (0.375 or
+  // 0.625 at these points); the tone mapping bends the measured one by up to 0.2, a tap clamped to a face rectangle
+  // moves it by 0.375 or more. The rows and columns through the texel centres (u or v 3.5, 4.5) are checked above.
+  const tealWeight = (u: number, v: number): number => {
+    const [fx, fy] = [(u - 0.5) % 1, (v - 0.5) % 1];
+    const [bx, by] = [Math.floor(u - 0.5), Math.floor(v - 0.5)];
+    let weight = 0;
+    for (const [dx, dy] of [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+      [1, 1],
+    ] as const) {
+      if ((bx + dx + by + dy) % 2 !== 0) weight += (dx ? fx : 1 - fx) * (dy ? fy : 1 - fy);
+    }
+    return weight;
+  };
+  const offsets = [1.75, 2.25, 3.75, 4.25, 5.75, 6.25];
+  for (const v of offsets) {
+    for (const u of offsets) {
+      const at = await colourAt('linear', [u, v]);
+      const weight = weightToward(at, nearYellow, nearTeal);
+      const expected = tealWeight(u, v);
+      check(
+        Math.abs(weight - expected) <= 0.28,
+        `linear (${u}, ${v}) ${text(at)}: teal weight ${weight.toFixed(3)} vs bilinear ${expected.toFixed(3)}`,
+      );
+    }
+  }
+
   // The cut-out block (texels 3..4): its centre shows the backdrop of that row, right of the quad. Opaque texels beside
   // it, 0.3 texel (2 pixels) off its edge where a cut texel would weigh 20 % in the blend, but clear of the one-pixel
   // anti-aliased alpha seam, are no darker than the same colour further away: the cut texels' black adds no fringe.
