@@ -83,7 +83,7 @@ async function render(
   const probes = await page.evaluate(() => window.__msFixture?.probes ?? []);
   const body = JSON.stringify(probes);
   await test.info().attach(`${spec.name}-probes`, { body, contentType: 'application/json' });
-  writeFileSync(join(test.info().project.outputDir, `${spec.name}-probes.json`), body);
+  writeFileSync(join(test.info().outputDir, `${spec.name}-probes.json`), body);
   return { png: PNG.sync.read(png), buffer: png, probes };
 }
 

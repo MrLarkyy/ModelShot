@@ -550,7 +550,7 @@ async function video(format: 'webm' | 'mp4'): Promise<ExportVideoOutcome> {
     const file = new Uint8Array(await result.blob.arrayBuffer());
     const codec = result.format === 'mp4' ? demuxMp4(file, FPS).codec : demuxWebm(file).codec;
     const type = `${result.mimeType}; codecs="${codec}"`;
-    const played = await playVideo(file, type, 2.5 / FPS);
+    const played = await playVideo(file, type, 2, FPS);
     return {
       format: result.format,
       type,
