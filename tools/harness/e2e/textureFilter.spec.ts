@@ -271,13 +271,13 @@ async function checkProbes(page: Page, label: string): Promise<void> {
     check(same(nearest, like), `nearest (${at.join(', ')}) ${text(nearest)} = its texel ${text(like)}`);
   }
 
-  // The linear quad is two by two cells of two triangles (cell borders u = 4 and v = 4, diagonals u - v = 0 or +-4). A
-  // triangle's face rectangle is that of its last vertex, the union of the triangles at that vertex (uvRects.ts): the
-  // lower-left triangles right of u = 4 end theirs at u = 4, every other triangle's spans the border. A linear tap may
-  // read one texel past the face rectangle, as hardware filtering does, so 0.1 texel either side of a border, on a row or
-  // column through texel centres, the far texel weighs about 0.4 as anywhere else. Taps clamped to the face rectangle
-  // show the near texel alone right of u = 4: with linearTexelRange disabled, (4.1, 1.5 | 2.5 | 5.5 | 6.5) and
-  // (3.9, 6.5), whose pixel's footprint reaches over the border, fail by 0.11 to 0.48 in both renderers.
+  // The linear quad is two by two cells of two triangles (cell borders u = 4 and v = 4), the diagonal alternating per
+  // cell (textureFilterScene.ts). A triangle's face rectangle is that of its last vertex, the union of the triangles at
+  // that vertex (uvRects.ts): some triangles end theirs at a border, others span it. A linear tap may read one texel past
+  // the face rectangle, as hardware filtering does, so 0.1 texel either side of a border, on a row or column through
+  // texel centres, the far texel weighs about 0.4 as anywhere else; taps clamped to the face rectangle show the near
+  // texel alone. With linearTexelRange disabled, both renderers fail across u = 4 at (4.1, 1.5 | 2.5 | 5.5 | 6.5) and
+  // (3.9, 6.5), whose pixel's footprint reaches over the border, and across v = 4 at (5.5 | 6.5, 3.9), by 0.11 to 0.48.
   for (const across of [1.5, 2.5, 5.5, 6.5]) {
     for (const along of [3.9, 4.1]) {
       for (const axis of ['u', 'v'] as const) {

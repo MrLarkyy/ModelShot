@@ -67,13 +67,16 @@ function quadBuffers(quads: readonly FilterQuad[]) {
       }
     }
     // Both triangles of a cell counter-clockwise from +z: top left, bottom left, bottom right and top left, bottom
-    // right, top right.
+    // right, top right; in alternate cells the other diagonal: top left, bottom left, top right and bottom left, bottom
+    // right, top right. A triangle's face rectangle is its last vertex's (uvRects.ts), so the alternation leaves
+    // triangles whose rectangle ends at a cell border both across u (cells right of the border) and across v.
     const indices: number[] = [];
     for (let j = 0; j < n; j++) {
       for (let i = 0; i < n; i++) {
         const tl = j * (n + 1) + i;
         const bl = tl + n + 1;
-        indices.push(tl, bl, bl + 1, tl, bl + 1, tl + 1);
+        if ((i + j) % 2 === 0) indices.push(tl, bl, bl + 1, tl, bl + 1, tl + 1);
+        else indices.push(tl, bl, tl + 1, bl, bl + 1, tl + 1);
       }
     }
     indexLists.push(indices);
