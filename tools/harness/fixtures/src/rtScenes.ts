@@ -19,6 +19,7 @@ import { cutoutEdge } from './cutoutEdge';
 import { edgesBbmodel, edgesHostileScene, edgesLoadScene, edgesScene, edgesWeldScene } from './edgesScene';
 import { MODEL_VIEW_LOOK, type Point3 } from './modelViewCamera';
 import { holdingCube, playerScene, posedPlayer } from './playerScenes';
+import { textureFilterScene } from './textureFilterScene';
 import { textureWrapScene } from './textureWrapScene';
 import { worldLoadScene } from './worldLoadScene';
 
@@ -81,6 +82,7 @@ export const RT_SCENE_NAMES = [
   'gltf-contact',
   'world-200k',
   'texture-wrap',
+  'texture-filter',
 ] as const;
 export type RtSceneName = (typeof RT_SCENE_NAMES)[number];
 
@@ -141,7 +143,9 @@ export type RtLook =
   | 'checker'
   | 'contact'
   | 'edge'
-  | 'wrap';
+  | 'wrap'
+  | 'filter'
+  | 'filter-far';
 
 /** Fixed cameras: the model-view fixture's (same image positions as its probes) and two views of a horizontal pair. */
 const LOOKS: Readonly<Record<RtLook, { eye: Point3; target: Point3; near: number; far: number }>> = {
@@ -175,6 +179,11 @@ const LOOKS: Readonly<Record<RtLook, { eye: Point3; target: Point3; near: number
   edge: { eye: [4.84, 3.79, 13.3], target: [0, 0, 0], near: 5, far: 40 },
   // The texture-wrap boxes' south faces from 10 degrees above, columns vertical: about 5 pixels per texel at 256 px.
   wrap: { eye: [-2, 26.7, 66.3], target: [-2, 15, 0], near: 40, far: 150 },
+  // The texture-filter quads from 7 degrees above, nearly square on: about 7 pixels per texel of the 8 x 8 images at
+  // 256 px, the minified quad's 8 texels per unit about 1 pixel each.
+  filter: { eye: [0, 15, 50], target: [0, 9, 0], near: 30, far: 80 },
+  // Three times as far: about 2.4 pixels per texel, the minified quad's 3 texels per pixel.
+  'filter-far': { eye: [0, 27, 150], target: [0, 9, 0], near: 100, far: 200 },
 };
 
 export const DEFAULT_RT_VIEW: RtView = {
@@ -262,6 +271,11 @@ export const RT_VARIANTS: Readonly<Record<string, Partial<RtView>>> = {
   // wrap_mode); `-inside` is the same image position under the exact depth key, whose mesh pass has the most varyings.
   'texture-wrap': { scene: 'texture-wrap', look: 'wrap' },
   'texture-wrap-inside': { scene: 'texture-wrap', look: 'wrap', depth: 'inside' },
+  // MS-38: glTF textures filtered linearly beside the same image nearest, a linear cut-out mask, a linear texture
+  // repeated past its image and one minified; `-far` minifies that one further, about 3 texels per pixel (realtime
+  // only: the rotated grid's mean of the blend).
+  'texture-filter': { scene: 'texture-filter', look: 'filter' },
+  'texture-filter-far': { scene: 'texture-filter', look: 'filter-far' },
 };
 
 /** The look of a view: its preset, with the rim light black under `rim=0`. */
@@ -425,6 +439,8 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return worldLoadScene(load(showcaseSource));
     case 'texture-wrap':
       return textureWrapScene();
+    case 'texture-filter':
+      return textureFilterScene();
     case 'outline-hull-board': {
       // The shell keeps its vertices, so the camera fits the same bounds as outline-hull, but draws no triangle.
       const doc = load(outlineHullSource);

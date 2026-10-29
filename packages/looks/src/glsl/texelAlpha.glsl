@@ -15,3 +15,11 @@ int texelCoverage(float alpha, int mode, int cutoffByte) {
   if (mode == ALPHA_MODE_MASK || k >= 255) return COVERAGE_OPAQUE;
   return COVERAGE_PARTIAL;
 }
+
+// A texel weighed by its coverage for a blend of texels, premultiplied: invisible 0, opaque 1, partial its alpha. In
+// the opaque mode every texel is opaque, so alpha never darkens or fringes it; a cut-out texel's colour adds nothing.
+vec4 coverageWeighted(vec4 c, int mode, int cutoffByte) {
+  int coverage = texelCoverage(c.a, mode, cutoffByte);
+  float w = coverage == COVERAGE_INVISIBLE ? 0.0 : coverage == COVERAGE_OPAQUE ? 1.0 : c.a;
+  return vec4(c.rgb * w, w);
+}

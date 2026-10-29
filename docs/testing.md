@@ -84,10 +84,10 @@ no state; with one worker nothing runs at once, it only lets a shard take part o
 depends on `golden` (a dependency put every golden test into the bench's shard: shard 1 had all 219 tests, 2-4
 none). Playwright shards a project into contiguous ranges by test count, not by time, so a block of slow tests
 lands in one or two shards; each block is its own project with its own shards. `golden` runs `environment`, `export`,
-`golden*`, `modelView`, `realtime.spec.ts` and `textureWrap.spec.ts` without the tests titled `baked lighting`
+`golden*`, `modelView`, `realtime.spec.ts`, `textureFilter.spec.ts` and `textureWrap.spec.ts` without the tests titled `baked lighting`
 (`grepInvert`), which `bake` runs, apart from the three `@timing` ones, which `bench` runs, and without the one titled
 `like the baked preview`; `golden-pt` runs `pathtracer.spec.ts` without the tests titled `like the baked preview`,
-which `pair` runs (the 14 preview-vs-render pairing tests of `pathtracer.spec.ts` and `textureWrap.spec.ts`). Each test is in exactly one project, and the plain `playwright test` runs every project, while `pnpm test` runs them in the two phases above (`bench` last, alone).
+which `pair` runs (the 15 preview-vs-render pairing tests of `pathtracer.spec.ts`, `textureFilter.spec.ts` and `textureWrap.spec.ts`). Each test is in exactly one project, and the plain `playwright test` runs every project, while `pnpm test` runs them in the two phases above (`bench` last, alone).
 
 Shard sizes (MS-39, `--list --project <p> --shard <k>/<n>`), each with the sum of its tests' CI times: the per-test
 times of main's run 39878163371 (MS-30's merge, so its three cut-out seam tests are counted), MS-22's 31 export tests
@@ -102,6 +102,8 @@ differ by up to 2x. The build takes about 6 s (`bake-2` in run 39878163371: a 14
 | `pair`      |    13 |      3 | 5 / 4 / 4                   | 5.3 / 2.8 / 2.5                   |
 | `bake`      |    25 |      3 | 9 / 8 / 8                   | 6.4 / 4.3 / 3.5                   |
 | `bench`     |     1 |      1 | 1                           | its own job                       |
+
+The counts are MS-39's; `pair` has since grown to 15 tests (MS-52's and MS-38's pairs) in the same 3 shards.
 
 Playwright install: `playwright install --with-deps` took 12-15 s on most jobs but 4.5 to 9.4 minutes on some (main run
 40368207797: `bake-3`, `golden-2`, `golden-pt-5`; run 39878163371: 13 s to 9.7 minutes). The browser download is not the slow part:
@@ -133,9 +135,9 @@ came near or over it; the worst of runs 39594658979 and 39612706830 per test: th
 `rt-bake-cutout-checker` and its fallback over 30 s, `rt-bake-turntable-y030` over 30 s, `rt-bake-alpha-plane` 24.5 s;
 the path-tracer determinism batches test 35.0 s (over 30 s), its same-seed test 15.2 s, `pt-alpha-plane` 22.4 s, the
 transparency tests up to 22.5 s, the lifetime tests 14.9-18.6 s, the 10 000 coincident cubes test 10.0 s. A suite or
-test whose CI time reaches a third of the default carries a timeout: 180 s for the baked goldens (bakes took 33-42 s in run 39624802150), 300 s for the baked lighting describe, 720 s for its determinism test (1.6 minutes on a normal runner, over 3 on a slow one, 5.2 at six local workers), 300 s for the baked-preview pairing tests (up to 1.3 minutes, about 2.6 on a slow VM), 120 s for the path-tracer goldens, determinism and lifetime describes and the coincident cubes test, 180 s for the
+test whose CI time reaches a third of the default carries a timeout: 180 s for the baked goldens (bakes took 33-42 s in run 39624802150), 300 s for the baked lighting describe, 720 s for its determinism test (1.6 minutes on a normal runner, over 3 on a slow one, 5.2 at six local workers), 300 s for the baked-preview pairing tests (up to 1.3 minutes, about 2.6 on a slow VM; MS-38's texture-filter pairing test 53.8 s at six local workers), 120 s for the texture-filter render golden (3.1 s at six local workers), 120 s for the path-tracer goldens, determinism and lifetime describes and the coincident cubes test, 180 s for the
 transparency describe (66 s at six local workers), 300 s for the exact-key silhouette test (29.5 s serial), 600 s for the
-exact-key catcher test (49 s serial) and the preset rim probes (42.6 s serial); each at least 3x the worst CI time and twice the worst local time. A
+exact-key catcher test (49 s serial) and the preset rim probes (42.6 s serial), 120 s for the realtime shimmer test (`texel anti-aliasing halves shimmer`, eight renders: 22-35 s alone locally, 30.3 and 31.1 s in the full serial suite, 24.1 s at six local workers); each at least 3x the worst CI time and twice the worst local time. A
 hang now fails after that time, not after the 60 s default; several hangs in one
 shard can reach the 20-minute job limit, and the job is then cancelled instead of reporting the failures.
 
@@ -582,6 +584,35 @@ the one the other mode would read; 0 `sentinelPixels` in all three images. Its p
 below, limit kept in the spec so `pathtracer.spec.ts` keeps its list): framing 0 mismatches (3 444), radiance 46 px,
 0.00070, 0.671, limit 0.00088, 0.839 (measured x 1.25).
 
+**Texture filter** (MS-38, `e2e/textureFilter.spec.ts`, project `golden`): `fixtures/src/textureFilterScene.ts` builds
+a glTF in code (generated 8 x 8 PNGs, no asset file) and loads it through `loadGltf`, so the filters come from its
+samplers: quads facing +z (`textureFilterLayout.ts`) showing a yellow/teal checker under a LINEAR sampler and the same
+image under a NEAREST one (two scene textures sharing bytes), a LINEAR `MASK` texture with a cut-out 2 x 2 block whose
+texels are black, a LINEAR texture shown at u -2 .. 10 with `wrap: 'repeat'` set on the loaded document (column 0
+white, column 7 orange), and the checker LINEAR and repeated at 8 texels per unit (minified); a sentinel image follows
+each linear texture, so it lies right of it in the path tracer's texture layers. Variants `texture-filter` (look
+`filter`, about 7 pixels per texel) and `texture-filter-far` (look `filter-far`, three times as far: the minified quad
+at about 3 texels per pixel, realtime only). Goldens `rt-texture-filter`, `rt-texture-filter-far` (default tolerance)
+and `pt-texture-filter.s1.n64` (threshold 0). Probes read the one pixel at a `filterQuadPoint` (a 3 x 3 mean flattens
+the blend's peak at a texel centre and reaches the one-pixel alpha seam), in the preview and the render: at a checker
+texel centre the linear quad's neighbours weigh at most 0.25 in linear light (measured up to 0.091 preview, 0.147
+render; taps shifted by half a texel would weigh 0.5); a quarter texel off the centre and on the seam the linear quad
+lies a tenth or more of the way between the two texels in every channel where they differ by over 40 levels, the
+nearest quad equals its texel (hue >= 0.995, luminance within 8); the cut block's centre equals the backdrop of its row
+within 10 levels, and 0.3 texel off each side of the block the mask is no darker than 1.5 texels further away (within
+3 levels; measured equal: the black of the cut texels adds no fringe); on the repeat quad u 8.5 reads column 0, u -0.5
+column 7, u 8 lies between them (the blend crosses the wrap seam); 0 `sentinelPixels`. Far view: the minified quad's
+inner 60 % stays within 5.3 levels of its mean in every channel (measured 4.2, x 1.25) and 0 sentinel pixels. Its
+preview-vs-render pair (limit kept in the spec, as for texture wrap): framing 0 mismatches (2 600), radiance 7 px,
+0.00011, 0.396, limit 0.00014, 0.495 (measured x 1.25).
+
+Seam regression (same spec): the linear quad is 2 x 2 cells with alternating diagonals, so some triangles' last-vertex
+face rects end at the cell border u = 4 or v = 4. 16 probes sit 0.1 texel either side of those borders (u 3.9 / 4.1
+and v 3.9 / 4.1) on texel-centre rows and columns (1.5, 2.5, 5.5, 6.5). Each expected weight is read from the measured
+tone-mapping curve of the same row or column (texel centres 1.5 to 2.5), not from the ideal bilinear weight; tolerance
+0.035 (measured max 0.007 preview, 0.028 render, x 1.25). With `linearTexelRange` disabled 7 of the 16 probes fail in
+both renderers.
+
 ## Path-tracer goldens
 
 Fix the seed, the sample count, the resolution and the camera. The accumulation stops after exactly N samples, never
@@ -620,6 +651,7 @@ golden says them (`-x2-denoised`).
 | `pt-gltf-nodes-y030.s1.n128`           | scene-nodes.gltf, perspective 35°, pitch 20°, yaw 30° | golden; sentinel bleeding; catcher; pair (MS-39) |
 | `pt-obj-shapes-y030.s1.n128`           | shapes.obj, same view                                 | golden; pair (MS-39)                             |
 | `pt-texture-wrap.s1.n64`               | generated wrap boxes, `wrap` look (MS-52)             | golden; wrap and frame probes; sentinel; pair    |
+| `pt-texture-filter.s1.n64`             | generated glTF filter quads, `filter` look (MS-38)    | golden; filter and fringe probes; sentinel; pair |
 
 MS-40 (`geometry worker`): the accumulated float sums (`readAccumulation`, base64) of the `edges` view at 16 samples
 and of the 200 000-triangle `large-order` document at 4 samples are the same bytes with the geometry worker and with
@@ -730,6 +762,7 @@ Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with r
 | `obj-shapes-y030`          | 0 (1 852)                           | 246, 0.00375, 0.469 (MS-54; MS-39 245, 0.00374, 0.470)  | 0.00468, 0.587 (MS-54; was 0.00468, 0.588) |
 | `gltf-nodes-y030`          | 0 (2 218)                           | 319, 0.00487, 0.955 (MS-54; MS-39 320, 0.00488, 0.956)  | 0.00609, 1.194 (MS-54; was 0.0061, 1.2)    |
 | `texture-wrap`             | 0 (3 444)                           | 46, 0.00070, 0.671 (MS-52, new; textureWrap.spec.ts)    | 0.00088, 0.839                             |
+| `texture-filter`           | 0 (2 600)                           | 7, 0.00011, 0.396 (MS-38, new; textureFilter.spec.ts)   | 0.00014, 0.495                             |
 
 MS-30 (anti-aliased cut-out seams in the preview's MSAA frames, as the render anti-aliases them by sampling)
 re-measured every pair: `turntable-y030`, `iso`, `alpha-plane` and `cutout-checker` came closer to the render (rows
@@ -1231,6 +1264,9 @@ round 7); its max was 750 ms then.
   embed-frame 195 100 (MS-52: the frame grew with MS-54, MS-56 and MS-52's texture wrap to 177 303 B, over the 177 200;
   re-measured plus 10 %, rounded up to 100).
   `app` 205 300 and `app-entry` 66 800 (MS-23: the app opens, looks, renders and exports; measured 186 590 and 60 655 B, gzip level 9, plus 10 %, rounded up to 100). The app-entry row is what loads before a model is opened; the lazy tracer and export chunks count only in `app`.
+  `app` 226 300 and `app-entry` 73 800 (MS-38: the app grew with later tasks and MS-38's linear texture filtering, its
+  shared GLSL chunk in both renderers, to 205 708 B, over the 205 300; the entry carries the preview's copy of that
+  chunk and with MS-35 measured 67 052 B, over the 66 800; re-measured plus 10 %, rounded up to 100).
   `site` 11 600 (MS-31: the landing page's js, css and html, gzip level 9; measured 9595, 9595, 9595 bytes, plus about
   2 kB) and `site-assets` 110 400 (its woff2 fonts and svg, each gzipped; measured 100 311 three times, times 1.1
   rounded up). The landing page's browser tests are described in docs/site.md.

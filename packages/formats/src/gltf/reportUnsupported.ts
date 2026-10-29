@@ -119,7 +119,7 @@ export const GLTF_PROPERTY_HANDLING: Readonly<
   },
   buffer: { uri: 'read', byteLength: 'read', name: 'ignored', extensions: 'reported', extras: 'ignored' },
   sampler: {
-    magFilter: 'reported',
+    magFilter: 'read',
     minFilter: 'reported',
     wrapS: 'reported',
     wrapT: 'reported',

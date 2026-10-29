@@ -174,7 +174,7 @@ describe('convertMaterials', () => {
     ]);
   });
 
-  it('reports a linear filter once per sampler, and UVs outside 0..1 under a repeating sampler', () => {
+  it('reports magFilter NEAREST with a linear minFilter once per sampler, and UVs outside 0..1 under a repeating sampler', () => {
     const material = (index: number) => ({ pbrMetallicRoughness: { baseColorTexture: { index } } });
     const outside: TestPrimitive = { ...TRIANGLE, uvs: [0, 0, 2, 0, 0, 1] };
     const doc = gltfDoc({
@@ -192,17 +192,93 @@ describe('convertMaterials', () => {
         { source: 0, sampler: 1 },
       ],
       samplers: [
-        { magFilter: 9729, minFilter: 9987 },
+        { magFilter: 9728, minFilter: 9987 },
         { magFilter: 9728, wrapS: 33071, wrapT: 33071 },
       ],
       images: [image()],
     });
-    const { warnings } = loadGltf(json(doc));
+    const { scene, warnings } = loadGltf(json(doc));
     expect(warnings.map((w) => [w.code, w.path])).toEqual([
       ['TEXTURE_FILTER_NEAREST', '$.samplers[0]'],
       ['UV_WRAP_CLAMPED', '$.materials[0]'],
       ['UV_WRAP_CLAMPED', '$.materials[1]'],
     ]);
+    expect(scene.textures).toHaveLength(1);
+    expect(scene.textures[0]).not.toHaveProperty('filter');
+  });
+
+  describe('sampler filters', () => {
+    /** The scene textures and warnings of one textured triangle per sampler, all on one image. */
+    const loadSamplers = (samplers: (Json | null)[]) => {
+      const textures = samplers.map((sampler, k) => (sampler ? { source: 0, sampler: k } : { source: 0 }));
+      return loadMaterials(
+        samplers.map((_, index) => ({ pbrMetallicRoughness: { baseColorTexture: { index } } })),
+        { textures, samplers: samplers.map((sampler) => sampler ?? {}), images: [image()] },
+      );
+    };
+    const filterOf = (sampler: Json | null) => {
+      const { scene, warnings } = loadSamplers([sampler]);
+      return [scene.textures[0]?.filter ?? 'absent', warnings.map((w) => w.code)];
+    };
+
+    it('magFilter LINEAR is linear, whatever the minFilter, without a warning', () => {
+      expect(filterOf({ magFilter: 9729 })).toEqual(['linear', []]);
+      expect(filterOf({ magFilter: 9729, minFilter: 9728 })).toEqual(['linear', []]);
+      expect(filterOf({ magFilter: 9729, minFilter: 9987 })).toEqual(['linear', []]);
+    });
+
+    it('no magFilter follows a linear-family minFilter', () => {
+      for (const minFilter of [9729, 9985, 9986, 9987]) expect(filterOf({ minFilter })).toEqual(['linear', []]);
+      expect(filterOf({ minFilter: 9728 })).toEqual(['absent', []]);
+      expect(filterOf({ minFilter: 9984 })).toEqual(['absent', []]);
+    });
+
+    it('magFilter NEAREST with a linear minFilter is nearest and warns; nearest alone or no filter writes no key', () => {
+      expect(filterOf({ magFilter: 9728, minFilter: 9729 })).toEqual(['absent', ['TEXTURE_FILTER_NEAREST']]);
+      expect(filterOf({ magFilter: 9728 })).toEqual(['absent', []]);
+      expect(filterOf({ magFilter: 9728, minFilter: 9728 })).toEqual(['absent', []]);
+      expect(filterOf({})).toEqual(['absent', []]);
+      expect(filterOf(null)).toEqual(['absent', []]);
+    });
+
+    it('a non-number filter fails as before', () => {
+      expectGltfError(
+        json(
+          gltfDoc({
+            meshes: [[{ ...TRIANGLE, material: 0 }]],
+            materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }],
+            textures: [{ source: 0, sampler: 0 }],
+            samplers: [{ magFilter: 'LINEAR' }],
+            images: [image()],
+          }),
+        ),
+        'INVALID_FIELD',
+        '$.samplers[0].magFilter',
+      );
+    });
+
+    it('one image under a nearest and a linear sampler is two scene textures sharing its bytes', () => {
+      const { scene } = loadSamplers([{ magFilter: 9728 }, { magFilter: 9729 }, { magFilter: 9729 }, null]);
+      expect(scene.textures).toHaveLength(2);
+      const [nearest, linear] = scene.textures;
+      expect(nearest).not.toHaveProperty('filter');
+      expect(linear).toEqual({ ...nearest, filter: 'linear' });
+      expect(linear!.bytes).toBe(nearest!.bytes);
+      expect(scene.materials.map((m) => m.texture)).toEqual([0, 1, 1, 0]);
+    });
+
+    it('a missing image stays unfiltered, so its placeholder stays crisp', () => {
+      const doc = gltfDoc({
+        meshes: [[{ ...TRIANGLE, material: 0 }]],
+        materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }],
+        textures: [{ source: 0, sampler: 0 }],
+        samplers: [{ magFilter: 9729 }],
+        images: [{ uri: 'absent.png' }],
+      });
+      const { scene } = loadGltf(json(doc));
+      expect(scene.textures[0]).toMatchObject({ missing: true });
+      expect(scene.textures[0]).not.toHaveProperty('filter');
+    });
   });
 
   it('reads an image from a buffer view (as in a GLB)', () => {

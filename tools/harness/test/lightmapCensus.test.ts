@@ -35,6 +35,8 @@ const CENSUS: Readonly<Record<string, { world: readonly string[]; key?: string }
   'obj-shapes-y030': { world: ['floor', 'star'] },
   // MS-52: the wrap boxes, baked by textureWrap.spec.ts's pair test; every face per texel.
   'texture-wrap': { world: [], key: '8aeb28781ff695aa' },
+  // MS-38: the filter quads, baked by textureFilter.spec.ts's pair test; every quad per texel but the subdivided linear one (world chart: shared vertices).
+  'texture-filter': { world: ['linear'], key: 'fc199f9d3046e479' },
 };
 
 describe('lightmap chart census of the baked fixture views', () => {

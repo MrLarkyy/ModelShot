@@ -1,4 +1,4 @@
-import type { SceneMaterial, SceneTexture } from '@modelshot/scene';
+import type { SceneMaterial, SceneTexture, SceneTextureFilter } from '@modelshot/scene';
 import { BLEND_ALPHA_CUTOFF } from '../alpha/blendAlphaCutoff';
 import { quoteValue } from '../text/quoteValue';
 import { decodeDataUri } from '../dataUri/decodeDataUri';
@@ -54,15 +54,18 @@ export interface MaterialSources {
 }
 
 const ALPHA_MODES = { OPAQUE: 'opaque', MASK: 'mask', BLEND: 'blend' } as const;
-const LINEAR_FILTERS = [9729, 9985, 9986, 9987];
+const NEAREST = 9728;
+const LINEAR = 9729;
+const LINEAR_FILTERS = [LINEAR, 9985, 9986, 9987];
 const CLAMP_TO_EDGE = 33071;
 const WHITE = [1, 1, 1, 1] as const;
 
 /**
  * glTF materials as scene materials, one for one: alpha mode and cutoff (`BLEND` gets `BLEND_ALPHA_CUTOFF`),
  * `doubleSided` for the mesh groups, the base colour texture (PNG only; read from a `data:` URI, a buffer view or a
- * picked file), or, without a texture, a generated 1×1 PNG of the base colour factor in sRGB, so every renderer shows
- * it with no material field of its own. Everything else a material holds is reported, never silently dropped.
+ * picked file) with its sampler's filter (`readSampler`), or, without a texture, a generated 1×1 PNG of the base colour
+ * factor in sRGB, so every renderer shows it with no material field of its own. Everything else a material holds is
+ * reported, never silently dropped.
  */
 export function convertMaterials(json: JsonObject, sources: MaterialSources): ConvertedMaterials {
   const { limits, warnings } = sources;
@@ -76,15 +79,23 @@ export function convertMaterials(json: JsonObject, sources: MaterialSources): Co
   const images = readList(json, 'images', '$', textureLimit('images'));
   const samplers = readList(json, 'samplers', '$', textureLimit('samplers'));
   const textures: SceneTexture[] = [];
-  const imageTextures = new Map<number, number>();
+  const imagesRead = new Map<number, SceneTexture>();
+  // Keyed by image and filter: one image a nearest and a linear sampler both use becomes two scene textures sharing
+  // its bytes.
+  const imageTextures = new Map<string, number>();
   const colourTextures = new Map<string, number>();
   const reportedSamplers = new Set<number>();
 
-  const imageTexture = (image: number): number => {
-    const known = imageTextures.get(image);
+  const imageTexture = (image: number, filter: SceneTextureFilter): number => {
+    const key = `${image} ${filter}`;
+    const known = imageTextures.get(key);
     if (known !== undefined) return known;
-    textures.push(readImage(images, image, sources));
-    imageTextures.set(image, textures.length - 1);
+    const read = imagesRead.get(image) ?? readImage(images, image, sources);
+    imagesRead.set(image, read);
+    // Only a drawn image is filtered: the placeholder of a missing one stays crisp. Nearest writes no key, so a
+    // pixel-art file loads exactly as before filters existed.
+    textures.push(filter === 'linear' && !read.missing ? { ...read, filter } : read);
+    imageTextures.set(key, textures.length - 1);
     return textures.length - 1;
   };
   const colourTexture = (factor: readonly number[]): number => {
@@ -122,20 +133,21 @@ export function convertMaterials(json: JsonObject, sources: MaterialSources): Co
       const gltfTexture = readObject(gltfTextures[textureIndex], texturePath);
       const image = readOptionalIndex(gltfTexture, 'source', texturePath, images.length);
       const sampler = readOptionalIndex(gltfTexture, 'sampler', texturePath, samplers.length);
-      const samplerInfo = sampler === undefined ? { linear: false, wraps: true } : readSampler(samplers, sampler);
-      if (samplerInfo.linear && sampler !== undefined && !reportedSamplers.has(sampler)) {
+      const samplerInfo: SamplerInfo =
+        sampler === undefined ? { filter: 'nearest', minLinear: false, wraps: true } : readSampler(samplers, sampler);
+      if (samplerInfo.minLinear && sampler !== undefined && !reportedSamplers.has(sampler)) {
         reportedSamplers.add(sampler);
         warnings.add(
           'TEXTURE_FILTER_NEAREST',
           childPath('$.samplers', sampler),
-          'a linear filter is requested; pixel art is drawn with nearest sampling',
+          'magFilter NEAREST with a linear minFilter; one filter per texture, so it is drawn nearest at every distance',
         );
       }
       if (image === undefined) {
         warnings.add('UNSUPPORTED_IMAGE', texturePath, 'no PNG source (only an extension image); drawn missing');
         textures.push(missingTexture(`texture ${textureIndex}`));
         texture = textures.length - 1;
-      } else texture = imageTexture(image);
+      } else texture = imageTexture(image, samplerInfo.filter);
       if (factor.some((value, k) => value !== WHITE[k])) {
         warnings.add(
           'BASE_COLOR_FACTOR_IGNORED',
@@ -201,16 +213,31 @@ function reportMaterialFeatures(material: JsonObject, pbr: JsonObject, path: str
   }
 }
 
-function readSampler(samplers: readonly unknown[], index: number): { linear: boolean; wraps: boolean } {
+interface SamplerInfo {
+  readonly filter: SceneTextureFilter;
+  /** magFilter NEAREST beside a linear-family minFilter, which one filter per texture cannot honour. */
+  readonly minLinear: boolean;
+  readonly wraps: boolean;
+}
+
+/**
+ * The texture's filter from the sampler: magFilter LINEAR, or no magFilter and a linear-family minFilter, is linear;
+ * anything else nearest (no sampler or no filters: the pixel-art default). The magnification filter decides, since
+ * that is where nearest and linear differ on screen; minification averages texels in both modes.
+ */
+function readSampler(samplers: readonly unknown[], index: number): SamplerInfo {
   const path = childPath('$.samplers', index);
   const sampler = readObject(samplers[index], path);
-  const filter = (key: string): number | undefined => {
-    const value = field(sampler, key);
-    return value === undefined ? undefined : readNumber(value, childPath(path, key));
+  const value = (key: string): number | undefined => {
+    const raw = field(sampler, key);
+    return raw === undefined ? undefined : readNumber(raw, childPath(path, key));
   };
-  const linear = [filter('magFilter'), filter('minFilter')].some((f) => f !== undefined && LINEAR_FILTERS.includes(f));
-  const wraps = [filter('wrapS'), filter('wrapT')].some((wrap) => wrap === undefined || wrap !== CLAMP_TO_EDGE);
-  return { linear, wraps };
+  const mag = value('magFilter');
+  const min = value('minFilter');
+  const minIsLinear = min !== undefined && LINEAR_FILTERS.includes(min);
+  const linear = mag === undefined ? minIsLinear : mag === LINEAR;
+  const wraps = [value('wrapS'), value('wrapT')].some((wrap) => wrap === undefined || wrap !== CLAMP_TO_EDGE);
+  return { filter: linear ? 'linear' : 'nearest', minLinear: mag === NEAREST && minIsLinear, wraps };
 }
 
 function readImage(images: readonly unknown[], index: number, sources: MaterialSources): SceneTexture {

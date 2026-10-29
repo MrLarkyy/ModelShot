@@ -58,6 +58,21 @@ describe('shader sources', () => {
     expect(shaderProgramSource('fallback').fragment).toContain('vec3 agxToneMap(vec3 linearColor)');
   });
 
+  it('filters a linear texture through the shared texelFilter chunk on faceTexel-addressed taps in every mesh pass', () => {
+    for (const name of ['opaque', 'oitAccum', 'fallback'] as const) {
+      const { fragment } = shaderProgramSource(name);
+      expect(fragment).toContain(
+        'vec3 bilinearColor(vec4 c00, vec4 c10, vec4 c01, vec4 c11, vec2 f, int mode, int cutoffByte, vec3 fallback)',
+      );
+      expect(fragment).toContain('const int TEXTURE_FLAG_LINEAR = 2;');
+      expect(fragment).toContain('if ((flags & TEXTURE_FLAG_LINEAR) != 0) {');
+      // The taps go through fetchTexel (faceTexel); only the colour changes, never the coverage.
+      expect(fragment.match(/fetchTexel\(tex, taps\.base/g)).toHaveLength(4);
+      expect(fragment).toContain('s.premultiplied.rgb = color * s.premultiplied.a;');
+      expect(fragment.split('vec4 coverageWeighted(').length).toBe(2);
+    }
+  });
+
   it('presents the sample history of an exact frame as the mean of its filled layers in linear HDR, before AgX', () => {
     const { fragment } = shaderProgramSource('presentSamples');
     expect(fragment).toContain('uniform sampler2DArray u_samples;');

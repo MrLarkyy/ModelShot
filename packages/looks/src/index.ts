@@ -43,6 +43,7 @@ export {
 } from './texelAlpha';
 export {
   MAX_TEXTURE_FLAG_FRAMES,
+  TEXTURE_FLAG_LINEAR,
   TEXTURE_FLAG_REPEAT,
   TEXTURE_FRAMES_SHIFT,
   textureSamplingFlags,

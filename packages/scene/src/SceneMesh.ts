@@ -44,7 +44,8 @@ export interface SceneMesh {
   readonly uvs: Float32Array;
   /**
    * 4 floats per vertex `[uMin, vMin, uMax, vMax]`: the UV rectangle of the vertex's face, normalised like `uvs`, so a
-   * renderer can clamp texel anti-aliasing to the face and never sample a neighbouring atlas region.
+   * renderer can clamp texel anti-aliasing and nearest taps to the face; linear taps may read one texel past it, in the
+   * same image.
    */
   readonly uvRects: Float32Array;
   readonly indices: Uint32Array;
