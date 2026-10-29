@@ -976,51 +976,65 @@ test.describe('the render frames and lights like the baked preview', () => {
 });
 
 /**
- * Marketplace's view-relative rim on the held-cube player at 512 px, pitch 20, from the review yaw 210 and the app's
+ * A preset's view-relative rim on the held-cube player at 512 px, pitch 20, from the review yaw 210 and the app's
  * default 30, in the baked preview and the render (16 samples). The silhouette is the outline band (a backdrop pixel
  * within 2 px), the interior the rest of the model. A near-white line (every channel above 200) on the outline: at
- * least the measured count / 1.25, preview and render within 25 % of each other. The interior keeps its texels: its
- * near-white pixels at most the measured count x 1.25 (a broad rim washed upward faces white: 4 097 in round 4), its
- * blown-out ones (every channel 250 or more) at most the measured share x 1.25 and never 2 %. The saturated test skin
- * is where a diffuse rim gave no white at all (docs/testing.md, look presets).
+ * least the measured count / 1.25 (the smaller of preview and render), preview and render within 25 % of each other.
+ * The interior keeps its texels: its near-white pixels at most the measured count x 1.25 (a broad rim washed upward
+ * faces white: 4 097 in round 4), its blown-out ones (every channel 250 or more) at most the measured share x 1.25 and
+ * never 2 %. The saturated test skin is where a diffuse rim gave no white at all (docs/testing.md, look presets).
  */
-const RIM_PROBES: Readonly<Record<number, { outlineFloor: number; interiorWhite: number; blownShare: number }>> = {
-  // Measured outline white 575 preview / 548 render, interior white 309 / 394, interior blown out 0 / 0.
-  210: { outlineFloor: 438, interiorWhite: 493, blownShare: 0 },
-  // Measured outline white 412 / 448, interior white 101 / 113, interior blown out 0 / 0.
-  30: { outlineFloor: 330, interiorWhite: 141, blownShare: 0 },
+const RIM_PROBES: Readonly<
+  Record<string, Readonly<Record<number, { outlineFloor: number; interiorWhite: number; blownShare: number }>>>
+> = {
+  marketplace: {
+    // Measured outline white 575 preview / 548 render, interior white 309 / 394, interior blown out 0 / 0; MS-35 (the
+    // preview converged) 574 / 548, 375 / 394, 0 / 0.
+    210: { outlineFloor: 438, interiorWhite: 493, blownShare: 0 },
+    // Measured outline white 412 / 448, interior white 101 / 113, interior blown out 0 / 0; MS-35 453 / 448, 105 / 113.
+    30: { outlineFloor: 330, interiorWhite: 141, blownShare: 0 },
+  },
+  // MS-35, the rim from behind (colour 8), the preview converged: measured outline white 371 preview / 371 render,
+  // interior white 194 / 187, blown out 0 / 0.
+  rim: {
+    210: { outlineFloor: 296, interiorWhite: 243, blownShare: 0 },
+    // Measured outline white 395 / 403, interior white 134 / 137, blown out 0 / 0.
+    30: { outlineFloor: 316, interiorWhite: 172, blownShare: 0 },
+  },
 };
 
-test.describe('the Marketplace rim draws a white silhouette line and leaves the faces their texels', () => {
-  for (const [yaw, limits] of Object.entries(RIM_PROBES)) {
-    test(`yaw ${yaw}: preview and render`, async ({ page }, testInfo) => {
-      test.setTimeout(300_000);
-      const query = `variant=preset-marketplace&yaw=${yaw}&size=512`;
-      const preview = decodePng(encodeFlipped(await openFixture(page, `/rt.html?${query}`)));
-      const traced = (await render(page, `${query}&seed=1&samples=16`)).image;
-      const measured = [preview, traced].map((image) => {
-        const { silhouette, interior } = silhouettePixels(image, { backdropTolerance: 4, reach: 2 });
-        return {
-          outline: whiteCount(silhouette, 200),
-          inside: whiteCount(interior, 200),
-          blown: whiteCount(interior, 249) / interior.length,
-        };
+test.describe('the preset rims draw a white silhouette line and leave the faces their texels', () => {
+  for (const [preset, yaws] of Object.entries(RIM_PROBES)) {
+    for (const [yaw, limits] of Object.entries(yaws)) {
+      test(`${preset}, yaw ${yaw}: preview and render`, async ({ page }, testInfo) => {
+        test.setTimeout(300_000);
+        const query = `variant=preset-${preset}&yaw=${yaw}&size=512`;
+        const preview = decodePng(encodeFlipped(await openFixture(page, `/rt.html?${query}`)));
+        const traced = (await render(page, `${query}&seed=1&samples=16`)).image;
+        const measured = [preview, traced].map((image) => {
+          const { silhouette, interior } = silhouettePixels(image, { backdropTolerance: 4, reach: 2 });
+          return {
+            outline: whiteCount(silhouette, 200),
+            inside: whiteCount(interior, 200),
+            blown: whiteCount(interior, 249) / interior.length,
+          };
+        });
+        const [p, r] = measured as [(typeof measured)[0], (typeof measured)[0]];
+        const line =
+          `yaw ${yaw}: outline white preview ${p.outline} / render ${r.outline} (floor ${limits.outlineFloor}), ` +
+          `interior white ${p.inside} / ${r.inside} (max ${limits.interiorWhite}), ` +
+          `interior blown-out share ${p.blown.toFixed(5)} / ${r.blown.toFixed(5)} (max ${limits.blownShare})`;
+        console.log(`[pt probe] ${preset} rim ${line}`);
+        testInfo.annotations.push({ type: 'rim probe', description: line });
+        for (const { outline, inside, blown } of measured) {
+          expect(outline, line).toBeGreaterThanOrEqual(limits.outlineFloor);
+          expect(inside, line).toBeLessThanOrEqual(limits.interiorWhite);
+          expect(blown, line).toBeLessThanOrEqual(limits.blownShare);
+          expect(blown, line).toBeLessThan(0.02);
+        }
+        expect(Math.abs(p.outline - r.outline) / Math.max(p.outline, r.outline), line).toBeLessThanOrEqual(0.25);
       });
-      const [p, r] = measured as [(typeof measured)[0], (typeof measured)[0]];
-      const line =
-        `yaw ${yaw}: outline white preview ${p.outline} / render ${r.outline} (floor ${limits.outlineFloor}), ` +
-        `interior white ${p.inside} / ${r.inside} (max ${limits.interiorWhite}), ` +
-        `interior blown-out share ${p.blown.toFixed(5)} / ${r.blown.toFixed(5)} (max ${limits.blownShare})`;
-      console.log(`[pt probe] rim ${line}`);
-      testInfo.annotations.push({ type: 'rim probe', description: line });
-      for (const { outline, inside, blown } of measured) {
-        expect(outline, line).toBeGreaterThanOrEqual(limits.outlineFloor);
-        expect(inside, line).toBeLessThanOrEqual(limits.interiorWhite);
-        expect(blown, line).toBeLessThanOrEqual(limits.blownShare);
-        expect(blown, line).toBeLessThan(0.02);
-      }
-      expect(Math.abs(p.outline - r.outline) / Math.max(p.outline, r.outline), line).toBeLessThanOrEqual(0.25);
-    });
+    }
   }
 });
 
@@ -1157,6 +1171,8 @@ test.describe('look presets', () => {
    * The rim light is unshadowed in both renderers: every pixel it brightens in the preview (Rim against Rim with the
    * rim light black) it brightens in the render too, which a rim shadowed in the render would not. The render brightens
    * a few more: its jittered camera rays catch more of the grazing fillets (the rim is added at the camera hit only).
+   * Like framing, this compares where the light lands, so the preview samples pixel centres (msaa=0): a converged
+   * exact frame also lights silhouette slivers at 1/4 coverage that 16 render samples need not hit.
    */
   test('the rim light brightens in the render every pixel it brightens in the preview', async ({ page }) => {
     const lit = (on: Image, off: Image): Uint8Array => {
@@ -1169,7 +1185,7 @@ test.describe('look presets', () => {
       return mask;
     };
     const preview = async (rim: 0 | 1) =>
-      decodePng(encodeFlipped(await openFixture(page, `/rt.html?variant=preset-rim&bake=0&rim=${rim}`)));
+      decodePng(encodeFlipped(await openFixture(page, `/rt.html?variant=preset-rim&bake=0&msaa=0&rim=${rim}`)));
     const traced = async (rim: 0 | 1) => (await render(page, `variant=preset-rim&seed=1&samples=16&rim=${rim}`)).image;
     const previewMask = lit(await preview(1), await preview(0));
     const tracedMask = lit(await traced(1), await traced(0));

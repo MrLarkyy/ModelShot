@@ -116,7 +116,9 @@ async function run(): Promise<void> {
     if (lighting && preview.setLighting(lighting)) {
       while (preview.advanceLighting()) await nextTask();
     }
-    preview.render();
+    // The finished frame: an exact-key frame (the player) draws its samples over several calls.
+    do preview.render();
+    while (preview.needsRender);
     await download(element('preview-download'), previewCanvas, `${name}-${look.id}-preview.png`);
     await tracer.setScene(doc);
     tracer.setCamera(view);
