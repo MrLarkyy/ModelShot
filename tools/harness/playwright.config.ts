@@ -10,7 +10,8 @@ const ci = Boolean(process.env['CI']);
 export default defineConfig({
   testDir: 'e2e',
   outputDir: 'test-results',
-  timeout: 30_000,
+  // Six parallel SwiftShader workers stretch a 3.4 s test to 24 s (MS-74); the limit keeps that under half of it.
+  timeout: 60_000,
   workers: playwrightWorkers(process.env, availableParallelism(), totalmem()),
   retries: 0,
   forbidOnly: ci,

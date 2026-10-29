@@ -117,12 +117,12 @@ alone are about 11 minutes together on a normal VM. The VMs differ in speed by u
 cut-out checker bake took 1.3 minutes on one, 39 s on another), so a shard needs room for the slow case; the bench no
 longer shares a VM with the bakes.
 
-Timeouts: the Playwright default is 30 s and stays. On the runners (SwiftShader, 3-5x slower than local) some tests
+Timeouts: the harness default is 60 s (30 s until MS-74: six parallel local workers stretched a 3.4 s test to 24 s). On the runners (SwiftShader, 3-5x slower than local) some tests
 came near or over it; the worst of runs 39594658979 and 39612706830 per test: the baked goldens
 `rt-bake-cutout-checker` and its fallback over 30 s, `rt-bake-turntable-y030` over 30 s, `rt-bake-alpha-plane` 24.5 s;
 the path-tracer determinism batches test 35.0 s (over 30 s), its same-seed test 15.2 s, `pt-alpha-plane` 22.4 s, the
 transparency tests up to 22.5 s, the lifetime tests 14.9-18.6 s, the 10 000 coincident cubes test 10.0 s. A suite or
-test whose CI time reaches a third of the default carries a timeout: 180 s for the baked goldens (bakes took 33-42 s in run 39624802150), 300 s for the baked lighting describe, 480 s for its determinism test (1.6 minutes on a normal runner, over 3 on a slow one), 300 s for the baked-preview pairing tests (up to 1.3 minutes, about 2.6 on a slow VM), 120 s for the path-tracer goldens, determinism, transparency and lifetime describes and the coincident cubes
+test whose CI time reaches a third of the default carries a timeout: 180 s for the baked goldens (bakes took 33-42 s in run 39624802150), 300 s for the baked lighting describe, 720 s for its determinism test (1.6 minutes on a normal runner, over 3 on a slow one, 5.2 at six local workers), 300 s for the baked-preview pairing tests (up to 1.3 minutes, about 2.6 on a slow VM), 120 s for the path-tracer goldens, determinism and lifetime describes, 180 s for the transparency describe (66 s at six local workers) and the coincident cubes
 test (at least 3x the worst measured time). A hang now fails after that time, not after 30 s; several hangs in one
 shard can reach the 20-minute job limit, and the job is then cancelled instead of reporting the failures.
 
@@ -145,9 +145,7 @@ never produces or checks a golden. Every spec uses the shared `test` from `src/h
 and every `openFixture` asserts SwiftShader. `openFixture` waits 20 s for `__msFixture` (the module sets it as it
 evaluates). On a timeout it prints the page's failed requests, responses >= 400, console errors and page errors under
 `[fixture reload]`. If the page threw (a page error), it fails at once; otherwise it reloads once. A second boot timeout
-fails with that list only in a test whose timeout leaves room for it (45 s or more, such as the 120 s path-tracer
-describes); under the 30 s default the test timeout ends the second wait first, and the `[fixture reload]` line is the
-trace. A page once loaded without running its module (pt-gltf-contact in a full `pathtracer.spec.ts`
+fails with that list; the 60 s default test timeout leaves room for both waits. A page once loaded without running its module (pt-gltf-contact in a full `pathtracer.spec.ts`
 run); the cause is unknown, so the reload is a guard and the printed list is the trace to find it. Fixture image code uses no clock or random source (lint rule; timing lives in `fixtures/src/bench.ts` only).
 
 The embed suite (`packages/embed/e2e`, `pnpm --filter @modelshot/embed run test:browser`, part of the root

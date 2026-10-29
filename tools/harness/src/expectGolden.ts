@@ -46,9 +46,7 @@ function describeBoot(trace: BootTrace): string {
  * requests, error responses and console errors are collected with its page errors from before `goto`, and printed
  * under `[fixture reload]` at the first boot timeout, so the flake leaves a trace with `retries: 0`. A page error means
  * the fixture's own code threw, which a reload would not fix: that fails at once. Otherwise the page reloads once; a
- * second boot timeout fails with everything collected only in a test whose timeout leaves room for it (45 s or more,
- * e.g. the 120 s path-tracer describes). Under the 30 s default the test timeout ends the second wait first, and the
- * `[fixture reload]` line is the trace.
+ * second boot timeout fails with everything collected; the 60 s default test timeout leaves room for both waits.
  */
 export async function openFixture(page: Page, url: string): Promise<FixtureInfo> {
   const trace: BootTrace = { pageErrors: [], failedRequests: [], errorResponses: [], consoleErrors: [] };

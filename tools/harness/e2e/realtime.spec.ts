@@ -1139,8 +1139,9 @@ test.describe('baked lighting', () => {
   test('a bake is deterministic: repeated, in 32 or 64 texel tiles, and its progress equals a shorter bake', async ({
     page,
   }) => {
-    // 1.6 m on a normal runner, 3.0 m (the old 180 s limit) on a slow one: several 64-sample bakes in a row.
-    test.setTimeout(480_000);
+    // 1.6 m on a normal runner, 3.0 m (the old 180 s limit) on a slow one: several 64-sample bakes in a row;
+    // up to 5.2 m at six parallel workers (MS-74).
+    test.setTimeout(720_000);
     await openFixture(page, '/rt.html?variant=turntable-y030');
     const first = await rtBake(page, { samples: 64 });
     const again = await rtBake(page, { samples: 64 });
