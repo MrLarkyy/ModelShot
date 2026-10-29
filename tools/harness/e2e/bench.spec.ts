@@ -37,15 +37,32 @@ test(
       return fixture.renderFrames(30);
     });
 
-    // The same scene with one mesh at render order 1: every frame uses the exact depth key (gl_FragDepth).
-    await openFixture(page, '/rt.html?scene=bench-order&size=512');
-    expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('exact');
-    const rtOrderFrames = await page.evaluate(() => {
-      const fixture = window.__msFixture;
-      if (!fixture?.renderFrames) throw new Error('frame bench missing');
-      fixture.renderFrames(5);
-      return fixture.renderFrames(30);
-    });
+    // The same scene with one mesh at render order 1: every frame uses the exact depth key (gl_FragDepth). A still
+    // exact frame draws one shifted pass of its sample history per render (MS-35): the draws of the single-sampled
+    // frame (msaa=0, as on main before it), and frame time within 1.25x of that frame measured alongside.
+    const orderFrames = async (query: string) => {
+      await openFixture(page, `/rt.html?scene=bench-order&size=512${query}`);
+      expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('exact');
+      const draws = (await page.evaluate(() => window.__msFixture!.rt!.drawStatesPerFrame())).length;
+      const times = await page.evaluate(() => {
+        const fixture = window.__msFixture;
+        if (!fixture?.renderFrames) throw new Error('frame bench missing');
+        fixture.renderFrames(5);
+        return fixture.renderFrames(30);
+      });
+      return { draws, times };
+    };
+    const singleOrder = await orderFrames('&msaa=0');
+    const order = await orderFrames('');
+    const rtOrderFrames = order.times;
+    console.log(
+      `[bench] rt-bench-order-512: ${order.draws} draws, median ${median(order.times).toFixed(1)} ms; ` +
+        `single-sampled (msaa=0) ${singleOrder.draws} draws, median ${median(singleOrder.times).toFixed(1)} ms`,
+    );
+    expect(order.draws, 'draws per exact frame: one pass').toBe(singleOrder.draws);
+    expect(median(order.times), 'exact frame time against the single-sampled pass').toBeLessThanOrEqual(
+      1.25 * median(singleOrder.times),
+    );
 
     // Load and first frame of a scene at the loader's limits with render order: decode, upload, the exact key's
     // de-indexed geometry, one frame.

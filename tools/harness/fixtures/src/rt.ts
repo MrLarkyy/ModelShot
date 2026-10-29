@@ -131,9 +131,17 @@ async function start(): Promise<void> {
   const cameraOf = (aspect: number) => rtCamera(framing.get(doc) ?? doc, view, aspect);
   let doc = sceneOf(view.scene);
   let warnings: readonly RendererWarning[] = [];
+  /**
+   * Renders until the renderer has nothing left to draw (at most 8 calls): the finished frame every probe and golden
+   * reads, an exact-key frame with all its samples (`needsRender`).
+   */
+  const settle = (): void => {
+    renderer.render();
+    for (let i = 1; i < 8 && renderer.needsRender; i++) renderer.render();
+  };
   const frame = (): void => {
     renderer.setCamera(cameraOf(canvas.width / canvas.height));
-    renderer.render();
+    settle();
   };
 
   renderer.resize({ cssWidth: size, cssHeight: size, devicePixelRatio: window.devicePixelRatio });
@@ -150,7 +158,7 @@ async function start(): Promise<void> {
     if (!timed('set-lighting', () => renderer.setLighting(lighting))) return;
     shown = lighting;
     while (timed('upload', () => renderer.advanceLighting())) await nextTask();
-    timed('render', () => renderer.render());
+    timed('render', settle);
   };
   const outcome = (
     result: BakeResult,
@@ -230,7 +238,9 @@ async function start(): Promise<void> {
     if (!isRtSceneName(scene)) throw new Error(`unknown scene "${scene}"`);
     doc = sceneOf(scene);
     warnings = (await renderer.setScene(doc)).warnings;
-    frame();
+    // The first frame alone: one pass, as a viewer shows it.
+    renderer.setCamera(cameraOf(canvas.width / canvas.height));
+    renderer.render();
   });
   if (continuous) {
     const output = document.createElement('output');
@@ -314,6 +324,7 @@ async function start(): Promise<void> {
         if (!lose) return reject(new Error('WEBGL_lose_context is not available'));
         const stop = renderer.onContextRestored(() => {
           stop();
+          settle();
           resolve();
         });
         lose.restoreContext();

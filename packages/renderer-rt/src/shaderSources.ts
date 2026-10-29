@@ -16,12 +16,13 @@ import oitAccumFrag from './shaders/oitAccum.frag.glsl?raw';
 import oitCompositeFrag from './shaders/oitComposite.frag.glsl?raw';
 import opaqueFrag from './shaders/opaque.frag.glsl?raw';
 import presentFrag from './shaders/present.frag.glsl?raw';
+import presentSamplesFrag from './shaders/presentSamples.frag.glsl?raw';
 import viewport from './shaders/viewport.glsl?raw';
 import shading from './shaders/shading.glsl?raw';
 import texelSample from './shaders/texelSample.glsl?raw';
 
 export type ShaderProgramName =
-  'opaque' | 'oitAccum' | 'oitComposite' | 'present' | 'fallback' | 'backdrop' | 'catcher';
+  'opaque' | 'oitAccum' | 'oitComposite' | 'present' | 'presentSamples' | 'fallback' | 'backdrop' | 'catcher';
 
 export interface ShaderProgramSource {
   readonly vertex: string;
@@ -49,6 +50,7 @@ const PROGRAMS: Readonly<Record<ShaderProgramName, readonly [string, string]>> =
   oitAccum: [meshVert, oitAccumFrag],
   oitComposite: [fullscreenVert, oitCompositeFrag],
   present: [fullscreenVert, presentFrag],
+  presentSamples: [fullscreenVert, presentSamplesFrag],
   fallback: [meshVert, fallbackFrag],
   backdrop: [fullscreenVert, backdropFrag],
   catcher: [catcherVert, catcherFrag],

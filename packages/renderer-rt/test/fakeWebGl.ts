@@ -1,21 +1,38 @@
 /**
  * A WebGL2 context that draws nothing and records every call, for tests of what the renderer asks the GPU to do.
  * Constants are distinct numbers, `create*` returns a fresh object, shaders compile, framebuffers are complete, and
- * no extension exists (the renderer takes its no-float path).
+ * no extension exists (the renderer takes its no-float path) unless `options.float` says otherwise.
  */
 export interface FakeWebGl {
   readonly gl: WebGL2RenderingContext;
   readonly canvas: HTMLCanvasElement;
   /** Arguments of every call of `name`, in order. */
   calls(name: string): unknown[][];
+  /** Every call of any name, in order. */
+  history(): readonly (readonly [string, unknown[]])[];
   /** How many calls of any of `names`. */
   count(...names: string[]): number;
   /** Runs the canvas listeners registered for `type` (a context loss or restore). */
   fire(type: string): void;
 }
 
-export function fakeWebGl(): FakeWebGl {
+export interface FakeWebGlFloat {
+  /** `MAX_SAMPLES` and the RGBA16F renderbuffer's sample counts. */
+  readonly samples: number;
+  /** `MAX_TEXTURE_SIZE`, `MAX_RENDERBUFFER_SIZE` and both `MAX_VIEWPORT_DIMS`. */
+  readonly maxSize: number;
+  /** Framebuffers are incomplete while the last texture storage was of a size this returns true for (layers 1: 2D). */
+  readonly rejects?: (width: number, height: number, layers: number) => boolean;
+}
+
+export interface FakeWebGlOptions {
+  /** `EXT_color_buffer_float` exists, with these limits: the renderer takes its float path. */
+  readonly float?: FakeWebGlFloat;
+}
+
+export function fakeWebGl(options: FakeWebGlOptions = {}): FakeWebGl {
   const log = new Map<string, unknown[][]>();
+  const ordered: [string, unknown[]][] = [];
   const constants = new Map<string, number>();
   const constant = (name: string): number => {
     let value = constants.get(name);
@@ -25,16 +42,31 @@ export function fakeWebGl(): FakeWebGl {
     }
     return value;
   };
+  const { float } = options;
+  const parameter = (value: unknown): unknown => {
+    if (!float) return null;
+    if (value === constant('MAX_VIEWPORT_DIMS')) return new Int32Array([float.maxSize, float.maxSize]);
+    if (value === constant('MAX_TEXTURE_SIZE') || value === constant('MAX_RENDERBUFFER_SIZE')) return float.maxSize;
+    if (value === constant('MAX_SAMPLES')) return float.samples;
+    return null;
+  };
+  const framebufferStatus = (): number => {
+    const storage = ordered.findLast(([name]) => name === 'texStorage2D' || name === 'texStorage3D')?.[1];
+    const rejected =
+      float?.rejects && storage && float.rejects(Number(storage[3]), Number(storage[4]), Number(storage[5] ?? 1));
+    return constant(rejected ? 'FRAMEBUFFER_INCOMPLETE_ATTACHMENT' : 'FRAMEBUFFER_COMPLETE');
+  };
   const results: Readonly<Record<string, (...args: unknown[]) => unknown>> = {
-    getExtension: () => null,
-    getParameter: () => null,
+    getExtension: (name) => (float && name === 'EXT_color_buffer_float' ? {} : null),
+    getParameter: parameter,
+    getInternalformatParameter: () => (float ? new Int32Array([float.samples]) : null),
     getShaderPrecisionFormat: () => ({ precision: 23, rangeMin: 127, rangeMax: 127 }),
     getShaderParameter: () => true,
     getProgramParameter: () => true,
     getShaderInfoLog: () => '',
     getProgramInfoLog: () => '',
     isContextLost: () => false,
-    checkFramebufferStatus: () => constant('FRAMEBUFFER_COMPLETE'),
+    checkFramebufferStatus: framebufferStatus,
     getUniformLocation: (_program, name) => ({ name }),
     getAttribLocation: () => 0,
     getUniformBlockIndex: () => 0,
@@ -51,6 +83,7 @@ export function fakeWebGl(): FakeWebGl {
           const list = log.get(property);
           if (list) list.push(args);
           else log.set(property, [args]);
+          ordered.push([property, args]);
           const result = results[property];
           if (result) return result(...args);
           return property.startsWith('create') ? { created: property } : undefined;
@@ -75,6 +108,7 @@ export function fakeWebGl(): FakeWebGl {
     gl,
     canvas,
     calls: (name) => log.get(name) ?? [],
+    history: () => ordered,
     count: (...names) => names.reduce((sum, name) => sum + (log.get(name)?.length ?? 0), 0),
     fire: (type) => {
       for (const listener of [...(listeners.get(type) ?? [])]) listener({ preventDefault: () => undefined } as Event);
