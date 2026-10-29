@@ -1008,7 +1008,8 @@ test.describe('the preset rims draw a white silhouette line and leave the faces 
   for (const [preset, yaws] of Object.entries(RIM_PROBES)) {
     for (const [yaw, limits] of Object.entries(yaws)) {
       test(`${preset}, yaw ${yaw}: preview and render`, async ({ page }, testInfo) => {
-        test.setTimeout(300_000);
+        // Up to 42.6 s serial (rim), 5-7x that at six parallel workers (MS-74).
+        test.setTimeout(600_000);
         const query = `variant=preset-${preset}&yaw=${yaw}&size=512`;
         const preview = decodePng(encodeFlipped(await openFixture(page, `/rt.html?${query}`)));
         const traced = (await render(page, `${query}&seed=1&samples=16`)).image;
