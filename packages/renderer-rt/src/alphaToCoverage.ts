@@ -5,7 +5,8 @@
  *
  * - `msaaBound`: the multisampled target is bound. Exact frames draw single-sampled (their key is the depth at the
  *   pixel centre), and without sample buffers GL ignores A2C, so the band fragments would grow the cutout shape by
- *   half a pixel.
+ *   half a pixel. There each pass keeps the hard per-texel shape, and the mean of a still frame's shifted passes
+ *   antialiases its seams (`exactSampleCount`).
  * - `samples`: the MSAA target's sample count. One sample turns the ramp into a hard step at alpha 0.5 at best; the
  *   binary per-texel discard is exact there.
  * - `texelAntialias`: without texel anti-aliasing the coverage is the nearest texel's alone, so A2C adds nothing.

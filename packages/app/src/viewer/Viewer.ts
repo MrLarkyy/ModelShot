@@ -10,6 +10,7 @@ import {
 } from '@modelshot/renderer-rt';
 import { sceneBounds, type SceneBounds, type SceneCamera, type SceneDocument } from '@modelshot/scene';
 import { loadPathTracer } from '../lazyPathTracer';
+import { renderSettled } from './renderSettled';
 
 export const DEFAULT_YAW_DEG = 210;
 export const DEFAULT_PITCH_DEG = 20;
@@ -161,11 +162,11 @@ export class Viewer {
     return this.orbit.camera();
   }
 
-  /** Draws a frame now (tests read the canvas after it). */
+  /** Draws the finished frame now (tests read the canvas after it): an exact-key frame with all its samples. */
   renderNow(): void {
     this.orbit.update(1e9);
     this.renderer.setCamera(this.orbit.camera());
-    this.renderer.render();
+    renderSettled(this.renderer);
   }
 
   dispose(): void {

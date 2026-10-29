@@ -213,7 +213,10 @@ See [hosting.md](hosting.md#tests).
 
 `e2e/realtime.spec.ts` renders `fixtures/rt.html` (the realtime renderer on SwiftShader, 256 x 256, no clock or
 random source; partial alpha on the fallback path uses an integer hash). Scenes and camera presets live in
-`fixtures/src/rtScenes.ts`, so the path-tracer fixture can render the same scene and camera for a paired golden. The
+`fixtures/src/rtScenes.ts`, so the path-tracer fixture can render the same scene and camera for a paired golden.
+Every frame the fixture draws for a test is the finished one: it renders until `needsRender` is false (at most 8
+calls), so a still exact-key frame shows all 4 of its rotated-grid samples (MS-35); the load bench (`timeScene`) and
+the frame bench time single calls. `depth=inside` puts the near plane at far x 1e-4 for an orbit view too. The
 fixture models in `fixtures/models/` are ours (CC0, `LICENSE` there); `rt-showcase.bbmodel` has an atlas whose 6 x 6
 face rectangles sit in a ring of magenta sentinel texels, opaque, cut-out and 50 % texels, a zero-thickness sprite,
 two overlapping partial-alpha planes in different meshes, rotated and mirrored face UVs and a 64 x 64 brick face.
@@ -256,11 +259,18 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
   (`src/agxInverse.ts`, as the MSAA resolve averages before AgX), equals the hard shape's pixel count within 0.5 px
   per row with a boundary; (d) every inner texel centre shows the backdrop exactly (cut) or the texel within 1 level.
   With `msaa=0` (the renderer's `maxMsaaSamples`) the same seams have 0 mixes. The fallback (`aa=1` and `aa=0` give
-  the same model/backdrop map, 0 mixes) and the exact key (`cutout-edge-inside`, `depth=inside`, 0 mixes) stay hard.
+  the same model/backdrop map, 0 mixes) stays hard. The exact key (`cutout-edge-inside`, `depth=inside`, MS-35) meets
+  (a)-(d) on its converged frame against `aa=0&msaa=0`: 0 far changes, 1 238 of 1 742 transitions mixed, area 16 588.9
+  against 16 609 (149 rows); at `msaa=0` it stays single-sampled, 0 mixes. Silhouettes (MS-35, `exact-key frames
+anti-alias silhouettes like raster frames`): `turntable-y030` at `aa=0`, framed (raster, MSAA) and `depth=inside`
+  (exact), against the same view at `msaa=0`: mixed share of the model/backdrop transitions at least 0.5 in both and
+  the exact one at least 0.8 x the raster one (measured 0.664 and 0.857); `msaa=1` exact frames stay single-sampled (0
+  mixes); the shown frames (texel AA on) differ by more than 8 levels in at most 968 pixels (measured 774 x 1.25, on
+  silhouettes and texel seams).
   `rt.drawStatesPerFrame()` (`fixtures/src/drawStates.ts`) records program, `SAMPLE_ALPHA_TO_COVERAGE` and the draw
   framebuffer's `SAMPLES` at every draw: on only in opaque draws into a target with at least 2 samples (turntable,
   `cutout-edge`, a baked checker), off in every draw of `aa=0`, exact, fallback frames, and for backdrop, catcher, OIT
-  and present.
+  and present (either present program).
 - Context loss through `WEBGL_lose_context`: the image after the restore matches `rt-turntable-y030`, without a
   reload or a page error.
 - Device pixel ratio 2 doubles the backing store; an element resize reallocates and keeps the projection unstretched.
@@ -363,7 +373,9 @@ within 3 %, the render's contact at most 0.8 of its open point, preview and rend
 - Pose: `player-hold-34` baked, re-posed to `wave` (same layout key): the old lighting stays until the re-bake's
   first update; the final image equals a fresh bake of the posed document (`pose=wave`), and differs from the old
   light under the moved arm.
-- Exact depth key (`render-order`, always exact): baking with and without the catcher changes no model pixel.
+- Exact depth key (`render-order`, always exact): baking with and without the catcher changes no model pixel at
+  `msaa=0`; on the converged frame (MS-35) none with no backdrop pixel within 1 px (a silhouette pixel mixes the model
+  with what lies behind it, the catcher included: 9 such pixels change).
 - Context loss: a lost and restored renderer re-uploads the light (same bytes); a lost and restored worker context
   restarts the bake and reaches the reference hash and image.
 - `dispose()` with `track=1`: no WebGL object or ImageBitmap left on the page, the worker terminated.
@@ -452,7 +464,7 @@ frames, single-sampled, moved in round 1 at most 4 pixels by 1 level (rounding i
 the drift are `rt-player-classic-front` (1), `-classic-back` (1), `-walk-hold-34` (4), `-wave-front` (2),
 `rt-preset-marketplace` (2) and `rt-preset-marketplace-fallback` (2). Unchanged: the other rt goldens, every `pt-*`
 and model-view golden; `export-animation-f0.s1.n16` renders 2 pixels 1 level off its golden, twice alike (not an rt
-golden, left). Round 3 (the shading point back at the pixel centre wherever the pixel lies on the face,
+golden, left; the export goldens below say where it came from). Round 3 (the shading point back at the pixel centre wherever the pixel lies on the face,
 `prepareShading`) rewrote 29 rt goldens, pixels (max levels) against round 2: `rt-bake-alpha-plane` 1 614 (3),
 `rt-bake-gltf-contact` 1 846 (4), `rt-bake-turntable-y030` 307 (2), `rt-bake-cutout-checker` 105 (1) and `-fallback`
 100 (1), `rt-closeup` 553 (3), `rt-edges` 635 (20), `rt-fallback` 316 (1), `rt-far` 40 (1), `rt-gltf-nodes-y030` 141
@@ -471,6 +483,16 @@ measured and reverted: the `edges` view's sphere outline band (704 pixels, eithe
 14.1790 against `pt-edges` (14.1520 at the centre) and 1.2233 against a 4 x 4 supersampled `msaa=0` preview (1.1282),
 26 pixels moved, 16 of them farther from the render; the RTX 3080 alike (14.1903 / 14.1548). The rule and the reason
 are in docs/realtime-renderer.md; the `rt-edges` golden pins the centre on smooth silhouettes.
+MS-35 (still exact-key frames converge to 4 rotated-grid samples) rewrote the goldens of exactly the exact-key float
+frames, pixels more than 8 levels off their old golden (max levels): `rt-player-hold-34` 1 866 (145),
+`rt-player-classic-front` 1 433 (93), `rt-preset-marketplace` 2 085 (225) and the other `rt-player-*` views but
+`-slim-fallback`, all along silhouettes, the outer layer's edges, texel seams and the catcher's edge; `rt-preset-rim`
+4 021 (206) also takes Rim's new rim (its screen-right sides keep their texels), and `pt-preset-rim.s1.n64` that rim
+in the render. Every raster frame, `*-fallback` and other `pt-*` golden came out byte-identical; the rewritten ones
+are the same bytes in a second run. Diff images judged.
+After the MS-52 merge `rt-texture-wrap-inside` (`depth=inside`, an exact-key frame) was regenerated on the converged frame: 2 035
+pixels more than 8 levels off the MS-52 golden (95), all on silhouettes, face edges and seams; its wrap probes (texel centres) pass unchanged, and
+`rt-texture-wrap` and `pt-texture-wrap.s1.n64` are byte-identical.
 Single-sampled frames move too: SwiftShader snaps vertices to 1/16 px, so even fully
 covered pixels interpolate up to 0.04 px off `gl_FragCoord`, and the step to the centre takes that up (a 0.0625 px
 threshold that left it measured 168 pixels at width 0.1 in the edge-band probe below, against round 3's 135). Pairs re-measured
@@ -683,12 +705,12 @@ Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with r
 | `turntable-y030`           | 0 (1 627)                           | 142, 0.00217, 0.723 (MS-54; MS-30 142, 0.00217, 0.724)  | 0.00271, 0.904 (MS-54; was 0.00271, 0.905) |
 | `iso`                      | 0 (1 533)                           | 266, 0.00406, 0.888 (MS-54; MS-30 268, 0.00409, 0.889)  | 0.00508, 1.111 (MS-54; was 0.00512, 1.12)  |
 | `alpha-plane`              | 0 (692)                             | 232, 0.00354, 1.335 (MS-54; MS-30 232, 0.00354, 1.334)  | 0.00443, 1.669 (MS-54; was 0.00443, 1.67)  |
-| `player-hold-34`           | 0 (1 322)                           | 1 208, 0.01843, 1.293 (1 215, 0.01854, 1.295)           | 0.0232, 1.62                               |
+| `player-hold-34`           | 0 (1 322)                           | 683, 0.01042, 0.999 (MS-35; 1 208, 0.01843, 1.293)      | 0.01304, 1.25 (MS-35; was 0.0232, 1.62)    |
 | `cutout-checker`           | 0 (3 295)                           | 223, 0.00340, 0.623 (MS-30; before 293, 0.00447, 0.731) | 0.00426, 0.78 (MS-30; was 0.00525, 0.908)  |
 | `edges`                    | 0 (1 971)                           | 41, 0.00063, 0.386 (MS-54; MS-41 40, 0.00061, 0.390)    | 0.00079, 0.483 (MS-54; was 0.00082, 0.496) |
-| `preset-marketplace`       | 0 (1 322)                           | 1 269, 0.01936, 1.237                                   | 0.0223, 1.43                               |
-| `preset-rim`               | 0 (1 322)                           | 1 407, 0.02147, 1.109                                   | 0.0241, 1.13                               |
-| `preset-marketplace-yaw30` | 0 (1 304)                           | 1 387, 0.02116, 1.281                                   | 0.0265, 1.52                               |
+| `preset-marketplace`       | 0 (1 322)                           | 598, 0.00912, 0.793 (MS-35; 1 269, 0.01936, 1.237)      | 0.01141, 0.992 (MS-35; was 0.0223, 1.43)   |
+| `preset-rim`               | 0 (1 322)                           | 860, 0.01312, 0.704 (MS-35; 1 407, 0.02147, 1.109)      | 0.01641, 0.881 (MS-35; was 0.0241, 1.13)   |
+| `preset-marketplace-yaw30` | 0 (1 304)                           | 723, 0.01103, 0.856 (MS-35; 1 387, 0.02116, 1.281)      | 0.0138, 1.071 (MS-35; was 0.0265, 1.52)    |
 | `outline-hull`             | 0 (1 448)                           | 172, 0.00262, 0.437 (MS-54; MS-39 174, 0.00266, 0.438)  | 0.00329, 0.547 (MS-54; was 0.00333, 0.548) |
 | `gltf-contact`             | 0 (629)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)          | 0.133, 7.03                                |
 | `obj-shapes-y030`          | 0 (1 852)                           | 246, 0.00375, 0.469 (MS-54; MS-39 245, 0.00374, 0.470)  | 0.00468, 0.587 (MS-54; was 0.00468, 0.588) |
@@ -702,9 +724,17 @@ above), so their limits are tightened to measured x 1.25; every other view measu
 MS-54 (the preview's MSAA edge pixels shaded at a covered sample: centroid normal, position and edge distances,
 docs/realtime-renderer.md) re-measured every pair. `turntable-y030`, `iso`, `alpha-plane`, `edges`, `outline-hull`,
 `obj-shapes-y030` and `gltf-nodes-y030` moved by a pixel or two and up to 0.004 levels (rows above), so their limits
-are min(previous, measured x 1.25); `player-hold-34`, the three `preset-*` views (exact depth key: single-sampled, the
-centroid is the centre), `cutout-checker` and `gltf-contact` measured exactly as before and keep theirs. The denoised
-2x turntable pair: 113 px, 0.00172, 0.618 under the turntable's limits.
+are min(previous, measured x 1.25); `player-hold-34`, the three `preset-*` views (exact depth key: each pass
+single-sampled, the centroid is the centre), `cutout-checker` and `gltf-contact` measured exactly as before and keep
+theirs. The denoised 2x turntable pair: 113 px, 0.00172, 0.618 under the turntable's limits.
+
+MS-35 (a still exact-key frame converges to the mean of 4 rotated-grid passes, docs/realtime-renderer.md; every
+fixture frame is converged) re-measured the four exact-key views, `player-hold-34` and the three `preset-*` (the
+player's outer layer has a render order): all came much closer to the render, which also samples the silhouette
+within the pixel (rows above), so their limits are min(previous, measured x 1.25). `preset-rim` is measured with Rim's
+new rim (look-presets.md). Framing stays at `msaa=0`, single-sampled at the pixel centre: 0 mismatches. Every other
+view draws raster frames, unchanged bytes, and keeps its numbers. A 2 x 2 supersampled preview (an earlier round of
+MS-35) measured 0.01018 / 0.829, 0.01582 / 0.810, 0.01357 / 0.928 and 0.01125 / 1.049.
 
 Framing takes the preview at `msaa=0` since MS-39: with MS-30's 4-sample alpha-to-coverage, `obj-shapes-y030` had 1
 mismatch at (191, 135), on the wedge's cut-out slope seen at a grazing angle, where an opaque texel row covers about 2 %
@@ -748,7 +778,13 @@ from behind ((0.45, 0.12, −0.88), (0.5, 0.12, −0.86)) the side faces stay wi
 5, which keeps a white line (414-430 near-white outline pixels at 512 px), measures ratio 0.0267; colour 3 at exponent
 2 has already lost the line (0 in the render) and still measures 0.0255; the configurations under 0.0241 (colour
 1.2-3, exponent 1-3, albedo share 0.3-1) draw no near-white outline pixel in the rows whose outline was counted (the share-1 row, (0.45, 0.12, −0.88), colour 3, exponent 2, pair 0.02408, passes but its outline was not counted). The shipped rim keeps the line (587-641)
-and greys the side faces (measured, held by the face probe below).
+and greys the side faces (measured, held by the face probe below). MS-35 made the search moot: with the player's
+exact-key frames antialiased, the rim from behind fits. Its candidates (512 px; side face worst levels at yaw 210 / 30,
+outline white preview / render at 210 and 30, `preset-rim` pair), measured on a 2 x 2 supersampled preview and the
+shipped one re-measured converged: MS-19's (0.9, 0.12, −0.42) colour 4: 75 / 56, 436 / 379, 493 / 451, 0.01134 / 0.691
+(greys the side faces); (0.45, 0.12, −0.88) colour 4: 0 / 0, 95 / 54 (43 % apart), 99 / 87, 0.01486 / 0.758 (line
+too faint); colour 8: 0 / 0, 418 / 371, 437 / 403, 0.01582 / 0.810, shipped; converged 0 / 0, 371 / 371, 395 / 403,
+0.01312 / 0.704.
 
 alpha-plane's large ground is an untextured box, baked per vertex, so its preview shows no ground shadow (world-density
 charts for untextured meshes are not in MS-16); the catcher under it darkens its mean delta a little.
@@ -770,9 +806,10 @@ and `pathtracer.spec.ts`, `golden` and `golden-pt` projects):
 - a look set while the render's `setScene` decodes gives the bytes of a render under that look from the start;
 - Marketplace renders the same bytes in batches of 7 and 64-pixel tiles;
 - the rim light, unshadowed: of the pixels it brightens by more than 12 levels in the preview (Rim against `rim=0`,
-  unbaked) the render brightens 99.7 % too (2 565 preview, 2 843 render pixels: the jittered camera rays catch a
-  little more of the grazing fillets);
-- the Marketplace rim's line and the faces' texels (`pathtracer.spec.ts`): the held-cube player at 512 px, pitch 20,
+  unbaked, pixel centres: `msaa=0`, as for framing) the render brightens 99.5 % too (418 preview, 754 render pixels:
+  the jittered camera rays catch more of the grazing fillets). The converged preview would also count silhouette
+  slivers lit in 1 of its 4 samples, which 16 render samples need not hit (94.4 %; 95.9 % at 256 samples);
+- the preset rims' line and the faces' texels (`pathtracer.spec.ts`, `RIM_PROBES[preset][yaw]`): the held-cube player at 512 px, pitch 20,
   yaw 210 and 30, baked preview and render (16 samples). `silhouettePixels` of `imageMetrics.ts` splits the model
   (more than 4 levels off the row's backdrop in column 1) into the outline band (a backdrop pixel within 2 px) and
   the interior; `whiteCount` counts pixels with every channel above a level. Outline near-white (above 200): at least
@@ -780,16 +817,20 @@ and `pathtracer.spec.ts`, `golden` and `golden-pt` projects):
   and render within 25 % of each other. Interior near-white: at most the measured count x 1.25 (309 / 394 at 210,
   101 / 113 at 30; caps 493 and 141; the round-4 rim washed upward faces: 4 097). Interior blown out (250 or more): at
   most the measured share x 1.25 (none) and under 2 %. The saturated test skin is the case a diffuse rim (round 3)
-  never drew white on;
+  never drew white on. MS-35 measured Marketplace again on the converged preview (574 / 548, 453 / 448; interior 375 /
+  394, 105 / 113; limits kept) and added Rim's rows: outline 371 / 371 at 210 and 395 / 403 at 30 (floors 296 and
+  316), interior 194 / 187 and 134 / 137 (caps 243 and 172), blown out none;
 - the turntable (`realtime.spec.ts`): Marketplace on the same player unbaked (the bake only darkens), 512 px, pitch
-  20, yaws 0 to 330 in steps of 30: interior blown-out share at most 0.00205 (worst measured 0.00164, yaw 60: the
-  inner side of a thick band at a 45° silhouette), at least 71 outline white pixels (the fewest measured: 89, at yaw
-  0, the player's back);
+  20, yaws 0 to 330 in steps of 30: interior blown-out share at most 0.00122 (MS-35, converged: worst 0.00097, yaw
+  60, the inner side of a thick band at a 45° silhouette; before 0.00164, cap 0.00205), at least 71 outline white
+  pixels (the fewest measured: 89 single-sampled, 85 converged, at yaw 0, the player's back; the render 92; a 2 x 2
+  supersampled preview had 61 and was dropped for it, a 4 x 4 one 84);
 - the head's top and screen-right side keep their texels (`realtime.spec.ts`, Marketplace and Rim): the 3 x 3 pixels
   around the projection of (0, 32, 0) and of the right side's centre (x = −4 from yaw 210, x = 4 from yaw 30, y 28),
   unbaked, 512 px, pitch 20, with the preset's rim and with it black, at most 3 levels apart per channel (measured 0:
-  (244, 54, 54) Marketplace head top at 210; the round-4 rim made it (232, 208, 214)), but for Rim's right side, the
-  known loss, at most 94 levels (measured worst 75: (32, 8, 9) to (95, 83, 83) at yaw 210);
+  (244, 54, 54) Marketplace head top at 210; the round-4 rim made it (232, 208, 214)), Rim's right side included since
+  MS-35 moved its rim behind ((32, 8, 9) at 210 and (97, 13, 14) at 30 with and without it; MS-19's rim greyed them to
+  (95, 83, 83) and (117, 69, 69) and was held at 94 levels);
 - a lost preview context comes back with the look, byte-identical;
 - (bake project) light baked under Marketplace is refused by a Studio renderer and taken once it shows Marketplace.
 
@@ -894,7 +935,11 @@ took, so a decoded file is compared with the very frames that were encoded.
   `export-animation-f0..f3.s1.n16.png` (the showcase bobbing 3 units up and down over 1 s, 4 frames at 4 fps, as
   APNG: the model rises, its floor and shadow stay), read by `expectGolden` with threshold 0 like the path-tracer
   goldens; the fixture hands the decoded file's pixels to `readRGBA`. Nothing compares
-  bytes against a committed PNG.
+  bytes against a committed PNG. Drift (MS-67): MS-22 wrote `export-animation-f0` before MS-39 let a model hit beat the
+  shadow catcher (`7c67fd6`); that merge moved the frame's pixels (26, 43) and (26, 44) by 1 level, inside tolerance, so
+  the golden stayed until MS-59 regenerated the export goldens with its catcher change (`98a3451`). The main before
+  MS-39 renders the MS-22 golden byte for byte, the main after it the 2 pixels off, and `golden:update` on `48c4e08`
+  rewrites all export goldens with identical bytes: f1..f3 did not move under MS-39, nothing is nondeterministic.
 - Still: the PNG decodes (the formats package's `decodePngRgba`) to exactly the bytes of `readImage()`; alpha is 255 at
   the opaque texel probe, 0 at the cut-out texel probe and at the corners where camera rays escape (catcher off); with
   the catcher on, its shadow under the opaque texel is black with alpha 1 − shade (191 measured; 188 before MS-59).
@@ -1114,7 +1159,12 @@ and 527 ms with them; since round 7 436 and 447 ms; max 3500 ms (10x of the firs
 `frameTimeMs.rt-bench-order-512` is the same scene with one mesh at render order 1, so every frame uses the exact
 depth key (fragment depth, de-indexed geometry); max 2000 ms like the raster bench (MS-44): CI medians 537.9 ms on
 the normal runner (run 39594658979) and 919.5 ms on the slow one (run 39650722835), so 3.7x and 2.2x; last local
-median 326.8 ms (`budgets-measured.json`, 2026-10-21). History, MS-12 local SwiftShader medians: `rt-bench-512` 92,
+median 326.8 ms (`budgets-measured.json`, 2026-10-21). MS-35: a still exact frame draws one rotated-grid pass of its
+sample history per `render()`, so the bench pins its draws to those of the single-sampled frame (`msaa=0`, 519 both)
+and its median to at most 1.25x that frame's, measured alongside: local 349.3 ms against 340.0 ms (2026-10-27; the
+raster bench 409.7 ms in the same run, the machine slower than on 2026-10-21). A 2 x 2 supersampled frame (an earlier
+round) cost 938-1062 ms, about 2.9x, and was dropped for it. `rt-load-first-frame-200k-order` times the first call
+only: 1 751.2 ms in that run. History, MS-12 local SwiftShader medians: `rt-bench-512` 92,
 118 and 120 ms (raster key, cubes double-sided as the loader marks free-format faces, coverage per texel tap),
 `rt-bench-order-512` 117, 145 and 148 ms with MSAA, 83 and 107 ms since exact frames draw single-sampled (MS-12
 round 7); its max was 750 ms then.
