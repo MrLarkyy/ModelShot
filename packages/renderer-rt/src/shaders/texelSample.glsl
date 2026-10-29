@@ -83,7 +83,7 @@ struct TexelSample {
   int coverage;
   float nearestAlpha;
   // The opaque pass's anti-aliased coverage in [0, 1] (texelAntialiased); the nearest texel's alone without texel AA.
-  // Only the opaque pass reads it, and only under alpha-to-coverage.
+  // Read by the opaque pass under alpha-to-coverage and by the OIT pass for its seam coverage.
   float opaqueCoverage;
 };
 
