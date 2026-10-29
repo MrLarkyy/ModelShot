@@ -14,7 +14,9 @@ export const DEFAULT_TEXTURE_WRAP: SceneTextureWrap = 'clamp';
 
 /**
  * How a texture's colour is read between texel centres: `nearest` one texel (pixel art), `linear` the bilinear blend
- * of the four texels around the point, each addressed as a nearest lookup is (face range, wrap, frame). Only the colour
+ * of the four texels around the point, each wrapped and read from the same frame as a nearest lookup is, with the face
+ * range widened by one texel (a tap may read one texel past the face of the same image, never another image or
+ * frame; nearest and coverage taps stay inside the face). Only the colour
  * is filtered: whether a point is cut out or partly transparent stays the nearest texel's in every renderer.
  */
 export type SceneTextureFilter = 'nearest' | 'linear';

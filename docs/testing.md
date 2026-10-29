@@ -569,6 +569,13 @@ inner 60 % stays within 5.3 levels of its mean in every channel (measured 4.2, x
 preview-vs-render pair (limit kept in the spec, as for texture wrap): framing 0 mismatches (2 600), radiance 7 px,
 0.00011, 0.396, limit 0.00014, 0.495 (measured x 1.25).
 
+Seam regression (same spec): the linear quad is 2 x 2 cells with alternating diagonals, so some triangles' last-vertex
+face rects end at the cell border u = 4 or v = 4. 16 probes sit 0.1 texel either side of those borders (u 3.9 / 4.1
+and v 3.9 / 4.1) on texel-centre rows and columns (1.5, 2.5, 5.5, 6.5). Each expected weight is read from the measured
+tone-mapping curve of the same row or column (texel centres 1.5 to 2.5), not from the ideal bilinear weight; tolerance
+0.035 (measured max 0.007 preview, 0.028 render, x 1.25). With `linearTexelRange` disabled 7 of the 16 probes fail in
+both renderers.
+
 ## Path-tracer goldens
 
 Fix the seed, the sample count, the resolution and the camera. The accumulation stops after exactly N samples, never

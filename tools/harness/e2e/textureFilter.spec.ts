@@ -23,8 +23,8 @@ import { lookPresetFile } from '../src/lookPresetFile';
 
 /**
  * MS-38: a glTF texture whose sampler asks LINEAR is filtered linearly, the same in the preview and the render: its
- * colour is the bilinear blend of the four texels around the point, each addressed as a nearest lookup is (face range,
- * wrap), and its coverage that of the nearest texel. The same image under a NEAREST sampler stays pixel art. A cut-out
+ * colour is the bilinear blend of the four texels around the point, each wrapped as a nearest lookup is, with the face
+ * range widened by one texel (it may read one texel past the face of the same image, never another image or frame), and its coverage that of the nearest texel. The same image under a NEAREST sampler stays pixel art. A cut-out
  * texel adds no dark fringe to the blend; a repeated texture blends across its wrap seam; a sentinel image lies right
  * of each linear texture in the path tracer's texture layers. `-far` shows the minified quad at about 3 texels per
  * pixel (realtime: the mean of the blend at the rotated grid).
