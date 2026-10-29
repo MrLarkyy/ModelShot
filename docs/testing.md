@@ -112,7 +112,9 @@ at 45 kB/s. The local action `.github/actions/playwright` (used by `e2e`, `bench
 image and the Playwright version, so apt installs from `/var/cache/apt/archives` without downloading. A job that misses a
 cache saves it right after the install, so a red test run still fills it (an apt cache with no .deb files is never saved); shards that miss at the same time only warn.
 After the change, the cold run 40912380522 (MS-61's merge, both caches missed) took 14-31 s for the install step on all 15
-jobs (the mirror was fast that time) and saved the browser cache (113 MB) and the apt cache (21.8 MB).
+jobs (the mirror was fast that time) and saved the browser cache (113 MB) and the apt cache (21.8 MB). The next, warm run 40915565605 restored both caches on every job, apt
+downloaded nothing (`Need to get 0 B/21.9 MB of archives`), and the install step took 10-23 s; a slow mirror no longer
+reaches it, only `apt-get update` (4 s) still uses the network.
 
 314 tests in all. The path-tracer tests had been part of `golden` (241 tests in 5 shards of 48-49): the shard that held
 48 of them summed to 16.0 minutes, the others 1.8-7.2, and the same block in shard 2 of 4 ran 16.3 and 17.4 minute jobs
