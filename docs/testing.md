@@ -86,7 +86,7 @@ none). Playwright shards a project into contiguous ranges by test count, not by 
 lands in one or two shards; each block is its own project with its own shards. `golden` runs `environment`, `export`,
 `golden*`, `modelView`, `realtime.spec.ts` and `textureWrap.spec.ts` without the tests titled `baked lighting`
 (`grepInvert`), which `bake` runs;
-`golden-pt` runs `pathtracer.spec.ts` without the tests titled `like the baked preview`, which `pair` runs (the 13
+`golden-pt` runs `pathtracer.spec.ts` without the tests titled `like the baked preview`, which `pair` runs (the 14
 preview-vs-render pairing tests). Each test is in exactly one project, and the plain `playwright test` (and so
 `pnpm test`) runs every project.
 
@@ -98,9 +98,9 @@ differ by up to 2x. The build takes about 6 s (`bake-2` in run 39878163371: a 14
 
 | Project     | Tests | Shards | Tests per shard             | Minutes per shard (sum)           |
 | ----------- | ----: | -----: | --------------------------- | --------------------------------- |
-| `golden`    |   197 |      2 | 99 / 98                     | 6.3 / 3.9                         |
-| `golden-pt` |    78 |      6 | 13 / 13 / 13 / 13 / 13 / 13 | 2.6 / 4.3 / 6.3 / 3.7 / 1.0 / 1.5 |
-| `pair`      |    13 |      3 | 5 / 4 / 4                   | 5.3 / 2.8 / 2.5                   |
+| `golden`    |   213 |      2 | 107 / 106                   | 6.3 / 3.9                         |
+| `golden-pt` |    93 |      6 | 16 / 16 / 16 / 15 / 15 / 15 | 2.6 / 4.3 / 6.3 / 3.7 / 1.0 / 1.5 |
+| `pair`      |    14 |      3 | 5 / 5 / 4                   | 5.3 / 2.8 / 2.5                   |
 | `bake`      |    25 |      3 | 9 / 8 / 8                   | 6.4 / 4.3 / 3.5                   |
 | `bench`     |     1 |      1 | 1                           | its own job                       |
 
@@ -116,7 +116,7 @@ jobs (the mirror was fast that time) and saved the browser cache (113 MB) and th
 downloaded nothing (`Need to get 0 B/21.9 MB of archives`), and the install step took 10-23 s; a slow mirror no longer
 reaches it, only `apt-get update` (4 s) still uses the network.
 
-314 tests in all. The path-tracer tests had been part of `golden` (241 tests in 5 shards of 48-49): the shard that held
+346 tests in all. The path-tracer tests had been part of `golden` (241 tests in 5 shards of 48-49): the shard that held
 48 of them summed to 16.0 minutes, the others 1.8-7.2, and the same block in shard 2 of 4 ran 16.3 and 17.4 minute jobs
 on main. `golden-pt` has 6 shards because its two longest tests (a denoised 2x render in batches, 3.0 minutes, and a
 denoised 2x render paired with the preview, 1.9 minutes) are four tests apart in the file: with 3, 4 or 5 shards one

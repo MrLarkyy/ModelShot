@@ -487,13 +487,6 @@ function pixelsApartIn(a: Image, b: Image, region: readonly [number, number][], 
 }
 
 /**
- * MS-60: the OIT pass ramps partial|invisible and partial|partial seams over one pixel with the 50 % point on the texel
- * boundary; with the opaque pass under alpha-to-coverage an opaque|partial seam ramps from the opaque texel to the
- * partial one, and raster frames draw the OIT pass per MSAA sample, so a face outline of partial texels is
- * anti-aliased too. The hard reference draws nearest texels at pixel centres (aa=0, msaa=0); `partial-edge-under` (the
- * opaque texels partial) is what an opaque texel covers, the backdrop of the opaque|partial seams.
- */
-/**
  * Opaque|partial strip of `partial-edge` at 4 samples: A2C quantises the opaque side (coverage 0.75-1 beside an
  * alpha-128 texel) to the samples' levels, which WebGL2 cannot refine (no gl_SampleMask), so the covered area exceeds the
  * hard shape: measured 26.5 px over 280 seam crossings (0.095 each), held at 0.15 per crossing. Opaque-side mixes:
@@ -503,6 +496,13 @@ function pixelsApartIn(a: Image, b: Image, region: readonly [number, number][], 
 const STRIP_EXCESS_PER_CROSSING = 0.15;
 const STRIP_MIN_OPAQUE_MIXES = 13;
 
+/**
+ * MS-60: the OIT pass ramps partial|invisible and partial|partial seams over one pixel with the 50 % point on the texel
+ * boundary; with the opaque pass under alpha-to-coverage an opaque|partial seam ramps from the opaque texel to the
+ * partial one, and raster frames draw the OIT pass per MSAA sample, so a face outline of partial texels is
+ * anti-aliased too. The hard reference draws nearest texels at pixel centres (aa=0, msaa=0); `partial-edge-under` (the
+ * opaque texels partial) is what an opaque texel covers, the backdrop of the opaque|partial seams.
+ */
 test.describe('anti-aliased partial-alpha seams in the OIT pass (MS-60)', () => {
   test('raster frames anti-alias partial seams, the partial outline and opaque|partial seams; texel centres keep', async ({
     page,
