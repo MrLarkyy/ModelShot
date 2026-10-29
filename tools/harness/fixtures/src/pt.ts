@@ -425,6 +425,46 @@ async function start(): Promise<void> {
       render();
       return result.applied;
     },
+    reloadScene: async () => {
+      const fresh = sceneOf(view.scene);
+      const next = { ...fresh, textures: [...fresh.textures], materials: [...fresh.materials] };
+      const result = await tracer.setScene(next, sceneOptions);
+      if (result.applied) doc = next;
+      render();
+      return result.applied;
+    },
+    poseDuringEdges: async (edges) => {
+      const next = { ...doc, nodes: doc.nodes.map((n) => ({ ...n })) };
+      let layerUploads = 0;
+      let fired = false;
+      const methods = gl as unknown as Record<string, (...args: unknown[]) => unknown>;
+      const names = ['texStorage3D', 'texSubImage3D', 'texSubImage2D'];
+      const saved = Object.fromEntries(names.map((name) => [name, methods[name]]));
+      const patch = (name: string, after: () => void): void => {
+        const original = saved[name];
+        if (!original) throw new Error(`gl.${name} missing`);
+        methods[name] = (...args: unknown[]) => {
+          const value = original.apply(gl, args);
+          after();
+          return value;
+        };
+      };
+      patch('texStorage3D', () => layerUploads++);
+      patch('texSubImage3D', () => layerUploads++);
+      patch('texSubImage2D', () => {
+        if (fired) return;
+        fired = true;
+        tracer.setEdges(edges);
+      });
+      try {
+        const result = await tracer.setScene(next, sceneOptions);
+        if (result.applied) doc = next;
+        render();
+        return { applied: result.applied && fired, layerUploads };
+      } finally {
+        for (const name of names) delete methods[name];
+      }
+    },
     setSceneDuringLook: async (id) => {
       const next = sceneOf(view.scene);
       const pending = tracer.setScene(next, sceneOptions);

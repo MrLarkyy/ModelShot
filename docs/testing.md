@@ -695,6 +695,9 @@ of the render with rounding stay within the default golden tolerance of the rend
 differ, mean delta 0.0025: only light bounced off rounded neighbours moves); the cube's key-facing edge (3 x 3 mean)
 is brighter than the face centre (118.7 vs 117.4, unrounded equal); `setEdges` behaves as in the preview (width 0 the
 bytes of `edges=0`, the angle round trip the initial bytes, bad values a `RangeError` naming the field).
+`goldenPathTracerEdges.spec.ts` (MS-72; the `golden` project picks it up by its `golden*.spec.ts` match): a new sharp
+angle set with `setEdges` renders byte for byte as `reloadScene()` at that angle, and the initial bytes again at 30°;
+a pose-only `setScene` overlapped by `setEdges` makes no layer texture upload and renders those bytes too.
 
 **Pair tests** (preview vs render): `rt.html` baked (`bake=64`) and `pt.html` of the same view. Framing, with the
 shadow catcher off on both sides (its edge fades into the backdrop) and the preview without MSAA (`msaa=0`, coverage

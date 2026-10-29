@@ -40,6 +40,14 @@ export function writeDataRows(
   gl.bindTexture(gl.TEXTURE_2D, null);
 }
 
+/**
+ * Writes the edge texels of a repacked geometry into the scene-owned triangle attribute texture: storage, the other
+ * textures and all handles stay. `triAttributes` must have the rows of the handle (the same packed geometry).
+ */
+export function rewriteTriangleEdges(gl: WebGL2RenderingContext, scene: GpuScene, triAttributes: DataTexture): void {
+  writeDataRows(gl, scene.triAttributes, triAttributes, 0, triAttributes.rows);
+}
+
 /** One RGBA32F data texture, NEAREST, `DATA_TEXTURE_WIDTH` texels per row. */
 export function uploadData(gl: WebGL2RenderingContext, texture: DataTexture): WebGLTexture {
   const handle = createDataTexture(gl, texture.rows);
