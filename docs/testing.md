@@ -124,7 +124,8 @@ came near or over it; the worst of runs 39594658979 and 39612706830 per test: th
 the path-tracer determinism batches test 35.0 s (over 30 s), its same-seed test 15.2 s, `pt-alpha-plane` 22.4 s, the
 transparency tests up to 22.5 s, the lifetime tests 14.9-18.6 s, the 10 000 coincident cubes test 10.0 s. A suite or
 test whose CI time reaches a third of the default carries a timeout: 180 s for the baked goldens (bakes took 33-42 s in run 39624802150), 300 s for the baked lighting describe, 480 s for its determinism test (1.6 minutes on a normal runner, over 3 on a slow one), 300 s for the baked-preview pairing tests (up to 1.3 minutes, about 2.6 on a slow VM), 120 s for the path-tracer goldens, determinism, transparency and lifetime describes and the coincident cubes
-test (at least 3x the worst measured time). A hang now fails after that time, not after 30 s; several hangs in one
+test (at least 3x the worst measured time), 53 s for the realtime shimmer test (`texel anti-aliasing halves shimmer`,
+eight renders: 22-35 s alone locally, 30.3 and 31.1 s in the full local suite, which timed it out; 1.5x the worst). A hang now fails after that time, not after 30 s; several hangs in one
 shard can reach the 20-minute job limit, and the job is then cancelled instead of reporting the failures.
 
 FFmpeg: `playwright install` fetches FFmpeg with every browser (playwright-core has no flag to skip it). The first

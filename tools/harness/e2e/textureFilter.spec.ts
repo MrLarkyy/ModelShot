@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test';
 // The package index pulls in GLSL through Vite's ?raw, which Playwright cannot load: the plain modules directly.
 import { agxToneMap } from '../../../packages/looks/src/agxToneMap';
 import { backdropColor } from '../../../packages/looks/src/backdropColor';
-import { filterQuad, filterQuadPoint, type FilterQuadName } from '../fixtures/src/textureFilterLayout';
+import { filterQuad, filterQuadPoint, type FilterQuad, type FilterQuadName } from '../fixtures/src/textureFilterLayout';
 import { compareImages, type CompareOptions } from '../src/compareImages';
 import { encodeFlipped, expectGolden, openFixture, type FixtureInfo } from '../src/expectGolden';
 import type { GoldenSpec } from '../src/goldenSpec';
@@ -114,6 +114,112 @@ async function project(page: Page, point: readonly [number, number, number]): Pr
 
 const text = (c: readonly number[]) => c.map(Math.round).join(',');
 
+/** Teal's weight at texel coordinates (u, v) of the checker, as hardware bilinear filtering of the image gives it. */
+function tealWeight(u: number, v: number): number {
+  const [bx, by] = [Math.floor(u - 0.5), Math.floor(v - 0.5)];
+  const [fx, fy] = [u - 0.5 - bx, v - 0.5 - by];
+  let weight = 0;
+  for (const [dx, dy] of [
+    [0, 0],
+    [1, 0],
+    [0, 1],
+    [1, 1],
+  ] as const) {
+    if ((bx + dx + by + dy) % 2 !== 0) weight += (dx ? fx : 1 - fx) * (dy ? fy : 1 - fy);
+  }
+  return weight;
+}
+
+/** The pixels at texel coordinates `ats` of `quad`, each with the texel coordinates at that pixel's centre. */
+async function samplesAt(
+  page: Page,
+  image: Image,
+  quad: FilterQuad,
+  ats: readonly At[],
+): Promise<{ colour: [number, number, number]; at: At }[]> {
+  const points = ats.flatMap(([u, v]) => [
+    filterQuadPoint(quad, u, v),
+    filterQuadPoint(quad, u + 1, v),
+    filterQuadPoint(quad, u, v + 1),
+  ]);
+  const screen = await page.evaluate((all) => {
+    const fixture = window.__msFixture;
+    const projector = fixture?.rt ?? fixture?.pt;
+    if (!projector) throw new Error('fixture controls missing');
+    return all.map(([x, y, z]) => projector.project(x, y, z));
+  }, points);
+  return ats.map(([u, v], i) => {
+    const [[x, y], [xu, yu], [xv, yv]] = screen.slice(i * 3, i * 3 + 3) as [
+      [number, number],
+      [number, number],
+      [number, number],
+    ];
+    // The pixel centre's offset from (x, y) in the local texel axes (the projection is affine over a texel).
+    const [cx, cy] = [Math.floor(x) + 0.5 - x, Math.floor(y) + 0.5 - y];
+    const [ax, ay, bx, by] = [xu - x, yu - y, xv - x, yv - y];
+    const det = ax * by - bx * ay;
+    return { colour: pixel(image, x, y), at: [u + (cx * by - bx * cy) / det, v + (ax * cy - cx * ay) / det] };
+  });
+}
+
+/**
+ * Most a seam probe's measured teal weight may differ from the weight its line maps the same bilinear weight to: measured
+ * 0.007 in the preview and 0.028 in the render (seed 1, 64 samples), x 1.25.
+ */
+const SEAM_TOLERANCE = 0.035;
+
+interface SeamProbe {
+  readonly label: string;
+  /** Teal's weight at the probe's pixel in display levels (weightToward), and the same expected from its line. */
+  readonly measured: number;
+  readonly expected: number;
+  /** Teal's bilinear weight at the pixel's centre, and the weight the line expects of taps clamped to the face. */
+  readonly bilinear: number;
+  readonly clamped: number;
+}
+
+/**
+ * The linear quad at `along` on axis `axis` (u: a row, v: a column) of the line through texel centres at `across`. The
+ * tone mapping bends a weight measured in display levels (bilinear 0.45 reads about 0.34), so the expected one comes
+ * from the same line two texels away from the cell borders: the pixels from texel centre 1.5 to 2.5 map teal's bilinear
+ * weight at their centres to the weight measured there, and the probe's bilinear weight is looked up in that map.
+ */
+async function seamProbe(
+  page: Page,
+  image: Image,
+  axis: 'u' | 'v',
+  along: number,
+  across: number,
+  yellow: readonly number[],
+  teal: readonly number[],
+): Promise<SeamProbe> {
+  const point = (a: number): At => (axis === 'u' ? [a, across] : [across, a]);
+  const span = Array.from({ length: 21 }, (_, i) => point(1.5 + i / 20));
+  const [probe, ...line] = await samplesAt(page, image, filterQuad('linear'), [point(along), ...span]);
+  if (!probe) throw new Error('seam probe missing');
+  const map = line
+    .map((s) => [tealWeight(...s.at), weightToward(s.colour, yellow, teal)] as const)
+    .sort((a, b) => a[0] - b[0]);
+  const lookUp = (w: number): number => {
+    const upper = map.findIndex(([x]) => x >= w);
+    if (upper <= 0) return (upper === 0 ? map[0] : map[map.length - 1])?.[1] ?? 0;
+    const [[x0, y0], [x1, y1]] = [map[upper - 1], map[upper]] as [readonly [number, number], readonly [number, number]];
+    return x1 === x0 ? y1 : y0 + ((y1 - y0) * (w - x0)) / (x1 - x0);
+  };
+  const [u, v] = probe.at;
+  const bilinear = tealWeight(u, v);
+  // Taps clamped to the face show the texel on the probe's side of the border alone.
+  const near = along < 4 ? 3.5 : 4.5;
+  const clamped = axis === 'u' ? tealWeight(near, v) : tealWeight(u, near);
+  return {
+    label: `(${point(along).join(', ')}) at (${u.toFixed(2)}, ${v.toFixed(2)})`,
+    measured: weightToward(probe.colour, yellow, teal),
+    expected: lookUp(bilinear),
+    bilinear,
+    clamped: lookUp(clamped),
+  };
+}
+
 /**
  * Every probe of the near view the page shows (about 7 pixels per texel), each logged under `[filter probe]`. A probe
  * reads the one pixel at its point: a mean over neighbours would flatten the linear blend's peak at a texel centre.
@@ -165,35 +271,23 @@ async function checkProbes(page: Page, label: string): Promise<void> {
     check(same(nearest, like), `nearest (${at.join(', ')}) ${text(nearest)} = its texel ${text(like)}`);
   }
 
-  // The linear quad is two by two cells of two triangles (texel borders at 4, diagonals u = v and u + v = 4 or 8): a tap
-  // is limited by the image, not by a triangle's UV rectangle, so the blend stays the bilinear one on either side of
-  // every shared edge. Teal's weight at (u, v) over the checker's four texels, as hardware filtering gives it (0.375 or
-  // 0.625 at these points); the tone mapping bends the measured one by up to 0.2, a tap clamped to a face rectangle
-  // moves it by 0.375 or more. The rows and columns through the texel centres (u or v 3.5, 4.5) are checked above.
-  const tealWeight = (u: number, v: number): number => {
-    const [fx, fy] = [(u - 0.5) % 1, (v - 0.5) % 1];
-    const [bx, by] = [Math.floor(u - 0.5), Math.floor(v - 0.5)];
-    let weight = 0;
-    for (const [dx, dy] of [
-      [0, 0],
-      [1, 0],
-      [0, 1],
-      [1, 1],
-    ] as const) {
-      if ((bx + dx + by + dy) % 2 !== 0) weight += (dx ? fx : 1 - fx) * (dy ? fy : 1 - fy);
-    }
-    return weight;
-  };
-  const offsets = [1.75, 2.25, 3.75, 4.25, 5.75, 6.25];
-  for (const v of offsets) {
-    for (const u of offsets) {
-      const at = await colourAt('linear', [u, v]);
-      const weight = weightToward(at, nearYellow, nearTeal);
-      const expected = tealWeight(u, v);
-      check(
-        Math.abs(weight - expected) <= 0.28,
-        `linear (${u}, ${v}) ${text(at)}: teal weight ${weight.toFixed(3)} vs bilinear ${expected.toFixed(3)}`,
-      );
+  // The linear quad is two by two cells of two triangles (cell borders u = 4 and v = 4, diagonals u - v = 0 or +-4). A
+  // triangle's face rectangle is that of its last vertex, the union of the triangles at that vertex (uvRects.ts): the
+  // lower-left triangles right of u = 4 end theirs at u = 4, every other triangle's spans the border. A linear tap may
+  // read one texel past the face rectangle, as hardware filtering does, so 0.1 texel either side of a border, on a row or
+  // column through texel centres, the far texel weighs about 0.4 as anywhere else. Taps clamped to the face rectangle
+  // show the near texel alone right of u = 4: with linearTexelRange disabled, (4.1, 1.5 | 2.5 | 5.5 | 6.5) and
+  // (3.9, 6.5), whose pixel's footprint reaches over the border, fail by 0.11 to 0.48 in both renderers.
+  for (const across of [1.5, 2.5, 5.5, 6.5]) {
+    for (const along of [3.9, 4.1]) {
+      for (const axis of ['u', 'v'] as const) {
+        const probe = await seamProbe(page, image, axis, along, across, nearYellow, nearTeal);
+        check(
+          Math.abs(probe.measured - probe.expected) <= SEAM_TOLERANCE,
+          `linear seam ${probe.label}: teal weight ${probe.measured.toFixed(3)} vs ${probe.expected.toFixed(3)} ` +
+            `(bilinear ${probe.bilinear.toFixed(3)}); taps clamped to the face would read ${probe.clamped.toFixed(3)}`,
+        );
+      }
     }
   }
 

@@ -1,8 +1,9 @@
 // What a ray meets on a triangle: its nearest texel as faceTexel addresses it (the face's texel rectangle, then the
-// texture's wrap; nothing read from a neighbouring atlas region), the texel's coverage under the material's alpha rule
-// (texelAlpha, the same classification as the preview), and the surface the integrator shades. The albedo is that
-// texel's colour, or for a texture whose flags carry TEXTURE_FLAG_LINEAR the bilinear blend of the four addressed
-// texels around the hit (texelFilter, as the preview blends them); coverage stays the nearest texel's for every ray.
+// texture's wrap; read only inside the face), the texel's coverage under the material's alpha rule (texelAlpha, the
+// same classification as the preview), and the surface the integrator shades. The albedo is that texel's colour, or for
+// a texture whose flags carry TEXTURE_FLAG_LINEAR the bilinear blend of the four texels around the hit (texelFilter, as
+// the preview blends them), which may read one texel past the face rectangle of the same image, never another image or
+// frame; coverage stays the nearest texel's for every ray.
 // The shading normal lives here only.
 #include "sceneData"
 #include "texelAlpha"

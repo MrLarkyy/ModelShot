@@ -1,7 +1,8 @@
 // Linear colour filtering of a texture whose sampling flags carry TEXTURE_FLAG_LINEAR (faceTexels): the bilinear blend
 // of the four texels around a point. The caller addresses each tap through faceTexel with linearTexelRange, so the
-// blend never reads a texel outside the image (per wrap and frame) or, in the path tracer, another image of the atlas. Only the
-// colour is filtered; coverage stays the nearest texel's (texelAlpha) in every pass and ray type.
+// blend may read one texel past the face rectangle of the same image, but never a texel outside the image (per wrap and
+// frame) or, in the path tracer, another image of the texture layers. Only the colour is filtered; coverage stays the
+// nearest texel's (texelAlpha) in every pass and ray type.
 #include "texelAlpha"
 
 // The taps around p (position in texel units, texel k spanning [k, k + 1)): base, base + (1, 0), (0, 1) and (1, 1),

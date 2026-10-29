@@ -1,7 +1,8 @@
 // Pixel-art texture lookup: nearest texels with an anti-aliased seam one screen pixel wide, every tap addressed by
-// faceTexel (the face's texel rectangle, then the texture's wrap), so no texel of a neighbouring atlas region or outside
-// the image is ever read. A texture whose flags carry TEXTURE_FLAG_LINEAR takes its colour from the bilinear blend of
-// the same addressed texels (texelFilter), its coverage still from the nearest texel. Textures are SRGB8_ALPHA8 with
+// faceTexel (the face's texel rectangle, then the texture's wrap), so it reads only inside the face. A texture whose
+// flags carry TEXTURE_FLAG_LINEAR takes its colour from the bilinear blend of the four texels around the point
+// (texelFilter), which may read one texel past the face rectangle of the same image, as hardware linear filtering does,
+// never another image or frame; its coverage still comes from the nearest texel. Textures are SRGB8_ALPHA8 with
 // NEAREST filtering and no mipmaps; texelFetch returns linear colour, so the taps blend in linear space.
 #include "texelAlpha"
 #include "faceTexels"

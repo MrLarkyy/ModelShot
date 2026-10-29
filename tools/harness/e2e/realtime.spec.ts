@@ -224,6 +224,8 @@ test('no turntable frame shows a texel from outside its face rectangle', async (
 });
 
 test('texel anti-aliasing halves shimmer against nearest sampling', async ({ page }) => {
+  // Eight renders: 22-35 s locally, past the 30 s default under full-suite load (docs/testing.md).
+  test.setTimeout(53_000);
   for (const framing of ['far', 'closeup']) {
     const share = async (aa: 0 | 1): Promise<number> => {
       const a = await render(page, `variant=${framing}&aa=${aa}&yaw=30`);
