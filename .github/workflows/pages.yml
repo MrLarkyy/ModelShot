@@ -72,7 +72,9 @@ jobs:
       - run: npm i -g corepack@latest
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @modelshot/deploy exec playwright install --with-deps --only-shell chromium
+      - uses: ./.github/actions/playwright
+        with:
+          package: '@modelshot/deploy'
       - uses: actions/download-artifact@v8
         with:
           name: github-pages

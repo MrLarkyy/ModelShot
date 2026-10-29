@@ -49,8 +49,10 @@ requestAnimationFrame(frame);
 - `setCamera(camera)`, `resize(cssSize)`: the shared `SceneCamera` and the canvas size, as for the preview.
 - `setEdges(edges)`, `edgeLook`: the rounded edges (fields left out keep theirs; a bad value throws as for the option
   and changes nothing). A new width restarts the accumulation; a new sharp angle detects the edges again and rewrites
-  the triangles' edge texels (`packTriangleEdges`) before uploading them. A scene whose `setScene` was still decoding
-  when the angle changed is packed again with the current angle before its first upload.
+  the triangles' edge texels (`packTriangleEdges`), then writes the triangle attribute rows into the shown scene's
+  texture in place (one `texSubImage2D`; the handles, the other data textures and the images stay, nothing is
+  uploaded again). A scene whose `setScene` was still decoding when the angle changed is packed at the current angle
+  before its first upload; one still uploading gets the same in-place rewrite when it is swapped in.
 - `setLook(look)`, `look`: the look (an invalid one throws `LookPresetError` naming the field and changes nothing). The
   shadow catcher moves under the new key; edges as `setEdges`; a scene whose `setScene` is still decoding gets the
   look too (its catcher is placed when it is swapped in).
@@ -141,14 +143,15 @@ floor does not ride with a jump.
    `PLACEHOLDER_IMAGE`). A `setScene` with the shown scene's `textures` array skips this step and borrows the shown
    scene's images and layer texture (and its material table when `materials` and `emission` match); the images then
    belong to both scenes and are closed once, when neither shows them, and the swap deletes only the textures the new
-   scene does not hold. Should `setEdges` or a context restore replace the shown scene during the upload, the borrowed
-   texture is gone and the swap uploads the scene fresh from the images instead.
+   scene does not hold. `setEdges` keeps the shown scene, so the borrowed textures stay; only a context restore
+   replaces it during the upload, and the swap then uploads the scene fresh from the images instead.
    The data textures and the images upload over several tasks while the current scene keeps drawing: at most
    `BAND_ROWS` (128) rows, 4 MiB, of a data texture per task, and images in groups of at most 4 MiB per task (a larger
    image in row bands of 4 MiB: a `RawImage` by a view of its rows, an `ImageBitmap` by `UNPACK_SKIP_ROWS`). A
    superseded upload, or one whose context was lost, deletes what it made; the swap then releases the
    old scene's textures, so for that moment both scenes' data are on the GPU (about 2 × 40 MB at 200 000 triangles).
-   After a context restore, after `setEdges` of a new angle, and for the empty scene the upload is still one task.
+   After a context restore and for the empty scene the upload is still one task; so is the rewrite of `setEdges` of a
+   new angle (one `texSubImage2D` of the attribute rows, about 28 MB at 200 000 triangles).
 6. Per sample, a trace pass per tile (scissor, at most `tileSize` square, so no draw call runs long enough to trip a
    driver watchdog) reads the running sum from one RGBA32F target and writes sum + sample into the other; then they
    swap. A present pass divides by the sample count and applies AgX. The quality path (Render quality) traces at the

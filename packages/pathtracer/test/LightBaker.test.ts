@@ -37,8 +37,31 @@ class FakeWorker {
   }
 }
 
-/** Runs the posting chain to its end (its mesh stream yields through timers), whatever the timer latency. */
-const flush = () => vi.runAllTimersAsync();
+/** A MessageChannel whose deliveries wait in a test-owned queue, so they run under the test's control. */
+const channelQueue: (() => void)[] = [];
+
+class FakeMessageChannel {
+  readonly port1: { onmessage: (() => void) | null; close(): void } = { onmessage: null, close: () => {} };
+  readonly port2 = {
+    postMessage: () => {
+      channelQueue.push(() => this.port1.onmessage?.());
+    },
+  };
+}
+
+/** Runs the posting chain to its end (its mesh stream yields through channel tasks), whatever the latency. */
+async function settle(): Promise<void> {
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+}
+
+async function flush(): Promise<void> {
+  await settle();
+  while (channelQueue.length > 0 || vi.getTimerCount() > 0) {
+    await vi.runAllTimersAsync();
+    channelQueue.shift()?.();
+    await settle();
+  }
+}
 const bakes = (worker: FakeWorker) => worker.posted.filter((m) => m.type === 'bake');
 
 const doc = sceneOf([triangleMesh([0, 0, 0, 1, 0, 0, 0, 1, 0])]);
@@ -60,7 +83,9 @@ function baker(): { baker: LightBaker; worker: FakeWorker } {
 }
 
 beforeEach(() => {
+  channelQueue.length = 0;
   vi.useFakeTimers();
+  vi.stubGlobal('MessageChannel', FakeMessageChannel);
 });
 
 afterEach(() => {
@@ -89,6 +114,17 @@ describe('LightBaker', () => {
     const broken = { ...doc, meshes: [{ ...doc.meshes[0]!, indices: new Uint32Array([0, 1, 7]) }] };
     await expect(b.bake(broken)).rejects.toMatchObject({ code: 'INVALID_SCENE' });
     expect(worker.posted).toEqual([]);
+  });
+
+  it('yields through a channel task, not a timer', async () => {
+    const { baker: b, worker } = baker();
+    void b.bake(doc);
+    await settle();
+    expect(bakes(worker)).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(channelQueue.length).toBeGreaterThan(0);
+    await flush();
+    expect(bakes(worker)).toHaveLength(1);
   });
 
   it('posts texture bytes and meshes only when the worker does not hold them', async () => {
