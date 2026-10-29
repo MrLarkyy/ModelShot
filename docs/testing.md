@@ -452,7 +452,7 @@ frames, single-sampled, moved in round 1 at most 4 pixels by 1 level (rounding i
 the drift are `rt-player-classic-front` (1), `-classic-back` (1), `-walk-hold-34` (4), `-wave-front` (2),
 `rt-preset-marketplace` (2) and `rt-preset-marketplace-fallback` (2). Unchanged: the other rt goldens, every `pt-*`
 and model-view golden; `export-animation-f0.s1.n16` renders 2 pixels 1 level off its golden, twice alike (not an rt
-golden, left). Round 3 (the shading point back at the pixel centre wherever the pixel lies on the face,
+golden, left; the export goldens below say where it came from). Round 3 (the shading point back at the pixel centre wherever the pixel lies on the face,
 `prepareShading`) rewrote 29 rt goldens, pixels (max levels) against round 2: `rt-bake-alpha-plane` 1 614 (3),
 `rt-bake-gltf-contact` 1 846 (4), `rt-bake-turntable-y030` 307 (2), `rt-bake-cutout-checker` 105 (1) and `-fallback`
 100 (1), `rt-closeup` 553 (3), `rt-edges` 635 (20), `rt-fallback` 316 (1), `rt-far` 40 (1), `rt-gltf-nodes-y030` 141
@@ -891,7 +891,11 @@ took, so a decoded file is compared with the very frames that were encoded.
   `export-animation-f0..f3.s1.n16.png` (the showcase bobbing 3 units up and down over 1 s, 4 frames at 4 fps, as
   APNG: the model rises, its floor and shadow stay), read by `expectGolden` with threshold 0 like the path-tracer
   goldens; the fixture hands the decoded file's pixels to `readRGBA`. Nothing compares
-  bytes against a committed PNG.
+  bytes against a committed PNG. Drift (MS-67): MS-22 wrote `export-animation-f0` before MS-39 let a model hit beat the
+  shadow catcher (`7c67fd6`); that merge moved the frame's pixels (26, 43) and (26, 44) by 1 level, inside tolerance, so
+  the golden stayed until MS-59 regenerated the export goldens with its catcher change (`98a3451`). The main before
+  MS-39 renders the MS-22 golden byte for byte, the main after it the 2 pixels off, and `golden:update` on `48c4e08`
+  rewrites all export goldens with identical bytes: f1..f3 never moved, nothing is nondeterministic.
 - Still: the PNG decodes (the formats package's `decodePngRgba`) to exactly the bytes of `readImage()`; alpha is 255 at
   the opaque texel probe, 0 at the cut-out texel probe and at the corners where camera rays escape (catcher off); with
   the catcher on, its shadow under the opaque texel is black with alpha 1 − shade (191 measured; 188 before MS-59).
