@@ -211,11 +211,12 @@ The rules are the scene format's ([scene-format.md](scene-format.md): `SceneMate
   at the pixel centre: the opaque pass keeps its hard side, so the opaque|partial seam stays as before) and 1 in mode
   2 (the opaque pass under A2C covers the opaque side, above). Mode 0, the nearest texel's rule, is kept for the
   passes of an accumulated exact frame (their mean antialiases the seams already; a ramp in each would filter twice)
-  and for `texelAntialias: false`. The fallback, shadows, the AO and the light bake do not change. A2C quantises the
-  opaque side of an opaque|partial seam to the 4 samples' levels, and an opaque texel beside an alpha-128 one only
-  spans coverage 0.75-1, so one level is half its ramp: on SwiftShader the opaque|partial strip of the partial-edge
-  test covers 26.5 px more than the hard shape (0.78 px per boundary row; partial|invisible seams 0.07)
-  (docs/testing.md).
+  and for `texelAntialias: false`. The fallback, shadows, the AO and the light bake do not change. Accepted residual on
+  opaque|partial seams: A2C quantises their opaque side to the 4 samples' levels, and an opaque texel beside an
+  alpha-128 one only spans coverage 0.75-1, so one level is half its ramp; WebGL2 has no `gl_SampleMask` to refine
+  it. On SwiftShader the partial-edge strip covers 26.5 px more than the hard shape over 280 seam crossings, 0.095 px
+  per crossing; the limit is 0.15 px per crossing, and the opaque side must mix (docs/testing.md). Partial|invisible
+  seams and outlines meet 0.5 px per boundary row.
 - **Sides**: single-sided groups are drawn with back faces culled in every pass. Double-sided groups are drawn twice
   per render order: front faces, then back faces (front faces culled), the back lit with the flipped normal.
 - **Render order**: draws are sorted by render order, descending; per order the front pass, then the back pass of

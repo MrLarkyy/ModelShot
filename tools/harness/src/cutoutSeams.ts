@@ -22,11 +22,8 @@ export interface CutoutSeams {
   readonly area: number;
   /** Rows of the region with a boundary pixel. */
   readonly boundaryRows: number;
-  /**
-   * Columns of the region crossed by a near-horizontal boundary (a model/backdrop pair of vertical neighbours): with
-   * `boundaryRows` the length scale of a region whose boundaries run both ways.
-   */
-  readonly boundaryColumns: number;
+  /** Of the mixes, those on the model side of the boundary (a pixel the hard frame shows as model). */
+  readonly modelMixes: number;
 }
 
 const model = (image: Image, backdrop: Image, x: number, y: number): boolean =>
@@ -126,6 +123,7 @@ export function cutoutSeams(
   let farChanges = 0;
   let boundary = 0;
   let mixes = 0;
+  let modelMixes = 0;
   let hardArea = 0;
   let area = 0;
   let boundaryRows = 0;
@@ -153,6 +151,7 @@ export function cutoutSeams(
       boundary++;
       if (t && !near(p, b, 2) && !near(p, t, 2)) {
         mixes++;
+        if (at(x, y) === 1) modelMixes++;
         mixed[y * width + x] = 1;
       }
     }
@@ -160,7 +159,6 @@ export function cutoutSeams(
   }
   let transitions = 0;
   let mixedTransitions = 0;
-  const crossedColumns = new Set<number>();
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       if (!inside(region, x, y)) continue;
@@ -171,11 +169,9 @@ export function cutoutSeams(
         const other = at(nx, ny);
         if (other === -1 || other === at(x, y) || !inside(region, nx, ny)) continue;
         transitions++;
-        if (ny !== y) crossedColumns.add(x);
         if (mixed[y * width + x] || mixed[ny * width + nx]) mixedTransitions++;
       }
     }
   }
-  const boundaryColumns = crossedColumns.size;
-  return { farChanges, boundary, mixes, transitions, mixedTransitions, hardArea, area, boundaryRows, boundaryColumns };
+  return { farChanges, boundary, mixes, transitions, mixedTransitions, hardArea, area, boundaryRows, modelMixes };
 }

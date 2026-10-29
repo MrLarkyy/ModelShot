@@ -493,6 +493,16 @@ function pixelsApartIn(a: Image, b: Image, region: readonly [number, number][], 
  * anti-aliased too. The hard reference draws nearest texels at pixel centres (aa=0, msaa=0); `partial-edge-under` (the
  * opaque texels partial) is what an opaque texel covers, the backdrop of the opaque|partial seams.
  */
+/**
+ * Opaque|partial strip of `partial-edge` at 4 samples: A2C quantises the opaque side (coverage 0.75-1 beside an
+ * alpha-128 texel) to the samples' levels, which WebGL2 cannot refine (no gl_SampleMask), so the covered area exceeds the
+ * hard shape: measured 26.5 px over 280 seam crossings (0.095 each), held at 0.15 per crossing. Opaque-side mixes:
+ * measured 26, required at least half; with the opaque pass's coverage of 1 there (before MS-60) 0 mixes and an excess
+ * of 39.5 px (0.141 per crossing), so the mixes are what tells the two apart.
+ */
+const STRIP_EXCESS_PER_CROSSING = 0.15;
+const STRIP_MIN_OPAQUE_MIXES = 13;
+
 test.describe('anti-aliased partial-alpha seams in the OIT pass (MS-60)', () => {
   test('raster frames anti-alias partial seams, the partial outline and opaque|partial seams; texel centres keep', async ({
     page,
@@ -519,12 +529,19 @@ test.describe('anti-aliased partial-alpha seams in the OIT pass (MS-60)', () => 
       expect(measured.farChanges, summary).toBe(0);
       // (b) Most seam pixels resolve to a mix of both sides.
       expect(measured.mixedTransitions, summary).toBeGreaterThanOrEqual(measured.transitions * 0.5);
-      // (c) The covered area (linear light) is the hard shape's: the 50 % contour lies on the boundaries. Within 0.5 px
-      // per boundary row, and per column a near-horizontal boundary crosses (the strip's row 5|6 seam).
-      expect(Math.abs(measured.area - measured.hardArea), summary).toBeLessThanOrEqual(
-        0.5 * (measured.boundaryRows + measured.boundaryColumns),
-      );
+      // (c) The covered area (linear light) is the hard shape's: the 50 % contour lies on the boundaries.
+      if (measured !== strip) {
+        expect(Math.abs(measured.area - measured.hardArea), summary).toBeLessThanOrEqual(0.5 * measured.boundaryRows);
+      }
     }
+    // The opaque|partial strip: the opaque side ramps too (opaque.frag.glsl writes the taps' alpha-weighted coverage
+    // under A2C; with the opaque coverage of 1 there it never mixes), and the area's excess stays within what 4x A2C
+    // quantisation of that side leaves (docs/realtime-renderer.md): 0.15 px per seam crossing.
+    const stripSummary = JSON.stringify(strip);
+    expect(strip.modelMixes, stripSummary).toBeGreaterThanOrEqual(STRIP_MIN_OPAQUE_MIXES);
+    expect(Math.abs(strip.area - strip.hardArea), stripSummary).toBeLessThanOrEqual(
+      STRIP_EXCESS_PER_CROSSING * strip.transitions,
+    );
     expect(seams.transitions, 'partial seam transitions').toBeGreaterThan(200);
     expect(outline.transitions, 'outline transitions').toBeGreaterThan(80);
     expect(strip.transitions, 'opaque|partial transitions').toBeGreaterThan(100);

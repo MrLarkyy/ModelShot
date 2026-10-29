@@ -278,13 +278,14 @@ anti-alias silhouettes like raster frames`): `turntable-y030` at `aa=0`, framed 
   partial|invisible seams, opaque|partial seams and a face outline of partial texels only; `partial-edge-under` has
   the opaque texels partial, what an opaque texel covers), against the same view at `aa=0&msaa=0` (nearest texels at
   pixel centres) with `cutoutSeams`: (a) 0 far changes (also away from the boundaries against `partial-edge-under`),
-  (b) at least half of the transitions mixed, (c) the covered area within 0.5 px per boundary row and per column a
-  near-horizontal boundary crosses (`boundaryColumns`), (d) texel centres within 1 level, alpha-0 centres exactly the
+  (b) at least half of the transitions mixed, (c) the covered area within 0.5 px per boundary row, (d) texel centres within 1 level, alpha-0 centres exactly the
   backdrop. Regions: rows 0-4 with a texel past the outline (partial seams and outline: 1 238 of 1 473 transitions
-  mixed, area 15 152.0 against 15 161, 123 rows, 195 columns), the left outline alone (82 of 113, 1 029.9 against
-  1 033, 108 rows) and the opaque|partial strip between the centres of rows 5 and 6 over `partial-edge-under` (183 of
-  280, 1 442.5 against 1 416, 34 rows, 132 columns: A2C's 4 levels on the opaque side, docs/realtime-renderer.md; 0.78
-  px per boundary row, the plan's per-row bound is met only with the columns). `msaa=0`: the seams inside the ring
+  mixed, area 15 152.0 against 15 161, limit 61.5 over 123 rows), the left outline alone (82 of 113, 1 029.9 against
+  1 033, limit 54 over 108 rows) and the opaque|partial strip between the centres of rows 5 and 6 over
+  `partial-edge-under` (183 of 280 mixed, 26 of them on the opaque side, at least 13 required; area 1 442.5 against
+  1 416, the accepted A2C residual of docs/realtime-renderer.md, limit 0.15 px per seam crossing, 42 over 280).
+  With the opaque side's coverage of 1 from before MS-60 (checked by reverting `opaque.frag.glsl` locally) the strip
+  has 0 opaque-side mixes and an excess of 39.5 px, so it fails on the mixes. `msaa=0`: the seams inside the ring
   still ramp (903 of 1 038 mixed, 10 156.3 against 10 170, 92 rows), the outline and the strip stay hard (0 mixes).
   Exact key: the converged `partial-edge-inside` equals its `aa=0` frame within 2 levels in rows 0-4 (no ramp of its
   own, the 4 passes' mean antialiases), and `partial-edge-inside&msaa=0` (drawn once) ramps (875 of 1 038, 10 154.4
