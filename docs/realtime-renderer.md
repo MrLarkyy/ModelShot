@@ -46,10 +46,10 @@ key's `u_inverseProjection` (the look, the rim and the depth pull are unshifted)
 4-layer RGBA16F `TEXTURE_2D_ARRAY` (a blit), and presents the mean of the filled slots in linear HDR before AgX, as the
 MSAA resolve does (`presentSamples.frag.glsl`, summed in a fixed order). Every sample has its own centre ray and key, so
 no hidden face can win one, and silhouettes and cut-out seams settle to 4 samples per pixel after 4 calls; a frame in
-motion shows one sample, as before. `needsRender` stays true until the 4 slots hold the current view; anything that
-sets it (camera, scene or pose, look, edges, lighting once its upload completes, resize) starts the history again, as
-do a raster frame, a context restore and a switch to the no-float path. `setCamera` with a camera of the same view and
-projection matrices changes nothing, so a caller that sets the camera every tick still converges. Once full, further
+motion shows one sample, drawn at the first slot's offset (−1/8, −3/8) px, not at the pixel centre. `needsRender` stays true until the 4 slots hold the current view; anything that
+sets it (camera, scene or pose, look, edges, `setLighting` itself, the completion of its upload, resize) starts the history again, as
+do a raster frame, a context restore and a switch to the no-float path. `setCamera` with a camera of the same fields
+(compared field by field; one that cannot be framed just counts as changed) changes nothing, so a caller that sets the camera every tick still converges. Once full, further
 calls keep drawing one pass each into the next slot (the same image): every call costs one pass, never four.
 `exactSampleCount` allows it only when MSAA would have run (at least 2 samples), a slot fits `MAX_TEXTURE_SIZE`, and
 caps it at 2²³ pixels × slots (`EXACT_SUPERSAMPLE_MAX_PIXELS`: 1920 × 1080 fits; 8 bytes per pixel and slot, 32 per

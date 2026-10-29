@@ -1171,6 +1171,8 @@ test.describe('look presets', () => {
    * The rim light is unshadowed in both renderers: every pixel it brightens in the preview (Rim against Rim with the
    * rim light black) it brightens in the render too, which a rim shadowed in the render would not. The render brightens
    * a few more: its jittered camera rays catch more of the grazing fillets (the rim is added at the camera hit only).
+   * Like framing, this compares where the light lands, so the preview samples pixel centres (msaa=0): a converged
+   * exact frame also lights silhouette slivers at 1/4 coverage that 16 render samples need not hit.
    */
   test('the rim light brightens in the render every pixel it brightens in the preview', async ({ page }) => {
     const lit = (on: Image, off: Image): Uint8Array => {
@@ -1183,7 +1185,7 @@ test.describe('look presets', () => {
       return mask;
     };
     const preview = async (rim: 0 | 1) =>
-      decodePng(encodeFlipped(await openFixture(page, `/rt.html?variant=preset-rim&bake=0&rim=${rim}`)));
+      decodePng(encodeFlipped(await openFixture(page, `/rt.html?variant=preset-rim&bake=0&msaa=0&rim=${rim}`)));
     const traced = async (rim: 0 | 1) => (await render(page, `variant=preset-rim&seed=1&samples=16&rim=${rim}`)).image;
     const previewMask = lit(await preview(1), await preview(0));
     const tracedMask = lit(await traced(1), await traced(0));

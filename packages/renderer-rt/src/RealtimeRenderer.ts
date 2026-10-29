@@ -164,11 +164,6 @@ interface FrameView {
   readonly mode: DepthKeyMode;
   /** Viewport of every mesh pass (the float targets and the fallback both draw at the canvas size). */
   readonly viewport: readonly [number, number];
-  /**
-   * Sub-pixel shift (pixels, +y up) of this pass of an exact frame's sample history, in `viewProjection` and
-   * `inverseProjection` only (`projection` stays unshifted for the depth pull); (0, 0) for every other frame.
-   */
-  readonly jitter: readonly [number, number];
 }
 
 interface GpuResources {
@@ -493,19 +488,16 @@ export class RealtimeRenderer {
     const width = this.canvas.width;
     const height = this.canvas.height;
     if (gpu.targets && !gpu.targets.ensure(width, height)) this.switchToFallback(gpu);
-    let frame = this.frameView(gpu, width, height);
-    this.frameDepthKey = frame?.mode ?? null;
+    const mode = this.camera ? this.depthMode(gpu, this.camera) : null;
+    this.frameDepthKey = mode;
     if (!gpu.targets) {
-      this.drawFallbackPath(gpu, frame);
+      this.drawFallbackPath(gpu, this.frameView(gpu, width, height, mode));
       return;
     }
-    const history = frame?.mode === 'exact' ? this.exactHistory(gpu, gpu.targets, width, height) : null;
-    if (history) {
-      if (changed) history.reset();
-      frame = this.frameView(gpu, width, height, history.offset);
-    } else {
-      gpu.exactSamples?.reset();
-    }
+    const history = mode === 'exact' ? this.exactHistory(gpu, gpu.targets, width, height) : null;
+    if (history && changed) history.reset();
+    else if (!history) gpu.exactSamples?.reset();
+    const frame = this.frameView(gpu, width, height, mode, history?.offset);
     this.drawFloatPath(gpu, gpu.targets, frame, history);
     this.converging = history !== null && !history.converged;
   }
@@ -537,14 +529,22 @@ export class RealtimeRenderer {
     gpu.exactSamples = null;
   }
 
+  /** The depth-key variant the scene and this depth range need (`depthKeyMode`). */
+  private depthMode(gpu: GpuResources, camera: SceneCamera): DepthKeyMode {
+    const depthBits = gpu.targets ? FLOAT_PATH_DEPTH_BITS : this.defaultDepthBits();
+    return depthKeyMode(camera, depthBits, gpu.scene?.hasRenderOrder ?? false);
+  }
+
   /**
-   * The camera of this frame, and the depth-key variant the scene and this depth range need (`depthKeyMode`);
-   * `jitter` shifts the image by that many pixels (a pass of an exact frame's sample history).
+   * The camera of this frame in depth-key variant `mode`; `jitter` shifts the image by that many pixels (+y up) in
+   * `viewProjection` and `inverseProjection` only (`projection` stays unshifted for the depth pull): a pass of an
+   * exact frame's sample history.
    */
   private frameView(
     gpu: GpuResources,
     width: number,
     height: number,
+    mode: DepthKeyMode | null,
     jitter: readonly [number, number] = [0, 0],
   ): FrameView | null {
     const camera = this.camera;
@@ -555,8 +555,7 @@ export class RealtimeRenderer {
         ? projection
         : mat4Multiply(ndcTranslation((2 * jitter[0]) / width, (2 * jitter[1]) / height), projection);
     const view = cameraView(camera);
-    const depthBits = gpu.targets ? FLOAT_PATH_DEPTH_BITS : this.defaultDepthBits();
-    const mode = depthKeyMode(camera, depthBits, gpu.scene?.hasRenderOrder ?? false);
+    if (!mode) return null;
     // A scene with render order got its exact geometry at upload; an order-0 scene builds it once, on the first frame
     // inside its bounding sphere.
     if (mode === 'exact' && gpu.scene && !gpu.scene.exact) gpu.scene.exact = uploadExactGeometry(this.gl, gpu.scene);
@@ -575,7 +574,6 @@ export class RealtimeRenderer {
       }),
       mode,
       viewport: [width, height],
-      jitter,
     };
   }
 
@@ -1138,11 +1136,24 @@ function ndcTranslation(x: number, y: number): Mat4 {
   return new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, 0, 1]);
 }
 
-/** Two cameras give the same view and projection matrices at any aspect: an unchanged camera set again. */
+/** Two cameras with the same fields: an unchanged camera set again (compared field by field, never throws). */
 function sameFraming(a: SceneCamera, b: SceneCamera): boolean {
   if (a === b) return true;
-  const same = (p: Mat4, q: Mat4): boolean => p.every((v, i) => v === q[i]);
-  return same(cameraView(a), cameraView(b)) && same(cameraProjection(a, 1), cameraProjection(b, 1));
+  const same = (p: readonly number[], q: readonly number[]): boolean => p.every((v, i) => v === q[i]);
+  const pa = a.projection;
+  const pb = b.projection;
+  const sameProjection =
+    pa.kind === 'perspective'
+      ? pb.kind === 'perspective' && pa.fovYDeg === pb.fovYDeg
+      : pb.kind === 'orthographic' && pa.height === pb.height;
+  return (
+    sameProjection &&
+    a.near === b.near &&
+    a.far === b.far &&
+    same(a.position, b.position) &&
+    same(a.target, b.target) &&
+    same(a.up, b.up)
+  );
 }
 
 function setNearest(gl: WebGL2RenderingContext): void {

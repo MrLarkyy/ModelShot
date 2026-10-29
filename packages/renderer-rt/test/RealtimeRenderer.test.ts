@@ -9,7 +9,9 @@ import {
   type SceneCamera,
   type SceneDocument,
 } from '@modelshot/scene';
+import { DEFAULT_LOOK, lightingKey } from '@modelshot/looks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { BakedLighting } from '../src/BakedLighting';
 import { EXACT_SAMPLE_OFFSETS } from '../src/exactSupersample';
 import { RealtimeRenderer } from '../src/RealtimeRenderer';
 import { fakeWebGl, type FakeWebGl } from './fakeWebGl';
@@ -271,6 +273,72 @@ describe('RealtimeRenderer exact-key frames on the float path: progressive rotat
     ]);
     expect(deleted(fake, before)).toBe(true);
     expect(lastUniform(fake, 'uniform1i', 'u_sampleCount')).toEqual([1]);
+    renderer.dispose();
+  });
+
+  it('flags a redraw for a camera that cannot be framed instead of throwing', async () => {
+    const { renderer } = await setUp(inside);
+    for (let pass = 0; pass < 4; pass++) renderer.render();
+    expect(renderer.needsRender).toBe(false);
+    const bad: SceneCamera[] = [
+      { ...inside, projection: { kind: 'perspective', fovYDeg: 0 } },
+      { ...inside, projection: { kind: 'orthographic', height: -1 } },
+      { ...inside, near: 5, far: 1 },
+      { ...inside, target: inside.position },
+    ];
+    for (const cam of bad) {
+      renderer.setCamera(inside);
+      renderer.render();
+      expect(() => renderer.setCamera(cam)).not.toThrow();
+      expect(renderer.needsRender).toBe(true);
+    }
+    renderer.dispose();
+  });
+
+  it('starts the history again on a pose, a look, and a lighting change, and keeps it across upload bands', async () => {
+    const { fake, renderer } = await setUp(inside);
+    const samples = (): unknown => lastUniform(fake, 'uniform1i', 'u_sampleCount')[0];
+    const fill = (): void => {
+      for (let pass = 0; pass < 4; pass++) renderer.render();
+      expect(samples()).toBe(4);
+    };
+
+    fill();
+    const doc = quadScene();
+    const node = doc.nodes[0];
+    if (!node) throw new Error('no node');
+    expect((await renderer.setScene({ ...doc, nodes: [{ ...node, translation: [1, 0, 0] }] })).applied).toBe(true);
+    renderer.render();
+    expect(samples()).toBe(1);
+
+    fill();
+    renderer.setLook({ ...DEFAULT_LOOK, id: 'warm', backdrop: { top: [0.3, 0.2, 0.1], bottom: [0.1, 0.1, 0.1] } });
+    renderer.render();
+    expect(samples()).toBe(1);
+
+    fill();
+    const layout = renderer.lightmapLayout;
+    if (!layout) throw new Error('no scene');
+    const side = 512;
+    const lighting: BakedLighting = {
+      layoutKey: layout.layoutKey,
+      lightingKey: lightingKey(renderer.look),
+      width: layout.width,
+      height: layout.height,
+      data: new Uint16Array(layout.width * layout.height * 4).fill(0x3c00),
+      samples: 1,
+      catcher: { y: 0, rect: [0, 0, 1, 1], width: side, height: side, data: new Uint16Array(side * side * 4) },
+    };
+    expect(renderer.setLighting(lighting)).toBe(true);
+    // The set restarts the history; the bands of the upload write textures frames do not draw, so they keep it;
+    // the call that completes the upload switches the light and restarts it.
+    const counts: unknown[] = [];
+    for (let call = 0; call < 8 && (call === 0 || renderer.lightingPending); call++) {
+      renderer.render();
+      counts.push(samples());
+    }
+    expect(renderer.lightingPending).toBe(false);
+    expect(counts).toEqual([1, 2, 1]);
     renderer.dispose();
   });
 
