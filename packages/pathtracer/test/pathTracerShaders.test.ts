@@ -28,6 +28,19 @@ describe('path tracer shaders', () => {
     expect(pathTracerProgramSource('present').fragment).toContain('vec3 agxToneMap(vec3 linearColor)');
   });
 
+  it('addresses material texels with the shared faceTexel and the material flags before the atlas offset', () => {
+    for (const name of ['trace', 'bake', 'guide'] as const) {
+      const fragment = pathTracerProgramSource(name).fragment;
+      expect(fragment).toContain('ivec2 faceTexel(ivec2 texel, ivec4 range, ivec2 size, int flags)');
+      expect(fragment).toContain(
+        'ivec2 texel = faceTexel(ivec2(floor(hitUv(triangle, b) * size)), range, m.size, m.textureFlags);',
+      );
+      expect(fragment).toContain('texelFetch(u_textureLayers, ivec3(texel + m.offset, m.layer), 0)');
+      expect(fragment.match(/texelFetch\(u_textureLayers/g)).toHaveLength(1);
+      expect(fragment).toContain('int(b.y), int(b.z), int(b.w));');
+    }
+  });
+
   it('adds the fill and the rim at the camera hit only, the rim seen back along the camera ray; the bake has neither', () => {
     const trace = pathTracerProgramSource('trace').fragment;
     expect(trace).toContain(

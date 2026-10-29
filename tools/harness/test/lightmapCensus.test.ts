@@ -33,6 +33,8 @@ const CENSUS: Readonly<Record<string, { world: readonly string[]; key?: string }
   'gltf-nodes-y030': { world: ['ground', 'roof'] },
   // MS-39: the star and the floor are world-charted, the box and wedge per texel.
   'obj-shapes-y030': { world: ['floor', 'star'] },
+  // MS-52: the wrap boxes, baked by textureWrap.spec.ts's pair test; every face per texel.
+  'texture-wrap': { world: [], key: '8aeb28781ff695aa' },
 };
 
 describe('lightmap chart census of the baked fixture views', () => {

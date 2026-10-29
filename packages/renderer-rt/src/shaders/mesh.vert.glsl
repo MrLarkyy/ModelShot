@@ -12,6 +12,8 @@ layout(location = 9) in vec4 a_edgeDistances;
 layout(location = 10) in vec4 a_edgeAngles;
 // World charts: the chart's rectangle in the lightmap (x, y, width, height), the same on a triangle's corners.
 layout(location = 11) in vec4 a_lightmapChart;
+// The batch texture's sampling flags (textureSamplingFlags of @modelshot/looks), the same on every vertex of a batch.
+layout(location = 12) in float a_textureFlags;
 
 uniform mat4 u_model;
 // Inverse transpose of u_model's upper 3x3 up to a positive factor (mat4NormalMatrix); node scale makes it differ.
@@ -34,10 +36,11 @@ centroid out vec3 v_normal;
 out vec2 v_uv;
 // Every vertex of a face carries the same rectangle; flat avoids interpolation error at the clamp bounds.
 flat out vec4 v_uvRect;
+flat out int v_textureFlags;
 flat out vec4 v_lightmap;
-// Vertex charts: the vertex's light for the front and the back side. World charts reuse them, as two more varyings
-// would pass the minimum MAX_VARYING_VECTORS (15) with the exact depth key's: the corner's lightmap point in xy, and
-// the chart rectangle.
+// Vertex charts: the vertex's light for the front and the back side. World charts reuse them, as more varyings would
+// pass the minimum MAX_VARYING_VECTORS (15) with the exact depth key's (it uses all 15, each counted whole): the
+// corner's lightmap point in xy, and the chart rectangle.
 centroid out vec4 v_vertexLight;
 centroid out vec4 v_vertexLightBack;
 centroid out vec3 v_worldPosition;
@@ -50,6 +53,7 @@ void main() {
   v_normal = u_normalMatrix * a_normal;
   v_uv = a_uv;
   v_uvRect = a_uvRect;
+  v_textureFlags = int(a_textureFlags);
   v_lightmap = a_lightmap;
   v_edgeDistances = a_edgeDistances;
   v_edgeAngles = a_edgeAngles;

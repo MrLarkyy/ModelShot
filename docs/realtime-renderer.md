@@ -95,8 +95,8 @@ u_lookKeyColor × max(n·u_lookKeyDirection, 0) × a + fillLight(n)) + rimLight(
   de-indexed, a vertex per triangle corner (`LightmapLayout.cornerData`, composed with the sharp-edge split, so edge
   rounding stays), each corner carrying its point in the lightmap and its chart's rectangle (attribute 11, uploaded
   only for a batch with world charts and left disabled elsewhere, as no other vertex reads it); the
-  vertex shader passes them in the vertex-light varyings, as two more varyings would exceed the minimum of 15 next to
-  the exact depth key's. Vertex charts are fetched in `mesh.vert.glsl` and interpolated; the back pass reads the back
+  vertex shader passes them in the vertex-light varyings, as more varyings would exceed the minimum of 15: the exact
+  depth key's pass uses all 15. Vertex charts are fetched in `mesh.vert.glsl` and interpolated; the back pass reads the back
   chart. The light is sampled before the first `discard` (derivatives).
 - **Kept across poses.** `setScene` keeps the lighting when the new document has the same `layoutKey` (the same model
   in another pose), so the old light shows until the re-bake's first update; another layout drops it. A document that
@@ -127,10 +127,15 @@ without depth test lets the model cover it in either depth-key variant. A scene 
   atlas regions), without flipping or premultiplying; texel (0, 0) is the top-left pixel.
 - Texel anti-aliasing: four `texelFetch` taps (linear colour) blended only within one screen pixel of a texel seam
   (offset `clamp((p − seam) / fwidth(p), −0.5, 0.5)`), with premultiplied weights so a cut-out neighbour adds no dark
-  fringe. Every tap is clamped to the face's texel rectangle from `SceneMesh.uvRects` (`faceTexelRange`, the
-  `faceTexels` chunk of `@modelshot/looks`, which the path tracer clamps with too), so no texel of a neighbouring
-  atlas region is ever read, with any face UV rotation or mirroring.
-- Minified (more than one texel per pixel): the same clamped lookup at a rotated 2 × 2 grid inside the pixel, which
+  fringe. Every tap is addressed by `faceTexel` (the `faceTexels` chunk of `@modelshot/looks`, which the path tracer
+  addresses with too): clamped to the face's texel rectangle from `SceneMesh.uvRects` (`faceTexelRange`), then, where
+  the face's UVs pass the image, repeated into it for a texture with `wrap: 'repeat'` or clamped to its edge texel
+  otherwise ([`SceneTexture.wrap`](scene-format.md#scenetexture)); on a strip the image is its frame 0. So no texel of a neighbouring atlas region or
+  outside the image is ever read, with any face UV rotation or mirroring, and at a clamped edge the seam taps blend
+  the edge texel with itself. The texture's flags (`textureSamplingFlags`: bit `TEXTURE_FLAG_REPEAT`, the frame count − 1 from bit 8) come per vertex
+  (attribute 12, the same on every vertex of a batch, 4 bytes each) into a flat varying; the closed-opaque check on
+  the CPU (`translucentTexelsIn`) counts the same repeated texels.
+- Minified (more than one texel per pixel): the same addressed lookup at a rotated 2 × 2 grid inside the pixel, which
   keeps far views from shimmering.
 - `texelAntialias: false` samples plain nearest texels (used by the shimmer test as its reference).
 
@@ -304,8 +309,9 @@ GLSL ES 3.00 in `src/shaders/*.glsl`, composed by `linkShader` from static chunk
 (`texelSample`, `shading`, `hashAlpha`, `bakedLight`, `depthKey` and `depthKeyVertex` in a raster and an exact variant) and the
 shared look chunks (`agx`, `texelAlpha`, `faceTexels`, `lightRig`, `shadowCatcher`, `edgeRounding`); the catcher has its own program
 (`catcher.vert.glsl`, `catcher.frag.glsl`). `a_lightmap` uses attribute location 8, clear of the exact key's 4-7, and
-the edge attributes 9 and 10: 11 attributes and at most 14 varying vectors (exact variant; raster 9), within WebGL2's
-guaranteed 16 and 15 (`shaderSources.test.ts` counts them). An
+the edge attributes 9 and 10, the world chart 11 and the texture flags 12: 13 attributes and 15 varying vectors in the
+exact variant (raster 10), within WebGL2's guaranteed 16 and 15, the varyings exactly at it (`shaderSources.test.ts`
+counts them, each varying as a whole vector). An
 unknown or cyclic
 include throws; no shader text is built from user input. A compile or link failure throws `RendererError`
 (`SHADER_COMPILE` / `SHADER_LINK`) with the driver's info log.
@@ -332,7 +338,7 @@ every frame is a full layout and decode that supersedes the previous one, and th
 - `setScene` validates the document first (`validateScene`): buffer lengths (3 / 3 / 2 / 4 floats per vertex),
   indices below the vertex count, groups on whole triangles inside the index buffer, material, texture, node and mesh
   indices in range or −1, finite node `pivot`, `rotation`, `translation` and `restRotation` (a NaN would drop the
-  node's subtree from the image and the bounds without a word), `renderOrder` an integer in ±1024, `doubleSided` and `cameraOnly` booleans (all optional; material
+  node's subtree from the image and the bounds without a word), `renderOrder` an integer in ±1024, `doubleSided` and `cameraOnly` booleans, texture `wrap` `clamp` or `repeat` (all optional; material
   `alphaMode` / `alphaCutoff` are not checked, `resolveMaterialAlpha` turns any value into a valid rule). A failure
   rejects with `RendererError` `INVALID_SCENE` naming the path, e.g. `meshes[0].indices[5]`.
 - Textures are checked from the PNG header in their bytes (signature and IHDR) before decoding, never from the size
