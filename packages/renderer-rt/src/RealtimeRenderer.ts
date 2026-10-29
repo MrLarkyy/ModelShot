@@ -31,6 +31,8 @@ import { canvasSize, type CanvasCssSize, type CanvasSize } from './canvasSize';
 import { DEFAULT_MAX_TEXTURE_PIXELS_TOTAL, decodeTextures, type TextureLimits } from './decodeTextures';
 import { queryGlLimits, type GlLimits } from './glLimits';
 import { depthKeyMode, depthPull, exactDepthRange, type DepthKeyMode } from './depthKeyMode';
+import { ExactSampleHistory } from './ExactSampleHistory';
+import { exactSampleCount } from './exactSupersample';
 import { invertMat4 } from './invertMat4';
 import { lightmapLayout, type LightmapLayoutSummary } from './lightmapLayout';
 import { poseOnlyChange } from './poseOnlyChange';
@@ -167,6 +169,10 @@ interface FrameView {
 interface GpuResources {
   programs: RendererPrograms;
   targets: RenderTargets | null;
+  /** Sample history of still exact frames (`exactSampleCount`), allocated on the first exact frame that takes one. */
+  exactSamples: ExactSampleHistory | null;
+  /** `width x height` of a canvas whose history the driver rejected; not tried again until the size changes. */
+  exactRejected: string | null;
   readonly fullscreenVao: WebGLVertexArrayObject;
   readonly placeholder: WebGLTexture;
   readonly untextured: WebGLTexture;
@@ -197,6 +203,8 @@ export class RealtimeRenderer {
   private disposed = false;
   private dirty = true;
   private frameDepthKey: DepthKeyMode | null = null;
+  /** The last frame was a pass of an exact frame's sample history that is not complete yet. */
+  private converging = false;
   /** Kept on the CPU so a lost context gets it back. */
   private lighting: BakedLighting | null = null;
   private readonly restoredListeners = new Set<() => void>();
@@ -257,9 +265,13 @@ export class RealtimeRenderer {
     return this.frameDepthKey;
   }
 
-  /** Something changed since the last `render()`, or baked light is still uploading. */
+  /**
+   * Something changed since the last `render()`, baked light is still uploading, or the last frame was an exact-key
+   * frame whose samples are not all drawn yet (at most 4 calls of an unchanged view, `exactSampleCount`): render until
+   * this is false to get the finished image.
+   */
   get needsRender(): boolean {
-    return (this.dirty || this.gpu?.upload != null) && !this.lost && !this.disposed;
+    return (this.dirty || this.gpu?.upload != null || this.converging) && !this.lost && !this.disposed;
   }
 
   /** Baked light set by `setLighting` is still being uploaded; frames show the previous lighting until it is done. */
@@ -386,9 +398,11 @@ export class RealtimeRenderer {
     return false;
   }
 
+  /** Draws from `camera` from the next frame; a camera that frames exactly as the current one changes nothing. */
   setCamera(camera: SceneCamera): void {
+    const previous = this.camera;
     this.camera = camera;
-    this.dirty = true;
+    if (!previous || !sameFraming(previous, camera)) this.dirty = true;
   }
 
   /** The look drawn with: the last `setLook` (or the options' look and overrides) with the current edges. */
@@ -458,37 +472,98 @@ export class RealtimeRenderer {
     return () => this.restoredListeners.delete(listener);
   }
 
-  /** Draws one frame now. A no-op while the context is lost or after `dispose()`. */
+  /**
+   * Draws one frame now. A no-op while the context is lost or after `dispose()`. A still exact-key frame on the float
+   * path draws one shifted pass per call into its sample history and shows the mean of the passes so far
+   * (`needsRender` stays true until all are in); any change starts the history again.
+   */
   render(): void {
     const gpu = this.gpu;
     if (!gpu || this.lost || this.disposed || this.gl.isContextLost()) return;
     this.advanceLighting();
+    // A pending light upload writes only textures frames do not draw yet; its completion sets `dirty`.
+    const changed = this.dirty;
     this.dirty = false;
+    this.converging = false;
     const width = this.canvas.width;
     const height = this.canvas.height;
     if (gpu.targets && !gpu.targets.ensure(width, height)) this.switchToFallback(gpu);
-    const frame = this.frameView(gpu, width, height);
-    this.frameDepthKey = frame?.mode ?? null;
-    if (gpu.targets) this.drawFloatPath(gpu, gpu.targets, frame);
-    else this.drawFallbackPath(gpu, frame);
+    const mode = this.camera ? this.depthMode(gpu, this.camera) : null;
+    this.frameDepthKey = mode;
+    if (!gpu.targets) {
+      this.drawFallbackPath(gpu, this.frameView(gpu, width, height, mode));
+      return;
+    }
+    const history = mode === 'exact' ? this.exactHistory(gpu, gpu.targets, width, height) : null;
+    if (history && changed) history.reset();
+    else if (!history) gpu.exactSamples?.reset();
+    const frame = this.frameView(gpu, width, height, mode, history?.offset);
+    this.drawFloatPath(gpu, gpu.targets, frame, history);
+    this.converging = history !== null && !history.converged;
   }
 
-  /** The camera of this frame, and the depth-key variant the scene and this depth range need (`depthKeyMode`). */
-  private frameView(gpu: GpuResources, width: number, height: number): FrameView | null {
+  /**
+   * The sample history of an exact frame of `width` x `height`, or `null` to draw it single-sampled at the pixel
+   * centre: one sample (`exactSampleCount`), or the driver rejected the size. Kept across raster frames; freed when
+   * the size no longer takes one, reallocated (empty) when it changes.
+   */
+  private exactHistory(
+    gpu: GpuResources,
+    targets: RenderTargets,
+    width: number,
+    height: number,
+  ): ExactSampleHistory | null {
+    const size = `${width}x${height}`;
+    const count = exactSampleCount(width, height, targets.samples, gpu.capabilities.limits);
+    const current = gpu.exactSamples;
+    if (count === 4 && current?.width === width && current.height === height) return current;
+    this.releaseExactSamples(gpu);
+    if (count === 1 || gpu.exactRejected === size) return null;
+    gpu.exactSamples = ExactSampleHistory.create(this.gl, width, height);
+    gpu.exactRejected = gpu.exactSamples ? null : size;
+    return gpu.exactSamples;
+  }
+
+  private releaseExactSamples(gpu: GpuResources): void {
+    gpu.exactSamples?.dispose();
+    gpu.exactSamples = null;
+  }
+
+  /** The depth-key variant the scene and this depth range need (`depthKeyMode`). */
+  private depthMode(gpu: GpuResources, camera: SceneCamera): DepthKeyMode {
+    const depthBits = gpu.targets ? FLOAT_PATH_DEPTH_BITS : this.defaultDepthBits();
+    return depthKeyMode(camera, depthBits, gpu.scene?.hasRenderOrder ?? false);
+  }
+
+  /**
+   * The camera of this frame in depth-key variant `mode`; `jitter` shifts the image by that many pixels (+y up) in
+   * `viewProjection` and `inverseProjection` only (`projection` stays unshifted for the depth pull): a pass of an
+   * exact frame's sample history.
+   */
+  private frameView(
+    gpu: GpuResources,
+    width: number,
+    height: number,
+    mode: DepthKeyMode | null,
+    jitter: readonly [number, number] = [0, 0],
+  ): FrameView | null {
     const camera = this.camera;
     if (!camera) return null;
     const projection = cameraProjection(camera, width / height);
+    const shifted =
+      jitter[0] === 0 && jitter[1] === 0
+        ? projection
+        : mat4Multiply(ndcTranslation((2 * jitter[0]) / width, (2 * jitter[1]) / height), projection);
     const view = cameraView(camera);
-    const depthBits = gpu.targets ? FLOAT_PATH_DEPTH_BITS : this.defaultDepthBits();
-    const mode = depthKeyMode(camera, depthBits, gpu.scene?.hasRenderOrder ?? false);
+    if (!mode) return null;
     // A scene with render order got its exact geometry at upload; an order-0 scene builds it once, on the first frame
     // inside its bounding sphere.
     if (mode === 'exact' && gpu.scene && !gpu.scene.exact) gpu.scene.exact = uploadExactGeometry(this.gl, gpu.scene);
     return {
       view: new Float32Array(view),
       projection,
-      inverseProjection: new Float32Array(invertMat4(projection)),
-      viewProjection: new Float32Array(mat4Multiply(projection, view)),
+      inverseProjection: new Float32Array(invertMat4(shifted)),
+      viewProjection: new Float32Array(mat4Multiply(shifted, view)),
       far: camera.far,
       eye: camera.position,
       near: camera.near,
@@ -558,6 +633,8 @@ export class RealtimeRenderer {
     return {
       programs,
       targets,
+      exactSamples: null,
+      exactRejected: null,
       fullscreenVao: gl.createVertexArray(),
       placeholder: uploadTexture(gl, PLACEHOLDER_IMAGE),
       untextured: uploadTexture(gl, UNTEXTURED_IMAGE),
@@ -660,6 +737,7 @@ export class RealtimeRenderer {
     const gl = this.gl;
     gpu.targets?.dispose();
     gpu.targets = null;
+    this.releaseExactSamples(gpu);
     for (const program of gpu.programs.all) gl.deleteProgram(program);
     gpu.programs = createRendererPrograms(gl, false);
     gpu.capabilities = { ...gpu.capabilities, path: 'fallback', msaaSamples: 0 };
@@ -721,6 +799,7 @@ export class RealtimeRenderer {
     for (const texture of gpu.sceneTextures) if (texture) gl.deleteTexture(texture);
     for (const program of gpu.programs.all) gl.deleteProgram(program);
     gpu.targets?.dispose();
+    this.releaseExactSamples(gpu);
     gl.deleteVertexArray(gpu.fullscreenVao);
     gl.deleteTexture(gpu.placeholder);
     gl.deleteTexture(gpu.untextured);
@@ -900,16 +979,26 @@ export class RealtimeRenderer {
     gl.bindVertexArray(null);
   }
 
-  private drawFloatPath(gpu: GpuResources, targets: RenderTargets, frame: FrameView | null): void {
+  /**
+   * Draws `frame` into `targets` and presents it; with `history` (an exact frame's sample history) the pass also goes
+   * into its next layer and the present pass shows the mean of its filled layers.
+   */
+  private drawFloatPath(
+    gpu: GpuResources,
+    targets: RenderTargets,
+    frame: FrameView | null,
+    history: ExactSampleHistory | null,
+  ): void {
     const gl = this.gl;
     const { width, height } = targets;
     const scene = frame ? gpu.scene : null;
-    const { oitComposite, present } = gpu.programs.fullscreen;
-    if (!oitComposite || !present) return;
+    const { oitComposite, present, presentSamples } = gpu.programs.fullscreen;
+    if (!oitComposite || !present || !presentSamples) return;
 
     // Exact frames draw single-sampled: their per-fragment key is the depth at the pixel centre, which is the only
     // sample there; with MSAA it would stand for every covered sample, wrongly for a face whose depth changes a lot
-    // inside one pixel (grazing angles), letting a hidden face win samples.
+    // inside one pixel (grazing angles), letting a hidden face win samples. A still one is antialiased over several
+    // calls instead, one shifted pass each (`ExactSampleHistory`).
     const msaa = frame?.mode === 'exact' ? null : targets.msaaFramebuffer;
     gl.bindFramebuffer(gl.FRAMEBUFFER, msaa ?? targets.resolveFramebuffer);
     gl.viewport(0, 0, width, height);
@@ -982,19 +1071,30 @@ export class RealtimeRenderer {
       gl.activeTexture(gl.TEXTURE0);
     }
 
+    if (history) history.store(targets.resolveFramebuffer);
+
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, width, height);
     gl.disable(gl.BLEND);
     gl.disable(gl.DEPTH_TEST);
     gl.depthMask(true);
-    gl.useProgram(present.program);
-    this.uploadLook(present.look, height, LOOK_VIEW_NONE);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, targets.hdr);
-    gl.uniform1i(present.uniforms['u_hdr'] ?? null, 0);
+    if (history) {
+      gl.useProgram(presentSamples.program);
+      this.uploadLook(presentSamples.look, height, LOOK_VIEW_NONE);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, history.texture);
+      gl.uniform1i(presentSamples.uniforms['u_samples'] ?? null, 0);
+      gl.uniform1i(presentSamples.uniforms['u_sampleCount'] ?? null, history.filled);
+    } else {
+      gl.useProgram(present.program);
+      this.uploadLook(present.look, height, LOOK_VIEW_NONE);
+      gl.bindTexture(gl.TEXTURE_2D, targets.hdr);
+      gl.uniform1i(present.uniforms['u_hdr'] ?? null, 0);
+    }
     gl.bindVertexArray(gpu.fullscreenVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
+    if (history) gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
   }
 
   private drawFallbackPath(gpu: GpuResources, frame: FrameView | null): void {
@@ -1029,6 +1129,31 @@ function sameShape(a: BakedLighting, b: BakedLighting): boolean {
   if (!a.catcher || !b.catcher) return a.catcher === b.catcher;
   const [p, q] = [a.catcher, b.catcher];
   return p.width === q.width && p.height === q.height && p.y === q.y && p.rect.every((v, i) => v === q.rect[i]);
+}
+
+/** Column-major translation of normalised device coordinates by (x, y). */
+function ndcTranslation(x: number, y: number): Mat4 {
+  return new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, 0, 1]);
+}
+
+/** Two cameras with the same fields: an unchanged camera set again (compared field by field, never throws). */
+function sameFraming(a: SceneCamera, b: SceneCamera): boolean {
+  if (a === b) return true;
+  const same = (p: readonly number[], q: readonly number[]): boolean => p.every((v, i) => v === q[i]);
+  const pa = a.projection;
+  const pb = b.projection;
+  const sameProjection =
+    pa.kind === 'perspective'
+      ? pb.kind === 'perspective' && pa.fovYDeg === pb.fovYDeg
+      : pb.kind === 'orthographic' && pa.height === pb.height;
+  return (
+    sameProjection &&
+    a.near === b.near &&
+    a.far === b.far &&
+    same(a.position, b.position) &&
+    same(a.target, b.target) &&
+    same(a.up, b.up)
+  );
 }
 
 function setNearest(gl: WebGL2RenderingContext): void {

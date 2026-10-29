@@ -17,7 +17,8 @@ function programKind(gl: WebGL2RenderingContext, program: WebGLProgram): DrawPro
   if (gl.getFragDataLocation(program, 'outAccum') >= 0) return 'oitAccum';
   if (has('u_texture')) return 'fallback';
   if (has('u_accum')) return 'oitComposite';
-  if (has('u_hdr')) return 'present';
+  // The single-texel present and the present of an exact frame's sample history.
+  if (has('u_hdr') || has('u_samples')) return 'present';
   if (has('u_catcherLight')) return 'catcher';
   if (has('u_toneMap')) return 'backdrop';
   return 'other';
