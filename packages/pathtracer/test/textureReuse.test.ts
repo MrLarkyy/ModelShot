@@ -5,7 +5,7 @@ import { prepareGeometry } from '../src/geometry/prepareGeometry';
 import { PathTracer } from '../src/PathTracer';
 import type { PathTracerOptions } from '../src/PathTracerOptions';
 import { FakeGeometryWorker, until } from './fakeGeometryWorker';
-import { stubGl, type GlCall } from './stubGl';
+import { dataTextureRecorder, stubGl, type GlCall } from './stubGl';
 import { boxMesh, node, randomTriangles, sceneOf, triangleMesh } from './testScenes';
 
 interface Loaded {
@@ -52,6 +52,7 @@ const texture = (name: string): SceneTexture => ({
 
 /** A tracer on a recording stub context, its GPU setup stubbed out, its worker a fake one; textures decode to stubs. */
 function tracer(options: PathTracerOptions = {}, onCall?: (call: GlCall) => void) {
+  const recorder = dataTextureRecorder();
   vi.stubGlobal('Worker', FakeGeometryWorker);
   const closed: number[] = [];
   const closes: number[] = [];
@@ -70,7 +71,12 @@ function tracer(options: PathTracerOptions = {}, onCall?: (call: GlCall) => void
     return Promise.resolve(bitmap as unknown as ImageBitmap);
   });
   vi.stubGlobal('createImageBitmap', decode);
-  const { gl, calls } = stubGl(onCall ? { onCall } : {});
+  const { gl, calls } = stubGl({
+    onCall: (call) => {
+      recorder.onCall(call);
+      onCall?.(call);
+    },
+  });
   const canvas = {
     width: 4,
     height: 4,
@@ -90,7 +96,17 @@ function tracer(options: PathTracerOptions = {}, onCall?: (call: GlCall) => void
   const created = PathTracer.create(canvas, options);
   const worker = FakeGeometryWorker.last;
   if (!worker || !created.geometryInWorker) throw new Error('no fake worker');
-  return { tracer: created, worker, gl, calls, decode, closed, closes, internals: created as unknown as Internals };
+  return {
+    tracer: created,
+    worker,
+    gl,
+    calls,
+    recorder,
+    decode,
+    closed,
+    closes,
+    internals: created as unknown as Internals,
+  };
 }
 
 /** One textured box on a node that a pose moves; the texture array and the material array are shared by every pose. */
@@ -248,18 +264,21 @@ describe('setScene with the textures of the shown scene', () => {
     expect(deletedSince(calls, at).has(layers)).toBe(false);
   });
 
-  it('setEdges while a reusing call uploads: the swap falls back and the data is that of a fresh render', async () => {
+  it('setEdges while a reusing call uploads: the borrowed textures stay and the attribute rows are rewritten at the swap', async () => {
     let edit: (() => void) | null = null;
     const {
       tracer: pt,
       calls,
       closed,
       internals,
+      recorder,
     } = tracer({ edges: { sharpAngleDeg: 30 } }, (call) => {
       if (call.name === 'texSubImage2D') edit?.();
     });
     const doc = rest();
     await pt.setScene(doc);
+    const layersBefore = internals.gpu?.scene?.layers;
+    const materialsBefore = internals.gpu?.scene?.materials;
     const at = calls.length;
     edit = () => {
       edit = null;
@@ -278,11 +297,17 @@ describe('setScene with the textures of the shown scene', () => {
     const final = handles(internals.gpu?.scene);
     expect(final).toHaveLength(5);
     expect(final.some((h) => deletedSince(calls, at).has(h))).toBe(false);
-    // The fallback uploaded the images into its own layer texture.
-    expect(count(calls, 'texSubImage3D', at)).toBeGreaterThan(0);
+    expect(count(calls, 'texStorage3D', at)).toBe(0);
+    expect(count(calls, 'texSubImage3D', at)).toBe(0);
+    expect(internals.gpu?.scene?.layers).toBe(layersBefore);
+    expect(internals.gpu?.scene?.materials).toBe(materialsBefore);
+    const rewritten = recorder.contents.get(internals.gpu?.scene?.triAttributes);
+    expect(rewritten?.subarray(0, expected.geometry.triAttributes.data.length)).toEqual(
+      expected.geometry.triAttributes.data,
+    );
   });
 
-  it('a sharp angle changed and changed back during a reusing call: the borrowed layers are not swapped in', async () => {
+  it('a sharp angle changed and changed back during a reusing call: the borrowed layers are swapped in unchanged', async () => {
     let edit: (() => void) | null = null;
     const {
       tracer: pt,
@@ -293,6 +318,7 @@ describe('setScene with the textures of the shown scene', () => {
     });
     const doc = rest();
     await pt.setScene(doc);
+    const layersBefore = internals.gpu?.scene?.layers;
     const at = calls.length;
     edit = () => {
       edit = null;
@@ -310,6 +336,8 @@ describe('setScene with the textures of the shown scene', () => {
     expect(internals.loaded?.geometry.triAttributes.data).toEqual(expected.geometry.triAttributes.data);
     const final = handles(internals.gpu?.scene);
     expect(final.some((h) => deletedSince(calls, at).has(h))).toBe(false);
+    expect(internals.gpu?.scene?.layers).toBe(layersBefore);
+    expect(count(calls, 'texSubImage3D', at)).toBe(0);
   });
 
   it('a context lost and restored during a reusing call uploads the scene fresh from what is kept', async () => {
@@ -390,8 +418,8 @@ describe('setScene with the textures of the shown scene', () => {
     };
     const calm = await run(false);
     const disturbed = await run(true);
-    // Each setEdges uploads the shown scene again on its own; the call's own upload stays, with no fallback after it.
-    expect(disturbed.images).toBe(calm.images + 2);
+    // setEdges rewrites rows in place and the call's own upload stays: no extra image storage.
+    expect(disturbed.images).toBe(calm.images);
     expect(disturbed.data).toEqual(calm.data);
   });
 

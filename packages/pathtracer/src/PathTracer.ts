@@ -36,7 +36,7 @@ import { buildBvh } from './buildBvh';
 import { cameraUniforms, type CameraUniforms } from './cameraUniforms';
 import { flatEdges, flattenScene, visibleTriangleCount, DEFAULT_MAX_TRIANGLES } from './flattenScene';
 import { GeometryBuilder } from './geometry/GeometryBuilder';
-import { disposeGpuScene, uploadGpuScene, type GpuScene } from './gpuScene';
+import { disposeGpuScene, rewriteTriangleEdges, uploadGpuScene, type GpuScene } from './gpuScene';
 import {
   DATA_TEXTURE_WIDTH,
   checkMaterialCount,
@@ -493,8 +493,8 @@ export class PathTracer {
       closeOwn();
       return NOT_APPLIED;
     }
-    // setEdges or a restore replaced the scene the upload borrowed handles from: they are gone. An upload that
-    // borrowed nothing owns its textures, and its rows were packed for its own angle (checked below).
+    // A restore replaced the scene the upload borrowed handles from: they are gone. An upload that borrowed nothing
+    // owns its textures, and its attribute rows are brought to the current angle at the swap (below).
     if (uploaded && borrowed && this.gpu?.scene !== borrowed) {
       disposeGpuScene(this.gl, uploaded, this.gpu?.scene);
       uploaded = null;
@@ -504,11 +504,18 @@ export class PathTracer {
     // Placed under the look current at the swap: a setLook while the scene was prepared applies to it too.
     loaded.catcher = catcherOn ? this.catcherPlane(loaded.bounds) : null;
     const gpu = this.gpu;
-    if (uploaded && gpu && loaded.edgeAngle === this.edges.sharpAngleDeg) {
+    if (uploaded && gpu) {
+      // A sharp angle set during the upload: only the edge-dependent attribute rows differ, rewritten in place.
+      if (loaded.edgeAngle !== this.edges.sharpAngleDeg) {
+        this.repackEdges(loaded);
+        if (!this.lost && !this.gl.isContextLost()) {
+          rewriteTriangleEdges(this.gl, uploaded, loaded.geometry.triAttributes);
+        }
+      }
       gpu.scene = uploaded;
     } else {
       if (uploaded) disposeGpuScene(this.gl, uploaded, gpu?.scene);
-      // A sharp angle set during the upload, or nothing uploaded (no context, or lost: the restore uploads then).
+      // Nothing uploaded (no context, or lost: the restore uploads then).
       this.repackEdges(loaded);
       if (gpu && !this.lost && !this.gl.isContextLost()) this.uploadLoaded(gpu);
     }
@@ -607,7 +614,7 @@ export class PathTracer {
   /**
    * Changes the rounded edges; fields left out keep their current value. A value out of range throws a `RangeError`
    * naming the field and changes nothing. A new width only restarts the accumulation; a new sharp angle detects the
-   * edges again and uploads the triangle data again.
+   * edges again and rewrites the triangle attribute rows in place (no other texture is touched).
    */
   setEdges(edges: Partial<EdgeLook>): void {
     const next = checkEdgeLook(edges, this.edges);
@@ -617,11 +624,10 @@ export class PathTracer {
     const loaded = this.loaded;
     if (angleChanged && loaded) {
       this.repackEdges(loaded);
-      const gpu = this.gpu;
-      if (gpu?.scene && !this.lost) {
-        disposeGpuScene(this.gl, gpu.scene);
-        gpu.scene = null;
-        this.uploadLoaded(gpu);
+      // gpu.scene is the upload of this.loaded whenever both are set, so its attribute rows are these.
+      const scene = this.gpu?.scene;
+      if (scene && !this.lost && !this.gl.isContextLost()) {
+        rewriteTriangleEdges(this.gl, scene, loaded.geometry.triAttributes);
       }
     }
     this.restart();

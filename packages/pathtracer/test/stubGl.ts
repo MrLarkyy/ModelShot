@@ -55,3 +55,21 @@ export function stubGl(options: StubGlOptions = {}): { gl: WebGL2RenderingContex
   ) as WebGL2RenderingContext;
   return { gl, calls };
 }
+
+/**
+ * Records what the 2D data textures hold: `onCall` is fed each stub call; `texStorage2D` sizes the bound handle and
+ * `texSubImage2D` copies its data at call time (the caller's array is mutated later), so equal contents mean equal bytes.
+ */
+export function dataTextureRecorder(rowFloats = 2048 * 4) {
+  const contents = new Map<unknown, Float32Array>();
+  let bound: unknown = null;
+  const onCall = (call: GlCall): void => {
+    const a = call.args;
+    if (call.name === 'bindTexture') bound = a[1];
+    else if (call.name === 'texStorage2D') contents.set(bound, new Float32Array(Number(a[4]) * rowFloats));
+    else if (call.name === 'texSubImage2D') {
+      contents.get(bound)?.set(Float32Array.from(a[8] as Float32Array), Number(a[3]) * rowFloats);
+    }
+  };
+  return { contents, onCall };
+}

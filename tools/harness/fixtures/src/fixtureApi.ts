@@ -202,6 +202,16 @@ export interface PtControls {
   setSceneDuringEdges: (edges: { width?: number; sharpAngleDeg?: number }) => Promise<boolean>;
   /** `setEdges` then the page's request drawn to the end: `ok`, or the error it threw (`name: message`). */
   setEdges: (edges: { width?: number; sharpAngleDeg?: number }) => string;
+  /** setScene of a fresh copy of the page's scene (a full upload at the current sharp angle), then the request drawn. */
+  reloadScene: () => Promise<boolean>;
+  /**
+   * A pose-only setScene of the shown scene (same textures and materials), `setEdges` after its first data band, then
+   * the request drawn: whether both happened, and the layer texture storage/write calls made meanwhile.
+   */
+  poseDuringEdges: (edges: {
+    width?: number;
+    sharpAngleDeg?: number;
+  }) => Promise<{ applied: boolean; layerUploads: number }>;
   /** setScene of the page's scene anew, `setLook` of a preset while it decodes, then the request drawn: applied. */
   setSceneDuringLook: (id: string) => Promise<boolean>;
   /** `setLook` of a preset by id (or a broken copy: `bad`), then the request drawn: `ok`, or the error. */
