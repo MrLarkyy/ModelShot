@@ -469,6 +469,11 @@ glass panes and 50 % texels, the glTF and OBJ fixtures' partial faces): `rt-turn
 pixels): the fallback, player, preset, cut-out (`rt-bake-cutout-checker`), `rt-edges`, `rt-outline-hull`,
 `rt-bake-alpha-plane`, `rt-bake-gltf-contact`, `rt-fit-flat-cube` and `rt-texture-wrap-inside` frames; `rt-texture-wrap`
 (opaque textures only, no OIT draw) differs from its golden by 2 531 pixels (17) with origin/main's renderer too.
+Against their limits (threshold 0.1: `maxDiffRatio` 0.001, `maxMeanDelta` 1), ratio and mean delta: `rt-turntable-y000`
+0 / 0.012, `-y030` 0.00005 / 0.024, `-y060` 0.00003 / 0.015, `-y090` 0 / 0.008, `rt-iso` 0.00006 / 0.017,
+`rt-closeup` 0.00015 / 0.035, `rt-far` 0 / 0.007, `rt-gltf-nodes-y030` 0 / 0.007, `rt-obj-shapes-y030` 0.00002 /
+0.011, `rt-bake-turntable-y030` 0.00020 / 0.027, `rt-texture-wrap` 0 / 0.023; the largest use is a fifth of the ratio
+(`rt-bake-turntable-y030`) and under 4 % of the mean, none more than half its tolerance, so none was regenerated.
 
 Goldens regenerated on purpose in MS-30 (anti-aliased cut-out seams on the MSAA path; same views, bake seed and
 samples), the ones that failed their comparison, each set by its own `build golden --update --filter`:
@@ -766,10 +771,12 @@ re-measured every pair: `turntable-y030`, `iso`, `cutout-checker`, `edges`, `out
 `gltf-nodes-y030` came closer to the render (rows above; `iso`'s framing preview at `msaa=0` now ramps its partial
 seams, 1 517 silhouette pixels against 1 533), so their limits are tightened to measured x 1.25; `alpha-plane`, the
 player and preset views, `gltf-contact` and `texture-wrap` measured as before. `partial-edge` adds a per-row check
-(`src/rowCoverage.ts`): in rows inside texel rows 1-4 (partial|invisible seams and the outline) and 5-6
-(opaque|partial seams), the covered area of preview and render, each against its own texel colours, within 0.5 px
-plus the render's noise, 1.06 px (seed 1 against seed 2 at most 0.851 px a row, x 1.25); measured at most 1.127 px
-over 152 rows (row 1; rows 2-4 0.761, 0.678, 0.739; the strip 0.612 and 0.492).
+(`src/rowCoverage.ts`, project `golden-pt`): in rows inside texel rows 1-4 (partial|invisible seams and the outline)
+and 5-6 (opaque|partial seams), the covered area of preview and render, each against its own texel colours. The
+criterion is the mean per-row difference within 0.5 px, where the render's noise averages out: measured 0.232 px
+(signed 0.142) over 152 rows. Secondary, the worst row within 0.5 px plus the render's noise, 1.06 px (seed 1
+against seed 2 at most 0.851 px a row, x 1.25): measured 1.127 px (row 1; rows 2-4 0.761, 0.678, 0.739; the strip
+0.612 and 0.492).
 
 MS-30 (anti-aliased cut-out seams in the preview's MSAA frames, as the render anti-aliases them by sampling)
 re-measured every pair: `turntable-y030`, `iso`, `alpha-plane` and `cutout-checker` came closer to the render (rows
@@ -1212,7 +1219,8 @@ ramp, plus their two resolve blits; median of 30 frames after 5. Local SwiftShad
 every sample; on GPU hardware that is the MSAA resolve's cost); max 1500 ms, 10x the middle run, rounded up, until a
 CI artefact allows 3-4x the CI median. `rt-bench-512` in the same session: 926.6 and 931.1 ms against 899.9 ms on
 origin/main (+3 %, the run-to-run spread; the machine was loaded, `rt-bench-order-512` 666.5 and 684.8 against 637.8).
-The bundle grew by 826 B (`app`) and 823 B (`app-entry`) gzip, within their rows.
+The bundle grew by 687 B (`app`) and 689 B (`app-entry`) gzip against origin/main 03a9a9d (`test/bundleSize.test.ts`);
+the bench's bundle check measures 205 004 / 205 300 and 66 571 / 66 800.
 
 `frameTimeMs.rt-load-first-frame-200k-order` times `setScene` plus the first frame of a generated scene at the
 loader's limits (100 000 quads, 200 000 triangles, 400 000 vertices) at render order 1, which builds the exact key's

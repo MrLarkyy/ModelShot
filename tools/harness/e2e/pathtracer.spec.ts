@@ -1512,7 +1512,8 @@ test.describe('partial-alpha seams: the render covers each row like the preview 
       worst = Math.max(worst, regionWorst);
       lines.push(`${label}: ${a.boundaryRows.length} rows, worst ${regionWorst.toFixed(3)} px`);
     }
-    // Measured worst 1.127 px (row 1); rows 2-4 0.761, 0.678, 0.739; strip rows 0.612, 0.492; mean MEAN.
+    // Measured mean 0.232 px (signed 0.142) over 152 rows; worst 1.127 px (row 1), rows 2-4 0.761, 0.678, 0.739, the
+    // strip 0.612 and 0.492.
     const mean = sum / rows;
     console.log(
       `[pt pair] partial-edge per-row area, preview vs render: mean ${mean.toFixed(3)} px ` +
