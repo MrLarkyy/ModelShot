@@ -1243,8 +1243,9 @@ round 7); its max was 750 ms then.
   embed-frame 195 100 (MS-52: the frame grew with MS-54, MS-56 and MS-52's texture wrap to 177 303 B, over the 177 200;
   re-measured plus 10 %, rounded up to 100).
   `app` 205 300 and `app-entry` 66 800 (MS-23: the app opens, looks, renders and exports; measured 186 590 and 60 655 B, gzip level 9, plus 10 %, rounded up to 100). The app-entry row is what loads before a model is opened; the lazy tracer and export chunks count only in `app`.
-  `app` 226 300 (MS-38: the app grew with later tasks and MS-38's linear texture filtering, its shared GLSL chunk in
-  both renderers, to 205 708 B, over the 205 300; re-measured plus 10 %, rounded up to 100).
+  `app` 226 300 and `app-entry` 73 800 (MS-38: the app grew with later tasks and MS-38's linear texture filtering, its
+  shared GLSL chunk in both renderers, to 205 708 B, over the 205 300; the entry carries the preview's copy of that
+  chunk and with MS-35 measured 67 052 B, over the 66 800; re-measured plus 10 %, rounded up to 100).
   `site` 11 600 (MS-31: the landing page's js, css and html, gzip level 9; measured 9595, 9595, 9595 bytes, plus about
   2 kB) and `site-assets` 110 400 (its woff2 fonts and svg, each gzipped; measured 100 311 three times, times 1.1
   rounded up). The landing page's browser tests are described in docs/site.md.
