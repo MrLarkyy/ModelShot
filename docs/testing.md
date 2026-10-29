@@ -490,6 +490,9 @@ frames, pixels more than 8 levels off their old golden (max levels): `rt-player-
 4 021 (206) also takes Rim's new rim (its screen-right sides keep their texels), and `pt-preset-rim.s1.n64` that rim
 in the render. Every raster frame, `*-fallback` and other `pt-*` golden came out byte-identical; the rewritten ones
 are the same bytes in a second run. Diff images judged.
+After the MS-52 merge `rt-texture-wrap-inside` (`depth=inside`, an exact-key frame) was regenerated on the converged frame, 270
+pixels moved (mean 0.399 levels), all on silhouettes and seams; its wrap probes (texel centres) pass unchanged, and
+`rt-texture-wrap` and `pt-texture-wrap.s1.n64` are byte-identical.
 Single-sampled frames move too: SwiftShader snaps vertices to 1/16 px, so even fully
 covered pixels interpolate up to 0.04 px off `gl_FragCoord`, and the step to the centre takes that up (a 0.0625 px
 threshold that left it measured 168 pixels at width 0.1 in the edge-band probe below, against round 3's 135). Pairs re-measured
