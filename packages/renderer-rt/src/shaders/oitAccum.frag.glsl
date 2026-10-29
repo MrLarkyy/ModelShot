@@ -12,8 +12,7 @@ uniform sampler2D u_texture;
 uniform bool u_texelAntialias;
 uniform int u_alphaMode;
 uniform int u_alphaCutoffByte;
-// 0: the nearest texel decides and weighs (hard seams); 1: partial seams ramp, the opaque pass keeps hard cutouts; 2: as
-// 1, the opaque pass covering its seams by alpha-to-coverage (oitSeamCoverage.ts).
+// oitSeamCoverage.ts
 uniform int u_seamCoverage;
 
 in vec2 v_uv;
@@ -36,14 +35,8 @@ float toHalf(float v) {
   return unpackHalf2x16(packHalf2x16(vec2(v, 0.0))).x;
 }
 
-// This pass's coverage of a fragment whose nearest texel is not opaque: the seam ramp of its partial taps, one pixel
-// wide with its 50 % point on the texel boundary, so the covered area is the hard per-texel shape's. premultiplied.a
-// weighs a partial tap by its alpha and an opaque one by 1, and opaqueCoverage counts the opaque ones (the nearest texel
-// is not opaque), so their difference is the partial taps' share alone. Opaque taps beside an invisible nearest texel
-// are the opaque pass's band (0 here). Beside a partial nearest texel they count as that texel's alpha in mode 1, where
-// the opaque pass keeps its side hard, so the opaque|partial seam stays as without the ramp; in mode 2 they count 1,
-// as the opaque pass's alpha-to-coverage leaves the rest of that pixel's samples to this one. Inside a texel the taps
-// are the nearest texel alone, so the alpha is its own, bit for bit.
+// The partial taps' share (opaqueCoverage counts the opaque ones here), so the covered area is the hard shape's;
+// opaque taps beside a partial nearest texel count as its alpha (mode 1) or, under the opaque pass's A2C, 1.
 float partialSeamCoverage(TexelSample s) {
   float partialTaps = s.premultiplied.a - s.opaqueCoverage;
   float opaqueTaps = s.coverage != COVERAGE_PARTIAL ? 0.0 : u_seamCoverage == 2 ? 1.0 : s.nearestAlpha;
@@ -62,8 +55,7 @@ void main() {
   if (u_seamCoverage == 0) {
     if (s.coverage != COVERAGE_PARTIAL) discard;
   } else {
-    // Fragments of an invisible texel are kept within a partial neighbour's ramp; their colour is the neighbour's
-    // (premultiplied taps), so the band adds no dark fringe.
+    // An invisible texel's band beside a partial one is kept, in the neighbour's colour (premultiplied taps).
     if (s.coverage == COVERAGE_OPAQUE) discard;
     coverage = partialSeamCoverage(s);
     if (coverage <= 0.0) discard;
