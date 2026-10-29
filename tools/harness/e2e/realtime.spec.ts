@@ -432,6 +432,8 @@ function pixelsApart(a: Image, b: Image, levels: number): number {
  * neighbour pairs of the hard frame, those with a strict mix on either side (`cutoutSeams` over the whole image).
  */
 test('exact-key frames anti-alias silhouettes like raster frames', async ({ page }) => {
+  // Nine renders, the exact ones converging over 4 passes: 29.5 s measured of the default 30 s.
+  test.setTimeout(120_000);
   // Measured (SwiftShader, converged): mixed share raster 0.664 (542 of 816), exact 0.857 (699); the shown frames 774
   // pixels more than 8 levels apart, on silhouettes and texel seams (MSAA and the 1 px texel ramp against the mean of
   // 4 shifted passes of it), held at measured x 1.25.
