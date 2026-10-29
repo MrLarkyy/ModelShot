@@ -41,3 +41,10 @@ export {
   type AlphaModeId,
   type CoverageId,
 } from './texelAlpha';
+export {
+  MAX_TEXTURE_FLAG_FRAMES,
+  TEXTURE_FLAG_REPEAT,
+  TEXTURE_FRAMES_SHIFT,
+  textureSamplingFlags,
+  type TextureSamplingInput,
+} from './textureSamplingFlags';

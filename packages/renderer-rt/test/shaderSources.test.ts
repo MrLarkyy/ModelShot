@@ -143,6 +143,28 @@ describe('shader sources', () => {
     );
   });
 
+  it('addresses every texture texel through faceTexel with the batch texture flags', () => {
+    for (const name of ['opaque', 'oitAccum', 'fallback'] as const) {
+      for (const depthKey of ['raster', 'exact'] as const) {
+        const { vertex, fragment } = shaderProgramSource(name, depthKey);
+        expect(vertex).toContain('layout(location = 12) in float a_textureFlags;');
+        expect(vertex).toContain('v_textureFlags = int(a_textureFlags);');
+        expect(fragment).toContain('flat in int v_textureFlags;');
+        expect(fragment).toContain('sampleTexels(u_texture, v_uv, v_uvRect, v_textureFlags,');
+        // The material texture is read in one place, at the texel faceTexel picks.
+        const reads = fragment.match(/texelFetch\(tex, [^;]*;/g) ?? [];
+        expect(reads, `${name} ${depthKey}`).toEqual([
+          'texelFetch(tex, faceTexel(texel, a.range, a.size, a.flags), 0);',
+        ]);
+        // A strip's lookups stay in its frame (frame count from bit 8 of the flags).
+        expect(fragment).toContain('ivec2 s = wrapSize(size, flags);');
+      }
+    }
+    expect(shaderProgramSource('fallback').fragment).toContain(
+      'nearestTexel(u_texture, v_uv, v_uvRect, v_textureFlags)',
+    );
+  });
+
   it('shades the catcher with the look chunk, tone-mapped only on request', () => {
     const { fragment } = shaderProgramSource('catcher');
     expect(fragment).toContain('float catcherShade(vec3 fill, float keyT, vec2 xz, vec4 rect)');
@@ -236,11 +258,13 @@ describe('shader sources', () => {
         expect(locations).toContain(9);
         expect(locations).toContain(10);
         expect(locations).toContain(11);
+        expect(locations).toContain(12);
         // Every varying counted as a whole vector, the most it can take after packing.
         const varyings = vertex.match(/^\s*((flat|centroid) )?out \w+ v_\w+;/gm) ?? [];
         expect(varyings.length, `${name} ${depthKey}`).toBeLessThanOrEqual(15);
-        // Raster: the 9 shading varyings; exact: the view position, the three corners and the shared-edge bits too.
-        expect(varyings.length, `${name} ${depthKey}`).toBe(depthKey === 'raster' ? 9 : 14);
+        // Raster: the 9 shading varyings and the texture flags; exact: the view position, the three corners and the
+        // shared-edge bits too.
+        expect(varyings.length, `${name} ${depthKey}`).toBe(depthKey === 'raster' ? 10 : 15);
         for (const varying of ['v_normal', 'v_worldPosition', 'v_edgeDistances']) {
           expect(
             varyings.some((line) => line.includes(` ${varying};`)),

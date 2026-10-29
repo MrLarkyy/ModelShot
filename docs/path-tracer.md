@@ -288,8 +288,11 @@ The light bake (Light baker below) traces its key rays as shadow rays and its fi
 functions (`shadowTransmittance`, `closestHit`, `surfaceAt` in one shared GLSL source), so preview and render share
 one set of ray rules. A camera-only face (`SceneMeshGroup.cameraOnly`) counts for camera rays alone; every other ray, bake rays included, skips it.
 
-- The texel is the nearest one of the hit's UV, clamped to the face's texel rectangle (`faceTexelRange`, the
-  preview's chunk), read with `texelFetch`: no filtering, no mipmaps, nothing from a neighbouring atlas region.
+- The texel is the nearest one of the hit's UV, addressed by `faceTexel` (the preview's chunk): clamped to the face's
+  texel rectangle (`faceTexelRange`), then into the image, repeated for a texture with `wrap: 'repeat'` and clamped to
+  the edge texel otherwise ([`SceneTexture.wrap`](scene-format.md#scenetexture); a strip's image is its frame 0), before the image's place in the
+  texture layers is added; read with `texelFetch`: no filtering, no mipmaps, nothing from a neighbouring atlas region
+  even where a face's UVs pass its image. The flags ride in the material row (texel 1 w, `textureSamplingFlags`).
   Texel edges come out area-averaged because every sample jitters its camera ray uniformly inside the pixel (a box
   filter).
 - Stochastic transparency draws one number per (sample, path vertex, triangle), so each partial surface a ray meets is
