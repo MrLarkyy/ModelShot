@@ -18,16 +18,18 @@ export const PT_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions>> = {
   'turntable-y030': { threshold: 0.1, maxDiffRatio: 0.00271, maxMeanDelta: 0.904 },
   iso: { threshold: 0.1, maxDiffRatio: 0.00508, maxMeanDelta: 1.111 },
   'alpha-plane': { threshold: 0.1, maxDiffRatio: 0.00443, maxMeanDelta: 1.669 },
-  'player-hold-34': { threshold: 0.1, maxDiffRatio: 0.0232, maxMeanDelta: 1.62 },
+  // MS-35 (exact-key frames converge to the mean of 4 rotated-grid passes): measured 0.01042 / 0.999, x 1.25.
+  'player-hold-34': { threshold: 0.1, maxDiffRatio: 0.01304, maxMeanDelta: 1.25 },
   'cutout-checker': { threshold: 0.1, maxDiffRatio: 0.00426, maxMeanDelta: 0.78 },
   edges: { threshold: 0.1, maxDiffRatio: 0.00079, maxMeanDelta: 0.483 },
   // MS-19 with the narrow view-relative rims (round 5), measured 0.01936 / 1.237, 0.02147 / 1.109 and 0.02116 /
-  // 1.281; a limit stays where the measurement x 1.25 would raise it (earlier rounds' 0.0223 / 1.43, 0.0241 / 1.13,
-  // 1.52). The Rim preset's exponent 5 and colour 4 keep its pair under 1.13 (exponent 10, colour 8: 0.02567 / 1.263).
-  'preset-marketplace': { threshold: 0.1, maxDiffRatio: 0.0223, maxMeanDelta: 1.43 },
-  'preset-rim': { threshold: 0.1, maxDiffRatio: 0.0241, maxMeanDelta: 1.13 },
+  // 1.281 (limits then 0.0223 / 1.43, 0.0241 / 1.13, 0.0265 / 1.52). MS-35: the player's exact-key frames converge to
+  // the mean of 4 rotated-grid passes, and Rim's rim comes from behind (colour 8): measured 0.00912 / 0.793, 0.01312 /
+  // 0.704 and 0.01103 / 0.856, x 1.25.
+  'preset-marketplace': { threshold: 0.1, maxDiffRatio: 0.01141, maxMeanDelta: 0.992 },
+  'preset-rim': { threshold: 0.1, maxDiffRatio: 0.01641, maxMeanDelta: 0.881 },
   // The app's default yaw: the rim follows the camera to the screen-left silhouettes.
-  'preset-marketplace-yaw30': { threshold: 0.1, maxDiffRatio: 0.0265, maxMeanDelta: 1.52 },
+  'preset-marketplace-yaw30': { threshold: 0.1, maxDiffRatio: 0.0138, maxMeanDelta: 1.071 },
   // MS-50: measured ratio 0.01642, mean delta 0.912; MS-39: 0.00266 / 0.438 once the catcher stopped covering the shell's
   // bottom edge (a model surface in its plane), x 1.25.
   'outline-hull': { threshold: 0.1, maxDiffRatio: 0.00329, maxMeanDelta: 0.547 },
