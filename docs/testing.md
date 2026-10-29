@@ -490,8 +490,8 @@ frames, pixels more than 8 levels off their old golden (max levels): `rt-player-
 4 021 (206) also takes Rim's new rim (its screen-right sides keep their texels), and `pt-preset-rim.s1.n64` that rim
 in the render. Every raster frame, `*-fallback` and other `pt-*` golden came out byte-identical; the rewritten ones
 are the same bytes in a second run. Diff images judged.
-After the MS-52 merge `rt-texture-wrap-inside` (`depth=inside`, an exact-key frame) was regenerated on the converged frame, 270
-pixels moved (mean 0.399 levels), all on silhouettes and seams; its wrap probes (texel centres) pass unchanged, and
+After the MS-52 merge `rt-texture-wrap-inside` (`depth=inside`, an exact-key frame) was regenerated on the converged frame: 2 035
+pixels more than 8 levels off the MS-52 golden (95), all on silhouettes, face edges and seams; its wrap probes (texel centres) pass unchanged, and
 `rt-texture-wrap` and `pt-texture-wrap.s1.n64` are byte-identical.
 Single-sampled frames move too: SwiftShader snaps vertices to 1/16 px, so even fully
 covered pixels interpolate up to 0.04 px off `gl_FragCoord`, and the step to the centre takes that up (a 0.0625 px
@@ -803,8 +803,9 @@ and `pathtracer.spec.ts`, `golden` and `golden-pt` projects):
 - a look set while the render's `setScene` decodes gives the bytes of a render under that look from the start;
 - Marketplace renders the same bytes in batches of 7 and 64-pixel tiles;
 - the rim light, unshadowed: of the pixels it brightens by more than 12 levels in the preview (Rim against `rim=0`,
-  unbaked) the render brightens 99.7 % too (2 565 preview, 2 843 render pixels: the jittered camera rays catch a
-  little more of the grazing fillets);
+  unbaked, pixel centres: `msaa=0`, as for framing) the render brightens 99.5 % too (418 preview, 754 render pixels:
+  the jittered camera rays catch more of the grazing fillets). The converged preview would also count silhouette
+  slivers lit in 1 of its 4 samples, which 16 render samples need not hit (94.4 %; 95.9 % at 256 samples);
 - the preset rims' line and the faces' texels (`pathtracer.spec.ts`, `RIM_PROBES[preset][yaw]`): the held-cube player at 512 px, pitch 20,
   yaw 210 and 30, baked preview and render (16 samples). `silhouettePixels` of `imageMetrics.ts` splits the model
   (more than 4 levels off the row's backdrop in column 1) into the outline band (a backdrop pixel within 2 px) and
