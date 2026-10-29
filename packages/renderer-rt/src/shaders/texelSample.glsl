@@ -1,6 +1,7 @@
-// Pixel-art texture lookup: nearest texels with an anti-aliased seam one screen pixel wide, every tap clamped to the
-// face's texel rectangle so no texel of a neighbouring atlas region is ever read. Textures are SRGB8_ALPHA8 with
-// NEAREST filtering and no mipmaps; texelFetch returns linear colour, so the taps blend in linear space.
+// Pixel-art texture lookup: nearest texels with an anti-aliased seam one screen pixel wide, every tap addressed by
+// faceTexel (the face's texel rectangle, then the texture's wrap), so no texel of a neighbouring atlas region or outside
+// the image is ever read. Textures are SRGB8_ALPHA8 with NEAREST filtering and no mipmaps; texelFetch returns linear
+// colour, so the taps blend in linear space.
 #include "texelAlpha"
 #include "faceTexels"
 
@@ -12,12 +13,28 @@ vec4 tapWeight(vec4 c, int mode, int cutoffByte) {
   return vec4(c.rgb * w, w);
 }
 
+// How a face addresses its texture's texels: its texel range, the image size and the texture's sampling flags.
+struct TexelAddress {
+  ivec4 range;
+  ivec2 size;
+  int flags;
+};
+
+TexelAddress texelAddress(sampler2D tex, vec4 uvRect, int flags) {
+  ivec2 size = textureSize(tex, 0);
+  return TexelAddress(faceTexelRange(uvRect, vec2(size)), size, flags);
+}
+
+vec4 fetchTexel(sampler2D tex, ivec2 texel, TexelAddress a) {
+  return texelFetch(tex, faceTexel(texel, a.range, a.size, a.flags), 0);
+}
+
 // opaque: the tap's indicator for the opaque pass's coverage (alpha-to-coverage). Opaque taps 1, invisible 0; a partial
 // tap 1 only when the fragment's nearest texel is opaque, so an opaque|partial seam stays a full opaque side (OIT owns
 // the partial texel) and the ramp only runs between opaque and cut-out texels.
-vec4 fetchPremultiplied(sampler2D tex, ivec2 texel, ivec4 range, int mode, int cutoffByte, bool nearestOpaque,
+vec4 fetchPremultiplied(sampler2D tex, ivec2 texel, TexelAddress a, int mode, int cutoffByte, bool nearestOpaque,
     out float opaque) {
-  vec4 c = texelFetch(tex, clamp(texel, range.xy, range.zw), 0);
+  vec4 c = fetchTexel(tex, texel, a);
   int coverage = texelCoverage(c.a, mode, cutoffByte);
   opaque = coverage == COVERAGE_OPAQUE || (coverage == COVERAGE_PARTIAL && nearestOpaque) ? 1.0 : 0.0;
   return tapWeight(c, mode, cutoffByte);
@@ -41,7 +58,7 @@ SeamTaps seamTaps(vec2 p, vec2 texelsPerPixel) {
 // Premultiplied, so a cutout neighbour adds no dark fringe. opaque: the tap indicators blended by the same f. On a
 // texel boundary f is 0.5, so across an opaque|cut-out seam the coverage passes 0.5 exactly where the nearest texel
 // changes: the area it covers equals the hard per-texel shape.
-vec4 texelAntialiased(sampler2D tex, vec2 p, vec2 texelsPerPixel, ivec4 range, int mode, int cutoffByte,
+vec4 texelAntialiased(sampler2D tex, vec2 p, vec2 texelsPerPixel, TexelAddress a, int mode, int cutoffByte,
     bool nearestOpaque, out float opaque) {
   SeamTaps taps = seamTaps(p, texelsPerPixel);
   ivec2 base = taps.base;
@@ -50,10 +67,10 @@ vec4 texelAntialiased(sampler2D tex, vec2 p, vec2 texelsPerPixel, ivec4 range, i
   float o10;
   float o01;
   float o11;
-  vec4 c00 = fetchPremultiplied(tex, base, range, mode, cutoffByte, nearestOpaque, o00);
-  vec4 c10 = fetchPremultiplied(tex, base + ivec2(1, 0), range, mode, cutoffByte, nearestOpaque, o10);
-  vec4 c01 = fetchPremultiplied(tex, base + ivec2(0, 1), range, mode, cutoffByte, nearestOpaque, o01);
-  vec4 c11 = fetchPremultiplied(tex, base + ivec2(1, 1), range, mode, cutoffByte, nearestOpaque, o11);
+  vec4 c00 = fetchPremultiplied(tex, base, a, mode, cutoffByte, nearestOpaque, o00);
+  vec4 c10 = fetchPremultiplied(tex, base + ivec2(1, 0), a, mode, cutoffByte, nearestOpaque, o10);
+  vec4 c01 = fetchPremultiplied(tex, base + ivec2(0, 1), a, mode, cutoffByte, nearestOpaque, o01);
+  vec4 c11 = fetchPremultiplied(tex, base + ivec2(1, 1), a, mode, cutoffByte, nearestOpaque, o11);
   opaque = mix(mix(o00, o10, f.x), mix(o01, o11, f.x), f.y);
   return mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
 }
@@ -70,16 +87,16 @@ struct TexelSample {
   float opaqueCoverage;
 };
 
-// mode and cutoffByte: the material's alpha mode id and cutoff byte (texelAlpha).
-TexelSample sampleTexels(sampler2D tex, vec2 uv, vec4 uvRect, bool antialias, int mode, int cutoffByte) {
-  vec2 size = vec2(textureSize(tex, 0));
-  vec2 p = uv * size;
+// flags: the texture's sampling flags (faceTexel); mode and cutoffByte: the material's alpha mode id and cutoff byte
+// (texelAlpha).
+TexelSample sampleTexels(sampler2D tex, vec2 uv, vec4 uvRect, int flags, bool antialias, int mode, int cutoffByte) {
+  TexelAddress a = texelAddress(tex, uvRect, flags);
+  vec2 p = uv * vec2(a.size);
   // Derivatives before any branch: they are undefined in non-uniform control flow.
   vec2 dx = dFdx(p);
   vec2 dy = dFdy(p);
   vec2 texelsPerPixel = abs(dx) + abs(dy);
-  ivec4 range = faceTexelRange(uvRect, size);
-  vec4 nearest = texelFetch(tex, clamp(ivec2(floor(p)), range.xy, range.zw), 0);
+  vec4 nearest = fetchTexel(tex, ivec2(floor(p)), a);
   TexelSample s;
   s.coverage = texelCoverage(nearest.a, mode, cutoffByte);
   s.nearestAlpha = nearest.a;
@@ -88,23 +105,22 @@ TexelSample sampleTexels(sampler2D tex, vec2 uv, vec4 uvRect, bool antialias, in
     s.premultiplied = tapWeight(nearest, mode, cutoffByte);
     s.opaqueCoverage = nearestOpaque ? 1.0 : 0.0;
   } else if (max(texelsPerPixel.x, texelsPerPixel.y) <= 1.0) {
-    s.premultiplied = texelAntialiased(tex, p, texelsPerPixel, range, mode, cutoffByte, nearestOpaque,
-      s.opaqueCoverage);
+    s.premultiplied = texelAntialiased(tex, p, texelsPerPixel, a, mode, cutoffByte, nearestOpaque, s.opaqueCoverage);
   } else {
-    // Minified: several texels per pixel. A rotated 2x2 grid of the same clamped lookup averages them, so a far zoom
+    // Minified: several texels per pixel. A rotated 2x2 grid of the same addressed lookup averages them, so a far zoom
     // does not shimmer while the camera moves.
     float o0;
     float o1;
     float o2;
     float o3;
     s.premultiplied = 0.25 * (
-      texelAntialiased(tex, p + dx * -0.125 + dy * -0.375, texelsPerPixel, range, mode, cutoffByte, nearestOpaque,
+      texelAntialiased(tex, p + dx * -0.125 + dy * -0.375, texelsPerPixel, a, mode, cutoffByte, nearestOpaque,
         o0) +
-      texelAntialiased(tex, p + dx * 0.375 + dy * -0.125, texelsPerPixel, range, mode, cutoffByte, nearestOpaque,
+      texelAntialiased(tex, p + dx * 0.375 + dy * -0.125, texelsPerPixel, a, mode, cutoffByte, nearestOpaque,
         o1) +
-      texelAntialiased(tex, p + dx * 0.125 + dy * 0.375, texelsPerPixel, range, mode, cutoffByte, nearestOpaque,
+      texelAntialiased(tex, p + dx * 0.125 + dy * 0.375, texelsPerPixel, a, mode, cutoffByte, nearestOpaque,
         o2) +
-      texelAntialiased(tex, p + dx * -0.375 + dy * 0.125, texelsPerPixel, range, mode, cutoffByte, nearestOpaque,
+      texelAntialiased(tex, p + dx * -0.375 + dy * 0.125, texelsPerPixel, a, mode, cutoffByte, nearestOpaque,
         o3));
     s.opaqueCoverage = 0.25 * (o0 + o1 + o2 + o3);
   }
@@ -116,9 +132,8 @@ vec3 sampleColor(TexelSample s) {
   return s.premultiplied.a > 0.0 ? s.premultiplied.rgb / s.premultiplied.a : vec3(0.0);
 }
 
-// Nearest texel coordinate of uv, for per-texel decisions such as hashed alpha.
-ivec2 nearestTexel(sampler2D tex, vec2 uv, vec4 uvRect) {
-  vec2 size = vec2(textureSize(tex, 0));
-  ivec4 range = faceTexelRange(uvRect, size);
-  return clamp(ivec2(floor(uv * size)), range.xy, range.zw);
+// Nearest texel coordinate of uv as sampleTexels reads it, for per-texel decisions such as hashed alpha.
+ivec2 nearestTexel(sampler2D tex, vec2 uv, vec4 uvRect, int flags) {
+  TexelAddress a = texelAddress(tex, uvRect, flags);
+  return faceTexel(ivec2(floor(uv * vec2(a.size))), a.range, a.size, a.flags);
 }

@@ -23,12 +23,14 @@ struct Material {
   ivec2 size;
   int alphaMode;
   int cutoffByte;
+  // The texture's sampling flags (faceTexel); 0 untextured.
+  int textureFlags;
 };
 
 Material fetchMaterial(int slot) {
   vec4 a = dataTexel(u_materials, slot * MATERIAL_TEXELS);
   vec4 b = dataTexel(u_materials, slot * MATERIAL_TEXELS + 1);
-  return Material(int(a.x), ivec2(a.yz), ivec2(a.w, b.x), int(b.y), int(b.z));
+  return Material(int(a.x), ivec2(a.yz), ivec2(a.w, b.x), int(b.y), int(b.z), int(b.w));
 }
 
 vec3 materialEmission(int slot) {

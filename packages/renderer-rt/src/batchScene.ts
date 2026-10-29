@@ -1,10 +1,11 @@
-import { ALPHA_MODE_ID, alphaCutoffByte, type AlphaModeId } from '@modelshot/looks';
+import { ALPHA_MODE_ID, alphaCutoffByte, textureSamplingFlags, type AlphaModeId } from '@modelshot/looks';
 import {
   EDGE_SLOTS,
   NO_EDGE,
   meshVisible,
   nodeVisibility,
   resolveMaterialAlpha,
+  textureSampling,
   type SceneDocument,
   type SceneMesh,
   type SceneMeshGroup,
@@ -52,6 +53,11 @@ export interface SceneBatch {
   readonly edgeDistances: Float32Array;
   /** 4 per vertex: the slots' signed angles (`SharpEdgeAttributes.angles`); 0 without them. */
   readonly edgeAngles: Float32Array;
+  /**
+   * 1 per vertex: the batch texture's sampling flags (`textureSamplingFlags` of its `textureSampling`), 0 untextured.
+   * The same on every vertex: a per-batch uniform would need a change to every draw call.
+   */
+  readonly textureFlags: Float32Array;
   readonly indices: Uint32Array;
 }
 
@@ -106,6 +112,7 @@ function cornerSources(
 
 function merge(
   key: BatchKey,
+  textureFlags: number,
   parts: readonly Part[],
   lightmapOf: (mesh: SceneMesh) => Float32Array | null,
   edgesOf: (mesh: SceneMesh) => SharpEdgeAttributes | null,
@@ -133,6 +140,7 @@ function merge(
     lightmapChart: world ? new Float32Array(vertices * 4) : null,
     edgeDistances: new Float32Array(vertices * EDGE_SLOTS).fill(NO_EDGE),
     edgeAngles: new Float32Array(vertices * EDGE_SLOTS),
+    textureFlags: new Float32Array(vertices).fill(textureFlags),
     indices: new Uint32Array(indexCount),
   };
   for (const [mesh, base] of bases) {
@@ -240,5 +248,8 @@ export function batchScene(
       entry.parts.push({ mesh, group });
     }
   });
-  return [...parts.values()].map((entry) => merge(entry.key, entry.parts, lightmapOf, edgesOf, cornersOf));
+  const flagsOf = (texture: number) => (texture < 0 ? 0 : textureSamplingFlags(textureSampling(doc.textures[texture])));
+  return [...parts.values()].map((entry) =>
+    merge(entry.key, flagsOf(entry.key.texture), entry.parts, lightmapOf, edgesOf, cornersOf),
+  );
 }
