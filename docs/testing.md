@@ -85,9 +85,9 @@ depends on `golden` (a dependency put every golden test into the bench's shard: 
 none). Playwright shards a project into contiguous ranges by test count, not by time, so a block of slow tests
 lands in one or two shards; each block is its own project with its own shards. `golden` runs `environment`, `export`,
 `golden*`, `modelView`, `realtime.spec.ts` and `textureWrap.spec.ts` without the tests titled `baked lighting`
-(`grepInvert`), which `bake` runs, apart from the three `@timing` ones, which `bench` runs;
-`golden-pt` runs `pathtracer.spec.ts` without the tests titled `like the baked preview`, which `pair` runs (the 13
-preview-vs-render pairing tests). Each test is in exactly one project, and the plain `playwright test` runs every project, while `pnpm test` runs them in the two phases above (`bench` last, alone).
+(`grepInvert`), which `bake` runs, apart from the three `@timing` ones, which `bench` runs, and without the one titled
+`like the baked preview`; `golden-pt` runs `pathtracer.spec.ts` without the tests titled `like the baked preview`,
+which `pair` runs (the 14 preview-vs-render pairing tests of `pathtracer.spec.ts` and `textureWrap.spec.ts`). Each test is in exactly one project, and the plain `playwright test` runs every project, while `pnpm test` runs them in the two phases above (`bench` last, alone).
 
 Shard sizes (MS-39, `--list --project <p> --shard <k>/<n>`), each with the sum of its tests' CI times: the per-test
 times of main's run 39878163371 (MS-30's merge, so its three cut-out seam tests are counted), MS-22's 31 export tests

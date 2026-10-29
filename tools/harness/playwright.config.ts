@@ -45,7 +45,7 @@ export default defineConfig({
     {
       name: 'pair',
       fullyParallel: true,
-      testMatch: 'pathtracer.spec.ts',
+      testMatch: ['pathtracer.spec.ts', 'textureWrap.spec.ts'],
       grep: /like the baked preview/,
       grepInvert: /@timing/,
     },
@@ -59,7 +59,7 @@ export default defineConfig({
     {
       name: 'golden',
       fullyParallel: true,
-      grepInvert: [/baked lighting/, /@timing/],
+      grepInvert: [/baked lighting/, /like the baked preview/, /@timing/],
       testMatch: [
         'environment.spec.ts',
         'export.spec.ts',
