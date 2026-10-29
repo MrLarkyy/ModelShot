@@ -93,10 +93,8 @@ export class RenderTargets {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     if (!complete) {
       gl.deleteFramebuffer(framebuffer);
-      for (const renderbuffer of [accum, weight]) gl.deleteRenderbuffer(renderbuffer);
-      this.renderbuffers = this.renderbuffers.filter(
-        (renderbuffer) => renderbuffer !== accum && renderbuffer !== weight,
-      );
+      // accum and weight, the last two allocated.
+      for (const renderbuffer of this.renderbuffers.splice(-2)) gl.deleteRenderbuffer(renderbuffer);
       this.oitMsaaRejected = true;
       return null;
     }

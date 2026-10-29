@@ -1434,22 +1434,23 @@ test.describe('outline hull', () => {
 });
 
 /**
- * MS-60: the area partial texels cover per image row, in the 4x MSAA preview of the partial-edge view and in its render
- * (seed 1, 128 samples, no shadow catcher, so what lies behind is the backdrop in both). Rows run inside one texel
- * row, between its centre band's edges (a quarter texel from either seam), so every boundary they cross is
- * near-vertical: the partial|invisible seams and the partial outline of texel rows 1-4, and the opaque|partial seams of
- * rows 5-6 (`rowCoverage`, each image against its own texel colours). The hard shape (nearest texels at pixel
- * centres) is the preview's with aa=0 and msaa=0.
- */
-/**
  * The render's own noise in `rowCoverage`'s per-row area of the partial-edge view (128 samples): the largest per-row
  * difference between seed 1 and seed 2 over the same rows, 0.851 px (rows 1-4: 0.577, 0.851, 0.501, 0.405; strip rows
  * 5-6: 0.689, 0.368), x 1.25.
  */
 const PARTIAL_EDGE_ROW_NOISE = 1.06;
 
-test.describe('partial-alpha seams: the render covers each row like the baked preview (MS-60)', () => {
-  test('partial-edge: per-row covered area of preview and render within 0.5 px plus the render noise', async ({
+/**
+ * MS-60: the area partial texels cover per image row, in the 4x MSAA preview of the partial-edge view and in its render
+ * (seed 1, 128 samples, no shadow catcher, so what lies behind is the backdrop in both). Rows run inside one texel
+ * row, between its centre band's edges (a quarter texel from either seam), so every boundary they cross is
+ * near-vertical: the partial|invisible seams and the partial outline of texel rows 1-4, and the opaque|partial seams of
+ * rows 5-6 (`rowCoverage`, each image against its own texel colours). The hard shape (nearest texels at pixel
+ * centres) is the preview's with aa=0 and msaa=0. Criterion: the mean per-row difference within 0.5 px, where the
+ * render's noise averages out; the worst row within 0.5 px plus that noise (`PARTIAL_EDGE_ROW_NOISE`).
+ */
+test.describe('partial-alpha seams: the render covers each row like the preview (MS-60)', () => {
+  test('partial-edge: mean per-row covered area of preview and render within 0.5 px, the worst row within the noise', async ({
     page,
   }) => {
     test.setTimeout(240_000);
@@ -1493,22 +1494,32 @@ test.describe('partial-alpha seams: the render covers each row like the baked pr
     const traced = (await render(page, 'variant=partial-edge&seed=1&samples=128&catcher=0')).image;
     let worst = 0;
     let rows = 0;
+    let sum = 0;
+    let signedSum = 0;
     const lines: string[] = [];
     for (const { label, region, covered } of regions) {
       const a = rowCoverage(preview, covered, region, linear);
       const b = rowCoverage(traced, covered, region, linear);
       let regionWorst = 0;
       for (const y of a.boundaryRows) {
-        const d = Math.abs((a.area.get(y) ?? 0) - (b.area.get(y) ?? 0));
+        const signed = (a.area.get(y) ?? 0) - (b.area.get(y) ?? 0);
+        const d = Math.abs(signed);
         regionWorst = Math.max(regionWorst, d);
+        sum += d;
+        signedSum += signed;
         rows++;
       }
       worst = Math.max(worst, regionWorst);
       lines.push(`${label}: ${a.boundaryRows.length} rows, worst ${regionWorst.toFixed(3)} px`);
     }
-    // Measured worst 1.127 px (row 1); rows 2-4 0.761, 0.678, 0.739; strip rows 0.612, 0.492.
-    console.log(`[pt pair] partial-edge per-row area, preview vs render: ${lines.join('; ')}`);
+    // Measured worst 1.127 px (row 1); rows 2-4 0.761, 0.678, 0.739; strip rows 0.612, 0.492; mean MEAN.
+    const mean = sum / rows;
+    console.log(
+      `[pt pair] partial-edge per-row area, preview vs render: mean ${mean.toFixed(3)} px ` +
+        `(signed ${(signedSum / rows).toFixed(3)}) over ${rows} rows; ${lines.join('; ')}`,
+    );
     expect(rows, 'boundary rows compared').toBeGreaterThan(100);
-    expect(worst).toBeLessThanOrEqual(0.5 + PARTIAL_EDGE_ROW_NOISE);
+    expect(mean, 'mean per-row difference').toBeLessThanOrEqual(0.5);
+    expect(worst, 'worst row').toBeLessThanOrEqual(0.5 + PARTIAL_EDGE_ROW_NOISE);
   });
 });

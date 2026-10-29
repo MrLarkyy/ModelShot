@@ -12,7 +12,6 @@ uniform sampler2D u_texture;
 uniform bool u_texelAntialias;
 uniform int u_alphaMode;
 uniform int u_alphaCutoffByte;
-// oitSeamCoverage.ts
 uniform int u_seamCoverage;
 
 in vec2 v_uv;
@@ -35,8 +34,7 @@ float toHalf(float v) {
   return unpackHalf2x16(packHalf2x16(vec2(v, 0.0))).x;
 }
 
-// The partial taps' share (opaqueCoverage counts the opaque ones here), so the covered area is the hard shape's;
-// opaque taps beside a partial nearest texel count as its alpha (mode 1) or, under the opaque pass's A2C, 1.
+// Partial taps' share; opaque taps count as a partial nearest texel's alpha or 1 (oitSeamCoverage.ts).
 float partialSeamCoverage(TexelSample s) {
   float partialTaps = s.premultiplied.a - s.opaqueCoverage;
   float opaqueTaps = s.coverage != COVERAGE_PARTIAL ? 0.0 : u_seamCoverage == 2 ? 1.0 : s.nearestAlpha;
@@ -55,7 +53,6 @@ void main() {
   if (u_seamCoverage == 0) {
     if (s.coverage != COVERAGE_PARTIAL) discard;
   } else {
-    // An invisible texel's band beside a partial one is kept, in the neighbour's colour (premultiplied taps).
     if (s.coverage == COVERAGE_OPAQUE) discard;
     coverage = partialSeamCoverage(s);
     if (coverage <= 0.0) discard;
