@@ -103,6 +103,8 @@ differ by up to 2x. The build takes about 6 s (`bake-2` in run 39878163371: a 14
 | `bake`      |    25 |      3 | 9 / 8 / 8                   | 6.4 / 4.3 / 3.5                   |
 | `bench`     |     1 |      1 | 1                           | its own job                       |
 
+The counts are MS-39's; `pair` has since grown to 15 tests (MS-52's and MS-38's pairs) in the same 3 shards.
+
 Playwright install: `playwright install --with-deps` took 12-15 s on most jobs but 4.5 to 9.4 minutes on some (main run
 40368207797: `bake-3`, `golden-2`, `golden-pt-5`; run 39878163371: 13 s to 9.7 minutes). The browser download is not the slow part:
 in `golden-2` `apt-get update` took 4 s and the .deb files (fonts, `libnss3`, `xvfb`; 24.9 MB) took 9 min 15 s from a mirror
@@ -133,9 +135,9 @@ came near or over it; the worst of runs 39594658979 and 39612706830 per test: th
 `rt-bake-cutout-checker` and its fallback over 30 s, `rt-bake-turntable-y030` over 30 s, `rt-bake-alpha-plane` 24.5 s;
 the path-tracer determinism batches test 35.0 s (over 30 s), its same-seed test 15.2 s, `pt-alpha-plane` 22.4 s, the
 transparency tests up to 22.5 s, the lifetime tests 14.9-18.6 s, the 10 000 coincident cubes test 10.0 s. A suite or
-test whose CI time reaches a third of the default carries a timeout: 180 s for the baked goldens (bakes took 33-42 s in run 39624802150), 300 s for the baked lighting describe, 720 s for its determinism test (1.6 minutes on a normal runner, over 3 on a slow one, 5.2 at six local workers), 300 s for the baked-preview pairing tests (up to 1.3 minutes, about 2.6 on a slow VM), 120 s for the path-tracer goldens, determinism and lifetime describes and the coincident cubes test, 180 s for the
+test whose CI time reaches a third of the default carries a timeout: 180 s for the baked goldens (bakes took 33-42 s in run 39624802150), 300 s for the baked lighting describe, 720 s for its determinism test (1.6 minutes on a normal runner, over 3 on a slow one, 5.2 at six local workers), 300 s for the baked-preview pairing tests (up to 1.3 minutes, about 2.6 on a slow VM; MS-38's texture-filter pairing test 53.8 s at six local workers), 120 s for the texture-filter render golden (3.1 s at six local workers), 120 s for the path-tracer goldens, determinism and lifetime describes and the coincident cubes test, 180 s for the
 transparency describe (66 s at six local workers), 300 s for the exact-key silhouette test (29.5 s serial), 600 s for the
-exact-key catcher test (49 s serial) and the preset rim probes (42.6 s serial), 120 s for the realtime shimmer test (`texel anti-aliasing halves shimmer`, eight renders: 22-35 s alone locally, 30.3 and 31.1 s in the full serial suite); each at least 3x the worst CI time and twice the worst local time. A
+exact-key catcher test (49 s serial) and the preset rim probes (42.6 s serial), 120 s for the realtime shimmer test (`texel anti-aliasing halves shimmer`, eight renders: 22-35 s alone locally, 30.3 and 31.1 s in the full serial suite, 24.1 s at six local workers); each at least 3x the worst CI time and twice the worst local time. A
 hang now fails after that time, not after the 60 s default; several hangs in one
 shard can reach the 20-minute job limit, and the job is then cancelled instead of reporting the failures.
 
