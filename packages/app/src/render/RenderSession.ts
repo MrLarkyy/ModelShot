@@ -30,6 +30,7 @@ export class RenderSession {
   private cancelRequested = false;
   private disposed = false;
   private currentTracer: PathTracer | null = null;
+  private pumping: { readonly tracer: PathTracer; readonly resolve: () => void } | null = null;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -91,6 +92,13 @@ export class RenderSession {
   cancel(): void {
     if (!this.running) return;
     this.cancelRequested = true;
+    // Stopping at once: the next animation frame can be held back for long while the GPU drains the queued steps.
+    const pumping = this.pumping;
+    if (!pumping) return;
+    this.pumping = null;
+    pumping.tracer.cancel();
+    this.finishCancelled();
+    pumping.resolve();
   }
 
   dispose(): void {
@@ -106,8 +114,15 @@ export class RenderSession {
 
   private pump(tracer: PathTracer, warnings: readonly PathTracerWarning[]): Promise<void> {
     return new Promise<void>((resolve) => {
+      const mine = { tracer, resolve };
+      this.pumping = mine;
+      const end = (): void => {
+        if (this.pumping === mine) this.pumping = null;
+      };
       const slice = (): void => {
+        if (this.pumping !== mine) return;
         if (this.cancelRequested || this.disposed) {
+          end();
           tracer.cancel();
           this.finishCancelled();
           resolve();
@@ -124,12 +139,14 @@ export class RenderSession {
           const { samplesDone, targetSamples } = tracer.progress;
           this.host.onProgress(samplesDone, targetSamples);
           if (samplesDone >= targetSamples || !tracer.running) {
+            end();
             this.running = false;
             this.host.onDone(warnings);
             resolve();
             return;
           }
         } catch (error) {
+          end();
           this.running = false;
           this.host.onError(error);
           resolve();

@@ -27,12 +27,19 @@ class FakeTracer {
   setLook(): void {}
   resize(): void {}
   setCamera(): void {}
-  cancel(): void {}
-  setScene(): Promise<{ applied: boolean; warnings: never[] }> {
-    return Promise.resolve({ applied: true, warnings: [] });
+  cancelCalls = 0;
+  startCalls = 0;
+  sceneGate: Promise<void> | null = null;
+  cancel(): void {
+    this.cancelCalls++;
+  }
+  async setScene(): Promise<{ applied: boolean; warnings: never[] }> {
+    await this.sceneGate;
+    return { applied: true, warnings: [] };
   }
 
   start(request: { samples: number }): void {
+    this.startCalls++;
     this.targetSamples = request.samples;
     this.samplesDone = 0;
     this.guideLeft = this.guideSteps;
@@ -113,5 +120,80 @@ describe('RenderSession', () => {
     // The fake's `guiding` holds until the first sample: that one step takes the guide budget, then single samples.
     expect(tracer.stepCalls[0]).toBe(4);
     expect(tracer.stepCalls.slice(1).every((k) => k === 1)).toBe(true);
+  });
+
+  describe('cancel', () => {
+    const setup = (samples = 50) => {
+      tracer = new FakeTracer(0);
+      const frames: (() => void)[] = [];
+      vi.stubGlobal('requestAnimationFrame', (callback: () => void) => frames.push(callback));
+      const events: string[] = [];
+      const session = new RenderSession({} as HTMLCanvasElement, {
+        ...host(events),
+        settings: () => ({ samples, supersample: 1, denoise: false }),
+      });
+      return { frames, events, session };
+    };
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    it('stops at once while pumping, and the stale frame does nothing', async () => {
+      const { frames, events, session } = setup();
+      const rendered = session.render();
+      while (frames.length === 0) await tick();
+      frames.shift()?.();
+      const steps = tracer.stepCalls.length;
+      const before = events.length;
+      session.cancel();
+      expect(events.slice(before)).toEqual(['cancelled']);
+      expect(tracer.cancelCalls).toBe(1);
+      expect(session.busy).toBe(false);
+      await rendered;
+      frames.shift()?.();
+      expect(tracer.stepCalls.length).toBe(steps);
+      expect(events.slice(before)).toEqual(['cancelled']);
+    });
+
+    it('does not let the stale frame drive a render started right after', async () => {
+      const { frames, events, session } = setup(2);
+      const first = session.render();
+      while (frames.length === 0) await tick();
+      session.cancel();
+      await first;
+      const second = session.render();
+      while (frames.length < 2) await tick();
+      const stale = frames.shift();
+      stale?.();
+      expect(tracer.stepCalls).toEqual([]);
+      frames.shift()?.();
+      while (!events.includes('done')) {
+        await tick();
+        frames.shift()?.();
+      }
+      await second;
+      expect(events.filter((e) => e === 'cancelled')).toHaveLength(1);
+      expect(events.filter((e) => e === 'done')).toHaveLength(1);
+    });
+
+    it('cancels once after a pending scene upload, without starting', async () => {
+      const { frames, events, session } = setup();
+      let release = (): void => undefined;
+      tracer.sceneGate = new Promise<void>((resolve) => (release = resolve));
+      const rendered = session.render();
+      await tick();
+      session.cancel();
+      expect(events).toEqual([]);
+      release();
+      await rendered;
+      expect(events).toEqual(['cancelled']);
+      expect(tracer.startCalls).toBe(0);
+      expect(frames).toHaveLength(0);
+    });
+
+    it('is a no-op when idle', () => {
+      const { events, session } = setup();
+      session.cancel();
+      expect(events).toEqual([]);
+      expect(tracer.cancelCalls).toBe(0);
+    });
   });
 });
