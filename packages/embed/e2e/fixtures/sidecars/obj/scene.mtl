@@ -1,0 +1,4 @@
+# ModelShot embed test fixture (generate.mjs)
+newmtl checker
+Kd 1 1 1
+map_Kd -s 1 1 1 ../textures/checker tile.png

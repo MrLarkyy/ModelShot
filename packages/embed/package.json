@@ -23,6 +23,7 @@
   "dependencies": {
     "@modelshot/app": "workspace:*",
     "@modelshot/brand": "workspace:*",
+    "@modelshot/formats": "workspace:*",
     "@modelshot/looks": "workspace:*"
   },
   "devDependencies": {

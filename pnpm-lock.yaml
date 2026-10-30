@@ -272,6 +272,9 @@ importers:
       '@modelshot/brand':
         specifier: workspace:*
         version: link:../brand
+      '@modelshot/formats':
+        specifier: workspace:*
+        version: link:../formats
       '@modelshot/looks':
         specifier: workspace:*
         version: link:../looks

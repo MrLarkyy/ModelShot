@@ -18,10 +18,10 @@ const sources = walk(join(ROOT, 'src'))
 const NETWORK_API = /\b(?:fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|importScripts|WebTransport)\b\s*[(.]?/;
 const ABSOLUTE_URL = /(?:https?|wss?|ftp):\/\/|(?<![:\w])\/\/[a-z][\w.-]*\.[a-z]/i;
 const OFF_ORIGIN = /(?:\b[a-z][a-z\d+.-]*:)?\/\/[^\s"'<>)]*/gi;
-/** The model download and its CORS probe: the embed's only requests of its own. */
+/** The model download (with its files) and its CORS probe: the embed's only requests of its own. */
 const NETWORK_FILES = ['src/frame/fetchModel.ts', 'src/frame/explainFetchFailure.ts'];
 /** They name `fetch` only to hand it to the download (a test passes a fake). */
-const PLUMBING_FILES = ['src/frame/main.ts', 'src/frame/showEmbed.ts'];
+const PLUMBING_FILES = ['src/frame/main.ts', 'src/frame/showEmbed.ts', 'src/frame/fetchSidecars.ts'];
 
 const code = (text: string): string => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
