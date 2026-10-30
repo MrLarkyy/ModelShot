@@ -71,6 +71,6 @@ export default defineConfig({
         'textureWrap.spec.ts',
       ],
     },
-    { name: 'bench', grep: /@timing/, workers: 1, outputDir: 'test-results/serial' },
+    { name: 'bench', fullyParallel: true, grep: /@timing/, workers: 1, outputDir: 'test-results/serial' },
   ],
 });
