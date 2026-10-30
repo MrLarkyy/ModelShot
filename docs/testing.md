@@ -557,9 +557,10 @@ none changed: `turntable-y030` 141, 0.00215, 0.713, `iso` 265, 0.00404, 0.879, `
 0.00374, 0.461, `gltf-nodes-y030` 316, 0.00482, 0.948.
 Probes: **MSAA silhouette pixels are shaded on the face**:
 the baked `turntable-y030` preview against its render (the `pt-turntable-y030` golden PNG), the mean largest-channel
-difference over the 2 px outline band both draw (`outlineBand`), 1.6961 over 4 028 pixels against the render MS-59
-regenerated (1.7219 when shaded at the pixel centre; before MS-59 1.7461 and 1.7726 over 3 919), at most measured x 1.25
-= 2.12 and below the midpoint 1.709 (a revert of the centroid qualifiers measures 1.7219 and fails); frame on the raster
+difference over the 2 px outline band both draw (`outlineBand`), 1.7485 over 3 745 pixels against the render MS-59
+regenerated (MS-63: the preview catcher is exactly the backdrop where the bake is 1, so the band lost its low-delta
+pixels, 1.6961 over 4 028 before; 1.7781 when shaded at the pixel centre, 1.7219 before; before MS-59 1.7461 and 1.7726 over 3 919), at most measured x 1.25
+= 2.12 and below the midpoint 1.7633 (a revert of the centroid qualifiers measures 1.7781 and fails); frame on the raster
 key with MSAA (asserted). **The edge band keeps its width across quad diagonals**: the `edges` view with MSAA against
 `msaa=0`, off every mesh's outline (more than 1 px from a `maskBoundary` of the mesh's pixels from `hide=`): 0 pixels
 over 2 levels at the look's width; at width 0.1 133 pixels differ at all (135 with the 0.25 determinant bound in round 3, 227
@@ -743,7 +744,7 @@ catcher-off preview against the empty scene) or on its silhouette, where MSAA bl
 `rt-bake-turntable-y030` by 1 level where partial-alpha texels show the catcher behind them (they differ between
 catcher on and off); no shadow shape moved. The committed
 `rt-bake-turntable-y030` also differed from the d0dae68 render in 286 model pixels (up to 89 levels) within its
-tolerance, from an earlier change; the regenerated PNG carries that too (5 564 px, 89, 0.070 against the old file). The
+tolerance, from MS-60 (its paragraph above records these); the regenerated PNG carries that too (5 564 px, 89, 0.070 against the old file). The
 showcase's 64-sample catcher (512 x 512) has 17 968 texels of fill exactly 1 (6.85 %; 358 before), the cut-out ghost
 all 49 296 (1 040 before). Pairs before -> after (ratio / mean delta), limits unchanged: `turntable-y030` 0.00188 /
 0.697 -> 0.00189 / 0.692, `iso` 0.00381 / 0.869 -> 0.00381 / 0.864, `cutout-checker` 0.00340 / 0.611 -> 0.00342 /
@@ -752,8 +753,8 @@ all 49 296 (1 040 before). Pairs before -> after (ratio / mean delta), limits un
 `preset-marketplace` 0.00912 / 0.793 -> 0.00912 / 0.792, the denoised 2x turntable 0.00150 / 0.598 -> 0.00151 /
 0.591; `alpha-plane`, `player-hold-34`, `preset-rim`, `preset-marketplace-yaw30` and `gltf-contact` unchanged.
 `partial-edge` went from 2 to 3 pixels (0.00005 against the old limit 0.00004; mean 1.124 -> 1.120): one
-catcher-shadow pixel 25 levels from the render both before and after moved by 1 level in blue towards it, which
-crosses pixelmatch's threshold. Its limit was re-measured, x 1.25: 0.00006 / 1.4 (was 0.00004 / 1.405); no other
+silhouette edge pixel (row 194, x about 50: the preview steps 101 to 174 where the render blends about 126) moved by
+1 level in blue towards the render, which crosses pixelmatch's OKLab threshold. Its limit was re-measured, x 1.25: 0.00006 / 1.4 (was 0.00004 / 1.405); no other
 limit changed. New: realtime.spec "nothing blocks" (the `cutout-ghost` scene, the checker geometry with every texel
 cut out: every catcher texel exactly 1 in all four channels, the preview
 byte-identical with and without the catcher; it failed before with 1 040 of 49 296), "the lit catcher is exact away
@@ -813,7 +814,7 @@ look's backdrop in that row, `agxToneMap(backdropColor(look, y), look.toneMappin
 before MS-19 the top-left pixel) must agree on every pixel off the silhouette (a pixel whose 3 x 3 neighbourhood in the preview holds
 both classes) that the two images draw more than 2 levels apart (a dark texel near the backdrop colour falls on either
 side of the mask test, with the same colour in both views); 0 mismatches is the limit. Radiance, catcher on both: pixelmatch `threshold 0.1` with `maxDiffRatio`
-and `maxMeanDelta` = measured x 1.25 and never above the previous limit, never widened; the render differs where it
+and `maxMeanDelta` = measured x 1.25 and never above the previous limit, never widened; the one exception is a limit re-measured x 1.25 after a deliberate change whose pixels all moved toward the render (MS-63: `partial-edge`, one silhouette edge pixel on row 194, x about 50, where the preview steps 101 to 174 and the render blends about 126 because the plane partly covers it, flipped over pixelmatch's OKLab threshold as the added blue raised the chroma difference), with the change named beside it; the render differs where it
 has interreflection and noise. Logged as `[pt pair] <view>: ...`, values in `test-results/pt-pair-<view>.json`.
 Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with rounded edges and the mirrored bounce
 (MS-16's values in brackets; every limit stayed, none widened, `edges` is new at measured x 1.25):

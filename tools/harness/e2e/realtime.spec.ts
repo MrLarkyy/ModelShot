@@ -160,10 +160,12 @@ test('MSAA silhouette pixels are shaded on the face: the outline band of turntab
   page,
 }) => {
   test.setTimeout(240_000);
-  // Measured mean 1.6961 over 4 028 px against the MS-59 render; 1.7219 when shaded at the pixel centre (before MS-54).
+  // Measured mean 1.7485 over 3 745 px against the MS-59 render; 1.7781 over the same pixels when shaded at the pixel
+  // centre (the centroid qualifiers reverted). MS-63: the preview catcher is now exactly the backdrop where the bake is
+  // 1, so the band drops the low-delta pixels it used to select (1.6961 over 4 028 px, pixel centre 1.7219 before).
   // The bound is their midpoint, so a revert of the centroid qualifiers fails it.
   const maxMean = 2.12;
-  const midpoint = 1.709;
+  const midpoint = 1.7633;
   const traced = decodePng(
     readFileSync(
       goldenPath({
@@ -1406,11 +1408,13 @@ test.describe('baked lighting', () => {
     expect(stats.exactOnes, 'catcher texels exactly 1 in every channel').toBe(stats.texels);
     expect(stats.nonFinite).toBe(0);
     // The catcher is drawn (its rectangle follows the geometry), yet changes no pixel.
-    const shown = (await render(page, 'variant=bake-cutout-ghost')).image;
-    const bare = (await render(page, 'variant=bake-cutout-ghost&catcher=0')).image;
-    let apart = 0;
-    for (let i = 0; i < shown.data.length; i++) if (shown.data[i] !== bare.data[i]) apart++;
-    expect(apart, 'channel values that differ with the catcher on').toBe(0);
+    for (const extra of ['', '&fallback=1']) {
+      const shown = (await render(page, `variant=bake-cutout-ghost${extra}`)).image;
+      const bare = (await render(page, `variant=bake-cutout-ghost&catcher=0${extra}`)).image;
+      let apart = 0;
+      for (let i = 0; i < shown.data.length; i++) if (shown.data[i] !== bare.data[i]) apart++;
+      expect(apart, `channel values that differ with the catcher on${extra}`).toBe(0);
+    }
   });
 
   test('the lit catcher is exact away from the model', async ({ page }) => {

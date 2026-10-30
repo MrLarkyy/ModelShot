@@ -2,7 +2,9 @@ import type { CompareOptions } from './compareImages';
 
 /**
  * Preview vs render of the same view, the preview baked (64 samples, seed 1): `maxDiffRatio` and `maxMeanDelta` are
- * measured values x 1.25 (docs/testing.md, path-tracer pair table), never widened later. The render adds
+ * measured values x 1.25 (docs/testing.md, path-tracer pair table), never widened later; the one exception is a re-measure x 1.25 after a
+ * deliberate change whose pixels all moved toward the render (`partial-edge`, MS-63: one silhouette edge pixel flipped
+ * over pixelmatch's threshold). The render adds
  * interreflection and noise; the bake adds the occlusion and soft shadows the unbaked preview lacked, so the limits
  * fell when it came (MS-16). Framing is compared without the shadow catcher on both sides (the catcher's edge fades
  * into the backdrop and would count as model) and against a preview without MSAA (pixel-centre coverage), radiance
