@@ -275,6 +275,15 @@ describe('RenderSession', () => {
       expect(events.slice(before)).toEqual(['cancelled']);
     });
 
+    it('reports a failed tracer creation once and is not busy afterwards', async () => {
+      const { events, session } = setup();
+      loadGate = Promise.reject(new Error('no gpu'));
+      loadGate.catch(() => undefined);
+      await session.render();
+      expect(events).toEqual(['error Error: no gpu']);
+      expect(session.busy).toBe(false);
+    });
+
     it('is a no-op when idle', () => {
       const { events, session } = setup();
       session.cancel();

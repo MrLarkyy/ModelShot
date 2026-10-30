@@ -463,6 +463,7 @@ export class App {
   private renderFailed(error: unknown): void {
     this.progressBox.hidden = true;
     this.resultCanvas.hidden = true;
+    this.notices.status('Render failed.');
     this.notices.alert(`The render failed: ${error instanceof Error ? error.message : String(error)}`);
     this.setActionsEnabled();
   }
