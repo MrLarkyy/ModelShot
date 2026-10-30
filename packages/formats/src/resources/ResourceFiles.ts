@@ -1,3 +1,5 @@
+import { isUrlReference, normalisePath, normaliseReference, referenceBaseName } from './normaliseReference';
+
 export type ResourceResult =
   | { readonly ok: true; readonly fileName: string; readonly bytes: Uint8Array }
   | {
@@ -22,7 +24,7 @@ export class ResourceFiles {
     for (const name of this.files.keys()) {
       const path = normalisePath(name);
       if (!this.byPath.has(path)) this.byPath.set(path, name);
-      const base = baseName(path).toLowerCase();
+      const base = referenceBaseName(path).toLowerCase();
       if (!this.byBaseName.has(base)) this.byBaseName.set(base, name);
     }
   }
@@ -33,33 +35,12 @@ export class ResourceFiles {
    * starting with `//` is never resolved; a drive letter (`C:`) is a path.
    */
   resolve(reference: string): ResourceResult {
-    // A scheme has two or more letters: `C:\models\a.png` is a drive path, looked up by its base name like any other.
-    if (/^[a-z][a-z0-9+.-]+:/i.test(reference) || reference.startsWith('//') || reference.startsWith('\\\\')) {
-      return { ok: false, reason: 'NOT_FETCHED', wanted: '' };
-    }
-    const path = normalisePath(percentDecode(reference));
-    const base = baseName(path);
+    if (isUrlReference(reference)) return { ok: false, reason: 'NOT_FETCHED', wanted: '' };
+    const path = normaliseReference(reference);
+    const base = referenceBaseName(path);
     const name = this.byPath.get(path) ?? this.byBaseName.get(base.toLowerCase());
     const bytes = name === undefined ? undefined : this.files.get(name);
     if (name === undefined || bytes === undefined) return { ok: false, reason: 'NOT_PICKED', wanted: base };
     return { ok: true, fileName: name, bytes };
   }
-}
-
-function percentDecode(reference: string): string {
-  try {
-    return decodeURIComponent(reference);
-  } catch {
-    return reference;
-  }
-}
-
-function normalisePath(path: string): string {
-  let normalised = path.replace(/\\/g, '/');
-  while (normalised.startsWith('./')) normalised = normalised.slice(2);
-  return normalised;
-}
-
-function baseName(path: string): string {
-  return path.slice(path.lastIndexOf('/') + 1);
 }

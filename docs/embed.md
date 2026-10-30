@@ -47,8 +47,9 @@ The element is a small loader (about 3 kB gzip, budget row `embed`). It checks i
 1. reads the parameters from `location.hash` (never the query string);
 2. checks the file name of the model URL with the app's intake rules (extension; one model or one skin PNG);
 3. starts the WebGL2 viewer (`WEBGL2_UNAVAILABLE` without it);
-4. downloads the model (limits below), checks it again with the intake limits and reads it in the app's load worker
-   (30 s watchdog, the loaders' own limits);
+4. downloads the model (limits below) and, for a `.gltf`, `.glb` or `.obj`, the files it refers to on the same server
+   (see [Models with several files](#models-with-several-files)), checks them again with the intake limits and reads
+   them in the app's load worker (30 s watchdog, the loaders' own limits), as if they had been picked together;
 5. shows it with the chosen look and camera, posts `load` to the host and bakes the light lazily (status
    "Preview lit.");
 6. turns it if `autorotate` is on, once the light is baked (turning while the bake runs would slow it), unless the
@@ -146,28 +147,58 @@ embed origin.
 
 Shown in the frame (or the element) as `<code>: <message>`, in a `role="alert"` element, and reported by `error`.
 
-| code                  | when                                                                                                                                                                      |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MISSING_MODEL`       | no `model`                                                                                                                                                                |
-| `INVALID_PARAM`       | a value outside its contract, a parameter given twice, or a fragment over 8192 characters; names the parameter                                                            |
-| `UNSUPPORTED_VERSION` | `v` other than 1                                                                                                                                                          |
-| `MODEL_URL_INVALID`   | `model` not an absolute http(s) URL, with credentials, control characters, or over 2048 characters                                                                        |
-| `MODEL_INSECURE`      | an `http` model on an `https` frame: refused before any request (the browser would block it)                                                                              |
-| `MODEL_CORS_BLOCKED`  | the model server answered but does not allow the embed origin to read the file (see CORS)                                                                                 |
-| `MODEL_UNREACHABLE`   | no answer: offline, a wrong address, a refused connection, the connection broke mid-download, or (some browsers, see CORS) a server without `Access-Control-Allow-Origin` |
-| `MODEL_HTTP_ERROR`    | the server answered with an error status (404, 403, ...), named in the message                                                                                            |
-| `MODEL_TOO_LARGE`     | over 64 MiB, from `Content-Length` before reading or while streaming without it                                                                                           |
-| `MODEL_FETCH_TIMEOUT` | the download (headers and body) took over 30 s                                                                                                                            |
-| `WEBGL2_UNAVAILABLE`  | the browser has no WebGL2                                                                                                                                                 |
-| `SCENE_REJECTED`      | the renderer did not take the model                                                                                                                                       |
+| code                  | when                                                                                                                                                                                                                                                                                                                                         |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MISSING_MODEL`       | no `model`                                                                                                                                                                                                                                                                                                                                   |
+| `INVALID_PARAM`       | a value outside its contract, a parameter given twice, or a fragment over 8192 characters; names the parameter                                                                                                                                                                                                                               |
+| `UNSUPPORTED_VERSION` | `v` other than 1                                                                                                                                                                                                                                                                                                                             |
+| `MODEL_URL_INVALID`   | `model` not an absolute http(s) URL, with credentials, control characters, or over 2048 characters                                                                                                                                                                                                                                           |
+| `MODEL_INSECURE`      | an `http` model on an `https` frame: refused before any request (the browser would block it)                                                                                                                                                                                                                                                 |
+| `MODEL_CORS_BLOCKED`  | the model server answered but does not allow the embed origin to read the model or one of its files (see CORS); a file of the model is named                                                                                                                                                                                                 |
+| `MODEL_UNREACHABLE`   | no answer for the model or one of its files: offline, a wrong address, a refused connection, the connection broke mid-download, or (some browsers, see CORS) a server without `Access-Control-Allow-Origin`                                                                                                                                  |
+| `MODEL_HTTP_ERROR`    | the server answered with an error status (404, 403, ...) for the model, named in the message; for one of its files see below                                                                                                                                                                                                                 |
+| `MODEL_TOO_LARGE`     | the model over 64 MiB, or the model and its files together, from `Content-Length` before reading or while streaming without it                                                                                                                                                                                                               |
+| `MODEL_FETCH_TIMEOUT` | the model's download (headers and body) took over 30 s, or the downloads of its files together took over 30 s                                                                                                                                                                                                                                |
+| `SIDECAR_REFUSED`     | the model refers to a file the embed will not download: a URL or scheme (`https:`, `data:`, `javascript:`, `file:`, ...), a `//` or backslash authority, a path leading to another origin, over 2048 characters once resolved, or two files of one name at different URLs; refused before any of its files is requested, the reference named |
+| `TOO_MANY_SIDECARS`   | the model refers to more than 31 files the embed would download; refused before any of them is requested (an OBJ's textures before any texture is requested)                                                                                                                                                                                 |
+| `WEBGL2_UNAVAILABLE`  | the browser has no WebGL2                                                                                                                                                                                                                                                                                                                    |
+| `SCENE_REJECTED`      | the renderer did not take the model                                                                                                                                                                                                                                                                                                          |
 
 Codes of the app's intake and of the loaders pass through unchanged (see [App, Files and limits](app.md) and the
 loader pages): `UNSUPPORTED_TYPE` (no model extension in the URL path), `NO_MODEL`, `LOAD_TIMEOUT` (reading took over
 30 s), `LOAD_FAILED`, `NOT_JSON`, `NOT_BBMODEL`, `FILE_TOO_LARGE`, `TOO_MANY_TRIANGLES`, `TEXTURE_TOO_LARGE`, ...;
-and the renderer's `INVALID_SCENE` and `SCENE_TOO_LARGE`. Version 1 downloads one file and never follows references
-in a model: a `.gltf` with an external `.bin` fails with `MISSING_BUFFER`, and external textures or an OBJ `mtllib`
-are left out with the loader's warning (drawn missing or plain). Use `.glb`, a `.gltf` with embedded data, or an
-`.obj` without a material library.
+and the renderer's `INVALID_SCENE` and `SCENE_TOO_LARGE`. A referenced file the embed skips (see below) or the server
+does not have is the loader's: a missing `.gltf` buffer fails with `MISSING_BUFFER`, a missing texture or material
+library is drawn missing or plain with the loader's warning.
+
+## Models with several files
+
+A `.gltf` with external buffers and images, or an `.obj` with `mtllib` material libraries and their `map_Kd`
+textures, loads by URL like the same files picked together in the app. After the model, the frame lists its
+references with the loaders' own parsers (`listGltfReferences`, `listObjReferences`, `listMtlReferences` of
+`@modelshot/formats`) and resolves each against the model URL (an OBJ texture against its `.mtl` file's URL, as
+exporters write them):
+
+- Only a relative path is downloaded (`model.bin`, `textures/skin%20A.png`, `../textures/a.png`, `/models/a.png`),
+  at most 2048 characters, and only when it lands on the model's own origin over http(s). A URL with a scheme (even the model's own
+  `https://...`), `//host`, a backslash authority or anything leading elsewhere after the browser's URL parsing fails
+  the model with `SIDECAR_REFUSED` before any of its files is requested. `data:` URIs of a `.gltf` are decoded by the
+  loader, never requested.
+- Only `.bin`, `.png` and `.mtl` files are downloaded, what the app takes next to a model; another reference (a
+  `.jpg`, a path with a query) is left to the loader, which reports it missing as in a local open.
+- A file the server answers an error status for (404, 403, 500, ...) is left out, as if it were not there: the loader
+  reports it missing (a `.gltf` buffer fails with `MISSING_BUFFER`; a texture or material library is drawn missing or
+  plain with a warning). CORS, size, time and connection failures stay errors.
+- A drive path (`C:\tex\a.png`) is a file of the author's machine: it is never requested, and the loader reports it
+  missing.
+- Each URL is downloaded once, one after another in the model's order. The loader finds a file by its name, so two
+  URLs ending in the same file name (`a/skin.png`, `b/skin.png`, case ignored) are refused with `SIDECAR_REFUSED`.
+- At most 31 files (32 with the model, the app's limit), checked before the first request (`TOO_MANY_SIDECARS`); the
+  model and its files share the 64 MiB, and the files share one 30 s limit from their first request.
+- A `.bbmodel`, a `.glb` with its BIN chunk and a `.gltf` or `.obj` that refers to nothing make no request but the
+  model's.
+
+The files need the same CORS header as the model (below).
 
 ## CORS: serving models
 
@@ -190,7 +221,9 @@ format is chosen from it before the download.
 When the download fails without any response, the browser does not say whether the server refused CORS or was never
 reached. The frame then sends one `HEAD` request to the same URL in `no-cors` mode (no credentials, no referrer, 10 s
 limit): if the server answers it, the error is `MODEL_CORS_BLOCKED`, naming the model origin, the embed origin and the
-header to add; if not, `MODEL_UNREACHABLE`. That probe is the only second request the embed ever makes. Some browsers
+header to add; if not, `MODEL_UNREACHABLE`. A file of the model that fails so is probed the same way, and the error
+names it: the server must send the header for the files next to the model too. Besides the model's files, that probe
+is the only other request the embed makes. Some browsers
 fail the `no-cors` probe too when the server sends `X-Content-Type-Options: nosniff` with a type they block for opaque
 responses (such as `application/json`), so a server without the header can also end in `MODEL_UNREACHABLE`: its message
 names a missing `Access-Control-Allow-Origin` as a possible cause.
@@ -200,6 +233,7 @@ names a missing `Access-Control-Allow-Origin` as a possible cause.
 | limit             | value                                                                                               |
 | ----------------- | --------------------------------------------------------------------------------------------------- |
 | model download    | 64 MiB, 30 s for headers and body                                                                   |
+| model's files     | 31, relative paths on the model's origin only; 64 MiB together with the model; 30 s for all of them |
 | CORS probe        | one `HEAD`, 10 s                                                                                    |
 | model URL         | 2048 characters                                                                                     |
 | fragment          | 8192 characters                                                                                     |
@@ -211,9 +245,11 @@ names a missing `Access-Control-Allow-Origin` as a possible cause.
 - No analytics, tracking, cookies, storage or third-party request. The frame's Content-Security-Policy allows scripts,
   styles, images and workers from the embed origin only (no `blob:` or `data:`); `connect-src` allows the model download.
 - The embed server receives only the requests for its files: the parameters are in the fragment.
-- The model server receives one `GET` (and at most one `HEAD` probe) without cookies and without `Referer`
-  (`referrerpolicy="no-referrer"` on the iframe, `<meta name="referrer" content="no-referrer">` in the frame, and on
-  the request), so it does not learn which page shows its model.
+- The model server receives one `GET` for the model and one for each file it refers to (at most 31, see
+  [Models with several files](#models-with-several-files)), and at most one `HEAD` probe per failed request, all
+  without cookies and without `Referer` (`referrerpolicy="no-referrer"` on the iframe,
+  `<meta name="referrer" content="no-referrer">` in the frame, and on the request), so it does not learn which page
+  shows its model. No other server is asked for anything a model refers to.
 - Nothing is posted to the host page but `load` and `error`.
 
 ## Accessibility and motion
@@ -230,9 +266,14 @@ reduced motion as in the app.
 
 `packages/embed/test` (Vitest): the frame's model switching, status and failure handling with a fake viewer
 (`showEmbed.test.ts`), the parameter parser at every boundary and with hostile values, the frame URL round
-trip, the download limits and the CORS probe with fake `fetch`, autorotate with a fake clock, the backdrop colour
+trip, the download limits and the CORS probe with fake `fetch`, the reference policy against a table of hostile
+references (`resolveSidecarUrl.test.ts`), the files of a model with their count, name, size and time limits and the
+loaders resolving them (`fetchSidecars.test.ts`), autorotate with a fake clock, the backdrop colour
 solve for every look, no network API outside the download, and that this page's tables equal the code
 (`contractDocs.test.ts`). `packages/embed/e2e` (Playwright, SwiftShader, `pnpm --filter @modelshot/embed run
 test:browser`): the element and a plain iframe on a host page of another origin (lit preview, looks, camera,
 background, autorotate, reduced motion, attribute changes), lazy loading, the CORS, unreachable and HTTP errors, the
-size and time limits with the host page staying responsive, and the requests made. Described in [Testing](testing.md).
+size and time limits with the host page staying responsive, the requests made, and a `.gltf` and an `.obj` with
+their files on the model server (textures drawn, requests only to the model's origin) beside hostile references,
+too many files and a texture without CORS (`embed.sidecars.spec.ts`, models made by
+`e2e/fixtures/sidecars/generate.mjs`, CC0). Described in [Testing](testing.md).

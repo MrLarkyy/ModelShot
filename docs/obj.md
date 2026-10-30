@@ -110,3 +110,9 @@ At most 100 are kept (`MAX_OBJ_WARNINGS`); each has `code`, `path`, `message`. T
 
 `mtllib` and `map_Kd` are only matched, by relative path and then by case-insensitive base name, against the files the
 caller passed in `files`; a URL is reported as not fetched. Nothing else is read.
+
+`listObjReferences(input, { maxReferences })` lists the `mtllib` names of an `.obj`, and `listMtlReferences` (the
+same arguments) the `map_Kd` file of each material of an `.mtl` (its last one, options skipped, the first definition
+of a name), as the loader reads them: in order, each distinct spelling once, at most `maxReferences + 1`, nothing for a
+file the loader would refuse. The embed uses them to download an `.obj`'s libraries and then their textures (relative
+to each library) from the model's own server ([Embed](embed.md#models-with-several-files)).

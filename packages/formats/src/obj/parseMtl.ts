@@ -3,6 +3,7 @@ import { ObjError } from './ObjError';
 import type { ObjLimits } from './ObjLoadOptions';
 import type { ObjWarningList } from './ObjWarning';
 import { KeywordTally, MAX_TRACKED_KEYWORDS } from './KeywordTally';
+import { mapKdFileName } from './mapKdFileName';
 import { forEachStatement } from './objText';
 
 /** What the loader uses of an MTL material. */
@@ -17,22 +18,6 @@ export interface MtlMaterial {
   readonly path: string;
 }
 
-/** Map options and how many arguments each takes at most (`-o`, `-s`, `-t` take 1 to 3 numbers). */
-const MAP_OPTIONS: Readonly<Record<string, number>> = {
-  '-blendu': 1,
-  '-blendv': 1,
-  '-bm': 1,
-  '-boost': 1,
-  '-cc': 1,
-  '-clamp': 1,
-  '-imfchan': 1,
-  '-mm': 2,
-  '-o': 3,
-  '-s': 3,
-  '-t': 3,
-  '-texres': 1,
-  '-type': 1,
-};
 const IGNORED_PARAMS = new Set([
   'Ka',
   'Ks',
@@ -135,19 +120,7 @@ export function parseMtl(
     } else if (keyword === 'Tr') {
       if (!material.hasD) material.opacity = clamp01(1 - readNumber(args[args.length - 1], path));
     } else if (keyword === 'map_Kd') {
-      let index = 0;
-      while (index < args.length - 1 && Object.hasOwn(MAP_OPTIONS, args[index] ?? '')) {
-        const option = args[index] ?? '';
-        material.options.add(option);
-        index++;
-        const max = MAP_OPTIONS[option] ?? 0;
-        const numeric = option === '-o' || option === '-s' || option === '-t';
-        for (let taken = 0; taken < max && index < args.length - 1; taken++) {
-          if (numeric && taken > 0 && !Number.isFinite(Number(args[index]))) break;
-          index++;
-        }
-      }
-      material.diffuseMap = statement.rest(index).slice(0, limits.maxStringChars);
+      material.diffuseMap = mapKdFileName(statement, limits.maxStringChars, material.options);
     } else if (keyword.startsWith('map_') || UNSUPPORTED_MAPS.has(keyword)) {
       if (material.maps.size < MAX_TRACKED_KEYWORDS) material.maps.add(keyword.slice(0, 32));
     } else if (IGNORED_PARAMS.has(keyword)) {

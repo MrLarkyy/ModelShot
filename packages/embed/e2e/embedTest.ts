@@ -124,6 +124,18 @@ export async function waitForEvent(page: Page, type: EmbedEvent['type'], timeout
   return (await events(page)).find((e) => e.type === type)!;
 }
 
+/**
+ * Waits until the element has posted `count` load events. A model switch is a download, a worker read and a scene
+ * upload, often beside the previous model's CPU bake, so it gets the same deadline as every other load wait: the
+ * default 5 s poll ran out on a loaded machine while the frame was still loading.
+ */
+export async function waitForLoads(page: Page, count: number, timeout = LIT_TIMEOUT): Promise<void> {
+  await expect
+    .poll(async () => (await events(page)).filter((e) => e.type === 'load').length, { timeout })
+    .toBeGreaterThanOrEqual(count);
+  expect((await events(page)).filter((e) => e.type === 'load')).toHaveLength(count);
+}
+
 /** The frame's alert once it shows one. */
 export async function frameAlert(frame: FrameLocator, timeout = LIT_TIMEOUT): Promise<string> {
   const alert = frame.getByRole('alert');

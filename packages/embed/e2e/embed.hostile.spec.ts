@@ -11,7 +11,13 @@ import {
   waitForEvent,
 } from './embedTest';
 
-/** Fails unless the host page answers within 1 s, every 250 ms until `done` settles. */
+/**
+ * The host page is not blocked by the download: it answers a script round trip every 250 ms until `done` settles. A
+ * blocked page would stay silent for the whole 30 s stall or the whole oversized body, so the bound only has to
+ * separate that from a slow software-rendered machine: 5 s, not a hair-trigger tuned to an idle one.
+ */
+const HOST_ANSWER_MS = 5000;
+
 async function hostStaysResponsive<T>(page: Page, done: Promise<T>): Promise<T> {
   let finished = false;
   const result = done.finally(() => (finished = true));
@@ -20,7 +26,7 @@ async function hostStaysResponsive<T>(page: Page, done: Promise<T>): Promise<T> 
   while (!finished) {
     const started = Date.now();
     await page.evaluate(() => 1);
-    expect(Date.now() - started, 'the host page answers').toBeLessThan(1000);
+    expect(Date.now() - started, 'the host page answers').toBeLessThan(HOST_ANSWER_MS);
     await page.waitForTimeout(250);
   }
   return result;

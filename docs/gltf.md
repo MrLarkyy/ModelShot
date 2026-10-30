@@ -23,8 +23,9 @@ file picker should accept.
 
 ## Supported
 
-- glTF 2.0 (`asset.version` 2.x, `asset.minVersion` at most 2.0); `.gltf` with `data:` URIs or picked files, `.glb`
-  with its BIN chunk as buffer 0.
+- glTF 2.0 (`asset.version` 2.x, `asset.minVersion` at most 2.0); `.gltf` with `data:` URIs or picked files (or, in
+  the embed, files downloaded from next to the model URL: [Embed](embed.md#models-with-several-files)), `.glb` with
+  its BIN chunk as buffer 0.
 - **Static meshes**: `TRIANGLES`, `TRIANGLE_STRIP` and `TRIANGLE_FAN` primitives (strips and fans become lists),
   indexed (`UNSIGNED_BYTE`, `UNSIGNED_SHORT`, `UNSIGNED_INT`) or not; `POSITION` and `NORMAL` as float `VEC3`;
   `TEXCOORD_n` as float or normalized unsigned byte/short `VEC2`; interleaved buffer views (`byteStride`).
@@ -170,3 +171,9 @@ At most 100 are kept (`MAX_GLTF_WARNINGS`); each has `code`, `path`, `message`. 
 A model never causes a network request or a file read: a `uri` is only matched, by relative path and then by
 case-insensitive base name, against the files the caller passed in `files`. `http:`, `https:`, `file:`, `//` and every
 other URL is reported as not fetched. `@modelshot/formats` has no `fetch` call.
+
+`listGltfReferences(input, { maxReferences })` lists what a caller may have to supply: the `uri` of every buffer and
+image as written (`data:` URIs left out, each distinct spelling once, at most `maxReferences + 1`, nothing for a file
+`loadGltf` would refuse). The embed uses it to download a `.gltf`'s files from the model's own server before loading
+([Embed](embed.md#models-with-several-files)); `normaliseReference`, `referenceBaseName` and `isUrlReference` are the
+loader's own lookup rules, so a downloaded file named by `referenceBaseName(normaliseReference(uri))` is found.

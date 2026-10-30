@@ -20,6 +20,33 @@ export interface FetchModelOptions {
   readonly signal?: AbortSignal;
 }
 
+export interface FetchSidecarOptions {
+  readonly fetch: typeof fetch;
+  readonly frameOrigin: string;
+  /** What is left of the budget the model and its files share. */
+  readonly maxBytes: number;
+  /** That whole budget, for the message. */
+  readonly totalBytes: number;
+  /** Aborts when the time all the files share is up: the download then fails with `MODEL_FETCH_TIMEOUT`. */
+  readonly deadline: AbortSignal;
+  readonly timeoutMs: number;
+  readonly probeTimeoutMs?: number;
+  readonly signal?: AbortSignal;
+}
+
+interface DownloadOptions {
+  readonly fetch: typeof fetch;
+  readonly frameOrigin: string;
+  readonly maxBytes: number;
+  readonly deadline: AbortSignal;
+  readonly probeTimeoutMs: number | undefined;
+  readonly signal: AbortSignal | undefined;
+  /** What is downloading, for a broken connection, with its URL. */
+  readonly subject: string;
+  readonly tooLarge: () => EmbedError;
+  readonly timedOut: () => EmbedError;
+}
+
 function tooLarge(maxBytes: number): EmbedError {
   return new EmbedError('MODEL_TOO_LARGE', `The model is larger than the embed's limit of ${maxBytes / MIB} MiB.`);
 }
@@ -48,18 +75,82 @@ export async function fetchModel(url: string, options: FetchModelOptions): Promi
     );
   }
   options.signal?.throwIfAborted();
-  const controller = new AbortController();
-  let expired = false;
-  const timer = setTimeout(() => {
-    expired = true;
-    controller.abort();
-  }, timeoutMs);
-  const onAbort = (): void => controller.abort(options.signal?.reason);
-  options.signal?.addEventListener('abort', onAbort);
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(), timeoutMs);
+  try {
+    const chunks = await download(target, {
+      fetch: options.fetch,
+      frameOrigin: options.frameOrigin,
+      maxBytes,
+      deadline: deadline.signal,
+      probeTimeoutMs: options.probeTimeoutMs,
+      signal: options.signal,
+      subject: `the model ${target.href}`,
+      tooLarge: () => tooLarge(maxBytes),
+      timedOut: () => timedOut(timeoutMs),
+    });
+    return new File(chunks, modelFileName(target.href));
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Downloads one file a model refers to (`href`, already checked to be on the model's origin) as a `File` called
+ * `name`, as `fetchModel` does: GET, CORS, no credentials, no referrer. The errors are `fetchModel`'s, with the file
+ * named; `null` for an error status, the file then being missing for the loader; `MODEL_TOO_LARGE` counts the model and its files together, `MODEL_FETCH_TIMEOUT` their shared time.
+ */
+export async function fetchSidecar(href: string, name: string, options: FetchSidecarOptions): Promise<File | null> {
+  options.signal?.throwIfAborted();
+  const target = new URL(href);
+  const chunks = await download(target, {
+    fetch: options.fetch,
+    frameOrigin: options.frameOrigin,
+    maxBytes: options.maxBytes,
+    deadline: options.deadline,
+    probeTimeoutMs: options.probeTimeoutMs,
+    signal: options.signal,
+    subject: `the model's file ${target.href}`,
+    tooLarge: () =>
+      new EmbedError(
+        'MODEL_TOO_LARGE',
+        `The model and its files are larger than the embed's limit of ${options.totalBytes / MIB} MiB; ` +
+          `${target.href} went over it.`,
+      ),
+    timedOut: () =>
+      new EmbedError(
+        'MODEL_FETCH_TIMEOUT',
+        `Downloading the model's files took longer than ${Math.round(options.timeoutMs / 1000)} s and was stopped ` +
+          `at ${target.href}.`,
+      ),
+  }).catch((error: unknown) => {
+    if (error instanceof EmbedError && error.code === 'MODEL_HTTP_ERROR') return null;
+    // The probe's explanation speaks of "the file"; a sidecar's names which one (a broken connection already does).
+    if (
+      error instanceof EmbedError &&
+      !error.message.includes(target.href) &&
+      (error.code === 'MODEL_CORS_BLOCKED' || error.code === 'MODEL_UNREACHABLE')
+    ) {
+      throw new EmbedError(error.code, `The model's file ${target.href} failed to download. ${error.message}`);
+    }
+    throw error;
+  });
+  return chunks === null ? null : new File(chunks, name);
+}
+
+async function download(target: URL, options: DownloadOptions): Promise<Uint8Array<ArrayBuffer>[]> {
+  const { maxBytes, deadline, signal } = options;
   const stopped = (): EmbedError | null => {
-    options.signal?.throwIfAborted();
-    return expired ? timedOut(timeoutMs) : null;
+    signal?.throwIfAborted();
+    return deadline.aborted ? options.timedOut() : null;
   };
+  const early = stopped();
+  if (early) throw early;
+  const controller = new AbortController();
+  const onAbort = (): void => controller.abort(signal?.reason);
+  const onExpire = (): void => controller.abort();
+  signal?.addEventListener('abort', onAbort);
+  deadline.addEventListener('abort', onExpire);
   try {
     let response: Response;
     try {
@@ -90,7 +181,7 @@ export async function fetchModel(url: string, options: FetchModelOptions): Promi
     const declared = Number(response.headers.get('content-length') ?? Number.NaN);
     if (declared > maxBytes) {
       void response.body?.cancel().catch(() => undefined);
-      throw tooLarge(maxBytes);
+      throw options.tooLarge();
     }
     const chunks: Uint8Array<ArrayBuffer>[] = [];
     const reader = response.body?.getReader();
@@ -102,25 +193,22 @@ export async function fetchModel(url: string, options: FetchModelOptions): Promi
       } catch {
         throw (
           stopped() ??
-          new EmbedError(
-            'MODEL_UNREACHABLE',
-            `The connection to ${target.origin} broke while the model was downloading.`,
-          )
+          new EmbedError('MODEL_UNREACHABLE', `The connection broke while ${options.subject} was downloading.`)
         );
       }
       if (part.done) break;
       total += part.value.byteLength;
       if (total > maxBytes) {
         void reader.cancel().catch(() => undefined);
-        throw tooLarge(maxBytes);
+        throw options.tooLarge();
       }
       chunks.push(part.value);
     }
     const late = stopped();
     if (late) throw late;
-    return new File(chunks, modelFileName(target.href));
+    return chunks;
   } finally {
-    clearTimeout(timer);
-    options.signal?.removeEventListener('abort', onAbort);
+    signal?.removeEventListener('abort', onAbort);
+    deadline.removeEventListener('abort', onExpire);
   }
 }

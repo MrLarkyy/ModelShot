@@ -15,6 +15,7 @@ import {
   test,
   viewerFrame,
   waitForEvent,
+  waitForLoads,
   waitLight,
   waitLit,
   type Rgba,
@@ -119,7 +120,7 @@ test('a new model reuses the viewer: no second canvas, no second frame', async (
   const cube = await shot(page);
 
   await setAttributes(page, { model: CUBE.replace('single-cube', 'flat-cube') });
-  await expect.poll(async () => (await events(page)).filter((e) => e.type === 'load').length).toBe(2);
+  await waitForLoads(page, 2);
   await waitLit(frame);
   expect(meanDifference(cube, await shot(page)), 'another model').toBeGreaterThan(1);
   await expect(frame.locator('canvas[data-first-canvas]')).toHaveCount(1);
@@ -172,7 +173,8 @@ test('the shown model after an error fires load again; a look change does not', 
   await setAttributes(page, { model: `${HOST_ORIGIN}/status/404.bbmodel` });
   expect(await frameAlert(frame)).toMatch(/^MODEL_HTTP_ERROR: /);
   await setAttributes(page, { model: CUBE });
-  await expect.poll(async () => (await events(page)).map((e) => e.type)).toEqual(['load', 'error', 'load']);
+  await waitForLoads(page, 2);
+  expect((await events(page)).map((e) => e.type)).toEqual(['load', 'error', 'load']);
   await expect(frame.getByRole('alert')).toBeHidden();
 
   await setAttributes(page, { look: 'marketplace' });
@@ -189,9 +191,9 @@ test('attribute changes add no entry to the host page history: Back leaves the p
   const before = await page.evaluate(() => history.length);
 
   await setAttributes(page, { model: CUBE.replace('single-cube', 'flat-cube') });
-  await expect.poll(async () => (await events(page)).filter((e) => e.type === 'load').length).toBe(2);
+  await waitForLoads(page, 2);
   await setAttributes(page, { model: CUBE, yaw: '90' });
-  await expect.poll(async () => (await events(page)).filter((e) => e.type === 'load').length).toBe(3);
+  await waitForLoads(page, 3);
   await setAttributes(page, { look: 'marketplace' });
   await expect(frame.locator('#stage')).toHaveAttribute('data-light', 'baking');
   // Still the first frame document: the fragment changed in place.

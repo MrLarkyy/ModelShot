@@ -74,6 +74,10 @@ const fakes = vi.hoisted(() => ({
   reads: [] as unknown[],
   rotations: [] as { stop: () => void }[],
   bakerMissing: false,
+  /** The model URLs whose sidecar downloads wait for the test; the others have none. */
+  sidecarsWait: new Set<string>(),
+  sidecars: [] as unknown[],
+  groups: [] as File[][],
 }));
 
 vi.mock('@modelshot/app/viewer', () => ({
@@ -89,7 +93,10 @@ vi.mock('@modelshot/app/viewer', () => ({
 
 vi.mock('@modelshot/app/intake', () => ({
   checkIntake: () => null,
-  groupFiles: (files: File[]) => ({ kind: 'model', model: files[0], resources: [] }),
+  groupFiles: (files: File[]) => {
+    fakes.groups.push(files);
+    return { kind: 'model', model: files[0], resources: files.slice(1) };
+  },
   loadModel: (request: { model: File }, options: { signal: AbortSignal }) =>
     pending(fakes.reads as Pending<{ doc: unknown }>[], request.model.name, options.signal),
 }));
@@ -97,6 +104,13 @@ vi.mock('@modelshot/app/intake', () => ({
 vi.mock('../src/frame/fetchModel', () => ({
   fetchModel: (url: string, options: { signal: AbortSignal }) =>
     pending(fakes.fetches as Pending<File>[], url, options.signal),
+}));
+
+vi.mock('../src/frame/fetchSidecars', () => ({
+  fetchSidecars: (_model: File, url: string, options: { signal: AbortSignal }) =>
+    fakes.sidecarsWait.has(url)
+      ? pending(fakes.sidecars as Pending<File[]>[], url, options.signal)
+      : Promise.resolve([]),
 }));
 
 vi.mock('../src/frame/autorotate', () => ({
@@ -147,6 +161,7 @@ const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve,
 const viewer = (): FakeViewer => fakes.viewers[0] as FakeViewer;
 const fetches = (): Pending<File>[] => fakes.fetches as Pending<File>[];
 const reads = (): Pending<{ doc: unknown }>[] => fakes.reads as Pending<{ doc: unknown }>[];
+const sidecars = (): Pending<File[]>[] => fakes.sidecars as Pending<File[]>[];
 
 /** Lets the latest download, read and setDocument of `url` through. */
 async function arrive(url: string, applied = true): Promise<void> {
@@ -172,6 +187,9 @@ beforeEach(() => {
   fakes.reads.length = 0;
   fakes.rotations.length = 0;
   fakes.bakerMissing = false;
+  fakes.sidecarsWait.clear();
+  fakes.sidecars.length = 0;
+  fakes.groups.length = 0;
   vi.stubGlobal('document', {
     createElement: () => ({ setAttribute: vi.fn(), addEventListener: vi.fn(), remove: vi.fn() }),
   });
@@ -378,5 +396,57 @@ describe('showEmbed', () => {
     viewer().setLook.mockClear();
     embed.update(fragment(A, '&look=rim'));
     expect(viewer().setLook).toHaveBeenCalledOnce();
+  });
+  it("hands the model's files to the intake after the model", async () => {
+    const G = 'https://models.example/g/scene.gltf';
+    fakes.sidecarsWait.add(G);
+    const embed = start(fragment(G));
+    await settle();
+    fetches()[0]?.answer.resolve(new File(['{}'], 'scene.gltf'));
+    await settle();
+    expect(reads()).toHaveLength(0);
+    sidecars()[0]?.answer.resolve([new File(['b'], 'scene.bin'), new File(['p'], 'checker tile.png')]);
+    await settle();
+    expect(fakes.groups.at(-1)?.map((f) => f.name)).toEqual(['scene.gltf', 'scene.bin', 'checker tile.png']);
+    reads()[0]?.answer.resolve({ doc: 'doc scene.gltf' });
+    await settle();
+    viewer().documents.at(-1)?.result.resolve({ applied: true });
+    await settle();
+    expect(embed.page.stage.dataset['state']).toBe('shown');
+    expect(embed.posts()).toEqual(['load']);
+  });
+
+  it('a failed file of the model posts error and shows the alert, without reading the model', async () => {
+    const G = 'https://models.example/g/scene.gltf';
+    fakes.sidecarsWait.add(G);
+    const embed = start(fragment(G));
+    await settle();
+    fetches()[0]?.answer.resolve(new File(['{}'], 'scene.gltf'));
+    await settle();
+    sidecars()[0]?.answer.reject(new EmbedError('SIDECAR_REFUSED', 'The model refers to "//evil.example/a.png".'));
+    await settle();
+    expect(embed.page.stage.dataset['state']).toBe('failed');
+    expect(embed.page.alert.hidden).toBe(false);
+    expect(embed.page.alert.textContent).toMatch(/^SIDECAR_REFUSED: /);
+    expect(reads()).toHaveLength(0);
+    expect(embed.posts()).toEqual(['error']);
+  });
+
+  it("a newer fragment during the model's file downloads aborts them and shows only the newer model", async () => {
+    const G = 'https://models.example/g/scene.gltf';
+    fakes.sidecarsWait.add(G);
+    const embed = start(fragment(G));
+    await settle();
+    fetches()[0]?.answer.resolve(new File(['{}'], 'scene.gltf'));
+    await settle();
+    expect(sidecars()).toHaveLength(1);
+    embed.update(fragment(A));
+    expect(sidecars()[0]?.signal.aborted).toBe(true);
+    await arrive(A);
+    expect(reads().map((r) => r.name)).toEqual(['a.bbmodel']);
+    expect(viewer().documents).toHaveLength(1);
+    expect(viewer().doc).toBe('doc a.bbmodel');
+    expect(embed.page.stage.dataset['state']).toBe('shown');
+    expect(embed.posts()).toEqual(['load']);
   });
 });
