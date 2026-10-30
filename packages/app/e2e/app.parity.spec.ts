@@ -74,11 +74,15 @@ test('the backing store follows the device pixel ratio', async ({ browser, baseU
   const page = await context.newPage();
   await page.goto(`${baseURL}/app/`);
   await page.waitForFunction(() => window.__msApp !== undefined);
-  const sizes = await page.evaluate(() => {
-    const preview = document.getElementById('preview') as HTMLCanvasElement;
-    return { backing: [preview.width, preview.height], css: [preview.clientWidth, preview.clientHeight] };
-  });
-  expect(sizes.backing).toEqual([sizes.css[0]! * 2, sizes.css[1]! * 2]);
+  // The backing store follows a ResizeObserver, so a layout change late in loading reaches it a frame later.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const preview = document.getElementById('preview') as HTMLCanvasElement;
+        return [preview.width - preview.clientWidth * 2, preview.height - preview.clientHeight * 2];
+      }),
+    )
+    .toEqual([0, 0]);
   await context.close();
 });
 
