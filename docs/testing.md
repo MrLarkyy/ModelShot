@@ -305,7 +305,8 @@ anti-alias silhouettes like raster frames`): `turntable-y030` at `aa=0`, framed 
   still ramp (903 of 1 038 mixed, 10 156.3 against 10 170, 92 rows), the outline and the strip stay hard (0 mixes).
   Exact key: the converged `partial-edge-inside` equals its `aa=0` frame within 2 levels in rows 0-4 (no ramp of its
   own, the 4 passes' mean antialiases), and `partial-edge-inside&msaa=0` (drawn once) ramps (875 of 1 038, 10 154.4
-  against 10 170). The fallback keeps the same model/backdrop map with and without texel AA, and `breakFramebuffers`
+  against 10 170). Linear texture filtering (MS-38) leaves the seam coverage unchanged: `partial-edge-linear` matches
+  `partial-edge` within 1 level, with and without MSAA. The fallback keeps the same model/backdrop map with and without texel AA, and `breakFramebuffers`
   with partial geometry switches to it without a page error. `scene=partial-edge-pair` (a second quad overlapping
   the first) is byte-identical with `reverse=1` at 4 samples, `msaa=0`, `depth=inside` and both.
 - Context loss through `WEBGL_lose_context`: the image after the restore matches `rt-turntable-y030`, without a
@@ -639,8 +640,8 @@ within 10 levels, and 0.3 texel off each side of the block the mask is no darker
 3 levels; measured equal: the black of the cut texels adds no fringe); on the repeat quad u 8.5 reads column 0, u -0.5
 column 7, u 8 lies between them (the blend crosses the wrap seam); 0 `sentinelPixels`. Far view: the minified quad's
 inner 60 % stays within 5.3 levels of its mean in every channel (measured 4.2, x 1.25) and 0 sentinel pixels. Its
-preview-vs-render pair (limit kept in the spec, as for texture wrap): framing 0 mismatches (2 600), radiance 7 px,
-0.00011, 0.396, limit 0.00014, 0.495 (measured x 1.25).
+preview-vs-render pair (limit kept in the spec, as for texture wrap): framing 0 mismatches (2 600), radiance 6 px,
+0.00009, 0.390, limit 0.00011, 0.488 (measured x 1.25; MS-38's 7 px, 0.00011, 0.396, limit 0.00014, 0.495).
 
 Seam regression (same spec): the linear quad is 2 x 2 cells with alternating diagonals, so some triangles' last-vertex
 face rects end at the cell border u = 4 or v = 4. 16 probes sit 0.1 texel either side of those borders (u 3.9 / 4.1
