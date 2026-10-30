@@ -115,7 +115,8 @@ if (lighting) renderer.setLighting(lighting);
   `layoutKey`).
 - **Values.** RGBA16F (`BakedLighting`): rgb the fill as a multiple of the unoccluded fill `hemisphereFill(n)`, a the
   key's visibility. Texels of no chart and vertices of no triangle hold 1, so an anti-aliasing tap outside a face, or
-  a degenerate triangle, never darkens. `shadeBaked` (`shading.glsl`) is `albedo × (hemisphereFill(n) × rgb +
+  a degenerate triangle, never darkens. The shadow catcher's lightmap stores 1 less the fill lost instead (Shadow
+  catcher, below). `shadeBaked` (`shading.glsl`) is `albedo × (hemisphereFill(n) × rgb +
 u_lookKeyColor × max(n·u_lookKeyDirection, 0) × a + fillLight(n)) + rimLight(n, v, albedo)`, v toward the eye
   (`towardEye(v_worldPosition)`): the accents cast no shadow and stay whole; value 1 gives the unbaked expression
   exactly.
@@ -147,9 +148,13 @@ u_lookKeyColor × max(n·u_lookKeyDirection, 0) × a + fillLight(n)) + rimLight(
 
 **Shadow catcher.** A horizontal plane at the visible geometry's lowest point (`shadowCatcherPlane`, shared with the
 path tracer), covering the footprint, the bounds' shadow along the key and half the largest extent around it, one-sided
-from above. It only darkens the backdrop: pixel = the look's backdrop at the pixel × `catcherShade(fill, keyT, xz, rect)` of the look
-(`shadowCatcher.glsl`), with its own lightmap of 4 texels per finest model texel (at most `MAX_CATCHER_SIDE` 512 per
-side), read bilinearly. Every model point a camera ray meets lies on or above the plane, so drawing the catcher first
+from above. It only darkens the backdrop: pixel = the look's backdrop at the pixel ×
+`catcherShadeOfLoss(hemisphereFill(up) × (1 − rgb), 1 − a, xz, rect)` of the look (`shadowCatcher.glsl`), with its
+own lightmap of 4 texels per finest model texel (at most `MAX_CATCHER_SIDE` 512 per side), read bilinearly as
+a + (b − a) × f (not `mix`, which may round). Its rgb is 1 less the fill its rays lost over the sky fill (MS-63,
+`BakedCatcher`), the path tracer's control variate: where no texel of the four was blocked the loss is exactly 0 and
+the pixel is the bare backdrop, byte for byte, as in the render; `catcherShade` of the same means gives the same
+value up to rounding. Every model point a camera ray meets lies on or above the plane, so drawing the catcher first
 without depth test lets the model cover it in either depth-key variant. A scene without geometry has no catcher.
 
 ## Pixel art

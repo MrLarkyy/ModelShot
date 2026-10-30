@@ -729,6 +729,39 @@ tolerance 0; the same view with the model casting differs in 3 169 and 3 112 pix
 it failed with 16 734 pixels. The noise-threshold test pins no sample count (368 and 800 samples at 0.1 and 0.07 on
 `closeup`).
 
+MS-63 gave the light bake's catcher the same control variate (path-tracer.md, light baker): a catcher texel stores
+1 − the fill its rays lost over `hemisphereFill(up)`, and the preview shades it with `catcherShadeOfLoss` on an exact
+bilinear (realtime-renderer.md, shadow catcher). Model lightmap texels keep their estimator: the catcher-off previews
+of every view below and `rt-bake-gltf-contact` (catcher off) render byte-identical before and after, and no `pt-*` or
+export golden changed. Regenerated on purpose (seed 1, 64 samples, sizes unchanged; changed pixels, max channel delta,
+mean delta per channel, against the d0dae68 render of the same view): `rt-bake-cutout-checker` 10 167 px, 2, 0.066;
+`rt-bake-cutout-checker-fallback` 10 136, 2, 0.066; `rt-bake-alpha-plane` 14, 1, 0.0001; `rt-bake-turntable-y030`
+5 280, 3, 0.034; `rt-preset-marketplace` 1 533, 1, 0.008; `rt-preset-rim` 709, 1, 0.005;
+`rt-preset-marketplace-fallback` 2 322, 1, 0.013. Every changed pixel is a catcher pixel: outside the model mask (the
+catcher-off preview against the empty scene) or on its silhouette, where MSAA blends the model with the catcher (161,
+2, 62 and 2 pixels by at most 2 levels on the MSAA views, none on the fallback ones), plus 5 interior pixels of
+`rt-bake-turntable-y030` by 1 level where partial-alpha texels show the catcher behind them (they differ between
+catcher on and off); no shadow shape moved. The committed
+`rt-bake-turntable-y030` also differed from the d0dae68 render in 286 model pixels (up to 89 levels) within its
+tolerance, from an earlier change; the regenerated PNG carries that too (5 564 px, 89, 0.070 against the old file). The
+showcase's 64-sample catcher (512 x 512) has 17 968 texels of fill exactly 1 (6.85 %; 358 before), the cut-out ghost
+all 49 296 (1 040 before). Pairs before -> after (ratio / mean delta), limits unchanged: `turntable-y030` 0.00188 /
+0.697 -> 0.00189 / 0.692, `iso` 0.00381 / 0.869 -> 0.00381 / 0.864, `cutout-checker` 0.00340 / 0.611 -> 0.00342 /
+0.598, `edges` 0.00063 / 0.373 -> 0.00064 / 0.361, `outline-hull` 0.00262 / 0.423 -> 0.00262 / 0.416,
+`obj-shapes-y030` 0.00368 / 0.455 -> 0.00368 / 0.448, `gltf-nodes-y030` 0.00444 / 0.943 -> 0.00444 / 0.936,
+`preset-marketplace` 0.00912 / 0.793 -> 0.00912 / 0.792, the denoised 2x turntable 0.00150 / 0.598 -> 0.00151 /
+0.591; `alpha-plane`, `player-hold-34`, `preset-rim`, `preset-marketplace-yaw30` and `gltf-contact` unchanged.
+`partial-edge` went from 2 to 3 pixels (0.00005 against its limit 0.00004; mean 1.124 -> 1.120): one catcher-shadow
+pixel 25 levels from the render both before and after moved by 1 level in blue towards it, which crosses pixelmatch's
+threshold; the limit stays, the case is open (MS-63 review). New: realtime.spec "nothing blocks" (the `cutout-ghost`
+scene, the checker geometry with every texel cut out: every catcher texel exactly 1 in all four channels, the preview
+byte-identical with and without the catcher; it failed before with 1 040 of 49 296), "the lit catcher is exact away
+from the model" (share of fill-exact texels at least 0.0685 / 1.25; 0.0014 before) and "a look with a zero channel
+keeps its baked key shadow" (Studio with sky and ground blue 0: no non-finite texel, 44 152 shadowed catcher texels as
+under Studio, 5 352 shadowed model texels; before, 0 / 0 turned every texel into 1 and both counts were 0), through
+the `bakeCatcherStats` hook; source pins of the bake and catcher shaders and the preview form over baked rgb in
+[−0.25, 1] (`catcherShade.test.ts`).
+
 - Tolerance: an override of `threshold 0` only (its reason in the spec); `maxDiffRatio 0.001` and `maxMeanDelta 1`
   stay the defaults. The tracer converges, so at the default threshold 0.1 another seed or one sample more or less
   still passes (seed 2 at 64 samples: 7 of 65 536 pixels, mean delta 0.30; 63 samples: 0 pixels, mean delta 0.027). At
