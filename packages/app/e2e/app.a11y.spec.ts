@@ -126,6 +126,23 @@ test('the shortcuts work from the keyboard and never override the view keys', as
   await expect(page.getByRole('status')).toContainText('Render cancelled', { timeout: 30_000 });
 });
 
+test('a render that cannot get a graphics context says it failed and can be started again', async ({ page }) => {
+  await page.addInitScript(() => {
+    type GetContext = (this: HTMLCanvasElement, ...args: unknown[]) => RenderingContext | null;
+    const original = Reflect.get(HTMLCanvasElement.prototype, 'getContext') as GetContext;
+    Reflect.set(HTMLCanvasElement.prototype, 'getContext', function (this: HTMLCanvasElement, ...args: unknown[]) {
+      return this.id === 'result' ? null : original.apply(this, args);
+    });
+  });
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
+  await page.locator('#preview').focus();
+  await page.keyboard.press('r');
+  await expect(page.getByRole('status')).toContainText('Render failed.', { timeout: 30_000 });
+  await expect(page.getByRole('alert')).toContainText('The render failed');
+  await expect(page.getByRole('button', { name: 'Render', exact: true })).toBeEnabled();
+});
+
 test('typing in a field does not trigger a shortcut', async ({ page }) => {
   await openApp(page);
   await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
