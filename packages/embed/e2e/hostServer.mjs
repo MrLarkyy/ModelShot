@@ -12,7 +12,8 @@
 //   /sidecars-partial/<path> the same, the .png files without Access-Control-Allow-Origin
 //   /hostile/<case>          a model referring to a file the embed must refuse, after one it may download:
 //                            absolute.gltf (another origin), protocol-relative.gltf, backslash.gltf, javascript.gltf,
-//                            file.gltf, data-mtllib.obj; many.gltf refers to 32 images
+//                            file.gltf, data-mtllib.obj; many.gltf refers to 32 images;
+//                            missing-mtllib.obj refers to a material library that answers 404 (it still shows)
 //   /__requests      what was asked of this server (method, path, Cookie, Referer, Origin); ?clear=1 empties it
 // Usage: node e2e/hostServer.mjs --port <port>
 import { createReadStream, readdirSync, readFileSync, statSync } from 'node:fs';
@@ -77,6 +78,10 @@ function hostileModels() {
         '\n',
       ),
     ],
+    [
+      'missing-mtllib.obj',
+      ['mtllib ../sidecars/obj/gone.mtl', 'usemtl a', 'v 0 0 0', 'v 1 0 0', 'v 0 1 0', 'f 1 2 3'].join('\n'),
+    ],
     ['many.gltf', gltf(Array.from({ length: 32 }, (_, i) => `../sidecars/t${i}.png`))],
   ]);
 }
@@ -119,7 +124,9 @@ const server = createServer((request, response) => {
   const url = new URL(request.url ?? '/', `http://127.0.0.1:${port}`);
   const path = url.pathname;
   if (path === '/__requests') {
-    response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    // Closed after each answer: the test client would otherwise reuse a connection that Node's 5 s keep-alive timeout
+    // closes in the same instant (ECONNRESET), which a test idle for a few seconds before asking runs into.
+    response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store', connection: 'close' });
     response.end(JSON.stringify(log));
     if (url.searchParams.get('clear') === '1') log.length = 0;
     return;

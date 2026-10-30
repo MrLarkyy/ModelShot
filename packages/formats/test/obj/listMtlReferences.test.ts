@@ -23,7 +23,7 @@ describe('listMtlReferences', () => {
     expect(listMtlReferences(mtl, MAX)).toEqual(['../textures/checker tile.png', 'b.png', 'c.png']);
   });
 
-  it('takes the last map_Kd of a material and the first definition of a name, once per path', () => {
+  it('takes the last map_Kd of a material and the first definition of a name, each spelling once', () => {
     const mtl = lines(
       'map_Kd outside.png',
       'newmtl a',
@@ -35,7 +35,7 @@ describe('listMtlReferences', () => {
       'map_Kd ./last.png',
       'newmtl c',
     );
-    expect(listMtlReferences(mtl, MAX)).toEqual(['last.png']);
+    expect(listMtlReferences(mtl, MAX)).toEqual(['last.png', './last.png']);
   });
 
   it('lists nothing for a file the loader refuses', () => {

@@ -261,13 +261,46 @@ describe('fetchSidecars', () => {
     }
   });
 
-  it('names the file the server answered an error status for', async () => {
-    const { fetch } = server();
-    const model = new File([gltfWith({ buffers: ['gone.bin'] })], 'a.gltf');
+  it.each([404, 403, 500])('leaves out a file the server answered %i for, for the loader to report', async (status) => {
+    const { fetch, calls } = fakeFetch((url) =>
+      Promise.resolve(
+        new URL(url).pathname.endsWith('gone.bin')
+          ? new Response('no', { status })
+          : new Response(fixture('textures/checker tile.png')),
+      ),
+    );
+    const model = new File([gltfWith({ buffers: ['gone.bin'], images: ['../textures/checker tile.png'] })], 'a.gltf');
+    const files = await fetchSidecars(model, `${SERVER}/sidecars/gltf/a.gltf`, { fetch, frameOrigin: FRAME });
+    expect(files.map((file) => file.name)).toEqual(['checker tile.png']);
+    expect(calls).toHaveLength(2);
+  });
+
+  it('leaves out an OBJ material library the server answered 404 for', async () => {
+    const { fetch } = fakeFetch(() => Promise.resolve(new Response('no', { status: 404 })));
+    const model = new File(['mtllib gone.mtl\nv 0 0 0\n'], 'a.obj');
+    expect(await fetchSidecars(model, `${SERVER}/m/a.obj`, { fetch, frameOrigin: FRAME })).toEqual([]);
+  });
+
+  it('refuses every spelling of a reference, one hidden by an earlier percent-encoded copy included', async () => {
+    const { fetch, calls } = server();
+    const model = new File([gltfWith({ buffers: ['%2F%2Fevil.example/a.bin', '//evil.example/a.bin'] })], 'a.gltf');
     const error = await failure(fetchSidecars(model, `${SERVER}/m/a.gltf`, { fetch, frameOrigin: FRAME }));
-    expect(error.code).toBe('MODEL_HTTP_ERROR');
-    expect(error.message).toContain('404');
-    expect(error.message).toContain(`${SERVER}/m/gone.bin`);
+    expect(error.code).toBe('SIDECAR_REFUSED');
+    expect(error.message).toContain('"//evil.example/a.bin"');
+    expect(calls).toEqual([]);
+  });
+
+  it('reads only a gltf, glb or obj, and nothing of a bbmodel or a skin', async () => {
+    const { fetch, calls } = server();
+    for (const name of ['a.bbmodel', 'skin.png']) {
+      const model = new File(['{}'], name);
+      const whole = vi.spyOn(model, 'arrayBuffer');
+      const slice = vi.spyOn(model, 'slice');
+      expect(await fetchSidecars(model, `${SERVER}/m/${name}`, { fetch, frameOrigin: FRAME })).toEqual([]);
+      expect(whole).not.toHaveBeenCalled();
+      expect(slice).toHaveBeenCalledWith(0, 4);
+    }
+    expect(calls).toEqual([]);
   });
 
   it('explains a file without response with one HEAD probe, naming it', async () => {

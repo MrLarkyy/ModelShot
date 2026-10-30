@@ -124,6 +124,18 @@ for (const [model, code] of [
   });
 }
 
+test('an .obj whose material library answers 404 still shows, the library missing', async ({ page, request }) => {
+  await openHost(page);
+  await addViewer(page, { model: `${HOST_ORIGIN}/hostile/missing-mtllib.obj`, loading: 'eager' });
+  await waitForEvent(page, 'load', 60_000);
+  await expect(viewerFrame(page).locator('#stage')).toHaveAttribute('data-state', 'shown');
+  const asked = (await hostRequests(request)).filter((r) => !['/host.html', '/__requests'].includes(r.path));
+  expect(asked.map((r) => [r.method, r.path])).toEqual([
+    ['GET', '/hostile/missing-mtllib.obj'],
+    ['GET', '/sidecars/obj/gone.mtl'],
+  ]);
+});
+
 test('a texture served without Access-Control-Allow-Origin is explained as CORS, naming the texture', async ({
   page,
 }) => {

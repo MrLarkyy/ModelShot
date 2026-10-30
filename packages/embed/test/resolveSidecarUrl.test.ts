@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { expectCpuBelow } from '../../formats/test/support/expectCpuBelow';
 import { resolveSidecarUrl } from '../src/frame/resolveSidecarUrl';
 
 const MODEL = 'https://models.example/m/a.gltf';
@@ -30,6 +31,22 @@ describe('resolveSidecarUrl', () => {
     });
   });
 
+  it.each(['C:\\tex\\a.png', 'c:/x.png', 'D:\\a.bin'])('skips the drive path %s, never requesting it', (reference) => {
+    expect(resolve(reference)).toEqual({ kind: 'skip' });
+  });
+
+  it('refuses a very long reference without scanning it by regex', () => {
+    for (const filler of [' ', '\t', '\u0000']) {
+      const reference = 'a' + filler.repeat(1_000_000) + 'b.png';
+      expect(expectCpuBelow(100, () => resolve(reference)).kind).toBe('refuse');
+    }
+  });
+
+  it('trims a padded reference in linear time and still sees the scheme', () => {
+    const padded = ' '.repeat(1500) + 'javascript:alert(1)' + ' '.repeat(400);
+    expect(expectCpuBelow(100, () => resolve(padded)).kind).toBe('refuse');
+  });
+
   it.each(['a.jpg', 'a.png?v=1', 'a.png#x', 'textures/', 'a.gltf', 'a.webp'])(
     'skips %s, which the app could not take next to a model',
     (reference) => {
@@ -50,7 +67,6 @@ describe('resolveSidecarUrl', () => {
     ['backslash slash', '\\/evil.example/a.png'],
     ['slash tab slash', '/\t/evil.example/a.png'],
     ['newline in the scheme', 'java\nscript:alert(1)'],
-    ['a one-letter scheme', 'c:/a.png'],
     ['blob:', 'blob:https://models.example/1234'],
     ['too long', `${'a'.repeat(3000)}.png`],
   ])('refuses %s before any request', (_what, reference) => {

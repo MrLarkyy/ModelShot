@@ -7,7 +7,7 @@ import { readContainer } from './readContainer';
 
 /**
  * The files a `.gltf` or `.glb` refers to by `uri` (`buffers[]`, then `images[]`), as written, in order, each relative
- * path once (`a.bin` and `./a.bin` are one). `data:` URIs are left out: the loader decodes them. A URL is listed like
+ * spelling once (`a.bin` and `./a.bin` both stay). `data:` URIs are left out: the loader decodes them. A URL is listed like
  * any other reference, for the caller to refuse. A file the loader would refuse lists nothing; loading it reports why.
  */
 export function listGltfReferences(input: string | Uint8Array, options: ReferenceListOptions): string[] {

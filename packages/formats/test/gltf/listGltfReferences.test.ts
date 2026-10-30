@@ -38,13 +38,13 @@ describe('listGltfReferences', () => {
     expect(listGltfReferences(toGlb(doc), MAX)).toEqual(['skin.png']);
   });
 
-  it('lists one relative path once, the first spelling kept', () => {
+  it('lists every spelling of a path, each distinct string once', () => {
     const doc = {
       asset,
       buffers: [{ uri: 'a.bin' }, { uri: './a.bin' }, { uri: 'b.bin' }],
       images: [{ uri: 'a.bin' }],
     };
-    expect(listGltfReferences(encode(doc), MAX)).toEqual(['a.bin', 'b.bin']);
+    expect(listGltfReferences(encode(doc), MAX)).toEqual(['a.bin', './a.bin', 'b.bin']);
   });
 
   it('lists URLs for the caller to refuse', () => {

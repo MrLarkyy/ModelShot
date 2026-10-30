@@ -41,7 +41,7 @@ interface DownloadOptions {
   readonly deadline: AbortSignal;
   readonly probeTimeoutMs: number | undefined;
   readonly signal: AbortSignal | undefined;
-  /** What is downloading, for a broken connection: "the model", "the model's file …". */
+  /** What is downloading, for a broken connection, with its URL. */
   readonly subject: string;
   readonly tooLarge: () => EmbedError;
   readonly timedOut: () => EmbedError;
@@ -85,7 +85,7 @@ export async function fetchModel(url: string, options: FetchModelOptions): Promi
       deadline: deadline.signal,
       probeTimeoutMs: options.probeTimeoutMs,
       signal: options.signal,
-      subject: 'the model',
+      subject: `the model ${target.href}`,
       tooLarge: () => tooLarge(maxBytes),
       timedOut: () => timedOut(timeoutMs),
     });
@@ -98,9 +98,9 @@ export async function fetchModel(url: string, options: FetchModelOptions): Promi
 /**
  * Downloads one file a model refers to (`href`, already checked to be on the model's origin) as a `File` called
  * `name`, as `fetchModel` does: GET, CORS, no credentials, no referrer. The errors are `fetchModel`'s, with the file
- * named; `MODEL_TOO_LARGE` counts the model and its files together, `MODEL_FETCH_TIMEOUT` their shared time.
+ * named; `null` for an error status, the file then being missing for the loader; `MODEL_TOO_LARGE` counts the model and its files together, `MODEL_FETCH_TIMEOUT` their shared time.
  */
-export async function fetchSidecar(href: string, name: string, options: FetchSidecarOptions): Promise<File> {
+export async function fetchSidecar(href: string, name: string, options: FetchSidecarOptions): Promise<File | null> {
   options.signal?.throwIfAborted();
   const target = new URL(href);
   const chunks = await download(target, {
@@ -124,13 +124,14 @@ export async function fetchSidecar(href: string, name: string, options: FetchSid
           `at ${target.href}.`,
       ),
   }).catch((error: unknown) => {
+    if (error instanceof EmbedError && error.code === 'MODEL_HTTP_ERROR') return null;
     // The probe's explanation speaks of "the file"; a sidecar's names which one.
     if (error instanceof EmbedError && (error.code === 'MODEL_CORS_BLOCKED' || error.code === 'MODEL_UNREACHABLE')) {
       throw new EmbedError(error.code, `The model's file ${target.href} failed to download. ${error.message}`);
     }
     throw error;
   });
-  return new File(chunks, name);
+  return chunks === null ? null : new File(chunks, name);
 }
 
 async function download(target: URL, options: DownloadOptions): Promise<Uint8Array<ArrayBuffer>[]> {
@@ -188,10 +189,7 @@ async function download(target: URL, options: DownloadOptions): Promise<Uint8Arr
       } catch {
         throw (
           stopped() ??
-          new EmbedError(
-            'MODEL_UNREACHABLE',
-            `The connection to ${target.origin} broke while ${options.subject} was downloading.`,
-          )
+          new EmbedError('MODEL_UNREACHABLE', `The connection broke while ${options.subject} was downloading.`)
         );
       }
       if (part.done) break;

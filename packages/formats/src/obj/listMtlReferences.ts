@@ -6,7 +6,7 @@ import { mapKdFileName } from './mapKdFileName';
 
 /**
  * The textures an `.mtl` names in `map_Kd`, as the loader reads them: per material its last `map_Kd`, the first
- * definition of a material name only, options skipped. In order, each relative path once. A file the loader would
+ * definition of a material name only, options skipped. In order, each spelling once. A file the loader would
  * refuse lists nothing; loading it reports why.
  */
 export function listMtlReferences(input: string | Uint8Array, options: ReferenceListOptions): string[] {

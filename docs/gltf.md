@@ -173,7 +173,7 @@ case-insensitive base name, against the files the caller passed in `files`. `htt
 other URL is reported as not fetched. `@modelshot/formats` has no `fetch` call.
 
 `listGltfReferences(input, { maxReferences })` lists what a caller may have to supply: the `uri` of every buffer and
-image as written (`data:` URIs left out, each relative path once, at most `maxReferences + 1`, nothing for a file
+image as written (`data:` URIs left out, each distinct spelling once, at most `maxReferences + 1`, nothing for a file
 `loadGltf` would refuse). The embed uses it to download a `.gltf`'s files from the model's own server before loading
 ([Embed](embed.md#models-with-several-files)); `normaliseReference`, `referenceBaseName` and `isUrlReference` are the
 loader's own lookup rules, so a downloaded file named by `referenceBaseName(normaliseReference(uri))` is found.

@@ -5,7 +5,7 @@ import { listStatementReferences } from './listStatementReferences';
 
 /**
  * The material libraries an `.obj` names in `mtllib` (the rest of the line, as the loader reads it), in order, each
- * relative path once. A file the loader would refuse lists nothing; loading it reports why.
+ * spelling once. A file the loader would refuse lists nothing; loading it reports why.
  */
 export function listObjReferences(input: string | Uint8Array, options: ReferenceListOptions): string[] {
   const list = new ReferenceList(options.maxReferences);

@@ -156,7 +156,7 @@ Shown in the frame (or the element) as `<code>: <message>`, in a `role="alert"` 
 | `MODEL_INSECURE`      | an `http` model on an `https` frame: refused before any request (the browser would block it)                                                                                                                                                                                                                                                 |
 | `MODEL_CORS_BLOCKED`  | the model server answered but does not allow the embed origin to read the model or one of its files (see CORS); a file of the model is named                                                                                                                                                                                                 |
 | `MODEL_UNREACHABLE`   | no answer for the model or one of its files: offline, a wrong address, a refused connection, the connection broke mid-download, or (some browsers, see CORS) a server without `Access-Control-Allow-Origin`                                                                                                                                  |
-| `MODEL_HTTP_ERROR`    | the server answered with an error status (404, 403, ...) for the model or one of its files, named in the message                                                                                                                                                                                                                             |
+| `MODEL_HTTP_ERROR`    | the server answered with an error status (404, 403, ...) for the model, named in the message; for one of its files see below                                                                                                                                                                                                                 |
 | `MODEL_TOO_LARGE`     | the model over 64 MiB, or the model and its files together, from `Content-Length` before reading or while streaming without it                                                                                                                                                                                                               |
 | `MODEL_FETCH_TIMEOUT` | the model's download (headers and body) took over 30 s, or the downloads of its files together took over 30 s                                                                                                                                                                                                                                |
 | `SIDECAR_REFUSED`     | the model refers to a file the embed will not download: a URL or scheme (`https:`, `data:`, `javascript:`, `file:`, ...), a `//` or backslash authority, a path leading to another origin, over 2048 characters once resolved, or two files of one name at different URLs; refused before any of its files is requested, the reference named |
@@ -180,12 +180,17 @@ references with the loaders' own parsers (`listGltfReferences`, `listObjReferenc
 exporters write them):
 
 - Only a relative path is downloaded (`model.bin`, `textures/skin%20A.png`, `../textures/a.png`, `/models/a.png`),
-  and only when it lands on the model's own origin over http(s). A URL with a scheme (even the model's own
+  at most 2048 characters, and only when it lands on the model's own origin over http(s). A URL with a scheme (even the model's own
   `https://...`), `//host`, a backslash authority or anything leading elsewhere after the browser's URL parsing fails
   the model with `SIDECAR_REFUSED` before any of its files is requested. `data:` URIs of a `.gltf` are decoded by the
   loader, never requested.
 - Only `.bin`, `.png` and `.mtl` files are downloaded, what the app takes next to a model; another reference (a
   `.jpg`, a path with a query) is left to the loader, which reports it missing as in a local open.
+- A file the server answers an error status for (404, 403, 500, ...) is left out, as if it were not there: the loader
+  reports it missing (a `.gltf` buffer fails with `MISSING_BUFFER`; a texture or material library is drawn missing or
+  plain with a warning). CORS, size, time and connection failures stay errors.
+- A drive path (`C:	exa.png`) is a file of the author's machine: it is never requested, and the loader reports it
+  missing.
 - Each URL is downloaded once, one after another in the model's order. The loader finds a file by its name, so two
   URLs ending in the same file name (`a/skin.png`, `b/skin.png`, case ignored) are refused with `SIDECAR_REFUSED`.
 - At most 31 files (32 with the model, the app's limit), checked before the first request (`TOO_MANY_SIDECARS`); the

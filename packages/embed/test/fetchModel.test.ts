@@ -156,6 +156,22 @@ describe('fetchModel', () => {
     }
   });
 
+  it('names the URL once when the connection breaks mid-download', async () => {
+    const { fetch } = fakeFetch(() => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(8));
+          controller.error(new TypeError('network error'));
+        },
+      });
+      return Promise.resolve(new Response(body));
+    });
+    const error = await failure(fetchModel(URL_HTTPS, { fetch, frameOrigin: FRAME }));
+    expect(error.code).toBe('MODEL_UNREACHABLE');
+    expect(error.message.split(URL_HTTPS)).toHaveLength(2);
+    expect(error.message).toBe(`The connection broke while the model ${URL_HTTPS} was downloading.`);
+  });
+
   it('explains a request without response with one HEAD probe', async () => {
     const { fetch, calls } = fakeFetch((_init, call) =>
       call === 1 ? Promise.reject(new TypeError('Failed to fetch')) : Promise.resolve(new Response(null)),

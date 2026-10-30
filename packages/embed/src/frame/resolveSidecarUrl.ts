@@ -15,8 +15,11 @@ const MAX_SHOWN_CHARS = 80;
 
 /** What the URL parser drops before reading a URL: leading and trailing C0 controls and spaces, tabs and newlines. */
 function asParsed(reference: string): string {
-  // eslint-disable-next-line no-control-regex
-  return reference.replace(/^[\u0000- ]+|[\u0000- ]+$/g, '').replace(/[\t\n\r]/g, '');
+  let start = 0;
+  let end = reference.length;
+  while (start < end && reference.charCodeAt(start) <= 0x20) start++;
+  while (end > start && reference.charCodeAt(end - 1) <= 0x20) end--;
+  return reference.slice(start, end).replace(/[\t\n\r]/g, '');
 }
 
 function shown(reference: string): string {
@@ -28,7 +31,8 @@ function shown(reference: string): string {
  * Resolves a reference of a model at `baseUrl` (the model's URL, or for an OBJ texture its MTL's) under the embed's
  * policy: only a relative path, landing on `modelOrigin` over http(s), at most 2048 characters, is downloaded. A
  * scheme (`data:`, `javascript:`, `file:`, even a same-origin `https:`), a protocol-relative or backslash authority, or
- * anything the URL parser lands elsewhere is refused before any request. A file the app could not take next to a model
+ * anything the URL parser lands elsewhere is refused before any request. A drive path (`C:\tex\a.png`) is skipped: it
+ * names a file of the author's machine, never requested. A file the app could not take next to a model
  * (not `.bin`, `.png` or `.mtl`, a query) is skipped: the loader reports it missing, as for a local open.
  */
 export function resolveSidecarUrl(reference: string, baseUrl: string, modelOrigin: string): SidecarUrl {
@@ -40,7 +44,9 @@ export function resolveSidecarUrl(reference: string, baseUrl: string, modelOrigi
         `Refer to the file by a path relative to the model on its own server.`,
     ),
   });
+  if (reference.length > MAX_MODEL_URL_CHARS) return refuse(`it is longer than ${MAX_MODEL_URL_CHARS} characters.`);
   const parsed = asParsed(reference);
+  if (/^[a-z]:[/\\]/i.test(parsed)) return { kind: 'skip' };
   if (/^[a-z][a-z0-9+.-]*:/i.test(parsed)) return refuse('it is a URL, not a relative path.');
   if (/^[/\\]{2}/.test(parsed)) return refuse('it names another server.');
   let url: URL;

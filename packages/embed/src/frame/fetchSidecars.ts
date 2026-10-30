@@ -77,17 +77,20 @@ class SidecarList {
  * model's own server, as the app would read them picked next to the model. Every reference is checked
  * (`resolveSidecarUrl`), counted and named before the first request; OBJ textures resolve against their MTL's URL and
  * are checked before any texture request. The downloads run one after another, with `fetchModel`'s request options,
- * within one byte budget shared with the model and one time limit for them all. A `.bbmodel` or a self-contained model
- * makes no request.
+ * within one byte budget shared with the model and one time limit for them all. A file the server answers an error
+ * status for (404, 403, 500) is left out, for the loader to report missing. A `.bbmodel` or a self-contained model
+ * makes no request, and a `.bbmodel` or a skin is not even read.
  */
 export async function fetchSidecars(model: File, modelUrl: string, options: FetchSidecarsOptions): Promise<File[]> {
   const totalBytes = options.maxBytes ?? MAX_EMBED_MODEL_BYTES;
   const timeoutMs = options.timeoutMs ?? MODEL_FETCH_TIMEOUT_MS;
   options.signal?.throwIfAborted();
+  const head = new Uint8Array(await model.slice(0, 4).arrayBuffer());
+  options.signal?.throwIfAborted();
+  const format = detectModelFormat(model.name, head);
+  if (format !== 'gltf' && format !== 'glb' && format !== 'obj') return [];
   const bytes = new Uint8Array(await model.arrayBuffer());
   options.signal?.throwIfAborted();
-  const format = detectModelFormat(model.name, bytes.subarray(0, 4));
-  if (format !== 'gltf' && format !== 'glb' && format !== 'obj') return [];
   const limit = { maxReferences: MAX_LISTED_REFERENCES };
   const references = format === 'obj' ? listObjReferences(bytes, limit) : listGltfReferences(bytes, limit);
   const list = new SidecarList(new URL(modelUrl).origin);
@@ -98,7 +101,7 @@ export async function fetchSidecars(model: File, modelUrl: string, options: Fetc
   let timer: ReturnType<typeof setTimeout> | undefined;
   let used = model.size;
   const files: File[] = [];
-  const download = async (sidecar: Sidecar): Promise<File> => {
+  const download = async (sidecar: Sidecar): Promise<File | null> => {
     timer ??= setTimeout(() => deadline.abort(), timeoutMs);
     const file = await fetchSidecar(sidecar.href, sidecar.name, {
       fetch: options.fetch,
@@ -110,6 +113,7 @@ export async function fetchSidecars(model: File, modelUrl: string, options: Fetc
       ...(options.probeTimeoutMs === undefined ? {} : { probeTimeoutMs: options.probeTimeoutMs }),
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
+    if (file === null) return null;
     used += file.size;
     files.push(file);
     return file;
@@ -118,7 +122,8 @@ export async function fetchSidecars(model: File, modelUrl: string, options: Fetc
     const libraries: { readonly href: string; readonly file: File }[] = [];
     for (const sidecar of first) {
       const file = await download(sidecar);
-      if (format === 'obj' && sidecar.name.toLowerCase().endsWith('.mtl')) libraries.push({ href: sidecar.href, file });
+      if (file && format === 'obj' && sidecar.name.toLowerCase().endsWith('.mtl'))
+        libraries.push({ href: sidecar.href, file });
     }
     const textures: Sidecar[] = [];
     for (const { href, file } of libraries) {

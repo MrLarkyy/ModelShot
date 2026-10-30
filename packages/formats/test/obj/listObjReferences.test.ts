@@ -14,9 +14,9 @@ describe('listObjReferences', () => {
     expect(listObjReferences(new TextEncoder().encode(shapesObj), MAX)).toEqual(['shapes.mtl']);
   });
 
-  it('lists each library once, names with spaces whole, in order', () => {
+  it('lists each distinct library spelling once, names with spaces whole, in order', () => {
     const obj = lines('mtllib b.mtl', 'mtllib my lib.mtl', 'v 0 0 0', 'mtllib ./b.mtl', 'mtllib a.mtl', 'mtllib');
-    expect(listObjReferences(obj, MAX)).toEqual(['b.mtl', 'my lib.mtl', 'a.mtl']);
+    expect(listObjReferences(obj, MAX)).toEqual(['b.mtl', 'my lib.mtl', './b.mtl', 'a.mtl']);
   });
 
   it('lists nothing for a file the loader refuses', () => {
