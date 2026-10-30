@@ -192,11 +192,3 @@ UVs leave 0..1 looks different; linear-filtered edges blend across the wrap seam
 `UV_WRAP_CLAMPED` is renamed `UV_WRAP_APPROXIMATED` (TypeScript code with an exhaustive `switch` over `GltfWarningCode` gets
 a compile error until it handles it), and a `wrapS` / `wrapT` outside 33071, 33648 and 10497 is now an `INVALID_FIELD`
 error instead of being ignored.
-
-## Compatibility
-
-MS-70: glTF samplers that repeat (the default, and no sampler) now draw repeated where the loader clamped, so a file whose
-UVs leave 0..1 looks different; linear-filtered edges blend across the wrap seam as hardware does. The warning code
-`UV_WRAP_CLAMPED` is renamed `UV_WRAP_APPROXIMATED` (TypeScript code with an exhaustive `switch` over `GltfWarningCode` gets
-a compile error until it handles it), and a `wrapS` / `wrapT` outside 33071, 33648 and 10497 is now an `INVALID_FIELD`
-error instead of being ignored.
