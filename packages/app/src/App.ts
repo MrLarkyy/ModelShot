@@ -432,7 +432,7 @@ export class App {
     this.resultCanvas.hidden = true;
     this.progressBox.hidden = false;
     this.progress.value = 0;
-    this.notices.status('Rendering: preparing the scene�');
+    this.notices.status('Rendering: preparing the scene…');
     this.setActionsEnabled();
     void this.renderSession.render().finally(() => this.setActionsEnabled());
     this.setActionsEnabled();

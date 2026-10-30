@@ -22,13 +22,13 @@ export interface RenderSessionHost {
   readonly onError: (error: unknown) => void;
 }
 
-// One path tracer for Render and Export: one WebGL context and one BVH. Scene, camera, size and look are applied again
-// before every start, so whichever ran last leaves nothing behind that the next one trusts.
 interface Run {
   cancelled: boolean;
   pump: { readonly tracer: PathTracer; readonly resolve: () => void } | null;
 }
 
+// One path tracer for Render and Export: one WebGL context and one BVH. Scene, camera, size and look are applied again
+// before every start, so whichever ran last leaves nothing behind that the next one trusts.
 export class RenderSession {
   private tracerPromise: Promise<PathTracer> | null = null;
   private active: Run | null = null;
