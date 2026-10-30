@@ -506,10 +506,12 @@ const STRIP_MIN_OPAQUE_MIXES = 13;
  * opaque texels partial) is what an opaque texel covers, the backdrop of the opaque|partial seams.
  */
 test.describe('anti-aliased partial-alpha seams in the OIT pass (MS-60)', () => {
+  // 5.4-11.8 s a test at six parallel workers (MS-74), the 180 s of the transparency describe.
+  test.describe.configure({ timeout: 180_000 });
+
   test('raster frames anti-alias partial seams, the partial outline and opaque|partial seams; texel centres keep', async ({
     page,
   }) => {
-    test.setTimeout(120_000);
     const backdrop = (await render(page, 'scene=empty&look=edge')).image;
     const hard = (await render(page, 'variant=partial-edge&aa=0&msaa=0')).image;
     const under = (await render(page, 'scene=partial-edge-under&look=edge&aa=0&msaa=0')).image;
@@ -575,7 +577,6 @@ test.describe('anti-aliased partial-alpha seams in the OIT pass (MS-60)', () => 
   test('accumulated exact frames add no ramp of their own; an exact frame drawn once ramps like a raster one', async ({
     page,
   }) => {
-    test.setTimeout(120_000);
     const backdrop = (await render(page, 'scene=empty&look=edge&depth=inside')).image;
     // The 4 rotated-grid passes already antialias the seams (MS-35): with and without texel AA the same image there.
     const accumulated = (await render(page, 'variant=partial-edge-inside')).image;
@@ -632,6 +633,18 @@ test.describe('anti-aliased partial-alpha seams in the OIT pass (MS-60)', () => 
       const forward = await render(page, query);
       const reversed = await render(page, `${query}&reverse=1`);
       expect(reversed.png.equals(forward.png), query).toBe(true);
+    }
+  });
+
+  // A linear texture (MS-38) filters only the colour: the seam coverage (premultiplied.a, opaqueCoverage) stays the
+  // nearest texels'. The texels are all white, so the filtered colour is too and any change would be coverage.
+  test('a linear-filtered texture keeps the seam coverage of a nearest one (MSAA and single-sampled)', async ({
+    page,
+  }) => {
+    for (const extra of ['', '&msaa=0']) {
+      const nearest = (await render(page, `scene=partial-edge&look=edge${extra}`)).image;
+      const linear = (await render(page, `scene=partial-edge-linear&look=edge${extra}`)).image;
+      expect(pixelsApart(linear, nearest, 1), `pixels over 1 level apart${extra}`).toBe(0);
     }
   });
 });

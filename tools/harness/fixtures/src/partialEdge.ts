@@ -24,7 +24,7 @@ export function partialEdgeTexel(column: number, row: number, under = false): Pa
   return under ? 'partial' : 'opaque';
 }
 
-function texture(under: boolean): SceneDocument['textures'][number] {
+function texture(under: boolean, linear: boolean): SceneDocument['textures'][number] {
   const n = PARTIAL_EDGE_TEXELS;
   const rgba = new Uint8Array(n * n * 4);
   const alpha: Readonly<Record<PartialEdgeTexel, number>> = { partial: PARTIAL_EDGE_ALPHA, invisible: 0, opaque: 255 };
@@ -41,6 +41,7 @@ function texture(under: boolean): SceneDocument['textures'][number] {
     uvWidth: n,
     uvHeight: n,
     missing: false,
+    ...(linear ? { filter: 'linear' as const } : {}),
   };
 }
 
@@ -66,10 +67,14 @@ function quad(name: string, offset: readonly [number, number, number]): SceneMes
  * The partial-alpha seam test (MS-60): the cutout-edge quad (8 x 8 units at z = 0 facing +z, double-sided) with alpha
  * mode BLEND and a texture of white texels (`partialEdgeTexel`): partial|invisible seams in the checker, opaque|partial
  * seams in the strip, and a face outline of partial texels only. `pair` adds a second quad, shifted right, down and
- * towards the camera, overlapping the first (order independence). The texture is generated here (no file, nothing to
- * license).
+ * towards the camera, overlapping the first (order independence). `linear` filters the texture linearly: its texels are
+ * all white, so only the coverage, which stays the nearest texel's, could change the image. The texture is generated
+ * here (no file, nothing to license).
  */
-export function partialEdge(base: SceneDocument, options: { under?: boolean; pair?: boolean } = {}): SceneDocument {
+export function partialEdge(
+  base: SceneDocument,
+  options: { under?: boolean; pair?: boolean; linear?: boolean } = {},
+): SceneDocument {
   const meshes = [quad('edge', [0, 0, 0])];
   if (options.pair) meshes.push(quad('edge-front', [2.5, -1.5, 1]));
   return {
@@ -78,6 +83,6 @@ export function partialEdge(base: SceneDocument, options: { under?: boolean; pai
     rootNodes: [],
     meshes,
     materials: [{ name: 'edge', texture: 0, alphaMode: 'blend', alphaCutoff: 0.01 }],
-    textures: [texture(options.under ?? false)],
+    textures: [texture(options.under ?? false, options.linear ?? false)],
   };
 }
