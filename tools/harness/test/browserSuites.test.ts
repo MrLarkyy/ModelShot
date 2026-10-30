@@ -1,8 +1,17 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SUITES, lineSplitter, runSuites, type SuiteName, type SuiteTask } from '../src/browserSuites';
+import {
+  SUITES,
+  formatSeconds,
+  lineSplitter,
+  refuseArguments,
+  runSuites,
+  suiteSpawn,
+  type SuiteName,
+  type SuiteTask,
+} from '../src/browserSuites';
 
 const root = resolve(fileURLToPath(new URL('../../..', import.meta.url)));
 
@@ -36,6 +45,30 @@ describe('suite outputs', () => {
       expect(outDirs.length, name).toBeGreaterThan(0);
       for (const outDir of outDirs) expect(outDir === dir || outDir === `../${name}/${dir}/app`, name).toBe(true);
       if (name !== 'site') expect(mine['preview:e2e'], name).toContain(`--outDir ${dir}`);
+    }
+  });
+});
+
+describe('lib packages', () => {
+  it('export src, which no suite build writes', () => {
+    const outputs = SUITES.flatMap((suite) => suite.outputs).map((dir) => resolve(root, dir));
+    for (const entry of readdirSync(join(root, 'packages'))) {
+      const manifest = JSON.parse(readFileSync(join(root, 'packages', entry, 'package.json'), 'utf8')) as {
+        exports?: unknown;
+      };
+      const targets = JSON.stringify(manifest.exports ?? {}).match(/"\.\/[^"]+"/g) ?? [];
+      for (const quoted of targets) {
+        const target = resolve(root, 'packages', entry, quoted.slice(1, -1));
+        expect(target.startsWith(join(root, 'packages', entry, 'src') + sep), `${entry} ${quoted}`).toBe(true);
+        for (const dir of outputs) expect(target.startsWith(dir + sep), `${entry} ${quoted} in ${dir}`).toBe(false);
+      }
+    }
+  });
+
+  it('are declared as outputs of the deploy build, which compiles them', () => {
+    const deploy = SUITES.find((suite) => suite.name === 'deploy')!;
+    for (const name of ['export', 'formats', 'looks', 'pathtracer', 'renderer-rt', 'scene']) {
+      expect(deploy.outputs).toContain(`packages/${name}/dist`);
     }
   });
 });
@@ -202,5 +235,64 @@ describe('lineSplitter', () => {
 
   it('emits nothing for an empty stream', () => {
     expect(collect([])).toEqual([]);
+  });
+});
+
+describe('formatSeconds', () => {
+  it('rounds the total before splitting', () => {
+    expect(formatSeconds(59.6)).toBe('1m00s');
+    expect(formatSeconds(119.6)).toBe('2m00s');
+    expect(formatSeconds(41.2)).toBe('41s');
+    expect(formatSeconds(204)).toBe('3m24s');
+  });
+});
+
+describe('suiteSpawn', () => {
+  const site = SUITES.find((s) => s.name === 'site')!;
+  const context = (npmExecpath: string | undefined) => ({
+    root: '/r',
+    npmExecpath,
+    env: { PATH: 'p' },
+    node: '/node',
+    playwrightCli: (dir: string) => `/cli/${dir}`,
+  });
+
+  it.each(['/x/pnpm.cjs', '/x/pnpm.mjs', '/x/pnpm.js'])('runs the script %s with node', (script) => {
+    expect(suiteSpawn({ suite: site, kind: 'build' }, context(script))).toEqual({
+      file: '/node',
+      args: [script, 'run', 'build:e2e'],
+      cwd: join('/r', 'packages/site'),
+      env: { PATH: 'p' },
+    });
+  });
+
+  it('runs a native pnpm directly', () => {
+    const plan = suiteSpawn({ suite: site, kind: 'build' }, context('/x/pnpm-native.exe'));
+    expect(plan).toMatchObject({ file: '/x/pnpm-native.exe', args: ['run', 'build:e2e'] });
+  });
+
+  it('reports a missing pnpm', () => {
+    expect(suiteSpawn({ suite: site, kind: 'build' }, context(undefined))).toMatchObject({
+      error: expect.stringContaining('pnpm') as unknown,
+    });
+  });
+
+  it('sets MS_E2E_PREBUILT on test children only', () => {
+    const test = suiteSpawn({ suite: site, kind: 'test' }, context('/x/pnpm.cjs'));
+    expect(test).toEqual({
+      file: '/node',
+      args: ['/cli/packages/site', 'test'],
+      cwd: join('/r', 'packages/site'),
+      env: { PATH: 'p', MS_E2E_PREBUILT: '1' },
+    });
+    const build = suiteSpawn({ suite: site, kind: 'build' }, context('/x/pnpm.cjs'));
+    expect(build).not.toHaveProperty('env.MS_E2E_PREBUILT');
+  });
+});
+
+describe('refuseArguments', () => {
+  it('accepts none and refuses any, naming them', () => {
+    expect(refuseArguments([])).toBeNull();
+    expect(refuseArguments(['app'])).toMatch(/takes no arguments \(got "app"\)/);
   });
 });

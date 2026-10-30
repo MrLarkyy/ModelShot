@@ -1,3 +1,5 @@
+import { join } from 'node:path';
+
 export type SuiteName = 'app' | 'embed' | 'site' | 'deploy';
 
 export interface Suite {
@@ -49,7 +51,12 @@ export const SUITES: Suite[] = [
     name: 'deploy',
     packageDir: 'tools/deploy',
     build: { args: ['--filter', '@modelshot/deploy...', 'run', 'build'], cwd: '.' },
-    outputs: ['packages/app/dist', 'packages/embed/dist', 'packages/site/dist', 'tools/deploy/dist'],
+    outputs: [
+      ...['app', 'embed', 'site', 'export', 'formats', 'looks', 'pathtracer', 'renderer-rt', 'scene'].map(
+        (name) => `packages/${name}/dist`,
+      ),
+      'tools/deploy/dist',
+    ],
   },
 ];
 
@@ -104,9 +111,10 @@ export async function runSuites(
   return buildFailed.size > 0 || testFailed ? FAILURE_EXIT : 0;
 }
 
-function formatSeconds(seconds: number): string {
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  return `${Math.floor(seconds / 60)}m${String(Math.round(seconds % 60)).padStart(2, '0')}s`;
+export function formatSeconds(seconds: number): string {
+  const total = Math.round(seconds);
+  if (total < 60) return `${total}s`;
+  return `${Math.floor(total / 60)}m${String(total % 60).padStart(2, '0')}s`;
 }
 
 /** Splits streamed chunks into lines (LF or CRLF), each emitted once with the prefix; `end` flushes the partial one. */
@@ -123,4 +131,48 @@ export function lineSplitter(prefix: string, emit: (line: string) => void): { pu
       rest = '';
     },
   };
+}
+
+export interface SpawnPlan {
+  file: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string | undefined>;
+}
+
+/** The process that runs one task, or the reason it cannot (exit 2). Only test children get MS_E2E_PREBUILT. */
+export function suiteSpawn(
+  { suite, kind }: SuiteTask,
+  context: {
+    root: string;
+    npmExecpath: string | undefined;
+    env: Record<string, string | undefined>;
+    node: string;
+    playwrightCli: (packageDir: string) => string;
+  },
+): SpawnPlan | { error: string } {
+  if (kind === 'test') {
+    return {
+      file: context.node,
+      // The absolute CLI path keeps the child findable by the workspace runner's stray-process sweep.
+      args: [context.playwrightCli(suite.packageDir), 'test'],
+      cwd: join(context.root, suite.packageDir),
+      env: { ...context.env, MS_E2E_PREBUILT: '1' },
+    };
+  }
+  const pnpm = context.npmExecpath;
+  if (pnpm === undefined) return { error: 'cannot find pnpm: run it through pnpm (pnpm test:browser)' };
+  const cwd = join(context.root, suite.build.cwd);
+  // pnpm is a script under npm and a native executable under corepack.
+  if (/.[cm]?js$/.test(pnpm)) return { file: context.node, args: [pnpm, ...suite.build.args], cwd, env: context.env };
+  return { file: pnpm, args: suite.build.args, cwd, env: context.env };
+}
+
+/** The runner takes no arguments: a message when it got some. */
+export function refuseArguments(argv: string[]): string | null {
+  if (argv.length === 0) return null;
+  return (
+    `test:suites takes no arguments (got "${argv.join(' ')}"): it runs the four suites whole. ` +
+    'For one suite run `pnpm --filter @modelshot/<suite> run test:browser`.'
+  );
 }

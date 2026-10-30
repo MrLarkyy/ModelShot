@@ -3,7 +3,7 @@ import { constants } from 'node:os';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { lineSplitter, runSuites, type SuiteTask } from './browserSuites.ts';
+import { lineSplitter, refuseArguments, runSuites, suiteSpawn, type SuiteTask } from './browserSuites.ts';
 import { suitePorts } from './harnessPort.ts';
 
 const root = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
@@ -18,34 +18,23 @@ for (const signal of FORWARDED) {
 
 function runTask({ suite, kind }: SuiteTask): Promise<number> {
   const label = `[${suite.name}] ${kind === 'build' ? 'build: ' : ''}`;
-  let executable = process.execPath;
-  let command: string[];
-  let cwd: string;
-  if (kind === 'build') {
-    const pnpm = process.env['npm_execpath'];
-    if (pnpm === undefined) {
-      console.error(`${label}cannot find pnpm: run it through pnpm (pnpm test:browser)`);
-      return Promise.resolve(2);
-    }
-    // pnpm is a script under npm and a native executable under corepack.
-    if (/\.[cm]?js$/.test(pnpm)) command = [pnpm, ...suite.build.args];
-    else {
-      executable = pnpm;
-      command = suite.build.args;
-    }
-    cwd = join(root, suite.build.cwd);
-  } else {
-    // The absolute CLI path keeps the child findable by the workspace runner's stray-process sweep.
-    const cli = createRequire(join(root, suite.packageDir, 'package.json')).resolve('@playwright/test/cli');
-    command = [cli, 'test'];
-    cwd = join(root, suite.packageDir);
+  const plan = suiteSpawn(
+    { suite, kind },
+    {
+      root,
+      npmExecpath: process.env['npm_execpath'],
+      env: process.env,
+      node: process.execPath,
+      playwrightCli: (packageDir) =>
+        createRequire(join(root, packageDir, 'package.json')).resolve('@playwright/test/cli'),
+    },
+  );
+  if ('error' in plan) {
+    console.error(`${label}${plan.error}`);
+    return Promise.resolve(2);
   }
   return new Promise((resolve) => {
-    const child = spawn(executable, command, {
-      cwd,
-      env: { ...process.env, ...(kind === 'test' ? { MS_E2E_PREBUILT: '1' } : {}) },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const child = spawn(plan.file, plan.args, { cwd: plan.cwd, env: plan.env, stdio: ['ignore', 'pipe', 'pipe'] });
     children.add(child);
     const out = lineSplitter(label, (line) => console.log(line));
     const err = lineSplitter(label, (line) => console.error(line));
@@ -73,12 +62,8 @@ function runTask({ suite, kind }: SuiteTask): Promise<number> {
 }
 
 try {
-  if (process.argv.length > 2) {
-    throw new Error(
-      `test:suites takes no arguments (got "${process.argv.slice(2).join(' ')}"): it runs the four suites whole. ` +
-        'For one suite run `pnpm --filter @modelshot/<suite> run test:browser`.',
-    );
-  }
+  const refusal = refuseArguments(process.argv.slice(2));
+  if (refusal !== null) throw new Error(refusal);
   suitePorts(process.env);
   const exit = await runSuites(runTask);
   process.exitCode = exit > 255 ? 255 : exit;

@@ -43,8 +43,8 @@ export function portForDirectory(directory: string): number {
 }
 
 // The four browser suites run at the same time, so their six servers get one offset per checkout (from the repository
-// root) in six disjoint bands: distinct by construction. Overrides are checked against each other, not against the
-// defaults of the other servers.
+// root) in six disjoint bands: distinct by construction. Any two of the six on one port, an override equal to another
+// server's default included, fail before a server starts.
 export function suitePorts(
   env: Env = process.env,
   root = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url))))),
@@ -53,10 +53,12 @@ export function suitePorts(
   const ports: Partial<SuitePorts> = {};
   const owner = new Map<number, string>();
   SUITE_BANDS.forEach(([key, name], index) => {
-    const port = portFromEnv(env, name) ?? BASE_PORT + PORT_SPAN * (index + 1) + offset;
+    const override = portFromEnv(env, name);
+    const port = override ?? BASE_PORT + PORT_SPAN * (index + 1) + offset;
+    const label = override === null ? `${name} (default)` : name;
     const other = owner.get(port);
-    if (other !== undefined) throw new Error(`${other} and ${name} both resolve to port ${port}`);
-    owner.set(port, name);
+    if (other !== undefined) throw new Error(`${other} and ${label} both resolve to port ${port}`);
+    owner.set(port, label);
     ports[key] = port;
   });
   return ports as SuitePorts;

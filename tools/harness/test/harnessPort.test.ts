@@ -60,6 +60,13 @@ describe('suitePorts', () => {
     );
   });
 
+  it('rejects an override equal to the default of another server, marking the default', () => {
+    const base = suitePorts({}, roots[0]);
+    expect(() => suitePorts({ MS_APP_PORT: String(base.site) }, roots[0])).toThrow(
+      new RegExp(`MS_SITE_PORT \\(default\\) and MS_APP_PORT both resolve to port ${base.site}`),
+    );
+  });
+
   it('rejects an out-of-range value naming the variable', () => {
     expect(() => suitePorts({ MS_APP_PORT: '80' }, roots[0])).toThrow(/MS_APP_PORT must be an integer in 1024..65535/);
   });

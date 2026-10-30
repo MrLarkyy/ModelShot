@@ -6,7 +6,9 @@ const origin = `http://127.0.0.1:${port}`;
 const ci = Boolean(process.env['CI']);
 // Set by the concurrent runner (tools/harness/src/runBrowserSuites.ts) after it built every suite: only serve then.
 const prebuilt = process.env['MS_E2E_PREBUILT'] === '1';
-const preview = `pnpm exec vite preview --outDir dist-e2e --port ${port} --strictPort`;
+// Prebuilt, vite runs without the pnpm wrapper: pnpm printed ELIFECYCLE when Playwright stopped the server at the end
+// of a loaded concurrent run.
+const preview = (runner: string): string => `${runner} preview --outDir dist-e2e --port ${port} --strictPort`;
 
 // The server is the composed production build: the landing page at / and the app at /app/, one origin, as hosted.
 export default defineConfig({
@@ -25,7 +27,9 @@ export default defineConfig({
     toHaveScreenshot: { animations: 'disabled', caret: 'hide', maxDiffPixelRatio: 0.002, threshold: 0.2 },
   },
   webServer: {
-    command: prebuilt ? preview : `pnpm run build:e2e && ${preview}`,
+    command: prebuilt
+      ? preview('node node_modules/vite/bin/vite.js')
+      : `pnpm run build:e2e && ${preview('pnpm exec vite')}`,
     url: `${origin}/`,
     reuseExistingServer: false,
     timeout: 120_000,
