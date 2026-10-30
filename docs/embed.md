@@ -47,9 +47,11 @@ The element is a small loader (about 3 kB gzip, budget row `embed`). It checks i
 1. reads the parameters from `location.hash` (never the query string);
 2. checks the file name of the model URL with the app's intake rules (extension; one model or one skin PNG);
 3. starts the WebGL2 viewer (`WEBGL2_UNAVAILABLE` without it);
-4. downloads the model (limits below) and, for a `.gltf`, `.glb` or `.obj`, the files it refers to on the same server
-   (see [Models with several files](#models-with-several-files)), checks them again with the intake limits and reads
-   them in the app's load worker (30 s watchdog, the loaders' own limits), as if they had been picked together;
+4. downloads the model (limits below); for a `.gltf`, `.glb` or `.obj` the app's load worker reads and parses it
+   once and lists the files it refers to, which the frame downloads from the same server (see
+   [Models with several files](#models-with-several-files)); the frame checks them again with the intake limits and
+   the same worker loads the model from what it parsed with its files, as if they had been picked together (30 s
+   watchdog over the worker's listing and loading together, the loaders' own limits);
 5. shows it with the chosen look and camera, posts `load` to the host and bakes the light lazily (status
    "Preview lit.");
 6. turns it if `autorotate` is on, once the light is baked (turning while the bake runs would slow it), unless the
@@ -174,10 +176,12 @@ library is drawn missing or plain with the loader's warning.
 ## Models with several files
 
 A `.gltf` with external buffers and images, or an `.obj` with `mtllib` material libraries and their `map_Kd`
-textures, loads by URL like the same files picked together in the app. After the model, the frame lists its
+textures, loads by URL like the same files picked together in the app. After the model, the load worker lists its
 references with the loaders' own parsers (`listGltfReferences`, `listObjReferences`, `listMtlReferences` of
-`@modelshot/formats`) and resolves each against the model URL (an OBJ texture against its `.mtl` file's URL, as
-exporters write them):
+`@modelshot/formats`), keeping the parsed model for its load, and the frame resolves each against the model URL (an
+OBJ texture against its `.mtl` file's URL, as exporters write them) and downloads them. The frame's thread reads
+only the model's first 4 bytes (its format): a 63 MiB `.gltf` costs it no task of 100 ms or more
+(`embed.mainThread.spec.ts`):
 
 - Only a relative path is downloaded (`model.bin`, `textures/skin%20A.png`, `../textures/a.png`, `/models/a.png`),
   at most 2048 characters, and only when it lands on the model's own origin over http(s). A URL with a scheme (even the model's own
@@ -268,7 +272,8 @@ reduced motion as in the app.
 (`showEmbed.test.ts`), the parameter parser at every boundary and with hostile values, the frame URL round
 trip, the download limits and the CORS probe with fake `fetch`, the reference policy against a table of hostile
 references (`resolveSidecarUrl.test.ts`), the files of a model with their count, name, size and time limits and the
-loaders resolving them (`fetchSidecars.test.ts`), autorotate with a fake clock, the backdrop colour
+loaders resolving them (`fetchSidecars.test.ts`), the same outcomes with the load worker's lister and the model never
+read in the frame (`fetchSidecarsLister.test.ts`), autorotate with a fake clock, the backdrop colour
 solve for every look, no network API outside the download, and that this page's tables equal the code
 (`contractDocs.test.ts`). `packages/embed/e2e` (Playwright, SwiftShader, `pnpm --filter @modelshot/embed run
 test:browser`): the element and a plain iframe on a host page of another origin (lit preview, looks, camera,
@@ -276,4 +281,5 @@ background, autorotate, reduced motion, attribute changes), lazy loading, the CO
 size and time limits with the host page staying responsive, the requests made, and a `.gltf` and an `.obj` with
 their files on the model server (textures drawn, requests only to the model's origin) beside hostile references,
 too many files and a texture without CORS (`embed.sidecars.spec.ts`, models made by
-`e2e/fixtures/sidecars/generate.mjs`, CC0). Described in [Testing](testing.md).
+`e2e/fixtures/sidecars/generate.mjs`, CC0), and the frame's long tasks while a 63 MiB `.gltf`, one with a 60 MiB
+`uri` and one with 100 000 copies of a `uri` are listed (`embed.mainThread.spec.ts`). Described in [Testing](testing.md).

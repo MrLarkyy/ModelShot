@@ -172,6 +172,12 @@ A model never causes a network request or a file read: a `uri` is only matched, 
 case-insensitive base name, against the files the caller passed in `files`. `http:`, `https:`, `file:`, `//` and every
 other URL is reported as not fetched. `@modelshot/formats` has no `fetch` call.
 
+`readGltfContainer(input, maxFileBytes)` reads a file once (size check, GLB chunks, strict UTF-8, JSON, `asset.version`)
+into a `GltfContainer` that `loadGltf` and `listGltfReferences` take in place of the file, without reading it
+again (`loadGltf` checks its `byteLength` against its own `maxFileBytes`); only a container this function returned is
+taken, any other object is refused as `NOT_JSON`. The app's load worker reads a model this way to list its references
+and then load it.
+
 `listGltfReferences(input, { maxReferences })` lists what a caller may have to supply: the `uri` of every buffer and
 image as written (`data:` URIs left out, each distinct spelling once, at most `maxReferences + 1`, nothing for a file
 `loadGltf` would refuse). The embed uses it to download a `.gltf`'s files from the model's own server before loading

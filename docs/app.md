@@ -26,9 +26,12 @@ uploaded ([privacy](#privacy)).
 The path tracer and the export code are loaded on first use and share one tracer (one context, one BVH).
 
 The embed reuses the viewer and the intake: `@modelshot/app/viewer` (`Viewer`) and `@modelshot/app/intake`
-(`checkIntake`, `groupFiles`, `loadModel`, `IntakeError`) are package exports for it ([embed.md](embed.md)).
-`loadModel` takes an optional `AbortSignal`: on abort it kills the read worker and rejects with an `AbortError` (the
-embed aborts a read its latest parameters no longer ask for); the app passes none.
+(`checkIntake`, `groupFiles`, `loadModel`, `openModel`, `IntakeError`) are package exports for it
+([embed.md](embed.md)). `loadModel` takes an optional `AbortSignal`: on abort it kills the read worker and rejects
+with an `AbortError` (the embed aborts a read its latest parameters no longer ask for); the app passes none.
+`openModel` (the same options) is a session on one worker: `listReferences` reads and parses the model once there
+and lists the files it refers to (and a material library's), `load` loads the same `File` from what was parsed, and
+the 30 s watchdog counts only the time spent waiting on the worker; `loadModel` is a session with only a load.
 
 ## Files and limits
 
