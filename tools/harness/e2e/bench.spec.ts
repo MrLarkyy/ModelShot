@@ -27,8 +27,8 @@ const FRAMES_TIMEOUT_MS =
       maxOf('frameTimeMs', 'rt-frame-partial-edge-512')) +
   120_000;
 const BAKE_TIMEOUT_MS = 3 * maxOf('bakeTimeMs', 'bake-bench-n16') + 120_000;
-// Both at least 2.5x what the slowest CI run needed (loads and the first path-tracer runs 5.5 min); the path-tracer
-// section holds 3 x 52 s and 3 x 73 s at their maxima.
+// Hang backstops, not the run's bound (globalTimeout in playwright.config.ts is): the slowest CI run needed 5.9 min for
+// the loads and the first path-tracer runs together; the path-tracer section holds 3 x 52 s and 3 x 73 s at their maxima.
 const LOADS_TIMEOUT_MS = 360_000;
 const PATH_TRACER_TIMEOUT_MS = 600_000;
 const EXPORT_TIMEOUT_MS = 180_000;
@@ -367,6 +367,7 @@ test.describe('bench sections', () => {
           if (!fixture?.timeBake) throw new Error('bake bench missing');
           return fixture.timeBake();
         });
+        console.log(`[bench] bake run ${run + 1}: ${ms.toFixed(0)} ms`);
         expect(ms, `bake run ${run + 1}: ${ms.toFixed(0)} ms / max ${bakeMax}`).toBeLessThanOrEqual(bakeMax);
         bakeRuns.push(ms);
       }

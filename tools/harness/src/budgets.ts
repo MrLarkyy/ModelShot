@@ -82,6 +82,8 @@ export function checkBudgets(budgets: Budgets, measured: Partial<Measured>): Bud
       const value = Object.hasOwn(values, key) ? values[key] : undefined;
       if (value === undefined) {
         violations.push({ group, key, message: `${group}.${key}: budget has no measurement` });
+      } else if (!Number.isFinite(value)) {
+        violations.push({ group, key, message: `${group}.${key}: measured ${value} is not a finite number` });
       } else if (value > max) {
         violations.push({ group, key, message: `${group}.${key}: measured ${value} exceeds budget max ${max}` });
       }
