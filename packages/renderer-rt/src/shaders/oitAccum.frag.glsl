@@ -12,6 +12,7 @@ uniform sampler2D u_texture;
 uniform bool u_texelAntialias;
 uniform int u_alphaMode;
 uniform int u_alphaCutoffByte;
+uniform int u_seamCoverage;
 
 in vec2 v_uv;
 flat in vec4 v_uvRect;
@@ -33,6 +34,13 @@ float toHalf(float v) {
   return unpackHalf2x16(packHalf2x16(vec2(v, 0.0))).x;
 }
 
+// Partial taps' share; opaque taps count as a partial nearest texel's alpha or 1 (oitSeamCoverage.ts).
+float partialSeamCoverage(TexelSample s) {
+  float partialTaps = s.premultiplied.a - s.opaqueCoverage;
+  float opaqueTaps = s.coverage != COVERAGE_PARTIAL ? 0.0 : u_seamCoverage == 2 ? 1.0 : s.nearestAlpha;
+  return clamp(partialTaps + s.opaqueCoverage * opaqueTaps, 0.0, 1.0);
+}
+
 // Weighted blended order-independent transparency (McGuire and Bavoil 2013, equation 10) for partial texels.
 void main() {
   prepareDepthKey();
@@ -41,8 +49,15 @@ void main() {
     sampleTexels(u_texture, v_uv, v_uvRect, v_textureFlags, u_texelAntialias, u_alphaMode, u_alphaCutoffByte);
   vec4 light = vec4(1.0);
   if (u_bakeOn) light = sampleBakedLight(v_uv, v_uvRect);
-  if (s.coverage != COVERAGE_PARTIAL) discard;
-  float alpha = 1.0 - toHalf(1.0 - s.nearestAlpha);
+  float coverage = s.nearestAlpha;
+  if (u_seamCoverage == 0) {
+    if (s.coverage != COVERAGE_PARTIAL) discard;
+  } else {
+    if (s.coverage == COVERAGE_OPAQUE) discard;
+    coverage = partialSeamCoverage(s);
+    if (coverage <= 0.0) discard;
+  }
+  float alpha = 1.0 - toHalf(1.0 - coverage);
   vec3 color = shadeLit(sampleColor(s), shadingNormal(), light);
   float d = 1.0 - gl_FragCoord.z;
   float weight = alpha * clamp(3.0e3 * d * d * d, 1.0e-2, 3.0e3);

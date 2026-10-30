@@ -37,6 +37,17 @@ test(
       return fixture.renderFrames(30);
     });
 
+    // MS-60: the partial-edge quad filling most of a 512 px frame, raster key, 4x MSAA: the transparency pass per sample
+    // into its multisampled targets with the seam ramp, and their resolve.
+    await openFixture(page, '/rt.html?variant=partial-edge&size=512');
+    expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('raster');
+    const partialEdgeFrames = await page.evaluate(() => {
+      const fixture = window.__msFixture;
+      if (!fixture?.renderFrames) throw new Error('frame bench missing');
+      fixture.renderFrames(5);
+      return fixture.renderFrames(30);
+    });
+
     // The same scene with one mesh at render order 1: every frame uses the exact depth key (gl_FragDepth). A still
     // exact frame draws one shifted pass of its sample history per render (MS-35): the draws of the single-sampled
     // frame (msaa=0, as on main before it), and frame time within 1.25x of that frame measured alongside.
@@ -293,6 +304,7 @@ test(
         'gradient-256': median(frames),
         'rt-bench-512': median(rtFrames),
         'rt-bench-order-512': median(rtOrderFrames),
+        'rt-frame-partial-edge-512': median(partialEdgeFrames),
         'rt-load-first-frame-200k-order': loadMs,
         'rt-load-first-frame-200k-edges': edgesLoadMs,
         'rt-load-first-frame-edges-hostile': edgesHostileMs,

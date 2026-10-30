@@ -28,6 +28,8 @@ export interface MeshProgram {
   readonly edgeWidth: WebGLUniformLocation | null;
   /** `u_alphaToCoverage`: the opaque pass only (`alphaToCoverageActive`); `null` in the OIT and fallback passes. */
   readonly alphaToCoverage: WebGLUniformLocation | null;
+  /** `u_seamCoverage`: the OIT pass only (`oitSeamCoverageMode`); `null` in the opaque and fallback passes. */
+  readonly seamCoverage: WebGLUniformLocation | null;
 }
 
 export interface FullscreenProgram {
@@ -101,6 +103,7 @@ export function createRendererPrograms(gl: WebGL2RenderingContext, floatPath: bo
         lightmapTextureSize: at('u_lightmapTextureSize'),
         edgeWidth: at('u_edgeWidth'),
         alphaToCoverage: at('u_alphaToCoverage'),
+        seamCoverage: name === 'oitAccum' ? at('u_seamCoverage') : null,
       };
     };
     const fullscreenProgram = (name: FullscreenProgramName): FullscreenProgram => {

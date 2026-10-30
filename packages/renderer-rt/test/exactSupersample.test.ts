@@ -7,6 +7,7 @@ const limits: GlLimits = {
   maxRenderbufferSize: 16384,
   maxViewport: [16384, 16384],
   maxSamplesRgba16f: 4,
+  maxSamplesR16f: 4,
   colorBufferFloat: true,
   fragmentHighp: true,
   renderer: 'test',

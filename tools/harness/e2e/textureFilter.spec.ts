@@ -52,9 +52,10 @@ const PT_FILTER: GoldenSpec = {
 
 /**
  * Preview (baked, 64 samples) vs render (seed 1, 64 samples), as the pair table of src/ptPairTolerance.ts: measured
- * 0.00011 / 0.396, x 1.25 (MS-38). Kept here, not in that table, whose every entry pathtracer.spec.ts pairs.
+ * 0.00011 / 0.396 (MS-38), with MS-60's anti-aliased partial seams 0.00009 / 0.390, x 1.25. Kept here, not in that
+ * table, whose every entry pathtracer.spec.ts pairs.
  */
-const PAIR_TOLERANCE: CompareOptions = { threshold: 0.1, maxDiffRatio: 0.00014, maxMeanDelta: 0.495 };
+const PAIR_TOLERANCE: CompareOptions = { threshold: 0.1, maxDiffRatio: 0.00011, maxMeanDelta: 0.488 };
 
 /** A texel coordinate (u, v) of the image on a quad, v down the image. */
 type At = readonly [number, number];

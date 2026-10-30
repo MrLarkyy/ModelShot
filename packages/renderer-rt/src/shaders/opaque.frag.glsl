@@ -25,7 +25,8 @@ out vec4 outColor;
 // Opaque texels only: invisible texels are discarded before any depth write, partial ones are left to the OIT pass.
 // Under alpha-to-coverage a fragment of an invisible texel within the anti-aliased seam of an opaque one is kept with
 // its coverage as alpha; its colour is already the opaque neighbour's (premultiplied taps), so the edge resolves to a
-// mix of that texel and what lies behind, its 50 % contour on the texel boundary.
+// mix of that texel and what lies behind, its 50 % contour on the texel boundary. An opaque texel writes
+// premultiplied.a: a partial neighbour's share is covered by its alpha.
 void main() {
   prepareDepthKey();
   prepareShading();
@@ -38,7 +39,8 @@ void main() {
   } else if (s.coverage != COVERAGE_OPAQUE) {
     discard;
   }
-  float alpha = u_alphaToCoverage ? s.opaqueCoverage : 1.0;
+  float alpha = 1.0;
+  if (u_alphaToCoverage) alpha = s.coverage == COVERAGE_OPAQUE ? s.premultiplied.a : s.opaqueCoverage;
   outColor = vec4(shadeLit(sampleColor(s), shadingNormal(), light), alpha);
   writeDepthKey();
 }
