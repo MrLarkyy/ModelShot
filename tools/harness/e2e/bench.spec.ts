@@ -10,7 +10,9 @@ import { median } from '../src/measure';
 
 // One test per section of budgets.json (src/benchSections.ts), each with its own timeout: a slow runner fails one section
 // with its numbers, the worker restarts and the other sections still measure and report (docs/testing.md, Budgets). The
-// timeouts leave room for a section at its budget maxima plus setup, so a slow section fails its budget, not its timeout.
+// timeouts are backstops that leave room for a section at its budget maxima plus setup. On CI the 17-minute globalTimeout
+// bounds the run: the bake section starts about 10.5 minutes in, so on a slow runner bakes of over ~130 s each (inside
+// the budget) are stopped by it; finished sections keep their numbers and the per-bake log lines show the finished bakes.
 const budgets = loadBudgets();
 const maxOf = (group: BudgetGroup, key: string): number => budgets[group][key]?.max ?? 0;
 
@@ -27,8 +29,8 @@ const FRAMES_TIMEOUT_MS =
       maxOf('frameTimeMs', 'rt-frame-partial-edge-512')) +
   120_000;
 const BAKE_TIMEOUT_MS = 3 * maxOf('bakeTimeMs', 'bake-bench-n16') + 120_000;
-// Hang backstops, not the run's bound (globalTimeout in playwright.config.ts is): the slowest CI run needed 5.9 min for
-// the loads and the first path-tracer runs together; the path-tracer section holds 3 x 52 s and 3 x 73 s at their maxima.
+// Hang backstops, not the run's bound (globalTimeout in playwright.config.ts is): the slowest CI run (before the sections
+// were split) needed 5.9 min for the loads plus every path-tracer run; the path-tracer section holds 3 x 52 s and 3 x 73 s at their maxima.
 const LOADS_TIMEOUT_MS = 360_000;
 const PATH_TRACER_TIMEOUT_MS = 600_000;
 const EXPORT_TIMEOUT_MS = 180_000;
@@ -347,7 +349,7 @@ test.describe('bench sections', () => {
   });
 
   test('bake times stay inside budgets.json', { tag: '@timing' }, async ({ page }, testInfo) => {
-    // Last: the longest section (three bakes at SwiftShader speed), so a timeout here loses no other section.
+    // Last: the longest section (three bakes at SwiftShader speed), so a timeout here loses no finished section.
     test.setTimeout(sectionTimeouts.bake);
     logRunner(testInfo);
     const bakeMax = maxOf('bakeTimeMs', 'bake-bench-n16');
