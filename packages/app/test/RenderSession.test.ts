@@ -189,6 +189,22 @@ describe('RenderSession', () => {
       expect(frames).toHaveLength(0);
     });
 
+    it('stops at once on dispose while pumping, once', async () => {
+      const { frames, events, session } = setup();
+      const rendered = session.render();
+      while (frames.length === 0) await tick();
+      frames.shift()?.();
+      const steps = tracer.stepCalls.length;
+      const before = events.length;
+      session.dispose();
+      expect(events.slice(before)).toEqual(['cancelled']);
+      expect(tracer.cancelCalls).toBe(1);
+      await rendered;
+      frames.shift()?.();
+      expect(tracer.stepCalls.length).toBe(steps);
+      expect(events.slice(before)).toEqual(['cancelled']);
+    });
+
     it('is a no-op when idle', () => {
       const { events, session } = setup();
       session.cancel();

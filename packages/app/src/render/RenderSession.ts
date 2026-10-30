@@ -70,7 +70,7 @@ export class RenderSession {
       tracer.setLook(this.host.look());
       tracer.resize(size);
       const scene = await tracer.setScene(doc);
-      if (!scene.applied || this.cancelRequested) {
+      if (!scene.applied || this.cancelRequested || this.disposed) {
         this.finishCancelled();
         return;
       }
@@ -103,7 +103,7 @@ export class RenderSession {
 
   dispose(): void {
     this.disposed = true;
-    this.cancelRequested = true;
+    this.cancel();
     void this.tracerPromise?.then((tracer) => tracer.dispose()).catch(() => undefined);
   }
 
@@ -121,13 +121,6 @@ export class RenderSession {
       };
       const slice = (): void => {
         if (this.pumping !== mine) return;
-        if (this.cancelRequested || this.disposed) {
-          end();
-          tracer.cancel();
-          this.finishCancelled();
-          resolve();
-          return;
-        }
         try {
           if (tracer.contextLost) throw new Error('The graphics context was lost during the render.');
           const started = performance.now();
