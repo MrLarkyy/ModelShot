@@ -53,6 +53,14 @@ async function failure(promise: Promise<unknown>): Promise<IntakeError> {
   throw new Error('expected a rejection');
 }
 
+/** The watchdog's clocks: timers and the monotonic `performance.now`; `Date` too, for a test to jump it. */
+const CLOCKS: ('setTimeout' | 'clearTimeout' | 'Date' | 'performance')[] = [
+  'setTimeout',
+  'clearTimeout',
+  'Date',
+  'performance',
+];
+
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -78,7 +86,7 @@ describe('openModel', () => {
     expect(created[0]!.posted).toEqual([
       { list: { file: MODEL, of: 'model', maxReferences: 512 } },
       { list: { file: library, of: 'library', maxReferences: 512 } },
-      { request: REQUEST, arms: 'slim' },
+      { request: REQUEST, arms: 'slim', listed: true },
     ]);
     expect(created[0]!.terminate).toHaveBeenCalledOnce();
     expect((await failure(session.listReferences(MODEL, 'model', 512))).name).toBe('InvalidStateError');
@@ -93,6 +101,7 @@ describe('openModel', () => {
     const loading = session.load(REQUEST);
     expect(created).toHaveLength(2);
     expect(created[0]!.terminate).toHaveBeenCalledOnce();
+    expect(created[1]!.posted).toEqual([{ request: REQUEST, arms: 'classic' }]);
     created[1]!.reply(LOADED);
     await expect(loading).resolves.toMatchObject({ key: 'k' });
   });
@@ -166,7 +175,7 @@ describe('openModel', () => {
   });
 
   it('gives the list and the load one watchdog, not counting the time between them', async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: CLOCKS });
     const { created, createWorker } = workers();
     const session = openModel({ createWorker, timeoutMs: 1000 });
     const listing = session.listReferences(MODEL, 'model', 512);
@@ -185,8 +194,26 @@ describe('openModel', () => {
     expect(created[0]!.terminate).toHaveBeenCalledOnce();
   });
 
+  it('keeps the watchdog total when the wall clock jumps during the list and before the load', async () => {
+    vi.useFakeTimers({ toFake: CLOCKS });
+    const { created, createWorker } = workers();
+    const session = openModel({ createWorker, timeoutMs: 1000 });
+    const listing = session.listReferences(MODEL, 'model', 512);
+    await vi.advanceTimersByTimeAsync(300);
+    vi.setSystemTime(0);
+    await vi.advanceTimersByTimeAsync(300);
+    created[0]!.reply({ ok: true, references: [] });
+    await listing;
+    vi.setSystemTime(Date.UTC(2100, 0, 1));
+    const loading = failure(session.load(REQUEST));
+    await vi.advanceTimersByTimeAsync(399);
+    expect(created[0]!.terminate).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect((await loading).code).toBe('LOAD_TIMEOUT');
+  });
+
   it('stops a list that never answers with LOAD_TIMEOUT', async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: CLOCKS });
     const { created, createWorker } = workers();
     const session = openModel({ createWorker, timeoutMs: 500 });
     const listing = failure(session.listReferences(MODEL, 'model', 512));

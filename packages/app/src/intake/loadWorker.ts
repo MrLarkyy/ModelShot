@@ -25,14 +25,6 @@ async function list({ list: { file, of, maxReferences } }: ListMessage): Promise
   return source.references(maxReferences);
 }
 
-// The File a list opened arrives here as another object (each message is a copy), so it is matched by what it is.
-function opened(model: File): ModelSource | null {
-  const file = source?.file;
-  return file && file.name === model.name && file.size === model.size && file.lastModified === model.lastModified
-    ? source
-    : null;
-}
-
 async function load(message: LoadMessage): Promise<LoadedModel> {
   const { request, arms } = message;
   if (request.kind === 'skin') {
@@ -40,8 +32,10 @@ async function load(message: LoadMessage): Promise<LoadedModel> {
     const doc = createPlayerModel(loadSkin(bytes, { name: request.skin.name }), { arms });
     return { doc, warnings: [], name: request.skin.name, kind: 'skin', key: await sha256Hex(bytes) };
   }
-  const model = opened(request.model) ?? (await ModelSource.open(request.model));
+  // Only the session knows the File is the one listed: a copy here cannot tell it from another file of that name.
+  const kept = message.listed ? source : null;
   source = null;
+  const model = kept ?? (await ModelSource.open(request.model));
   return model.load(request.resources);
 }
 

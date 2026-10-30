@@ -105,12 +105,8 @@ export function openModel(options: LoadOptions = {}): ModelSession {
     return started;
   };
 
-  // `prepare` runs once the request is taken, before the worker is started or asked.
-  const ask = <T>(
-    message: LoadMessage | ListMessage,
-    accept: (reply: LoadReply | ListReply) => T,
-    prepare: () => void,
-  ): Promise<T> =>
+  // `prepare` runs once the request is taken, before the worker is started or asked, and says what to post.
+  const ask = <T>(prepare: () => LoadMessage | ListMessage, accept: (reply: LoadReply | ListReply) => T): Promise<T> =>
     new Promise<T>((resolve, reject) => {
       if (ended) {
         reject(ended);
@@ -120,7 +116,7 @@ export function openModel(options: LoadOptions = {}): ModelSession {
         reject(new Error('The model session takes one request at a time.'));
         return;
       }
-      prepare();
+      const message = prepare();
       if (!worker) {
         try {
           worker = begin();
@@ -131,10 +127,11 @@ export function openModel(options: LoadOptions = {}): ModelSession {
           return;
         }
       }
-      const startedAt = Date.now();
+      // A monotonic clock: a wall-clock change between requests must not stretch or cut the watchdog.
+      const startedAt = performance.now();
       pending = {
         answer: (reply) => {
-          spentMs += Date.now() - startedAt;
+          spentMs += performance.now() - startedAt;
           clearTimeout(timer);
           pending = null;
           try {
@@ -161,43 +158,42 @@ export function openModel(options: LoadOptions = {}): ModelSession {
     });
 
   const listReferences = (file: File, of: ReferenceSource, maxReferences: number): Promise<string[]> => {
-    const message: ListMessage = { list: { file, of, maxReferences } };
-    const prepare = (): void => {
+    const prepare = (): ListMessage => {
       if (of === 'model') opened = file;
+      return { list: { file, of, maxReferences } };
     };
-    return ask(
-      message,
-      (reply) => {
-        if (!reply.ok) throw new IntakeError(reply.code, reply.message);
-        const references: unknown = 'references' in reply ? reply.references : undefined;
-        if (!isReferenceList(references, maxReferences)) {
-          throw new IntakeError('LOAD_FAILED', 'The model reader gave an answer that is not a list of files.');
-        }
-        return [...references];
-      },
-      prepare,
-    );
+    return ask(prepare, (reply) => {
+      if (!reply.ok) throw new IntakeError(reply.code, reply.message);
+      const references: unknown = 'references' in reply ? reply.references : undefined;
+      if (!isReferenceList(references, maxReferences)) {
+        throw new IntakeError('LOAD_FAILED', 'The model reader gave an answer that is not a list of files.');
+      }
+      return [...references];
+    });
   };
 
   const load = (request: LoadRequest): Promise<LoadedModel> => {
-    // The worker holds the model a list read; any other file is read by a fresh one, never mistaken for it.
-    const prepare = (): void => {
-      if (worker && !(request.kind === 'model' && request.model === opened)) {
+    // The worker holds the model a list read: `listed` tells it to load that one. Any other file is read by a fresh
+    // worker, never mistaken for it.
+    const prepare = (): LoadMessage => {
+      const listed = worker !== null && request.kind === 'model' && request.model === opened;
+      if (worker && !listed) {
         worker.terminate();
         worker = null;
       }
       opened = null;
+      return {
+        request,
+        arms: options.arms ?? 'classic',
+        ...(listed ? { listed: true } : {}),
+        ...(options.hang ? { hang: true } : {}),
+      };
     };
-    const message: LoadMessage = { request, arms: options.arms ?? 'classic', ...(options.hang ? { hang: true } : {}) };
-    return ask(
-      message,
-      (reply) => {
-        end(new DOMException('The model was read.', 'InvalidStateError'));
-        if (!reply.ok) throw new IntakeError(reply.code, reply.message);
-        return reply as LoadedModel;
-      },
-      prepare,
-    );
+    return ask(prepare, (reply) => {
+      end(new DOMException('The model was read.', 'InvalidStateError'));
+      if (!reply.ok) throw new IntakeError(reply.code, reply.message);
+      return reply as LoadedModel;
+    });
   };
 
   const close = (): void => end(new DOMException('The model read was closed.', 'AbortError'));

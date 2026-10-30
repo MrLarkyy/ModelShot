@@ -3,8 +3,16 @@ import type { LoadRequest } from './groupFiles';
 
 export type PlayerArmsChoice = 'classic' | 'slim';
 
-/** Main thread -> worker. `hang` is honoured in the e2e build only. */
-export type LoadMessage = { readonly request: LoadRequest; readonly arms: PlayerArmsChoice; readonly hang?: boolean };
+/**
+ * Main thread -> worker. `listed`: the model is the File this worker's last model list read, to be loaded from what
+ * that list parsed. `hang` is honoured in the e2e build only.
+ */
+export type LoadMessage = {
+  readonly request: LoadRequest;
+  readonly arms: PlayerArmsChoice;
+  readonly listed?: true;
+  readonly hang?: boolean;
+};
 
 /** Whose references to list: the model's (the worker keeps it read for the load), or a material library's. */
 export type ReferenceSource = 'model' | 'library';
