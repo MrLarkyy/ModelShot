@@ -37,6 +37,8 @@ const CENSUS: Readonly<Record<string, { world: readonly string[]; key?: string }
   'texture-wrap': { world: [], key: '8aeb28781ff695aa' },
   // MS-60: the textured partial-edge quad, per texel; new, so no key from before world charts.
   'partial-edge': { world: [] },
+  // MS-38: the filter quads, baked by textureFilter.spec.ts's pair test; every quad per texel but the subdivided linear one (world chart: shared vertices).
+  'texture-filter': { world: ['linear'], key: 'fc199f9d3046e479' },
 };
 
 describe('lightmap chart census of the baked fixture views', () => {

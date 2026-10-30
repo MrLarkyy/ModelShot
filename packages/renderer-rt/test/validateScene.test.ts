@@ -65,6 +65,20 @@ describe('validateScene', () => {
     expectInvalid(withWrap(null), 'textures[0].wrap');
   });
 
+  it('accepts a texture filter of nearest or linear, rejects any other', () => {
+    const doc = quadScene();
+    const withFilter = (filter: unknown): SceneDocument => ({
+      ...doc,
+      textures: [{ ...doc.textures[0]!, filter: filter as 'nearest' }],
+    });
+    expect(() => validateScene(withFilter('nearest'))).not.toThrow();
+    expect(() => validateScene(withFilter('linear'))).not.toThrow();
+    expect(() => validateScene(withFilter(undefined))).not.toThrow();
+    expectInvalid(withFilter('bilinear'), 'textures[0].filter');
+    expectInvalid(withFilter(9729), 'textures[0].filter');
+    expectInvalid(withFilter(null), 'textures[0].filter');
+  });
+
   it('rejects plain arrays where typed arrays are expected', () => {
     expectInvalid(
       withMesh((m) => ({ uvs: [...m.uvs] as unknown as Float32Array })),

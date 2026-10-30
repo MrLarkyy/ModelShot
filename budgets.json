@@ -22,8 +22,8 @@
     "pt-bench-128-n64-x2-denoised": { "max": 73000 }
   },
   "bundleGzipBytes": {
-    "app": { "max": 205300 },
-    "app-entry": { "max": 66800 },
+    "app": { "max": 226300 },
+    "app-entry": { "max": 73800 },
     "embed": { "max": 3200 },
     "embed-frame": { "max": 195100 },
     "site": { "max": 11600 },

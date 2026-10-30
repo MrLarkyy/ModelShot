@@ -28,15 +28,23 @@ describe('path tracer shaders', () => {
     expect(pathTracerProgramSource('present').fragment).toContain('vec3 agxToneMap(vec3 linearColor)');
   });
 
-  it('addresses material texels with the shared faceTexel and the material flags before the atlas offset', () => {
+  it('addresses material texels with the shared faceTexel and the material flags before the atlas offset, linear taps too; coverage stays nearest', () => {
     for (const name of ['trace', 'bake', 'guide'] as const) {
       const fragment = pathTracerProgramSource(name).fragment;
       expect(fragment).toContain('ivec2 faceTexel(ivec2 texel, ivec4 range, ivec2 size, int flags)');
-      expect(fragment).toContain(
-        'ivec2 texel = faceTexel(ivec2(floor(hitUv(triangle, b) * size)), range, m.size, m.textureFlags);',
-      );
-      expect(fragment).toContain('texelFetch(u_textureLayers, ivec3(texel + m.offset, m.layer), 0)');
+      expect(fragment).toContain('ivec2 addressed = faceTexel(texel, range, m.size, m.textureFlags);');
+      expect(fragment).toContain('texelFetch(u_textureLayers, ivec3(addressed + m.offset, m.layer), 0)');
       expect(fragment.match(/texelFetch\(u_textureLayers/g)).toHaveLength(1);
+      // Every tap of a linear texture goes through that one addressed fetch.
+      expect(fragment.match(/layerTexel\(m, taps\.base/g)).toHaveLength(4);
+      expect(fragment).toContain(
+        'if ((m.textureFlags & TEXTURE_FLAG_LINEAR) == 0) return materialTexel(m, triangle, b).rgb;',
+      );
+      expect(fragment).toContain('s.albedo = materialColor(fetchMaterial(slot), hit.triangle, b);');
+      expect(fragment).toContain('alpha = materialTexel(m, triangle, b).a;');
+      expect(fragment).toContain(
+        'vec3 bilinearColor(vec4 c00, vec4 c10, vec4 c01, vec4 c11, vec2 f, int mode, int cutoffByte, vec3 fallback)',
+      );
       expect(fragment).toContain('int(b.y), int(b.z), int(b.w));');
     }
   });

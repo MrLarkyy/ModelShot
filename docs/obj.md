@@ -60,6 +60,9 @@ scan over the text, limits checked as counts grow) and reads nothing but the fil
 - **Materials**: `map_Kd` → that PNG, `blend` with `BLEND_ALPHA_CUTOFF` (only alpha byte 0 is invisible, as Blockbench
   and most OBJ viewers draw textures). Without `map_Kd`: a generated 1×1 PNG of `Kd` (read as sRGB, as three.js's
   MTLLoader does) with alpha `d`; `blend` when `d` < 1, else `opaque`.
+- **Filter**: every texture is nearest (no `SceneTexture.filter`, MS-38): MTL has no filter statement, and its
+  `-blendu` / `-blendv` options (on by default) would turn every OBJ smooth, against the pixel-art default; they stay
+  `UNSUPPORTED_MAP_OPTION`.
 - `source`: `{ format: 'obj', formatVersion: '', modelFormat: 'obj' }`.
 
 ## Limits

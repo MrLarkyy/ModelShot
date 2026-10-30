@@ -1,10 +1,14 @@
 // What a ray meets on a triangle: its nearest texel as faceTexel addresses it (the face's texel rectangle, then the
-// texture's wrap; pixel art, no filtering, nothing read from a neighbouring atlas region), the texel's coverage under
-// the material's alpha rule (texelAlpha, the same classification as the preview), and the surface the integrator
-// shades. The shading normal lives here only.
+// texture's wrap; read only inside the face), the texel's coverage under the material's alpha rule (texelAlpha, the
+// same classification as the preview), and the surface the integrator shades. The albedo is that texel's colour, or for
+// a texture whose flags carry TEXTURE_FLAG_LINEAR the bilinear blend of the four texels around the hit (texelFilter, as
+// the preview blends them), which may read one texel past the face rectangle of the same image, never another image or
+// frame; coverage stays the nearest texel's for every ray.
+// The shading normal lives here only.
 #include "sceneData"
 #include "texelAlpha"
 #include "faceTexels"
+#include "texelFilter"
 #include "edgeRounding"
 
 // EdgeLook width of the rounded edges (model units); 0 rounds nothing (the light bake).
@@ -31,13 +35,34 @@ vec2 hitUv(int triangle, vec2 b) {
   return uv0 * (1.0 - b.x - b.y) + uv1 * b.x + uv2 * b.y;
 }
 
+ivec4 materialTexelRange(Material m, int triangle) {
+  return faceTexelRange(dataTexel(u_triAttributes, triangle * TRIANGLE_ATTRIBUTE_TEXELS + 4), vec2(m.size));
+}
+
 // Addressed within the image before the placement offset, so a lookup never leaves its atlas place.
+vec4 layerTexel(Material m, ivec2 texel, ivec4 range) {
+  ivec2 addressed = faceTexel(texel, range, m.size, m.textureFlags);
+  return texelFetch(u_textureLayers, ivec3(addressed + m.offset, m.layer), 0);
+}
+
 vec4 materialTexel(Material m, int triangle, vec2 b) {
-  vec4 uvRect = dataTexel(u_triAttributes, triangle * TRIANGLE_ATTRIBUTE_TEXELS + 4);
-  vec2 size = vec2(m.size);
-  ivec4 range = faceTexelRange(uvRect, size);
-  ivec2 texel = faceTexel(ivec2(floor(hitUv(triangle, b) * size)), range, m.size, m.textureFlags);
-  return texelFetch(u_textureLayers, ivec3(texel + m.offset, m.layer), 0);
+  ivec2 texel = ivec2(floor(hitUv(triangle, b) * vec2(m.size)));
+  return layerTexel(m, texel, materialTexelRange(m, triangle));
+}
+
+// The albedo at the hit: the nearest texel's colour, or the coverage-weighted bilinear blend of the four texels around
+// the hit for a linear texture (texelFilter); where every tap is invisible, the nearest one's colour.
+vec3 materialColor(Material m, int triangle, vec2 b) {
+  if ((m.textureFlags & TEXTURE_FLAG_LINEAR) == 0) return materialTexel(m, triangle, b).rgb;
+  ivec4 range = linearTexelRange(materialTexelRange(m, triangle));
+  LinearTaps taps = linearTaps(hitUv(triangle, b) * vec2(m.size));
+  vec4 c00 = layerTexel(m, taps.base, range);
+  vec4 c10 = layerTexel(m, taps.base + ivec2(1, 0), range);
+  vec4 c01 = layerTexel(m, taps.base + ivec2(0, 1), range);
+  vec4 c11 = layerTexel(m, taps.base + ivec2(1, 1), range);
+  // The nearest texel is the tap on p's side of each centre line (f >= 0.5 past it).
+  vec4 nearest = taps.f.y < 0.5 ? (taps.f.x < 0.5 ? c00 : c10) : (taps.f.x < 0.5 ? c01 : c11);
+  return bilinearColor(c00, c10, c01, c11, taps.f, m.alphaMode, m.cutoffByte, nearest.rgb);
 }
 
 // Coverage of the texel a ray meets (COVERAGE_* of texelAlpha) and its alpha.
@@ -101,7 +126,7 @@ Surface surfaceAt(Hit hit) {
   s.position = p0.xyz * w0 + p1 * b.x + p2 * b.y;
   s.normal = hit.back ? -n : n;
   s.side = hit.back ? -geometric : geometric;
-  s.albedo = materialTexel(fetchMaterial(slot), hit.triangle, b).rgb;
+  s.albedo = materialColor(fetchMaterial(slot), hit.triangle, b);
   s.emission = materialEmission(slot);
   return s;
 }

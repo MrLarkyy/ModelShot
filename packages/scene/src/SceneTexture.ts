@@ -1,5 +1,5 @@
 import type { SceneTextureFrames } from './SceneTextureFrames';
-import type { SceneTextureWrap } from './SceneTextureSampling';
+import type { SceneTextureFilter, SceneTextureWrap } from './SceneTextureSampling';
 
 /**
  * A PNG image carried as its encoded bytes, unchanged by the loader (only `loadSkin` decodes pixels, of a legacy skin,
@@ -29,4 +29,9 @@ export interface SceneTexture {
    * `DEFAULT_TEXTURE_WRAP`, the edge texel.
    */
   readonly wrap?: SceneTextureWrap;
+  /**
+   * How the colour is read between texel centres (`textureSampling`; added within version 1, MS-38); absent:
+   * `DEFAULT_TEXTURE_FILTER`, nearest, the pixel-art rule. Only the glTF loader writes `linear`.
+   */
+  readonly filter?: SceneTextureFilter;
 }

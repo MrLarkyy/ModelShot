@@ -134,8 +134,8 @@ function image(holes: readonly (readonly [number, number, number])[]): Uint8Arra
   return rgba;
 }
 
-const CLAMP = { wrap: 'clamp', frames: 1 } as const;
-const REPEAT = { wrap: 'repeat', frames: 1 } as const;
+const CLAMP = { wrap: 'clamp', frames: 1, filter: 'nearest' } as const;
+const REPEAT = { wrap: 'repeat', frames: 1, filter: 'nearest' } as const;
 
 describe('texture opacity', () => {
   it('every alpha byte 255 is opaque, with no table', () => {
@@ -185,7 +185,7 @@ describe('texture opacity', () => {
     // A 4 x 4 strip of 2 frames: rows 0-1 frame 0, rows 2-3 frame 1; the hole is in frame 1 (row 2).
     const table = textureOpacityOf(image([[0, 2, 0]]), 4, 4);
     if (typeof table === 'string') throw new Error('expected a table');
-    const strip = (wrap: 'clamp' | 'repeat') => ({ wrap, frames: 2 });
+    const strip = (wrap: 'clamp' | 'repeat') => ({ wrap, frames: 2, filter: 'nearest' as const });
     // v 0.5..0.75 is row 2: in frame 1 for a still image, clamped to row 1 or repeated to row 0 on the strip.
     expect(translucentTexelsIn(table, [0, 0.5, 0.25, 0.75], CLAMP)).toBe(1);
     expect(translucentTexelsIn(table, [0, 0.5, 0.25, 0.75], strip('clamp'))).toBe(0);
@@ -201,8 +201,29 @@ describe('texture opacity', () => {
   it('a frame count the shader flags cannot carry (over 65 535) reads the whole image, as the shaders do', () => {
     const table = textureOpacityOf(image([[0, 2, 0]]), 4, 4);
     if (typeof table === 'string') throw new Error('expected a table');
-    expect(translucentTexelsIn(table, [0, 0.5, 0.25, 0.75], { wrap: 'clamp', frames: 70_000 })).toBe(1);
-    expect(translucentTexelsIn(table, [0, 0.5, 0.25, 0.75], { wrap: 'clamp', frames: 2 })).toBe(0);
+    expect(translucentTexelsIn(table, [0, 0.5, 0.25, 0.75], { ...CLAMP, frames: 70_000 })).toBe(1);
+    expect(translucentTexelsIn(table, [0, 0.5, 0.25, 0.75], { ...CLAMP, frames: 2 })).toBe(0);
+  });
+
+  it('a linear filter reads the same texels: coverage stays that of the nearest texel', () => {
+    const table = textureOpacityOf(image([[0, 1, 0]]), 4, 4);
+    if (typeof table === 'string') throw new Error('expected a table');
+    for (const rect of [
+      [0, 0, 0.25, 0.25],
+      [0, 0.25, 0.25, 0.5],
+      [1, 0.25, 1.25, 0.5],
+      [-1, 0, 2, 1],
+    ]) {
+      for (const sampling of [CLAMP, REPEAT, { ...CLAMP, frames: 2 }]) {
+        const linear = { ...sampling, filter: 'linear' } as const;
+        expect(translucentTexelsIn(table, rect, linear), `${rect.join(',')}`).toBe(
+          translucentTexelsIn(table, rect, sampling),
+        );
+      }
+    }
+    const doc = cubeDoc([0.25, 0.25, 0.5, 0.5]);
+    const linear = { ...doc, textures: doc.textures.map((t) => ({ ...t, filter: 'linear' as const })) };
+    expect(closedOpaqueMeshes(linear, [table])).toEqual(closedOpaqueMeshes(doc, [table]));
   });
 
   it('a hole only a repeated face reaches makes the closed cube not opaque', () => {
