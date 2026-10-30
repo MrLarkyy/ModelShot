@@ -19,7 +19,7 @@ import { ObjError } from './ObjError';
 import { DEFAULT_OBJ_UNIT_SCALE, resolveObjLimits, type ObjLimits, type ObjLoadOptions } from './ObjLoadOptions';
 import type { ObjLoadResult } from './ObjLoadResult';
 import { ObjWarningList } from './ObjWarning';
-import { readObjText } from './objText';
+import { readObjText, type DecodedObjText } from './objText';
 import { parseMtl, type MtlMaterial } from './parseMtl';
 import { parseObj, type ObjData, type ObjFace, type ObjObject } from './parseObj';
 
@@ -36,9 +36,10 @@ interface ConvertedMaterials {
  * Loads a Wavefront `.obj` with its `.mtl` libraries and PNG textures from the picked files: one node and mesh per
  * `o`/`g` object, one group per material, polygons of up to `maxFaceVertices` vertices (concave ones by ear clipping),
  * flat normals where a face has no `vn`. Synchronous and bounded; nothing is fetched. A bad file throws only
- * `ObjError`; whatever the scene format cannot carry is a warning. Invalid `options` throw a `RangeError`.
+ * `ObjError`; whatever the scene format cannot carry is a warning. Invalid `options` throw a `RangeError`. Text from
+ * `decodeObjText` (a file already decoded, e.g. for `listObjReferences`) is parsed without decoding it again.
  */
-export function loadObj(input: string | Uint8Array, options: ObjLoadOptions = {}): ObjLoadResult {
+export function loadObj(input: string | Uint8Array | DecodedObjText, options: ObjLoadOptions = {}): ObjLoadResult {
   const limits = resolveObjLimits(options.limits);
   const unitScale = resolveUnitScale(options.unitScale, DEFAULT_OBJ_UNIT_SCALE);
   const fileName = options.fileName ?? 'model.obj';

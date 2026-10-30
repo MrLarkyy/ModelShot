@@ -22,11 +22,31 @@ export interface FetchSidecarsOptions {
   /** All the files together, from the first request. */
   readonly timeoutMs?: number;
   readonly probeTimeoutMs?: number;
+  /**
+   * Lists what the model (`of: "model"`) or a downloaded material library refers to, at most `maxReferences + 1`.
+   * The frame passes its load worker's, so the model is read and parsed there, once, off this thread; without it the
+   * files are read and listed here.
+   */
+  readonly listReferences?: ReferenceLister;
 }
+
+export type ReferenceLister = (
+  file: File,
+  of: 'model' | 'library',
+  maxReferences: number,
+) => Promise<readonly string[]>;
 
 interface Sidecar {
   readonly href: string;
   readonly name: string;
+}
+
+async function listHere(file: File, of: 'model' | 'library', maxReferences: number): Promise<readonly string[]> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const limit = { maxReferences };
+  if (of === 'library') return listMtlReferences(bytes, limit);
+  const format = detectModelFormat(file.name, bytes.subarray(0, 4));
+  return format === 'obj' ? listObjReferences(bytes, limit) : listGltfReferences(bytes, limit);
 }
 
 function tooMany(): EmbedError {
@@ -89,10 +109,9 @@ export async function fetchSidecars(model: File, modelUrl: string, options: Fetc
   options.signal?.throwIfAborted();
   const format = detectModelFormat(model.name, head);
   if (format !== 'gltf' && format !== 'glb' && format !== 'obj') return [];
-  const bytes = new Uint8Array(await model.arrayBuffer());
+  const listReferences = options.listReferences ?? listHere;
+  const references = await listReferences(model, 'model', MAX_LISTED_REFERENCES);
   options.signal?.throwIfAborted();
-  const limit = { maxReferences: MAX_LISTED_REFERENCES };
-  const references = format === 'obj' ? listObjReferences(bytes, limit) : listGltfReferences(bytes, limit);
   const list = new SidecarList(new URL(modelUrl).origin);
   const first = list.add(references, modelUrl);
   if (first.length === 0) return [];
@@ -127,8 +146,9 @@ export async function fetchSidecars(model: File, modelUrl: string, options: Fetc
     }
     const textures: Sidecar[] = [];
     for (const { href, file } of libraries) {
-      const text = new Uint8Array(await file.arrayBuffer());
-      textures.push(...list.add(listMtlReferences(text, limit), href));
+      const references = await listReferences(file, 'library', MAX_LISTED_REFERENCES);
+      options.signal?.throwIfAborted();
+      textures.push(...list.add(references, href));
     }
     for (const sidecar of textures) await download(sidecar);
     return files;

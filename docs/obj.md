@@ -111,6 +111,11 @@ At most 100 are kept (`MAX_OBJ_WARNINGS`); each has `code`, `path`, `message`. T
 `mtllib` and `map_Kd` are only matched, by relative path and then by case-insensitive base name, against the files the
 caller passed in `files`; a URL is reported as not fetched. Nothing else is read.
 
+`decodeObjText(input, fileName, maxFileBytes)` decodes an `.obj` once (size check, UTF-8 with invalid bytes
+replaced, byte-order mark dropped) into a `DecodedObjText` that `loadObj` and `listObjReferences` take in place of the
+file; it keeps the file's own size, so a limit is checked against the bytes, not the decoded text. Only text this
+function returned is taken.
+
 `listObjReferences(input, { maxReferences })` lists the `mtllib` names of an `.obj`, and `listMtlReferences` (the
 same arguments) the `map_Kd` file of each material of an `.mtl` (its last one, options skipped, the first definition
 of a name), as the loader reads them: in order, each distinct spelling once, at most `maxReferences + 1`, nothing for a
