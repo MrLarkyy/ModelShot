@@ -33,3 +33,8 @@ export type { SkinLayout, SkinLoadResult } from './player/SkinLoadResult';
 export { MAX_SKIN_NAME_CHARS, loadSkin, type SkinLoadOptions } from './player/loadSkin';
 export type { PlayerArms, PlayerModelOptions } from './player/PlayerModelOptions';
 export { PLAYER_OUTER_ALPHA_CUTOFF, createPlayerModel } from './player/createPlayerModel';
+export { listGltfReferences } from './gltf/listGltfReferences';
+export { listObjReferences } from './obj/listObjReferences';
+export { listMtlReferences } from './obj/listMtlReferences';
+export type { ReferenceListOptions } from './resources/ReferenceListOptions';
+export { isUrlReference, normaliseReference, referenceBaseName } from './resources/normaliseReference';
