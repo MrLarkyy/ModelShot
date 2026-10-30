@@ -3,7 +3,6 @@ import {
   CUBE,
   HOST_ORIGIN,
   addViewer,
-  events,
   expect,
   frameAlert,
   meanDifference,
@@ -13,6 +12,7 @@ import {
   test,
   viewerFrame,
   waitForEvent,
+  waitForLoads,
   waitLight,
   waitLit,
 } from './embedTest';
@@ -96,7 +96,7 @@ test('with the light baker unavailable, a new model ends unbaked and turns', asy
 
   // The second bake settles at once (the baker is known to be missing): it must not be taken for the first one.
   await setAttributes(page, { model: CUBE.replace('single-cube', 'flat-cube') });
-  await expect.poll(async () => (await events(page)).filter((e) => e.type === 'load').length).toBe(2);
+  await waitForLoads(page, 2);
   await expect(frame.locator('#stage')).toHaveAttribute('data-light', 'unbaked', { timeout: 10_000 });
   await expectTurning(page);
 });
