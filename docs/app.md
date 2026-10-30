@@ -42,7 +42,7 @@ own limits: elements, triangles, texture size, nesting). A model never triggers 
 
 - Camera: field of view (disabled in orthographic), perspective or orthographic, Frame, Reset, presets front (yaw 180,
   pitch 0), side (270, 0), three-quarter (210, 20, the default) and isometric.
-- Scene: the node tree with a visibility checkbox per node; for the player model, classic or slim arms.
+- Scene: the node tree with a visibility checkbox per node; for the player model, classic or slim arms; "Texture filtering" lists each texture with a Nearest (pixel art, the default) or Linear (smooth) select, applied to the preview and the render and remembered with the model's setup.
 - Look: one radio per look preset ([look-presets.md](look-presets.md)). `session/applyLook.ts` is the one place that
   sets the look and edges on the viewer, the tracer and the bake.
 - Render: samples, supersampling, denoise.
@@ -68,7 +68,7 @@ IndexedDB `modelshot-app`, version 1, on this device only:
 
 - store `session`, key `current`: `{ v: 1, files, modelKey, savedAt }`, the files of the last open model, reopened on
   a start without handoff;
-- store `models`, key = SHA-256 hex of the model bytes: `{ v: 1, camera, look, hiddenNodes, hiddenMeshes, arms?, render, export?, savedAt }`,
+- store `models`, key = SHA-256 hex of the model bytes: `{ v: 1, camera, look, hiddenNodes, hiddenMeshes, textureFilters?, arms?, render, export?, savedAt }`,
   restored when the same model is opened again. At most 20 entries; the oldest is evicted.
 
 Saves are debounced by 500 ms. Reads are validated as untrusted (`state/readAppState.ts`: own properties, `v === 1`,

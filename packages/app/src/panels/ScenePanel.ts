@@ -1,4 +1,4 @@
-import type { SceneDocument } from '@modelshot/scene';
+import type { SceneDocument, SceneTextureFilter } from '@modelshot/scene';
 import type { PlayerArmsChoice } from '../intake/LoadMessages';
 import { el, uniqueId } from '../ui/dom';
 
@@ -8,6 +8,7 @@ export const MAX_SCENE_ROWS = 500;
 export interface ScenePanelHost {
   readonly setNodeVisible: (index: number, visible: boolean) => void;
   readonly setMeshVisible: (index: number, visible: boolean) => void;
+  readonly setTextureFilter: (index: number, filter: SceneTextureFilter) => void;
   readonly setArms: (arms: PlayerArmsChoice) => void;
 }
 
@@ -15,6 +16,7 @@ export interface ScenePanelModel {
   readonly doc: SceneDocument;
   readonly nodeVisible: readonly boolean[];
   readonly meshVisible: readonly boolean[];
+  readonly textureFilter: readonly SceneTextureFilter[];
   readonly player: { readonly arms: PlayerArmsChoice } | null;
 }
 
@@ -45,6 +47,8 @@ export class ScenePanel {
     });
     const parts: Node[] = [];
     if (model.player) parts.push(this.armsControl(model.player.arms));
+    const filters = this.filterControl(model);
+    if (filters) parts.push(filters);
     parts.push(list);
     const hidden = this.countRows(doc) - this.rows;
     if (hidden > 0) parts.push(el('p', { className: 'hint', text: `${hidden} more rows are not listed.` }));
@@ -75,6 +79,25 @@ export class ScenePanel {
       radio('classic', 'Classic (4 px)'),
       radio('slim', 'Slim (3 px)'),
     ]);
+  }
+
+  private filterControl(model: ScenePanelModel): HTMLElement | null {
+    const rows: HTMLElement[] = [];
+    model.doc.textures.forEach((texture, index) => {
+      if (texture.missing || rows.length >= MAX_SCENE_ROWS) return;
+      const select = el('select');
+      select.append(
+        el('option', { text: 'Nearest (pixel art)', attributes: { value: 'nearest' } }),
+        el('option', { text: 'Linear (smooth)', attributes: { value: 'linear' } }),
+      );
+      select.value = model.textureFilter[index] ?? 'nearest';
+      select.addEventListener('change', () => {
+        this.host.setTextureFilter(index, select.value === 'linear' ? 'linear' : 'nearest');
+      });
+      const name = texture.name || `Texture ${index + 1}`;
+      rows.push(el('label', { className: 'field' }, [el('span', { text: name }), select]));
+    });
+    return rows.length > 0 ? el('fieldset', {}, [el('legend', { text: 'Texture filtering' }), ...rows]) : null;
   }
 
   private checkbox(label: string, checked: boolean, onChange: (visible: boolean) => void): HTMLLIElement | null {

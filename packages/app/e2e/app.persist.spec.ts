@@ -1,5 +1,17 @@
 import type { Page } from '@playwright/test';
-import { expect, fixture, openApp, openFiles, test, waitForModel, waitForStored } from './appTest';
+import {
+  expect,
+  fixture,
+  openApp,
+  openFiles,
+  previewImage,
+  renderImage,
+  storedModels,
+  test,
+  waitForModel,
+  waitForStored,
+  type Rgba,
+} from './appTest';
 
 const CUBE = fixture('bbmodel', 'single-cube.bbmodel');
 const OTHER = fixture('bbmodel', 'flat-cube.bbmodel');
@@ -109,4 +121,74 @@ test('says where the settings are kept, and keeps working when the browser refus
   await expect(page.getByRole('status')).toContainText('not being kept on this device', { timeout: 10_000 });
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Render' })).toBeEnabled();
+});
+
+const TEXTURE = 'tex16.png';
+
+function sad(a: Rgba, b: Rgba): number {
+  let sum = 0;
+  for (let i = 0; i < a.data.length; i++) sum += Math.abs((a.data[i] ?? 0) - (b.data[i] ?? 0));
+  return sum;
+}
+
+async function renderOnce(page: Page, renders: number): Promise<Rgba> {
+  await page.getByRole('button', { name: 'Render' }).click();
+  await expect(page.locator('#result')).toHaveAttribute('data-renders', String(renders), { timeout: 180_000 });
+  return renderImage(page);
+}
+
+async function switchFilterByKeyboard(page: Page): Promise<void> {
+  const select = page.locator('#scene-panel').getByRole('combobox', { name: TEXTURE });
+  await select.focus();
+  await page.keyboard.press('ArrowDown');
+}
+
+test('the texture filter follows in the preview and the render, is saved and restored on reload', async ({ page }) => {
+  await openApp(page);
+  await openFiles(page, [CUBE], 'single-cube.bbmodel');
+  const samples = page.locator('#render-panel').getByLabel('Samples');
+  await samples.fill('8');
+  await samples.dispatchEvent('change');
+  const select = page.locator('#scene-panel').getByRole('combobox', { name: TEXTURE });
+  await expect(select).toHaveCount(1);
+  await expect(select).toHaveValue('nearest');
+  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
+  const nearestPreview = await waitForModel(page);
+  const nearestRender = await renderOnce(page, 1);
+
+  await switchFilterByKeyboard(page);
+  await expect(select).toHaveValue('linear');
+  await expect
+    .poll(async () => (await previewImage(page)).data.equals(nearestPreview.data), { timeout: 20_000 })
+    .toBe(false);
+  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
+  const linearPreview = await waitForModel(page);
+  const linearRender = await renderOnce(page, 2);
+  expect(linearRender.data.equals(nearestRender.data), 'the render follows the filter').toBe(false);
+  await waitForStored(page, (record) => JSON.stringify(record['textureFilters']) === '["linear"]');
+
+  await page.reload();
+  await expect(page.getByRole('status')).toContainText('Opened single-cube.bbmodel', { timeout: 30_000 });
+  await expect(page.locator('#scene-panel').getByRole('combobox', { name: TEXTURE })).toHaveValue('linear');
+  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
+  const restored = await waitForModel(page);
+  expect(restored.data.equals(nearestPreview.data), 'the restored preview is not the nearest look').toBe(false);
+  // The restored preview sits within lighting noise of the linear one and far from the nearest one.
+  expect(sad(restored, linearPreview) * 4, 'the restored preview is the linear look').toBeLessThan(
+    sad(restored, nearestPreview),
+  );
+});
+
+test('a filter switch whose scene fails to build reverts the select and saves nothing', async ({ page }) => {
+  await openApp(page);
+  await openFiles(page, [CUBE], 'single-cube.bbmodel');
+  await waitForModel(page);
+  await waitForStored(page, (record) => JSON.stringify(record['textureFilters']) === '["nearest"]');
+  await page.evaluate(() => window.__msApp!.failNextScene());
+  await switchFilterByKeyboard(page);
+  await expect(page.getByRole('alert')).toContainText('Could not update the view');
+  await expect(page.locator('#scene-panel').getByRole('combobox')).toHaveValue('nearest');
+  await page.waitForTimeout(1500);
+  const records = await storedModels(page);
+  expect(records.map((record) => JSON.stringify(record['textureFilters']))).toEqual(['["nearest"]']);
 });
