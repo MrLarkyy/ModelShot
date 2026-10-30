@@ -125,8 +125,12 @@ export async function fetchSidecar(href: string, name: string, options: FetchSid
       ),
   }).catch((error: unknown) => {
     if (error instanceof EmbedError && error.code === 'MODEL_HTTP_ERROR') return null;
-    // The probe's explanation speaks of "the file"; a sidecar's names which one.
-    if (error instanceof EmbedError && (error.code === 'MODEL_CORS_BLOCKED' || error.code === 'MODEL_UNREACHABLE')) {
+    // The probe's explanation speaks of "the file"; a sidecar's names which one (a broken connection already does).
+    if (
+      error instanceof EmbedError &&
+      !error.message.includes(target.href) &&
+      (error.code === 'MODEL_CORS_BLOCKED' || error.code === 'MODEL_UNREACHABLE')
+    ) {
       throw new EmbedError(error.code, `The model's file ${target.href} failed to download. ${error.message}`);
     }
     throw error;

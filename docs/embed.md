@@ -189,7 +189,7 @@ exporters write them):
 - A file the server answers an error status for (404, 403, 500, ...) is left out, as if it were not there: the loader
   reports it missing (a `.gltf` buffer fails with `MISSING_BUFFER`; a texture or material library is drawn missing or
   plain with a warning). CORS, size, time and connection failures stay errors.
-- A drive path (`C:	exa.png`) is a file of the author's machine: it is never requested, and the loader reports it
+- A drive path (`C:\tex\a.png`) is a file of the author's machine: it is never requested, and the loader reports it
   missing.
 - Each URL is downloaded once, one after another in the model's order. The loader finds a file by its name, so two
   URLs ending in the same file name (`a/skin.png`, `b/skin.png`, case ignored) are refused with `SIDECAR_REFUSED`.

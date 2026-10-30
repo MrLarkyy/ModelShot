@@ -303,6 +303,22 @@ describe('fetchSidecars', () => {
     expect(calls).toEqual([]);
   });
 
+  it('names the file once when its connection breaks partway', async () => {
+    const { fetch } = fakeFetch(() => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(8));
+          controller.error(new TypeError('network error'));
+        },
+      });
+      return Promise.resolve(new Response(body));
+    });
+    const model = new File([gltfWith({ buffers: ['a.bin'] })], 'a.gltf');
+    const error = await failure(fetchSidecars(model, `${SERVER}/m/a.gltf`, { fetch, frameOrigin: FRAME }));
+    expect(error.code).toBe('MODEL_UNREACHABLE');
+    expect(error.message.split(`${SERVER}/m/a.bin`)).toHaveLength(2);
+  });
+
   it('explains a file without response with one HEAD probe, naming it', async () => {
     const { fetch, calls } = fakeFetch((_url, init) =>
       init?.method === 'HEAD' ? Promise.resolve(new Response(null)) : Promise.reject(new TypeError('Failed to fetch')),
