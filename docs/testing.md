@@ -126,7 +126,7 @@ run 39878163371's).
 
 Why: the shard holding the baked tests ran into the 20-minute job limit with 4 shards (cancelled in runs 39612706830 and
 39624802150; the 23 baked lighting tests alone took 13-15 minutes on the slow VM of the second), and the 6 pairing tests
-alone are about 11 minutes together on a normal VM. The VMs differ in speed by up to about 2x on the same image (3x on the realtime frame benches: `rt-bench-512` 1070 and 1348 ms on fast runners, 2105 on a middle one and 3140 on the slowest, runs 40918637235, 40960128489, 40945330892 and 41064336939) (the
+alone are about 11 minutes together on a normal VM. The VMs differ in speed by up to about 2x on the same image (about 3.9x on the realtime frame benches: `rt-bench-512` 1070 and 1348 ms on fast runners, 2105 on a middle one, 3140 on a slow one and 4140 on the slowest, runs 40918637235, 40960128489, 40945330892, 41064336939 and 41115750426; all five on runner image ubuntu-26 version 20261021.618; the slowest is the first with the bench's runner line, `AMD EPYC 7763 64-Core Processor x4, 15.6 GiB`, so later runs tell a slower CPU model from a busy host) (the
 cut-out checker bake took 1.3 minutes on one, 39 s on another), so a shard needs room for the slow case; the bench no
 longer shares a VM with the bakes.
 
@@ -137,7 +137,7 @@ the path-tracer determinism batches test 35.0 s (over 30 s), its same-seed test 
 transparency tests up to 22.5 s, the lifetime tests 14.9-18.6 s, the 10 000 coincident cubes test 10.0 s. A suite or
 test whose CI time reaches a third of the default carries a timeout: 180 s for the baked goldens (bakes took 33-42 s in run 39624802150), 300 s for the baked lighting describe, 720 s for its determinism test (1.6 minutes on a normal runner, over 3 on a slow one, 5.2 at six local workers), 300 s for the baked-preview pairing tests (up to 1.3 minutes, about 2.6 on a slow VM; MS-38's texture-filter pairing test 53.8 s at six local workers), 120 s for the texture-filter render golden (3.1 s at six local workers), 120 s for the path-tracer goldens, determinism and lifetime describes and the coincident cubes test, 180 s for the
 transparency describe (66 s at six local workers), 300 s for the exact-key silhouette test (29.5 s serial), 600 s for the
-exact-key catcher test (49 s serial) and the preset rim probes (42.6 s serial), 180 s for the bench's export and bundle sections, 360 s for its loads, 600 s for its path-tracer section, 15 x (the three frame maxima) + 120 s for its frames (345 s) and 3 x the bake max + 120 s for its bakes (786 s). The bench sections are hang backstops, bounded as a whole by the 17-minute `globalTimeout`: the loads' 360 s are 1.0x the 5.9 minutes the slowest run (41025764238, before the sections were split) needed for the loads plus every path-tracer run, the path-tracer's 600 s hold its maxima, the bakes' 786 s are 2.1x the slowest bake series (372 s, the whole bake section of run 40883379594 with page load and trace; its three bakes took 100 s each), the frames' 345 s are 2.1x the 2.8 minutes' worth of frames. A section hitting its timeout fails with its numbers; the sections together are cut by the global limit, 120 s for the realtime shimmer test (`texel anti-aliasing halves shimmer`, eight renders: 22-35 s alone locally, 30.3 and 31.1 s in the full serial suite, 24.1 s at six local workers), 180 s for the partial-alpha seam describe (MS-60: 5.4-11.8 s a test at six local workers, 6.9-15.4 s serial), 600 s for the partial-edge per-row pairing test (MS-60: 96 s serial, 3.5 minutes at six local workers); apart from the bench sections, each is at least 3x the worst CI time and twice the worst local time. A
+exact-key catcher test (49 s serial) and the preset rim probes (42.6 s serial), 180 s for the bench's export and bundle sections, 360 s for its loads, 600 s for its path-tracer section, 15 x (the three frame maxima) + 120 s for its frames (382.5 s) and 3 x the bake max + 120 s for its bakes (786 s). The bench sections are hang backstops, bounded as a whole by the 17-minute `globalTimeout`: the loads' 360 s are 1.0x the 5.9 minutes the slowest run (41025764238, before the sections were split) needed for the loads plus every path-tracer run, the path-tracer's 600 s hold its maxima, the bakes' 786 s are 2.1x the slowest bake series (372 s, the whole bake section of run 40883379594 with page load and trace; its three bakes took 100 s each), the frames' 382.5 s are 1.9x the 3.3 minutes the frame section took on the slowest runner (41115750426). A section hitting its timeout fails with its numbers; the sections together are cut by the global limit, 120 s for the realtime shimmer test (`texel anti-aliasing halves shimmer`, eight renders: 22-35 s alone locally, 30.3 and 31.1 s in the full serial suite, 24.1 s at six local workers), 180 s for the partial-alpha seam describe (MS-60: 5.4-11.8 s a test at six local workers, 6.9-15.4 s serial), 600 s for the partial-edge per-row pairing test (MS-60: 96 s serial, 3.5 minutes at six local workers); apart from the bench sections, each is at least 3x the worst CI time and twice the worst local time. A
 hang now fails after that time, not after the 60 s default; several hangs in one
 shard can reach the 20-minute job limit, and the job is then cancelled instead of reporting the failures.
 
@@ -1242,10 +1242,10 @@ Measured on the local Windows dev machine (SwiftShader, 3 runs) when the budgets
 textured cubes, 2,048 cubes, 24,576 triangles, one mesh per cube in 128 group nodes of 4 x 4 cubes as the Blockbench
 loader produces a grouped model, so 512 draw calls per frame after batching per node (checked by the spec), every
 seventh with a partial-alpha face; 512 x 512, 4x MSAA, front and back face passes, opaque and transparency passes),
-median of 11 frames after 4 warm-up frames (MS-81: 4 warm frames are one cycle of an exact frame's sample history, 11 is an exact odd median; it was 30 after 5, which took 6.1 minutes on the slowest runner; `gradient-256` keeps 30 after 5, its 0.1 ms timer ticks need them). Max 4500 ms (MS-81; 2000 ms from MS-44 failed runs 40945330892 and 41064336939, medians 2105 and 3140). The 2000 ms derivation, from the CI medians of the `bench` job: 608.5 ms on
+median of 11 frames after 4 warm-up frames (MS-81: 4 warm frames are one cycle of an exact frame's sample history, 11 is an exact odd median; it was 30 after 5, which took 6.1 minutes on the slowest runner; `gradient-256` keeps 30 after 5, its 0.1 ms timer ticks need them). Max 6000 ms (MS-81: 2000 ms from MS-44 failed runs 40945330892 and 41064336939, medians 2105 and 3140; 4500 ms then held 4140 in run 41115750426 at 1.09x). The 2000 ms derivation, from the CI medians of the `bench` job: 608.5 ms on
 a normal runner (run 39594658979) and 944.4 ms on a runner about 1.55x slower on this bench (1.71x on the other rt-bench row; 1.33-1.46x on the remaining benches) (run 39650722835,
 where the earlier max of 750 ms failed). 2000 ms was 3.3x the normal CI median and 2.1x the slow one, the 3-4x-CI-median
-rule of `timeToSamplesMs`; MS-81: runner speed varies about 3x between VMs of the same image on this bench, and 4500 ms is 4.2x and 3.3x the fast medians of 1070.2 and 1347.95 ms (runs 40918637235 and 40960128489), 2.1x the mid median 2104.95 (40945330892) and 1.43x the slowest seen, 3139.6 ms (41064336939). It is a deliberate exception to the 3-4x rule: runner spread is now about 3x, and a max within 4x of the fast medians would leave under 1.3x over the slowest. The 2000 ms ratios above are MS-44 history. The last local
+rule of `timeToSamplesMs`; MS-81: runner speed varies about 3.9x between VMs of the same image on this bench (4140 / 1070.2, the same image version in all five runs; the slowest logged AMD EPYC 7763 x4, the earlier runs predate the runner line), and 6000 ms is 5.6x and 4.5x the fast medians of 1070.2 and 1347.95 ms (runs 40918637235 and 40960128489), 2.9x the mid median 2104.95 (40945330892), 1.9x the slow 3139.6 (41064336939) and 1.45x the slowest seen, 4140 ms (41115750426). It is a deliberate exception to the 3-4x rule: a max within 4x of the fast medians (4281 ms) would leave 1.03x over the slowest. The 4500 ms of MS-81's first round (4.2x and 3.3x the fast medians, 1.43x the 3139.6 then slowest) and the 2000 ms ratios above are history. The last local
 SwiftShader median is 375.2 ms (`budgets-measured.json` of the full build test of 2026-10-21). History: the first
 local medians were 68.9, 70.2 and 80.7 ms (3 runs, 128 group nodes batched per node) and the max of 750 ms was 10x the
 middle run, rounded up; renderer work since (MS-12's double-sided cubes and coverage per texel tap, MS-15's rounded
@@ -1257,8 +1257,10 @@ stand in for a laptop GPU: the 60 fps criterion is evidenced by a manual run of 
 quad filling most of the frame, so the transparency pass runs per sample into its multisampled targets with the seam
 ramp, plus their two resolve blits; median of 11 frames after 4 (MS-81). Local SwiftShader medians 128.1 (the bench run),
 142.8 and 165.2 ms against 80.5 ms with origin/main's renderer in the same session (SwiftShader blends and resolves
-every sample; on GPU hardware that is the MSAA resolve's cost); max 1500 ms, 10x the middle run, rounded up, until a
-CI artefact allows 3-4x the CI median. `rt-bench-512` in the same session: 926.6 and 931.1 ms against 899.9 ms on
+every sample; on GPU hardware that is the MSAA resolve's cost); max 1500 ms, 10x the middle run, rounded up. Its one CI median so far, 339.9 ms, is from the slowest runner seen
+(run 41115750426, where `rt-bench-512` read 4140 ms, 3.9x the fastest); 1500 ms is 4.4x it and, at that run's 3.9x
+spread, about 17x an estimated 88 ms on a fast runner. Kept until a fast runner's median is measured: a max from one
+slow-runner number would guess the spread. `rt-bench-512` in the same session: 926.6 and 931.1 ms against 899.9 ms on
 origin/main (+3 %, the run-to-run spread; the machine was loaded, `rt-bench-order-512` 666.5 and 684.8 against 637.8).
 The bundle grew by 687 B (`app`) and 689 B (`app-entry`) gzip against origin/main 03a9a9d (`test/bundleSize.test.ts`);
 the bench's bundle check measures 205 004 / 205 300 and 66 571 / 66 800.
@@ -1266,10 +1268,21 @@ the bench's bundle check measures 205 004 / 205 300 and 66 571 / 66 800.
 `frameTimeMs.rt-load-first-frame-200k-order` times `setScene` plus the first frame of a generated scene at the
 loader's limits (100 000 quads, 200 000 triangles, 400 000 vertices) at render order 1, which builds the exact key's
 de-indexed geometry and its shared-edge flags at upload: local SwiftShader 348, 344 and 354 ms before the flags, 506
-and 527 ms with them; since round 7 436 and 447 ms; max 3500 ms (10x of the first measurement).
+and 527 ms with them; since round 7 436 and 447 ms; max 3500 ms (10x of the first measurement) until MS-81, which
+failed it in run 41115750426 (`edges-200k` 3651.5 ms, `large-order` 3493). MS-81 re-derived the five load rows from the
+CI medians (ms, `large-order` / `edges-200k` / `edges-hostile` / `edges-weld` / `world-200k`): fast runs 40918637235
+2145.3 / 2143.8 / 1963.9 / 1539.5 / 1606.4 and 40960128489 2132.2 / 2238.4 / 2084.8 / 1764.2 / 1870.5, mid
+40945330892 2344.1 / 2507.1 / 2337.1 / 1735.7 / 2039.9, slow 41064336939 2808.6 / 3121.2 / 2798.1 / 2097.7 / 2488.4,
+slowest 41115750426 3493 / 3651.5 / 3336.5 / 2440.4 / 3197.8 (local 1500-2900). The loads spread about 1.6-2.0x
+between runners, less than the frame benches. Each max is 3-4x the fast medians, the `timeToSamplesMs` rule, and at
+least 1.8x the slowest: `large-order` 7000 ms (3.3x and 3.3x, 2.0x the slowest), `edges-200k` 7000 (3.3x and 3.1x,
+1.9x), `edges-hostile` 7000 (3.6x and 3.4x, 2.1x), `edges-weld` 6000 (3.9x and 3.4x, 2.5x), `world-200k` 6000 (3.7x
+and 3.2x, 1.9x). A return of the first detection (2 s more on `edges-200k`, below) no longer fails the bench (about
+4240 ms on the slower fast runner): a load row now catches about 3x and above over a fast runner's median, and the
+detection's work cap and sorted matching are pinned by `sharpEdges.test.ts`.
 
 `frameTimeMs.rt-bench-order-512` is the same scene with one mesh at render order 1, so every frame uses the exact
-depth key (fragment depth, de-indexed geometry); max 4500 ms like the raster bench (MS-81, from 2000 ms of MS-44): CI medians 936.85 and 1170.3 ms fast, 1878.5 mid, 2715-2924 slow, so 3.85-4.8x the fast medians and 1.54x the slowest (a deliberate exception to the 3-4x rule, see the raster bench); MS-44's 537.9 and 919.5 ms (runs 39594658979, 39650722835, 3.7x and 2.2x of 2000 ms) are history; last local
+depth key (fragment depth, de-indexed geometry); max 5000 ms (MS-81, from 2000 ms of MS-44, then 4500): CI medians 936.85 and 1170.3 ms fast (runs 40918637235, 40960128489), 1878.5 mid (40945330892), 2714.95 and 2924.3 slow (41064336939, 41057545063) and 2962.6 on the slowest runner (41115750426), so 5.3x and 4.3x the fast medians and 1.69x the slowest, a deliberate exception to the 3-4x rule like the raster bench: this bench spread 3.2x between runners, and 5000 ms leaves room for the raster bench's 3.9x (3650 ms) at 1.37x; 4500 ms (1.52x the slowest) would leave 1.23x there; MS-44's 537.9 and 919.5 ms (runs 39594658979, 39650722835, 3.7x and 2.2x of 2000 ms) are history; last local
 median 326.8 ms (`budgets-measured.json`, 2026-10-21). MS-35: a still exact frame draws one rotated-grid pass of its
 sample history per `render()`, so the bench pins its draws to those of the single-sampled frame (`msaa=0`, 519 both)
 and its median to at most 1.25x that frame's, measured alongside: local 349.3 ms against 340.0 ms (2026-10-27; the
@@ -1416,7 +1429,8 @@ all 404 sharp edges of its patch: about 5 · 10⁷ work units per plate, so the 
 the slot search in the third plate (round 2: the earlier cap counted checks per mesh, so one such plate at that cell
 size took 10 s and nine about 30 s; unit-tested in `sharpEdges.test.ts`). Local SwiftShader 997, 1215 and 913 ms;
 hostile (one 300 x 300 plate, round 1) 891 and 938 ms, the nine plates 951 ms; the large-order load beside them 1254,
-1149 and 797 ms. Max 3500 ms each, the limit of the load budget they extend: about 3x the measurement, so a return of
+1149 and 797 ms. Max 3500 ms each (until MS-81, see `rt-load-first-frame-200k-order` for the CI derivation, now 7000
+ms each), the limit of the load budget they extend: about 3x the measurement, so a return of
 the first detection (2 s more on `edges-200k`) or an unbudgeted hostile document fails it, while the CI runner keeps
 its margin as for the sibling.
 
@@ -1425,7 +1439,8 @@ triangles, 400 000 vertices) on a grid of 65 536-unit steps, each quad with its 
 coordinate is a multiple of 2^20 and every edge is shared, the worst case of the multiplicative hash with linear
 probing that matching used before (about two minutes at this size; `sharpEdges` alone took 2.0 s for 60 000 such
 vertices). Matching sorts now: 752 ms local SwiftShader for the whole load (`sharpEdges` alone 0.15 s for 400 000
-vertices), max 3500 ms as for the other load budgets. The same run: `edges-200k` 1158 ms, `edges-hostile` 1194 ms,
+vertices), max 3500 ms as for the other load budgets (6000 ms since MS-81, derived from the CI medians with
+`rt-load-first-frame-200k-order`). The same run: `edges-200k` 1158 ms, `edges-hostile` 1194 ms,
 `large-order` 896 ms.
 
 `frameTimeMs.export-turntable-64-f4-n16` (MS-22): `bench.spec.ts` times `window.__msExport.turntable()` of
@@ -1453,7 +1468,8 @@ chart search walked every triangle of a shared edge: quadratic on a fan (230 ms 
 `setScene`, again in the bake worker); it now joins only across an edge of exactly two triangles, pinned in
 `worldCharts.test.ts` (49 fans: about 0.5 s in Node; the bound is thread CPU time via `expectCpuBelow`, 3000 ms). Local SwiftShader 1335, 1433 and 1448 ms
 (`large-order` 1572 ms and `edges-200k` 1700 ms in the same run; round 1, height fields only: 1111-1224 ms; the layout
-alone 0.6-0.9 s in Node); max 3500 ms as for the other load budgets.
+alone 0.6-0.9 s in Node); max 3500 ms as for the other load budgets, 6000 ms since MS-81 (derived from the CI
+medians with `rt-load-first-frame-200k-order`).
 
 Memory of detection at the loaders' vertex limit (MS-15 round 4): `sharpEdges` of the `edges-weld` mesh (400 000
 vertices, 200 000 triangles, input 11.4 MB) in Node 22 with `--expose-gc`, a fresh Vitest worker, collected before:
