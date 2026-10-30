@@ -15,7 +15,7 @@ import type { GltfLoadResult } from './GltfLoadResult';
 import { GltfWarningList } from './GltfWarning';
 import { childPath, type JsonObject } from '../json/JsonObject';
 import { readList, readObject, readObjects, readOptionalString } from './gltfFields';
-import { readContainer } from './readContainer';
+import { readGltfContainer, type GltfContainer } from './readGltfContainer';
 import { reportUnsupported } from './reportUnsupported';
 import { walkNodes } from './walkNodes';
 
@@ -24,13 +24,14 @@ import { walkNodes } from './walkNodes';
  * the active scene's node hierarchy with every world transform baked into the vertices, base colour textures (PNG),
  * alpha modes and sidedness. Synchronous and bounded: counts, sizes and depth are checked against `limits` before
  * anything proportional to them is allocated or decoded; nothing is fetched. A bad file throws only `GltfError`;
- * whatever the scene format cannot carry is a warning. Invalid `options` throw a `RangeError`.
+ * whatever the scene format cannot carry is a warning. Invalid `options` throw a `RangeError`. A `GltfContainer` from
+ * `readGltfContainer` (a file already read, e.g. for `listGltfReferences`) is loaded without reading it again.
  */
-export function loadGltf(input: string | Uint8Array, options: GltfLoadOptions = {}): GltfLoadResult {
+export function loadGltf(input: string | Uint8Array | GltfContainer, options: GltfLoadOptions = {}): GltfLoadResult {
   const limits = resolveGltfLimits(options.limits);
   const unitScale = resolveUnitScale(options.unitScale, DEFAULT_GLTF_UNIT_SCALE);
   const warnings = new GltfWarningList();
-  const container = readContainer(input, limits.maxFileBytes);
+  const container = readGltfContainer(input, limits.maxFileBytes);
   const { json } = container;
   reportUnsupported(json, limits, warnings);
   const files = new ResourceFiles(options.files);
