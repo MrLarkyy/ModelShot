@@ -49,17 +49,27 @@ describe('suite outputs', () => {
   });
 });
 
+// The string values of an exports map (the files), not its subpath keys.
+function exportTargets(node: unknown): string[] {
+  if (typeof node === 'string') return [node];
+  if (node !== null && typeof node === 'object') return Object.values(node).flatMap(exportTargets);
+  return [];
+}
+
 describe('lib packages', () => {
-  it('export src, which no suite build writes', () => {
+  it('export files no suite build writes, the compiled ones their src', () => {
+    const compiled = new Set(['export', 'formats', 'looks', 'pathtracer', 'renderer-rt', 'scene']);
     const outputs = SUITES.flatMap((suite) => suite.outputs).map((dir) => resolve(root, dir));
     for (const entry of readdirSync(join(root, 'packages'))) {
       const manifest = JSON.parse(readFileSync(join(root, 'packages', entry, 'package.json'), 'utf8')) as {
         exports?: unknown;
       };
-      const targets = JSON.stringify(manifest.exports ?? {}).match(/"\.\/[^"]+"/g) ?? [];
+      const targets = exportTargets(manifest.exports).map((target) => JSON.stringify(target));
       for (const quoted of targets) {
         const target = resolve(root, 'packages', entry, quoted.slice(1, -1));
-        expect(target.startsWith(join(root, 'packages', entry, 'src') + sep), `${entry} ${quoted}`).toBe(true);
+        // Assets (brand css, svg) are not compiled; every package with a tsc build must export its sources.
+        if (compiled.has(entry))
+          expect(target.startsWith(join(root, 'packages', entry, 'src') + sep), `${entry} ${quoted}`).toBe(true);
         for (const dir of outputs) expect(target.startsWith(dir + sep), `${entry} ${quoted} in ${dir}`).toBe(false);
       }
     }
