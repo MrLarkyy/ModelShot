@@ -45,6 +45,7 @@ export const PT_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions>> = {
   // could win against it).
   'gltf-nodes-y030': { threshold: 0.1, maxDiffRatio: 0.00555, maxMeanDelta: 1.179 },
   // MS-60: anti-aliased partial seams and a partial outline in the preview's raster frames, measured 2 px (0.00003) /
-  // 1.124, x 1.25.
-  'partial-edge': { threshold: 0.1, maxDiffRatio: 0.00004, maxMeanDelta: 1.405 },
+  // 1.124, x 1.25. MS-63: the baked catcher moved one partial-alpha pixel toward the render, measured 3 px (0.0000458)
+  // / 1.120, x 1.25.
+  'partial-edge': { threshold: 0.1, maxDiffRatio: 0.00006, maxMeanDelta: 1.4 },
 };
