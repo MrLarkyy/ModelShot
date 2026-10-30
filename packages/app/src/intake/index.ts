@@ -2,5 +2,6 @@
 export { checkIntake } from './checkIntake';
 export { groupFiles, type LoadRequest } from './groupFiles';
 export { IntakeError } from './IntakeError';
-export type { LoadedModel, PlayerArmsChoice } from './LoadMessages';
+export type { LoadedModel, PlayerArmsChoice, ReferenceSource } from './LoadMessages';
 export { LOAD_TIMEOUT_MS, loadModel, type LoadOptions } from './loadModel';
+export { openModel, type ModelSession } from './openModel';

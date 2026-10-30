@@ -6,6 +6,14 @@ export type PlayerArmsChoice = 'classic' | 'slim';
 /** Main thread -> worker. `hang` is honoured in the e2e build only. */
 export type LoadMessage = { readonly request: LoadRequest; readonly arms: PlayerArmsChoice; readonly hang?: boolean };
 
+/** Whose references to list: the model's (the worker keeps it read for the load), or a material library's. */
+export type ReferenceSource = 'model' | 'library';
+
+/** Main thread -> worker: the files `file` refers to, at most `maxReferences + 1` of them. */
+export type ListMessage = {
+  readonly list: { readonly file: File; readonly of: ReferenceSource; readonly maxReferences: number };
+};
+
 export interface LoadedModel {
   readonly doc: SceneDocument;
   readonly warnings: readonly string[];
@@ -16,5 +24,8 @@ export interface LoadedModel {
   readonly key: string;
 }
 
-export type LoadReply =
-  ({ readonly ok: true } & LoadedModel) | { readonly ok: false; readonly code: string; readonly message: string };
+export type LoadFailure = { readonly ok: false; readonly code: string; readonly message: string };
+
+export type LoadReply = ({ readonly ok: true } & LoadedModel) | LoadFailure;
+
+export type ListReply = { readonly ok: true; readonly references: readonly string[] } | LoadFailure;
