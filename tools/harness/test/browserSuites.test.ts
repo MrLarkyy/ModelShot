@@ -44,7 +44,7 @@ describe('suite outputs', () => {
       const outDirs = [...(mine['build:e2e'] ?? '').matchAll(/--outDir (\S+)/g)].map((m) => m[1]);
       expect(outDirs.length, name).toBeGreaterThan(0);
       for (const outDir of outDirs) expect(outDir === dir || outDir === `../${name}/${dir}/app`, name).toBe(true);
-      if (name !== 'site') expect(mine['preview:e2e'], name).toContain(`--outDir ${dir}`);
+      expect(mine['preview:e2e'], name).toContain(`--outDir ${dir}`);
     }
   });
 });
@@ -116,11 +116,21 @@ describe('playwright configs', () => {
     }
   });
 
+  it('start vite directly from the preview:e2e flags of the package', async () => {
+    const prebuilt = await commands(true);
+    for (const name of ['app', 'embed', 'site'] as const) {
+      const flags = scripts(`packages/${name}`)['preview:e2e']!.slice('vite '.length);
+      const command = prebuilt[name][0]!;
+      expect(command.startsWith(`node node_modules/vite/bin/vite.js ${flags} --port `), name).toBe(true);
+      expect(Number(command.split(' --port ')[1]), name).toBeGreaterThan(1023);
+    }
+  });
+
   it('build what they serve when run alone', async () => {
     const alone = await commands(false);
     expect(alone.app[0]).toContain('serve:e2e');
     expect(alone.embed[0]).toContain('serve:e2e');
-    expect(alone.site[0]).toMatch(/build:e2e && .*--outDir dist-e2e/);
+    expect(alone.site[0]).toContain('serve:e2e');
     expect(alone.deploy[0]).toContain('run build && node e2e/serve.ts');
   });
 });
@@ -265,6 +275,10 @@ describe('suiteSpawn', () => {
     env: { PATH: 'p' },
     node: '/node',
     playwrightCli: (dir: string) => `/cli/${dir}`,
+  });
+
+  it.each(['/x/pnpmjs', '/x/pnpm-cjs'])('runs %s directly, not as a script', (path) => {
+    expect(suiteSpawn({ suite: site, kind: 'build' }, context(path))).toMatchObject({ file: path });
   });
 
   it.each(['/x/pnpm.cjs', '/x/pnpm.mjs', '/x/pnpm.js'])('runs the script %s with node', (script) => {

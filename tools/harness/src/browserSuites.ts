@@ -164,7 +164,7 @@ export function suiteSpawn(
   if (pnpm === undefined) return { error: 'cannot find pnpm: run it through pnpm (pnpm test:browser)' };
   const cwd = join(context.root, suite.build.cwd);
   // pnpm is a script under npm and a native executable under corepack.
-  if (/.[cm]?js$/.test(pnpm)) return { file: context.node, args: [pnpm, ...suite.build.args], cwd, env: context.env };
+  if (/\.[cm]?js$/.test(pnpm)) return { file: context.node, args: [pnpm, ...suite.build.args], cwd, env: context.env };
   return { file: pnpm, args: suite.build.args, cwd, env: context.env };
 }
 

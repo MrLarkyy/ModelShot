@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "serve:e2e": "pnpm run build:e2e && pnpm run preview:e2e",
+    "preview:e2e": "vite preview --outDir dist-e2e --strictPort",
     "build:e2e": "vite build --outDir dist-e2e && vite build ../app --outDir ../site/dist-e2e/app --emptyOutDir",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

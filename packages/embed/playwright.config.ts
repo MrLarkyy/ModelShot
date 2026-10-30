@@ -1,4 +1,7 @@
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from '@playwright/test';
+import { previewCommand } from '../../tools/harness/src/previewCommand';
 import { embedPorts } from './e2e/embedPort';
 
 const ports = embedPorts();
@@ -7,12 +10,7 @@ const hostOrigin = `http://127.0.0.1:${ports.host}`;
 const ci = Boolean(process.env['CI']);
 // Set by the concurrent runner (tools/harness/src/runBrowserSuites.ts) after it built every suite: only serve then.
 const prebuilt = process.env['MS_E2E_PREBUILT'] === '1';
-// Prebuilt, vite runs without the pnpm wrapper: pnpm printed ELIFECYCLE when Playwright stopped the server at the end
-// of a loaded concurrent run.
-const frameServer = (port: number): string =>
-  prebuilt
-    ? `node node_modules/vite/bin/vite.js preview --outDir dist-e2e --strictPort --host 127.0.0.1 --port ${port}`
-    : `pnpm run serve:e2e --port ${port}`;
+const command = previewCommand(dirname(fileURLToPath(import.meta.url)), ports.frame, prebuilt);
 
 // Two servers, two origins: the production embed build (frame page and element script) and a host page server that
 // also serves the test models, as a marketplace or wiki page and a model host would. The browser runs WebGL on
@@ -28,7 +26,7 @@ export default defineConfig({
   reporter: [['list']],
   webServer: [
     {
-      command: frameServer(ports.frame),
+      command,
       url: `${frameOrigin}/modelshot-embed.js`,
       reuseExistingServer: false,
       timeout: 180_000,
