@@ -4,4 +4,5 @@ export { groupFiles, type LoadRequest } from './groupFiles';
 export { IntakeError } from './IntakeError';
 export type { LoadedModel, PlayerArmsChoice, ReferenceSource } from './LoadMessages';
 export { LOAD_TIMEOUT_MS, loadModel, type LoadOptions } from './loadModel';
+export { ModelSource } from './ModelSource';
 export { openModel, type ModelSession } from './openModel';

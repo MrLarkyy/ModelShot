@@ -1,4 +1,4 @@
-import { checkIntake, groupFiles, loadModel } from '@modelshot/app/intake';
+import { checkIntake, groupFiles, openModel, type LoadedModel } from '@modelshot/app/intake';
 import { Viewer } from '@modelshot/app/viewer';
 import { LOOK_PRESETS, checkLookPreset, type LookPreset } from '@modelshot/looks';
 import { EmbedError } from '../EmbedError';
@@ -234,12 +234,24 @@ export function showEmbed(page: EmbedPage, hash: string, env: EmbedEnvironment):
     if (shownKey === null) applyLook();
     const file = await fetchModel(params.model, { fetch: env.fetch, frameOrigin: env.origin, signal });
     live();
-    const sidecars = await fetchSidecars(file, params.model, { fetch: env.fetch, frameOrigin: env.origin, signal });
-    live();
-    const files = [file, ...sidecars];
-    const violation = checkIntake(files);
-    if (violation) throw violation;
-    const loaded = await loadModel(groupFiles(files), { arms: params.arms, signal });
+    // One worker reads the model: it lists the files the model names, which this thread downloads, then loads it.
+    const session = openModel({ arms: params.arms, signal });
+    let loaded: LoadedModel;
+    try {
+      const sidecars = await fetchSidecars(file, params.model, {
+        fetch: env.fetch,
+        frameOrigin: env.origin,
+        signal,
+        listReferences: session.listReferences,
+      });
+      live();
+      const files = [file, ...sidecars];
+      const violation = checkIntake(files);
+      if (violation) throw violation;
+      loaded = await session.load(groupFiles(files));
+    } finally {
+      session.close();
+    }
     live();
     applyLook();
     const result = await setDocument(current, loaded.doc, key, mine);
