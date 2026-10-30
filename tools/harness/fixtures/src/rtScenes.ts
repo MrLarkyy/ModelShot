@@ -14,7 +14,7 @@ import alphaRampUri from '../models/rt-alpha-ramp.png?inline';
 import outlineHullSource from '../models/outline-hull.bbmodel?raw';
 import showcaseSource from '../models/rt-showcase.bbmodel?raw';
 import { benchScene } from './benchScene';
-import { cutoutChecker } from './cutoutChecker';
+import { cutoutChecker, cutoutGhost } from './cutoutChecker';
 import { cutoutEdge } from './cutoutEdge';
 import { edgesBbmodel, edgesHostileScene, edgesLoadScene, edgesScene, edgesWeldScene } from './edgesScene';
 import { MODEL_VIEW_LOOK, type Point3 } from './modelViewCamera';
@@ -72,6 +72,7 @@ export const RT_SCENE_NAMES = [
   'coincident-cubes',
   'grass-field',
   'cutout-checker',
+  'cutout-ghost',
   'cutout-edge',
   'partial-edge',
   'partial-edge-under',
@@ -245,6 +246,8 @@ export const RT_VARIANTS: Readonly<Record<string, Partial<RtView>>> = {
   'cutout-checker': { scene: 'cutout-checker', look: 'checker' },
   'bake-cutout-checker': { scene: 'cutout-checker', look: 'checker', bake: 64 },
   'bake-cutout-checker-fallback': { scene: 'cutout-checker', look: 'checker', bake: 64, fallback: true },
+  // MS-63: the checker scene with every texel cut out: nothing blocks, the baked catcher is exactly 1 everywhere.
+  'bake-cutout-ghost': { scene: 'cutout-ghost', look: 'checker', bake: 64 },
   // MS-30: anti-aliased cutout seams on the MSAA path; `-inside` is the same image position under the exact depth
   // key (near = far x 1e-4), whose frames draw single-sampled.
   'cutout-edge': { scene: 'cutout-edge', look: 'edge' },
@@ -413,6 +416,8 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return grassField(load(alphaPlaneSource));
     case 'cutout-checker':
       return cutoutChecker(load(showcaseSource));
+    case 'cutout-ghost':
+      return cutoutGhost(load(showcaseSource));
     case 'cutout-edge':
       return cutoutEdge(load(showcaseSource));
     case 'partial-edge':
