@@ -18,9 +18,9 @@ never parses them.
 | `e2e/`                        | Playwright specs and the guard fixture `siteTest.ts`                                                       |
 | `goldens/`                    | `landing-360.png`, `landing-768.png`, `landing-1440.png`                                                   |
 
-`pnpm --filter @modelshot/site build` writes `dist/`; `build:with-app` also builds the app into `dist/app/`, the
-layout the page expects when hosted (both use the relative base `./`). The deploy artifact is assembled by
-`tools/deploy` from the separate builds, so run `build` again after `build:with-app` before assembling.
+`pnpm --filter @modelshot/site build` writes `dist/`; `build:e2e` builds the landing page into `dist-e2e/` and the app into
+`dist-e2e/app/`, the layout the page expects when hosted (both use the relative base `./`); the tests serve `dist-e2e`.
+The deploy artifact is assembled by `tools/deploy` from the separate `dist` builds only, never from `dist-e2e`.
 
 The looks tiles and the hero island are illustrations, labelled as such ("ILLUSTRATION · NOT A RENDER"), until the
 path tracer produces sample renders. The embed tile says the snippet arrives with the embed API.
@@ -113,8 +113,8 @@ With `prefers-reduced-motion: reduce` every animation and transition is off. The
     back/forward-cache restore; the landing page removes an expired record on load and keeps a fresh one; a first
     visit creates no handoff database; 32 files of 256 MiB are stored and opened in under half of each timeout.
 
-`pnpm test` runs them after the harness (`pnpm test:browser`); the port is `MS_SITE_PORT`, else a stable per-checkout
-port derived from the site directory. CI uploads `packages/site/test-results/` with the harness results.
+`pnpm test` runs them after the harness (`pnpm test:browser`); the port is `MS_SITE_PORT`, else the site band of the per-checkout port scheme
+(docs/testing.md, Browser tests; 4910..5409). CI uploads `packages/site/test-results/` with the harness results.
 
 Goldens change only deliberately: `pnpm golden:update:site` (rewrites all three; refused when `CI` is set), then
 review the images beside the landing page canvas at the same widths before committing.

@@ -5,6 +5,8 @@ const ports = embedPorts();
 const frameOrigin = `http://127.0.0.1:${ports.frame}`;
 const hostOrigin = `http://127.0.0.1:${ports.host}`;
 const ci = Boolean(process.env['CI']);
+// Set by the concurrent runner (tools/harness/src/runBrowserSuites.ts) after it built every suite: only serve then.
+const prebuilt = process.env['MS_E2E_PREBUILT'] === '1';
 
 // Two servers, two origins: the production embed build (frame page and element script) and a host page server that
 // also serves the test models, as a marketplace or wiki page and a model host would. The browser runs WebGL on
@@ -20,7 +22,7 @@ export default defineConfig({
   reporter: [['list']],
   webServer: [
     {
-      command: `pnpm run serve:e2e --port ${ports.frame}`,
+      command: `pnpm run ${prebuilt ? 'preview:e2e' : 'serve:e2e'} --port ${ports.frame}`,
       url: `${frameOrigin}/modelshot-embed.js`,
       reuseExistingServer: false,
       timeout: 180_000,

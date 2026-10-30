@@ -4,6 +4,8 @@ import { appPort } from './e2e/appPort';
 const port = appPort();
 const origin = `http://127.0.0.1:${port}`;
 const ci = Boolean(process.env['CI']);
+// Set by the concurrent runner (tools/harness/src/runBrowserSuites.ts) after it built every suite: only serve then.
+const prebuilt = process.env['MS_E2E_PREBUILT'] === '1';
 
 // The server is the production build of the app in e2e mode (the test hook included), served under /app/ like the
 // hosted site; the browser runs WebGL on SwiftShader like the harness.
@@ -16,7 +18,7 @@ export default defineConfig({
   forbidOnly: ci,
   reporter: [['list']],
   webServer: {
-    command: `pnpm run serve:e2e --port ${port}`,
+    command: `pnpm run ${prebuilt ? 'preview:e2e' : 'serve:e2e'} --port ${port}`,
     url: `${origin}/app/`,
     reuseExistingServer: false,
     timeout: 120_000,
