@@ -128,11 +128,11 @@ test('the shortcuts work from the keyboard and never override the view keys', as
 
 test('a render that cannot get a graphics context says it failed and can be started again', async ({ page }) => {
   await page.addInitScript(() => {
-    const original = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, ...args: unknown[]) {
-      if (this.id === 'result') return null;
-      return (original as (...a: unknown[]) => RenderingContext | null).apply(this, args);
-    } as typeof original;
+    type GetContext = (this: HTMLCanvasElement, ...args: unknown[]) => RenderingContext | null;
+    const original = Reflect.get(HTMLCanvasElement.prototype, 'getContext') as GetContext;
+    Reflect.set(HTMLCanvasElement.prototype, 'getContext', function (this: HTMLCanvasElement, ...args: unknown[]) {
+      return this.id === 'result' ? null : original.apply(this, args);
+    });
   });
   await openApp(page);
   await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
