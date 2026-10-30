@@ -1455,7 +1455,8 @@ test.describe('partial-alpha seams: the render covers each row like the preview 
   test('partial-edge: mean per-row covered area of preview and render within 0.5 px, the worst row within the noise', async ({
     page,
   }) => {
-    test.setTimeout(240_000);
+    // 96 s serial, 3.5 minutes at six parallel workers (MS-74).
+    test.setTimeout(600_000);
     const linear = (rgb: readonly [number, number, number]) =>
       agxInverse([rgb[0] / 255, rgb[1] / 255, rgb[2] / 255], lookPresetFile('studio').toneMapping);
     const rt = async (query: string): Promise<Image> =>

@@ -87,7 +87,7 @@ lands in one or two shards; each block is its own project with its own shards. `
 `golden*`, `modelView`, `realtime.spec.ts`, `textureFilter.spec.ts` and `textureWrap.spec.ts` without the tests titled `baked lighting`
 (`grepInvert`), which `bake` runs, apart from the three `@timing` ones, which `bench` runs, and without the one titled
 `like the baked preview`; `golden-pt` runs `pathtracer.spec.ts` without the tests titled `like the baked preview`,
-which `pair` runs (the 15 preview-vs-render pairing tests of `pathtracer.spec.ts`, `textureFilter.spec.ts` and `textureWrap.spec.ts`). Each test is in exactly one project, and the plain `playwright test` runs every project, while `pnpm test` runs them in the two phases above (`bench` last, alone).
+which `pair` runs (the 16 preview-vs-render pairing tests of `pathtracer.spec.ts`, `textureFilter.spec.ts` and `textureWrap.spec.ts`). Each test is in exactly one project, and the plain `playwright test` runs every project, while `pnpm test` runs them in the two phases above (`bench` last, alone).
 
 Shard sizes (MS-39, `--list --project <p> --shard <k>/<n>`), each with the sum of its tests' CI times: the per-test
 times of main's run 39878163371 (MS-30's merge, so its three cut-out seam tests are counted), MS-22's 31 export tests
@@ -97,13 +97,13 @@ differ by up to 2x. The build takes about 6 s (`bake-2` in run 39878163371: a 14
 
 | Project     | Tests | Shards | Tests per shard             | Minutes per shard (sum)           |
 | ----------- | ----: | -----: | --------------------------- | --------------------------------- |
-| `golden`    |   212 |      2 | 106 / 106                   | 6.3 / 3.9                         |
+| `golden`    |   216 |      2 | 108 / 108                   | 6.3 / 3.9                         |
 | `golden-pt` |    93 |      6 | 16 / 16 / 16 / 15 / 15 / 15 | 2.6 / 4.3 / 6.3 / 3.7 / 1.0 / 1.5 |
-| `pair`      |    15 |      3 | 5 / 5 / 5                   | 5.3 / 2.8 / 2.5                   |
+| `pair`      |    16 |      3 | 6 / 5 / 5                   | 5.3 / 2.8 / 2.5                   |
 | `bake`      |    22 |      3 | 8 / 7 / 7                   | 6.4 / 4.3 / 3.5                   |
 | `bench`     |     4 |      1 | 4                           | its own job                       |
 
-The counts are MS-39's; `pair` has since grown to 15 tests (MS-52's and MS-38's pairs) in the same 3 shards.
+The test counts are MS-60's (after MS-38); the minutes are MS-39's sums, without the tests added since.
 
 Playwright install: `playwright install --with-deps` took 12-15 s on most jobs but 4.5 to 9.4 minutes on some (main run
 40368207797: `bake-3`, `golden-2`, `golden-pt-5`; run 39878163371: 13 s to 9.7 minutes). The browser download is not the slow part:
@@ -117,7 +117,7 @@ jobs (the mirror was fast that time) and saved the browser cache (113 MB) and th
 downloaded nothing (`Need to get 0 B/21.9 MB of archives`), and the install step took 10-23 s; a slow mirror no longer
 reaches it, only `apt-get update` (4 s) still uses the network.
 
-346 tests in all. The path-tracer tests had been part of `golden` (241 tests in 5 shards of 48-49): the shard that held
+351 tests in all. The path-tracer tests had been part of `golden` (241 tests in 5 shards of 48-49): the shard that held
 48 of them summed to 16.0 minutes, the others 1.8-7.2, and the same block in shard 2 of 4 ran 16.3 and 17.4 minute jobs
 on main. `golden-pt` has 6 shards because its two longest tests (a denoised 2x render in batches, 3.0 minutes, and a
 denoised 2x render paired with the preview, 1.9 minutes) are four tests apart in the file: with 3, 4 or 5 shards one
@@ -137,7 +137,7 @@ the path-tracer determinism batches test 35.0 s (over 30 s), its same-seed test 
 transparency tests up to 22.5 s, the lifetime tests 14.9-18.6 s, the 10 000 coincident cubes test 10.0 s. A suite or
 test whose CI time reaches a third of the default carries a timeout: 180 s for the baked goldens (bakes took 33-42 s in run 39624802150), 300 s for the baked lighting describe, 720 s for its determinism test (1.6 minutes on a normal runner, over 3 on a slow one, 5.2 at six local workers), 300 s for the baked-preview pairing tests (up to 1.3 minutes, about 2.6 on a slow VM; MS-38's texture-filter pairing test 53.8 s at six local workers), 120 s for the texture-filter render golden (3.1 s at six local workers), 120 s for the path-tracer goldens, determinism and lifetime describes and the coincident cubes test, 180 s for the
 transparency describe (66 s at six local workers), 300 s for the exact-key silhouette test (29.5 s serial), 600 s for the
-exact-key catcher test (49 s serial) and the preset rim probes (42.6 s serial), 120 s for the realtime shimmer test (`texel anti-aliasing halves shimmer`, eight renders: 22-35 s alone locally, 30.3 and 31.1 s in the full serial suite, 24.1 s at six local workers); each at least 3x the worst CI time and twice the worst local time. A
+exact-key catcher test (49 s serial) and the preset rim probes (42.6 s serial), 120 s for the realtime shimmer test (`texel anti-aliasing halves shimmer`, eight renders: 22-35 s alone locally, 30.3 and 31.1 s in the full serial suite, 24.1 s at six local workers), 180 s for the partial-alpha seam describe (MS-60: 5.4-11.8 s a test at six local workers, 6.9-15.4 s serial), 600 s for the partial-edge per-row pairing test (MS-60: 96 s serial, 3.5 minutes at six local workers); each at least 3x the worst CI time and twice the worst local time. A
 hang now fails after that time, not after the 60 s default; several hangs in one
 shard can reach the 20-minute job limit, and the job is then cancelled instead of reporting the failures.
 
@@ -800,13 +800,14 @@ Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with r
 | `gltf-nodes-y030`          | 0 (2 218)                           | 291, 0.00444, 0.943 (MS-60; MS-54 319, 0.00487, 0.955) | 0.00555, 1.179 (MS-60; was 0.00609, 1.194) |
 | `texture-wrap`             | 0 (3 444)                           | 46, 0.00070, 0.671 (MS-52, new; textureWrap.spec.ts)   | 0.00088, 0.839                             |
 | `partial-edge`             | 0 (3 844)                           | 2, 0.00003, 1.124 (MS-60, new)                         | 0.00004, 1.405                             |
-| `texture-filter`           | 0 (2 600)                           | 7, 0.00011, 0.396 (MS-38, new; textureFilter.spec.ts)   | 0.00014, 0.495                             |
+| `texture-filter`           | 0 (2 600)                           | 6, 0.00009, 0.390 (MS-60; MS-38 7, 0.00011, 0.396)     | 0.00011, 0.488 (MS-60; was 0.00014, 0.495) |
 
 MS-60 (anti-aliased partial seams, opaque|partial seams and partial outlines in the preview's raster frames)
 re-measured every pair: `turntable-y030`, `iso`, `cutout-checker`, `edges`, `outline-hull`, `obj-shapes-y030` and
 `gltf-nodes-y030` came closer to the render (rows above; `iso`'s framing preview at `msaa=0` now ramps its partial
 seams, 1 517 silhouette pixels against 1 533), so their limits are tightened to measured x 1.25; `alpha-plane`, the
-player and preset views, `gltf-contact` and `texture-wrap` measured as before. `partial-edge` adds a per-row check
+player and preset views, `gltf-contact` and `texture-wrap` measured as before; after MS-38's merge `texture-filter`
+(textureFilter.spec.ts) came closer too, 6 px against 7, its limit tightened the same way. `partial-edge` adds a per-row check
 (`src/rowCoverage.ts`, project `golden-pt`): in rows inside texel rows 1-4 (partial|invisible seams and the outline)
 and 5-6 (opaque|partial seams), the covered area of preview and render, each against its own texel colours. The
 criterion is the mean per-row difference within 0.5 px, where the render's noise averages out: measured 0.232 px
