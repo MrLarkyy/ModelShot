@@ -16,7 +16,8 @@ export type GltfWarningCode =
   | 'NO_SCENE'
   /** A sampler asks magFilter NEAREST with a linear-family minFilter; the texture is drawn nearest (MS-38). */
   | 'TEXTURE_FILTER_NEAREST'
-  | 'UV_WRAP_CLAMPED'
+  /** UVs leave 0..1 on an axis whose wrap is drawn differently: mirrored as repeat, clamp beside repeat (MS-70). */
+  | 'UV_WRAP_APPROXIMATED'
   | 'BASE_COLOR_FACTOR_IGNORED'
   | 'MISSING_RESOURCE'
   | 'MISSING_TEXCOORD'
@@ -48,7 +49,7 @@ const TITLES: Readonly<Record<GltfWarningCode, string>> = {
   EXTRA_SCENES_IGNORED: 'Other scenes ignored',
   NO_SCENE: 'No scene',
   TEXTURE_FILTER_NEAREST: 'Texture drawn with nearest filtering',
-  UV_WRAP_CLAMPED: 'Texture wrapping clamped',
+  UV_WRAP_APPROXIMATED: 'Texture wrapping approximated',
   BASE_COLOR_FACTOR_IGNORED: 'Base colour factor ignored',
   MISSING_RESOURCE: 'Missing file',
   MISSING_TEXCOORD: 'Missing texture coordinates',

@@ -16,6 +16,8 @@ type Rgba = readonly [number, number, number, number];
 
 const GL_NEAREST = 9728;
 const GL_LINEAR = 9729;
+const GL_CLAMP_TO_EDGE = 33071;
+const GL_REPEAT = 10497;
 const GL_LINEAR_MIPMAP_LINEAR = 9987;
 
 /** An 8 x 8 PNG data URI, texel (x, y) in `color(x, y)`. */
@@ -108,8 +110,8 @@ function quadBuffers(quads: readonly FilterQuad[]) {
  * through `loadGltf`, so the filters come from its samplers: LINEAR for the linear quads, NEAREST beside it on the
  * same checker image for the nearest one (two scene textures sharing bytes). Materials without a mesh hold sentinel
  * images so that, in the path tracer's texture layers (shelf-packed in document order), one lies right of every linear
- * texture; a tap that left its image would show it. glTF wrap is not mapped, so the repeat quads' textures get
- * `wrap: 'repeat'` on the loaded document.
+ * texture; a tap that left its image would show it. The wrap comes from the samplers too: CLAMP_TO_EDGE for the
+ * quads that stay inside 0..1, REPEAT for the repeat and minified quads.
  */
 export function textureFilterScene(): SceneDocument {
   const checker = image((x, y) => opaque(checkerColor(x, y)));
@@ -119,17 +121,19 @@ export function textureFilterScene(): SceneDocument {
     image((x) => opaque(repeatColumnColor(x))),
     checker,
   ];
-  const sampler = { linear: 0, nearest: 1, sentinel: 2 } as const;
+  const sampler = { linear: 0, nearest: 1, sentinel: 2, linearRepeat: 3 } as const;
+  const clamp = { wrapS: GL_CLAMP_TO_EDGE, wrapT: GL_CLAMP_TO_EDGE };
   const samplers = [
-    { magFilter: GL_LINEAR, minFilter: GL_LINEAR_MIPMAP_LINEAR },
-    { magFilter: GL_NEAREST, minFilter: GL_NEAREST },
-    { magFilter: GL_NEAREST },
+    { magFilter: GL_LINEAR, minFilter: GL_LINEAR_MIPMAP_LINEAR, ...clamp },
+    { magFilter: GL_NEAREST, minFilter: GL_NEAREST, ...clamp },
+    { magFilter: GL_NEAREST, ...clamp },
+    { magFilter: GL_LINEAR, minFilter: GL_LINEAR_MIPMAP_LINEAR, wrapS: GL_REPEAT, wrapT: GL_REPEAT },
   ];
   const textures: { source: number; sampler: number }[] = [
     { source: 0, sampler: sampler.linear },
     { source: 1, sampler: sampler.linear },
-    { source: 2, sampler: sampler.linear },
-    { source: 3, sampler: sampler.linear },
+    { source: 2, sampler: sampler.linearRepeat },
+    { source: 3, sampler: sampler.linearRepeat },
     { source: 0, sampler: sampler.nearest },
   ];
   // A sentinel per linear texture: its own image entry, so each is a scene texture of its own.
@@ -190,12 +194,5 @@ export function textureFilterScene(): SceneDocument {
     accessors,
   };
   // Scene units as written: the layout's coordinates are those of the views.
-  const doc = loadGltf(JSON.stringify(gltf), { unitScale: 1 }).scene;
-  const repeated = new Set(
-    FILTER_QUADS.filter((quad) => quad.wrap === 'repeat').map((quad) => doc.materials[materialOf[quad.name]]?.texture),
-  );
-  return {
-    ...doc,
-    textures: doc.textures.map((texture, t) => (repeated.has(t) ? { ...texture, wrap: 'repeat' as const } : texture)),
-  };
+  return loadGltf(JSON.stringify(gltf), { unitScale: 1 }).scene;
 }

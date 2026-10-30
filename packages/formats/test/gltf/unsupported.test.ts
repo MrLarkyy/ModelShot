@@ -163,10 +163,10 @@ const ROWS: Readonly<Record<string, Row>> = {
     doc: () => withTexture(TRIANGLE, { magFilter: 9728, minFilter: 9729 }),
     expected: ['warning', 'TEXTURE_FILTER_NEAREST', '$.samplers[0]'],
   },
-  'repeat wrapping': {
+  'mirrored wrapping': {
     covers: ['sampler.wrapS', 'sampler.wrapT'],
-    doc: () => withTexture({ ...TRIANGLE, uvs: [0, 0, 1.5, 0, 0, 1] }),
-    expected: ['warning', 'UV_WRAP_CLAMPED', '$.materials[0]'],
+    doc: () => withTexture({ ...TRIANGLE, uvs: [0, 0, 1.5, 0, 0, 1] }, { wrapS: 33648 }),
+    expected: ['warning', 'UV_WRAP_APPROXIMATED', '$.materials[0]'],
   },
   'non-PNG image': {
     covers: [],
