@@ -72,13 +72,16 @@ export function bakeMesh(
     if (materialUvs?.textured) {
       writeUvRects(uvs, indices, uvRects, range);
       const reported = context.reportedWrap;
-      if (materialUvs.wraps && !reported.has(plan.material) && outsideUnit(uvs, base, base + plan.vertices)) {
-        reported.add(plan.material);
-        context.warnings.add(
-          'UV_WRAP_CLAMPED',
-          materialUvs.path,
-          'UVs leave 0..1 under a repeating sampler; the texture is clamped at its edges',
-        );
+      const loss = materialUvs.wrapLoss;
+      if (!reported.has(plan.material)) {
+        const lost = [
+          loss.s !== null && outsideUnit(uvs, base, base + plan.vertices, 0) ? loss.s : null,
+          loss.t !== null && outsideUnit(uvs, base, base + plan.vertices, 1) ? loss.t : null,
+        ].filter((text) => text !== null);
+        if (lost.length > 0) {
+          reported.add(plan.material);
+          context.warnings.add('UV_WRAP_APPROXIMATED', materialUvs.path, lost.join('; '));
+        }
       }
     } else writeUntexturedUvs(uvs, uvRects, base, base + plan.vertices);
     groups.push({
@@ -142,8 +145,8 @@ function writeNormals(normals: Float32Array, positions: Float32Array, indices: U
   }
 }
 
-function outsideUnit(uvs: Float32Array, from: number, to: number): boolean {
-  for (let i = from * 2; i < to * 2; i++) {
+function outsideUnit(uvs: Float32Array, from: number, to: number, axis: 0 | 1): boolean {
+  for (let i = from * 2 + axis; i < to * 2; i += 2) {
     const value = uvs[i] ?? 0;
     if (value < -1e-6 || value > 1 + 1e-6) return true;
   }

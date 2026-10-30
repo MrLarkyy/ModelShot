@@ -174,7 +174,7 @@ describe('convertMaterials', () => {
     ]);
   });
 
-  it('reports magFilter NEAREST with a linear minFilter once per sampler, and UVs outside 0..1 under a repeating sampler', () => {
+  it('reports magFilter NEAREST with a linear minFilter once per sampler, and UVs outside 0..1 beside a clamp', () => {
     const material = (index: number) => ({ pbrMetallicRoughness: { baseColorTexture: { index } } });
     const outside: TestPrimitive = { ...TRIANGLE, uvs: [0, 0, 2, 0, 0, 1] };
     const doc = gltfDoc({
@@ -193,18 +193,116 @@ describe('convertMaterials', () => {
       ],
       samplers: [
         { magFilter: 9728, minFilter: 9987 },
-        { magFilter: 9728, wrapS: 33071, wrapT: 33071 },
+        { magFilter: 9728, wrapS: 33071, wrapT: 10497 },
       ],
       images: [image()],
     });
     const { scene, warnings } = loadGltf(json(doc));
     expect(warnings.map((w) => [w.code, w.path])).toEqual([
       ['TEXTURE_FILTER_NEAREST', '$.samplers[0]'],
-      ['UV_WRAP_CLAMPED', '$.materials[0]'],
-      ['UV_WRAP_CLAMPED', '$.materials[1]'],
+      ['UV_WRAP_APPROXIMATED', '$.materials[2]'],
     ]);
     expect(scene.textures).toHaveLength(1);
     expect(scene.textures[0]).not.toHaveProperty('filter');
+  });
+
+  describe('sampler wrap', () => {
+    const outside: TestPrimitive = { ...TRIANGLE, uvs: [0, 0, 2, 0, 0, 2] };
+    const onlyU: TestPrimitive = { ...TRIANGLE, uvs: [0, 0, 2, 0, 0, 1] };
+    const onlyV: TestPrimitive = { ...TRIANGLE, uvs: [0, 0, 1, 0, 0, 2] };
+    const inside: TestPrimitive = { ...TRIANGLE, uvs: [0, 0, 1, 0, 0, 1] };
+    /** One textured primitive per sampler (null: none) on one image. */
+    const loadWraps = (samplers: (Json | null)[], primitive: TestPrimitive = outside, images = [image()]) =>
+      loadGltf(
+        json(
+          gltfDoc({
+            meshes: [samplers.map((_, material): TestPrimitive => ({ ...primitive, material }))],
+            materials: samplers.map((_, index) => ({ pbrMetallicRoughness: { baseColorTexture: { index } } })),
+            textures: samplers.map((sampler, k) => (sampler ? { source: 0, sampler: k } : { source: 0 })),
+            samplers: samplers.map((sampler) => sampler ?? {}),
+            images,
+          }),
+        ),
+      );
+    const CLAMP = { wrapS: 33071, wrapT: 33071 };
+    const wrapOf = (sampler: Json | null, primitive?: TestPrimitive) => {
+      const { scene, warnings } = loadWraps([sampler], primitive);
+      return [scene.textures[0]?.wrap ?? 'absent', warnings.map((w) => w.code)];
+    };
+
+    it('the default wrap and no sampler repeat, without a warning for UVs outside 0..1', () => {
+      expect(wrapOf({})).toEqual(['repeat', []]);
+      expect(wrapOf({ wrapS: 10497 })).toEqual(['repeat', []]);
+      expect(wrapOf(null)).toEqual(['repeat', []]);
+    });
+
+    it('clamping on both axes writes no key and does not warn', () => {
+      expect(wrapOf(CLAMP)).toEqual(['absent', []]);
+    });
+
+    it('mirrored repeat is drawn repeated and warns, naming the axes, once, only for UVs outside 0..1', () => {
+      const { scene, warnings } = loadWraps([{ wrapS: 33648, wrapT: 33648 }]);
+      expect(scene.textures[0]).toHaveProperty('wrap', 'repeat');
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toMatchObject({ code: 'UV_WRAP_APPROXIMATED', path: '$.materials[0]' });
+      expect(warnings[0]!.message).toContain('wrapS MIRRORED_REPEAT');
+      expect(warnings[0]!.message).toContain('wrapT MIRRORED_REPEAT');
+      expect(wrapOf({ wrapS: 33648, wrapT: 33648 }, inside)).toEqual(['repeat', []]);
+    });
+
+    it('clamp beside repeat is drawn repeated and warns only when the clamped axis leaves 0..1', () => {
+      const mixed = { wrapS: 10497, wrapT: 33071 };
+      expect(wrapOf(mixed, onlyV)).toEqual(['repeat', ['UV_WRAP_APPROXIMATED']]);
+      expect(wrapOf(mixed, onlyU)).toEqual(['repeat', []]);
+      expect(wrapOf(mixed, inside)).toEqual(['repeat', []]);
+    });
+
+    it('a wrap value outside the three glTF ones is an error', () => {
+      for (const [key, value] of [
+        ['wrapS', 1234],
+        ['wrapT', -1],
+        ['wrapS', 1.5],
+      ] as const) {
+        expectGltfError(
+          json(
+            gltfDoc({
+              meshes: [[{ ...TRIANGLE, material: 0 }]],
+              materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }],
+              textures: [{ source: 0, sampler: 0 }],
+              samplers: [{ [key]: value }],
+              images: [image()],
+            }),
+          ),
+          'INVALID_FIELD',
+          `$.samplers[0].${key}`,
+        );
+      }
+    });
+
+    it('one image under a clamping and a repeating sampler is two scene textures sharing its bytes', () => {
+      const { scene, warnings } = loadWraps([CLAMP, {}, CLAMP, null]);
+      expect(warnings).toEqual([]);
+      expect(scene.textures).toHaveLength(2);
+      const [clamped, repeated] = scene.textures;
+      expect(clamped).not.toHaveProperty('wrap');
+      expect(repeated).toEqual({ ...clamped, wrap: 'repeat' });
+      expect(repeated!.bytes).toBe(clamped!.bytes);
+      expect(scene.materials.map((m) => m.texture)).toEqual([0, 1, 0, 1]);
+    });
+
+    it('linear repeat is keyed apart from linear clamp', () => {
+      const { scene } = loadWraps([{ magFilter: 9729, ...CLAMP }, { magFilter: 9729 }]);
+      expect(scene.textures.map((t) => [t.filter, t.wrap])).toEqual([
+        ['linear', undefined],
+        ['linear', 'repeat'],
+      ]);
+    });
+
+    it('a missing image gets no wrap key', () => {
+      const { scene } = loadWraps([{}], inside, [{ uri: 'absent.png' }]);
+      expect(scene.textures[0]).toMatchObject({ missing: true });
+      expect(scene.textures[0]).not.toHaveProperty('wrap');
+    });
   });
 
   describe('sampler filters', () => {
