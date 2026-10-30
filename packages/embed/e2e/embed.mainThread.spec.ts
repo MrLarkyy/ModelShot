@@ -57,13 +57,11 @@ async function frameTimeline(page: Page): Promise<FrameTimeline> {
   return frame.evaluate(() => ({
     longTasks: window.__timeline?.longTasks ?? [],
     states: window.__timeline?.states ?? {},
-    resources: performance
-      .getEntriesByType('resource')
-      .map((r) => ({
-        name: r.name,
-        startTime: r.startTime,
-        responseEnd: (r as PerformanceResourceTiming).responseEnd,
-      })),
+    resources: performance.getEntriesByType('resource').map((r) => ({
+      name: r.name,
+      startTime: r.startTime,
+      responseEnd: (r as PerformanceResourceTiming).responseEnd,
+    })),
   }));
 }
 
