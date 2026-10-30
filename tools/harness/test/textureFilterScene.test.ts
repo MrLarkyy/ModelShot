@@ -13,7 +13,7 @@ describe('texture-filter fixture scene', () => {
     return material ? material.texture : -1;
   };
 
-  it('is a valid document whose quads sample as the glTF samplers (and the repeat set after loading) say', () => {
+  it('is a valid document whose quads sample as the glTF samplers say', () => {
     expect(() => validateScene(doc)).not.toThrow();
     for (const quad of FILTER_QUADS) {
       const sampling = textureSampling(doc.textures[textureOf(quad.name)]);
