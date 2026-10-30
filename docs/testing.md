@@ -754,7 +754,8 @@ all 49 296 (1 040 before). Pairs before -> after (ratio / mean delta), limits un
 `partial-edge` went from 2 to 3 pixels (0.00005 against the old limit 0.00004; mean 1.124 -> 1.120): one
 catcher-shadow pixel 25 levels from the render both before and after moved by 1 level in blue towards it, which
 crosses pixelmatch's threshold. Its limit was re-measured, x 1.25: 0.00006 / 1.4 (was 0.00004 / 1.405); no other
-limit changed. New: realtime.spec "nothing blocks" (the `cutout-ghost` scene, the checker geometry with every texel cut out: every catcher texel exactly 1 in all four channels, the preview
+limit changed. New: realtime.spec "nothing blocks" (the `cutout-ghost` scene, the checker geometry with every texel
+cut out: every catcher texel exactly 1 in all four channels, the preview
 byte-identical with and without the catcher; it failed before with 1 040 of 49 296), "the lit catcher is exact away
 from the model" (share of fill-exact texels at least 0.0685 / 1.25; 0.0014 before) and "a look with a zero channel
 keeps its baked key shadow" (Studio with sky and ground blue 0: no non-finite texel, 44 152 shadowed catcher texels as
