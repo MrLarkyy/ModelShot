@@ -257,6 +257,44 @@ describe('convertMaterials', () => {
       expect(wrapOf(mixed, inside)).toEqual(['repeat', []]);
     });
 
+    it('a lossy axis on another primitive of the same material is reported once per axis', () => {
+      const doc = gltfDoc({
+        meshes: [
+          [
+            { ...TRIANGLE, material: 0, uvs: [0, 0, 2, 0, 0, 1] },
+            { ...TRIANGLE, material: 0, uvs: [0, 0, 1, 0, 0, 2] },
+            { ...TRIANGLE, material: 0, uvs: [0, 0, 3, 0, 0, 3] },
+          ],
+        ],
+        materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }],
+        textures: [{ source: 0, sampler: 0 }],
+        samplers: [{ wrapS: 33648, wrapT: 33648 }],
+        images: [image()],
+      });
+      const { warnings } = loadGltf(json(doc));
+      expect(warnings).toHaveLength(2);
+      expect(warnings[0]!.message).toContain('wrapS MIRRORED_REPEAT');
+      expect(warnings[1]!.message).toContain('wrapT MIRRORED_REPEAT');
+    });
+
+    it('a linear texture warns for UVs inside 0..1 on a lossy axis, a nearest one does not', () => {
+      const mirrored = { wrapS: 33648, wrapT: 33648 };
+      expect(wrapOf({ magFilter: 9729, ...mirrored }, inside)).toEqual(['repeat', ['UV_WRAP_APPROXIMATED']]);
+      expect(wrapOf({ magFilter: 9728, ...mirrored }, inside)).toEqual(['repeat', []]);
+      expect(wrapOf({ magFilter: 9729, ...CLAMP }, outside)).toEqual(['absent', []]);
+    });
+
+    it('a linear texture keeps UVs inside its half-texel margin silent', () => {
+      const mirrored = { magFilter: 9729, wrapS: 33648, wrapT: 33648 };
+      const { warnings } = loadWraps([mirrored], { ...TRIANGLE, uvs: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5] });
+      expect(warnings).toEqual([]);
+    });
+
+    it('a missing image under a lossy wrap does not warn', () => {
+      const { warnings } = loadWraps([{ magFilter: 9729, wrapS: 33648 }], outside, [{ uri: 'absent.png' }]);
+      expect(warnings.map((w) => w.code)).toEqual(['MISSING_RESOURCE']);
+    });
+
     it('a wrap value outside the three glTF ones is an error', () => {
       for (const [key, value] of [
         ['wrapS', 1234],

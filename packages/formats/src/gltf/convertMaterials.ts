@@ -35,16 +35,23 @@ export interface MaterialUvs {
   readonly transform: TextureTransform | null;
   /**
    * Per UV axis (s = u, t = v): the wrap mode the sampler asks for when the texture is drawn differently (mirrored
-   * drawn repeated; clamped beside a repeating axis), else null. UVs outside 0..1 on such an axis are reported.
+   * drawn repeated; clamped beside a repeating axis), else null. UVs in reach of the wrap on such an axis are reported.
    */
   readonly wrapLoss: WrapLoss;
   readonly doubleSided: boolean;
   readonly path: string;
 }
 
+/** A wrap the texture draws differently on one axis, and how close to the image edge a UV must stay to be exact. */
+export interface AxisWrapLoss {
+  readonly message: string;
+  /** UVs below this or above 1 − this reach the wrap: half a texel for a linear texture (its taps), else 0. */
+  readonly margin: number;
+}
+
 export interface WrapLoss {
-  readonly s: string | null;
-  readonly t: string | null;
+  readonly s: AxisWrapLoss | null;
+  readonly t: AxisWrapLoss | null;
 }
 
 const NO_WRAP_LOSS: WrapLoss = { s: null, t: null };
@@ -75,7 +82,7 @@ const WHITE = [1, 1, 1, 1] as const;
 /**
  * glTF materials as scene materials, one for one: alpha mode and cutoff (`BLEND` gets `BLEND_ALPHA_CUTOFF`),
  * `doubleSided` for the mesh groups, the base colour texture (PNG only; read from a `data:` URI, a buffer view or a
- * picked file) with its sampler's filter (`readSampler`), or, without a texture, a generated 1×1 PNG of the base colour
+ * picked file) with its sampler's filter and wrap (`readSampler`), or, without a texture, a generated 1×1 PNG of the base colour
  * factor in sRGB, so every renderer shows it with no material field of its own. Everything else a material holds is
  * reported, never silently dropped.
  */
@@ -187,7 +194,7 @@ export function convertMaterials(json: JsonObject, sources: MaterialSources): Co
         textured: true,
         texCoord: transform?.texCoord ?? texCoord,
         transform,
-        wrapLoss: samplerInfo.wrapLoss,
+        wrapLoss: drawnWrapLoss(samplerInfo, textures[texture]),
         doubleSided,
         path,
       };
@@ -240,10 +247,24 @@ interface SamplerInfo {
   readonly minLinear: boolean;
   /** One wrap per scene texture: clamp only when both axes clamp, else repeat. */
   readonly wrap: SceneTextureWrap;
-  readonly wrapLoss: WrapLoss;
+  /** The asked-for wrap that is drawn differently, per axis; the image size is not known here. */
+  readonly wrapLoss: { readonly s: string | null; readonly t: string | null };
 }
 
-const DEFAULT_SAMPLER: SamplerInfo = { filter: 'nearest', minLinear: false, wrap: 'repeat', wrapLoss: NO_WRAP_LOSS };
+function drawnWrapLoss(sampler: SamplerInfo, texture: SceneTexture | undefined): WrapLoss {
+  if (!texture || texture.missing) return NO_WRAP_LOSS;
+  const linear = sampler.filter === 'linear';
+  const axis = (message: string | null, size: number): AxisWrapLoss | null =>
+    message === null ? null : { message, margin: linear ? 0.5 / Math.max(1, size) : 0 };
+  return { s: axis(sampler.wrapLoss.s, texture.width), t: axis(sampler.wrapLoss.t, texture.height) };
+}
+
+const DEFAULT_SAMPLER: SamplerInfo = {
+  filter: 'nearest',
+  minLinear: false,
+  wrap: 'repeat',
+  wrapLoss: { s: null, t: null },
+};
 
 const WRAP_NAMES: Readonly<Record<number, string>> = {
   [CLAMP_TO_EDGE]: 'CLAMP_TO_EDGE',
