@@ -2,7 +2,8 @@
  * Light baked for one lightmap layout (`lightmapLayout`), as `LightBaker` of `@modelshot/pathtracer` produces it and
  * `RealtimeRenderer.setLighting` takes it. Texel (x, y) is element `(y × width + x) × 4` of `data`, RGBA as IEEE half
  * floats: rgb the fill light as a multiple of the unoccluded fill `hemisphereFill(n)` (1 where nothing blocks the sky),
- * a the key light's visibility 0..1. Texels of no chart hold 1. Valid only under looks of the same `lightingKey`.
+ * a the key light's visibility 0..1. Texels of no chart hold 1; a channel the look's dome leaves at 0 holds 1. Valid
+ * only under looks of the same `lightingKey`.
  */
 export interface BakedLighting {
   /** `LightmapLayout.layoutKey` of the document it was baked for. */
@@ -21,7 +22,9 @@ export interface BakedLighting {
 /**
  * The shadow catcher's lightmap (`shadowCatcherPlane`): texel (x, z) covers
  * `[rect[0] + x × dx, rect[0] + (x + 1) × dx] × [rect[1] + z × dz, …]` with `dx = (rect[2] − rect[0]) / width`; data as
- * `BakedLighting.data`, fill as a multiple of the sky fill.
+ * `BakedLighting.data` but rgb is 1 less the fill the texel's rays lost to blockers, as a multiple of the sky fill
+ * `hemisphereFill(up)` (the path tracer's control variate): exactly 1 where nothing blocks, and a fully blocked texel's
+ * mean may dip below 0 (unclamped). The preview shades it with `catcherShadeOfLoss`.
  */
 export interface BakedCatcher {
   readonly y: number;

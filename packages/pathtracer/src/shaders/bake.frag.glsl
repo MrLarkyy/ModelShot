@@ -14,7 +14,10 @@ precision highp sampler2DArray;
 // One sample of the light bake per lightmap texel, with the path tracer's own rules for every ray (bvhTraverse): the
 // key's visibility through shadowTransmittance in the key cone, the fill as the environment along one cosine-weighted
 // direction that escapes. No interreflection: the bake is what the preview's lighting lacks, occlusion. Pass sums:
-// rgb the fill as a multiple of hemisphereFill(n), a the key visibility; texels of no chart add 1 (unbaked).
+// rgb the fill as a multiple of hemisphereFill(n), a the key visibility; texels of no chart add 1 (unbaked). The
+// catcher's rgb is instead 1 less the fill its ray lost to a blocker over hemisphereFill(up), the path tracer's control
+// variate (trace.frag.glsl catcherShadeAt): exactly 1 where nothing blocks, unclamped, so a fully blocked texel's mean
+// may dip below 0, as the trace's own mean does.
 
 // The running sum of earlier samples (AccumulationTargets).
 uniform highp sampler2D u_previous;
@@ -80,28 +83,55 @@ int chartTriangle(int entry) {
   return int(four[entry % 4]);
 }
 
-// The light of one surface point: rgb the fill over hemisphereFill(normal), a the key visibility.
+// Per channel, light over its unoccluded value; a channel the look leaves dark (0 / 0) has nothing to lose: 1.
+vec3 fillShare(vec3 light, vec3 full) {
+  return vec3(
+    full.r > 0.0 ? light.r / full.r : 1.0,
+    full.g > 0.0 ? light.g / full.g : 1.0,
+    full.b > 0.0 ? light.b / full.b : 1.0);
+}
+
+// Per channel, what blockers took over the unoccluded value; a dark channel loses nothing: 0.
+vec3 lostShare(vec3 lost, vec3 full) {
+  return vec3(
+    full.r > 0.0 ? lost.r / full.r : 0.0,
+    full.g > 0.0 ? lost.g / full.g : 0.0,
+    full.b > 0.0 ? lost.b / full.b : 0.0);
+}
+
+// The key's visibility at a surface point in the key cone, 0 on the side facing away from the key.
+float bakeKey(vec3 origin, vec3 side, int skip, uint key) {
+  if (dot(side, u_lookKeyDirection) <= 0.0) return 0.0;
+  vec3 cone = keyConeDirection(unitRandom(key, KEY_DIMENSION, 0u), unitRandom(key, KEY_DIMENSION + 1u, 0u));
+  return shadowTransmittance(origin, cone, skip);
+}
+
+// The light of one model surface point: rgb the fill over hemisphereFill(normal), a the key visibility.
 vec4 bakePoint(vec3 position, vec3 normal, vec3 side, int skip, uint key) {
   vec3 origin = leave(position, side);
-  float keyT = 0.0;
-  if (dot(side, u_lookKeyDirection) > 0.0) {
-    vec3 cone = keyConeDirection(unitRandom(key, KEY_DIMENSION, 0u), unitRandom(key, KEY_DIMENSION + 1u, 0u));
-    keyT = shadowTransmittance(origin, cone, skip);
-  }
+  float keyT = bakeKey(origin, side, skip, key);
   vec3 d = cosineDirection(normal, unitRandom(key, FILL_DIMENSION, 0u), unitRandom(key, FILL_DIMENSION + 1u, 0u));
   vec3 fill = vec3(0.0);
   if (dot(d, side) > 0.0) {
     Hit blocker;
     if (!closestHit(origin, d, 0.0, 3.0e38, 1.0, skip, key, ALPHA_DIMENSION, blocker)) fill = environmentRadiance(d);
   }
-  return vec4(fill / hemisphereFill(normal), keyT);
+  return vec4(fillShare(fill, hemisphereFill(normal)), keyT);
 }
 
+// A catcher point: rgb 1 less the fill lost over hemisphereFill(up), a the key visibility. No side test, as in the
+// trace: the cosine direction about up never points below the plane.
 vec4 bakeCatcher(ivec2 texel, uint key) {
   vec2 jitter = vec2(unitRandom(key, 0u, 0u), unitRandom(key, 1u, 0u));
   vec2 xz = u_catcherRect.xy + (vec2(texel) + jitter) / u_catcherSize * (u_catcherRect.zw - u_catcherRect.xy);
   vec3 up = vec3(0.0, 1.0, 0.0);
-  return bakePoint(vec3(xz.x, u_catcherY, xz.y), up, up, -1, key);
+  vec3 origin = leave(vec3(xz.x, u_catcherY, xz.y), up);
+  float keyT = bakeKey(origin, up, -1, key);
+  vec3 d = cosineDirection(up, unitRandom(key, FILL_DIMENSION, 0u), unitRandom(key, FILL_DIMENSION + 1u, 0u));
+  Hit blocker;
+  vec3 lost = closestHit(origin, d, 0.0, 3.0e38, 1.0, -1, key, ALPHA_DIMENSION, blocker) ? environmentRadiance(d)
+                                                                                      : vec3(0.0);
+  return vec4(1.0 - lostShare(lost, hemisphereFill(up)), keyT);
 }
 
 vec4 bakeChart(ivec2 texel, uint key) {
@@ -159,6 +189,9 @@ void main() {
   uvec2 stream = uvec2(texel) + (u_catcherPass ? uvec2(0u, 65536u) : uvec2(0u));
   uint key = sampleHash(u_seed, u_sample, stream);
   vec4 value = u_catcherPass ? bakeCatcher(texel, key) : bakeChart(texel, key);
-  if (any(isnan(value)) || any(isinf(value))) value = vec4(1.0);
+  // Last resort per component, so one bad channel never takes the key's visibility with it.
+  for (int c = 0; c < 4; c++) {
+    if (isnan(value[c]) || isinf(value[c])) value[c] = 1.0;
+  }
   outSum = sum + (u_countCapped ? vec4(float(cappedTraversals)) : value);
 }
