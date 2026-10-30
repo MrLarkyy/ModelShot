@@ -34,6 +34,12 @@ const MAX_WARNING_NOTES = 3;
 
 type Snapshot = Omit<ModelState, 'v' | 'savedAt'>;
 
+interface SetupState {
+  readonly nodeVisible: boolean[];
+  readonly meshVisible: boolean[];
+  readonly textureFilter: SceneTextureFilter[];
+}
+
 interface OpenModel {
   readonly loaded: LoadedModel;
   readonly request: LoadRequest;
@@ -65,6 +71,8 @@ export class App {
   private nodeVisible: boolean[] = [];
   private meshVisible: boolean[] = [];
   private textureFilter: SceneTextureFilter[] = [];
+  private filteredBase: SceneDocument | null = null;
+  private setupQueue: Promise<void> = Promise.resolve();
   private look: LookPreset = DEFAULT_LOOK;
   private arms: PlayerArmsChoice = 'classic';
   private renderValues: RenderSettingsValues = { ...DEFAULT_RENDER_SETTINGS };
@@ -279,15 +287,17 @@ export class App {
       filters = this.textureFilter;
     }
     const look = (saved && Object.hasOwn(LOOK_PRESETS, saved.look) ? LOOK_PRESETS[saved.look] : undefined) ?? this.look;
+    const filteredBase = withTextureFilters(doc, filters);
     this.committing = true;
     let result;
     try {
-      result = await this.setDocument(viewer, this.shown(doc, nodeVisible, meshVisible, filters), reframe);
+      result = await this.setDocument(viewer, withVisibility(filteredBase, nodeVisible, meshVisible), reframe);
       if (!result.applied) return false;
       this.look = applyLook(look, [viewer, this.renderSession.existingTracer()]);
       this.open = open;
       this.arms = open.arms;
       this.base = doc;
+      this.filteredBase = filteredBase;
       this.nodeVisible = [...nodeVisible];
       this.meshVisible = [...meshVisible];
       this.textureFilter = [...filters];
@@ -344,8 +354,12 @@ export class App {
       this.showPanels();
       return;
     }
-    flags[index] = visible;
-    void this.applySetup();
+    const isNode = flags === this.nodeVisible;
+    this.queueSetup((state) => {
+      const list = [...(isNode ? state.nodeVisible : state.meshVisible)];
+      list[index] = visible;
+      return isNode ? { ...state, nodeVisible: list } : { ...state, meshVisible: list };
+    });
   }
 
   private setTextureFilter(index: number, filter: SceneTextureFilter): void {
@@ -353,31 +367,50 @@ export class App {
       this.showPanels();
       return;
     }
-    if (index < 0 || index >= this.textureFilter.length) return;
-    this.textureFilter[index] = filter;
-    void this.applySetup();
+    this.queueSetup((state) => {
+      if (index < 0 || index >= state.textureFilter.length) return state;
+      const textureFilter = [...state.textureFilter];
+      textureFilter[index] = filter;
+      return { ...state, textureFilter };
+    });
   }
 
-  private shown(
-    base: SceneDocument,
-    nodeVisible: readonly boolean[],
-    meshVisible: readonly boolean[],
-    filters: readonly SceneTextureFilter[],
-  ): SceneDocument {
-    return withTextureFilters(withVisibility(base, nodeVisible, meshVisible), filters);
+  // Changes run one after the other, each from the state the one before left, and a change is kept only once the scene
+  // shows it: when the scene cannot be built the old one stays, and so do the panel and the saved record.
+  private queueSetup(change: (state: SetupState) => SetupState): void {
+    this.setupQueue = this.setupQueue.then(() => this.applySetup(change));
   }
 
-  private async applySetup(): Promise<void> {
+  private async applySetup(change: (state: SetupState) => SetupState): Promise<void> {
     const base = this.base;
-    if (!base || !this.viewer) return;
+    const filteredBase = this.filteredBase;
+    const viewer = this.viewer;
+    if (!base || !filteredBase || !viewer) return;
+    const next = change({
+      nodeVisible: this.nodeVisible,
+      meshVisible: this.meshVisible,
+      textureFilter: this.textureFilter,
+    });
     try {
-      await this.setDocument(
-        this.viewer,
-        this.shown(base, this.nodeVisible, this.meshVisible, this.textureFilter),
+      // Rebuilt only when a filter changed, so a visibility change keeps the textures array the baker and tracer know.
+      const filtered =
+        next.textureFilter === this.textureFilter ? filteredBase : withTextureFilters(base, next.textureFilter);
+      const result = await this.setDocument(
+        viewer,
+        withVisibility(filtered, next.nodeVisible, next.meshVisible),
         false,
       );
+      if (!result.applied || this.base !== base) {
+        this.showPanels();
+        return;
+      }
+      this.filteredBase = filtered;
+      this.nodeVisible = next.nodeVisible;
+      this.meshVisible = next.meshVisible;
+      this.textureFilter = next.textureFilter;
       this.scheduleSave();
     } catch (error) {
+      this.showPanels();
       this.notices.alert(`Could not update the view: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
