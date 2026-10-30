@@ -630,7 +630,7 @@ below, limit kept in the spec so `pathtracer.spec.ts` keeps its list): framing 0
 a glTF in code (generated 8 x 8 PNGs, no asset file) and loads it through `loadGltf`, so the filters come from its
 samplers: quads facing +z (`textureFilterLayout.ts`) showing a yellow/teal checker under a LINEAR sampler and the same
 image under a NEAREST one (two scene textures sharing bytes), a LINEAR `MASK` texture with a cut-out 2 x 2 block whose
-texels are black, a LINEAR texture shown at u -2 .. 10 with `wrap: 'repeat'` set on the loaded document (column 0
+texels are black, a LINEAR texture shown at u -2 .. 10 under a REPEAT sampler (the minified quad's too; the others clamp) (column 0
 white, column 7 orange), and the checker LINEAR and repeated at 8 texels per unit (minified); a sentinel image follows
 each linear texture, so it lies right of it in the path tracer's texture layers. Variants `texture-filter` (look
 `filter`, about 7 pixels per texel) and `texture-filter-far` (look `filter-far`, three times as far: the minified quad
