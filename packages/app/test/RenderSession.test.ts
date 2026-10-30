@@ -27,12 +27,19 @@ class FakeTracer {
   setLook(): void {}
   resize(): void {}
   setCamera(): void {}
-  cancel(): void {}
-  setScene(): Promise<{ applied: boolean; warnings: never[] }> {
-    return Promise.resolve({ applied: true, warnings: [] });
+  cancelCalls = 0;
+  startCalls = 0;
+  sceneGate: Promise<void> | null = null;
+  cancel(): void {
+    this.cancelCalls++;
+  }
+  async setScene(): Promise<{ applied: boolean; warnings: never[] }> {
+    await this.sceneGate;
+    return { applied: true, warnings: [] };
   }
 
   start(request: { samples: number }): void {
+    this.startCalls++;
     this.targetSamples = request.samples;
     this.samplesDone = 0;
     this.guideLeft = this.guideSteps;
@@ -51,8 +58,12 @@ class FakeTracer {
 }
 
 let tracer = new FakeTracer(0);
+let loadGate: Promise<void> | null = null;
 vi.mock('../src/lazyPathTracer', () => ({
-  loadPathTracer: () => Promise.resolve({ PathTracer: { create: () => tracer } }),
+  loadPathTracer: async () => {
+    await loadGate;
+    return { PathTracer: { create: () => tracer } };
+  },
 }));
 
 const doc = {} as SceneDocument;
@@ -68,7 +79,10 @@ const host = (events: string[]): RenderSessionHost => ({
   onError: (error) => events.push(`error ${String(error)}`),
 });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  loadGate = null;
+});
 
 describe('RenderSession', () => {
   it('draws a denoised request through its guide phase, one bounded step per animation frame', async () => {
@@ -113,5 +127,168 @@ describe('RenderSession', () => {
     // The fake's `guiding` holds until the first sample: that one step takes the guide budget, then single samples.
     expect(tracer.stepCalls[0]).toBe(4);
     expect(tracer.stepCalls.slice(1).every((k) => k === 1)).toBe(true);
+  });
+
+  describe('cancel', () => {
+    const setup = (samples = 50) => {
+      tracer = new FakeTracer(0);
+      const frames: (() => void)[] = [];
+      vi.stubGlobal('requestAnimationFrame', (callback: () => void) => frames.push(callback));
+      const events: string[] = [];
+      const session = new RenderSession({} as HTMLCanvasElement, {
+        ...host(events),
+        settings: () => ({ samples, supersample: 1, denoise: false }),
+      });
+      return { frames, events, session };
+    };
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    it('stops at once while pumping, and the stale frame does nothing', async () => {
+      const { frames, events, session } = setup();
+      const rendered = session.render();
+      while (frames.length === 0) await tick();
+      frames.shift()?.();
+      const steps = tracer.stepCalls.length;
+      const before = events.length;
+      session.cancel();
+      expect(events.slice(before)).toEqual(['cancelled']);
+      expect(tracer.cancelCalls).toBe(1);
+      expect(session.busy).toBe(false);
+      await rendered;
+      frames.shift()?.();
+      expect(tracer.stepCalls.length).toBe(steps);
+      expect(events.slice(before)).toEqual(['cancelled']);
+    });
+
+    it('does not let the stale frame drive a render started right after', async () => {
+      const { frames, events, session } = setup(2);
+      const first = session.render();
+      while (frames.length === 0) await tick();
+      session.cancel();
+      await first;
+      const second = session.render();
+      while (frames.length < 2) await tick();
+      const stale = frames.shift();
+      stale?.();
+      expect(tracer.stepCalls).toEqual([]);
+      frames.shift()?.();
+      while (!events.includes('done')) {
+        await tick();
+        frames.shift()?.();
+      }
+      await second;
+      expect(events.filter((e) => e === 'cancelled')).toHaveLength(1);
+      expect(events.filter((e) => e === 'done')).toHaveLength(1);
+    });
+
+    it('cancels at once during a pending scene upload and never starts', async () => {
+      const { frames, events, session } = setup();
+      let release = (): void => undefined;
+      tracer.sceneGate = new Promise<void>((resolve) => (release = resolve));
+      const rendered = session.render();
+      await tick();
+      session.cancel();
+      expect(events).toEqual(['cancelled']);
+      expect(session.busy).toBe(false);
+      release();
+      await rendered;
+      expect(events).toEqual(['cancelled']);
+      expect(tracer.startCalls).toBe(0);
+      expect(frames).toHaveLength(0);
+    });
+
+    it('cancels at once while the tracer is still being created', async () => {
+      const { frames, events, session } = setup();
+      let release = (): void => undefined;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      loadGate = gate;
+      const rendered = session.render();
+      await tick();
+      session.cancel();
+      expect(events).toEqual(['cancelled']);
+      expect(session.busy).toBe(false);
+      release();
+      await rendered;
+      await tick();
+      expect(events).toEqual(['cancelled']);
+      expect(tracer.startCalls).toBe(0);
+      expect(frames).toHaveLength(0);
+    });
+
+    it('lets a new render wait for the abandoned scene upload and ignores the old run', async () => {
+      const { frames, events, session } = setup(2);
+      let release = (): void => undefined;
+      tracer.sceneGate = new Promise<void>((resolve) => (release = resolve));
+      const order: string[] = [];
+      const original = tracer.setScene.bind(tracer);
+      tracer.setScene = async () => {
+        order.push('setScene');
+        const result = await original();
+        order.push('uploaded');
+        return result;
+      };
+      const first = session.render();
+      await tick();
+      session.cancel();
+      tracer.sceneGate = null;
+      const second = session.render();
+      await tick();
+      expect(order).toEqual(['setScene']);
+      release();
+      await first;
+      while (!events.includes('done')) {
+        await tick();
+        frames.shift()?.();
+      }
+      await second;
+      expect(order).toEqual(['setScene', 'uploaded', 'setScene', 'uploaded']);
+      expect(tracer.startCalls).toBe(1);
+      expect(events.filter((e) => e === 'cancelled')).toHaveLength(1);
+    });
+
+    it('does not report an error from an abandoned run', async () => {
+      const { events, session } = setup();
+      let fail = (): void => undefined;
+      tracer.setScene = () => new Promise((_, reject) => (fail = () => reject(new Error('boom'))));
+      const rendered = session.render();
+      await tick();
+      session.cancel();
+      fail();
+      await rendered;
+      await tick();
+      expect(events).toEqual(['cancelled']);
+    });
+
+    it('stops at once on dispose while pumping, once', async () => {
+      const { frames, events, session } = setup();
+      const rendered = session.render();
+      while (frames.length === 0) await tick();
+      frames.shift()?.();
+      const steps = tracer.stepCalls.length;
+      const before = events.length;
+      session.dispose();
+      expect(events.slice(before)).toEqual(['cancelled']);
+      expect(tracer.cancelCalls).toBe(1);
+      await rendered;
+      frames.shift()?.();
+      expect(tracer.stepCalls.length).toBe(steps);
+      expect(events.slice(before)).toEqual(['cancelled']);
+    });
+
+    it('reports a failed tracer creation once and is not busy afterwards', async () => {
+      const { events, session } = setup();
+      loadGate = Promise.reject(new Error('no gpu'));
+      loadGate.catch(() => undefined);
+      await session.render();
+      expect(events).toEqual(['error Error: no gpu']);
+      expect(session.busy).toBe(false);
+    });
+
+    it('is a no-op when idle', () => {
+      const { events, session } = setup();
+      session.cancel();
+      expect(events).toEqual([]);
+      expect(tracer.cancelCalls).toBe(0);
+    });
   });
 });

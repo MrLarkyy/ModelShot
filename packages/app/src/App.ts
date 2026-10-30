@@ -432,6 +432,7 @@ export class App {
     this.resultCanvas.hidden = true;
     this.progressBox.hidden = false;
     this.progress.value = 0;
+    this.notices.status('Rendering: preparing the scene…');
     this.setActionsEnabled();
     void this.renderSession.render().finally(() => this.setActionsEnabled());
     this.setActionsEnabled();
@@ -462,6 +463,7 @@ export class App {
   private renderFailed(error: unknown): void {
     this.progressBox.hidden = true;
     this.resultCanvas.hidden = true;
+    this.notices.status('Render failed.');
     this.notices.alert(`The render failed: ${error instanceof Error ? error.message : String(error)}`);
     this.setActionsEnabled();
   }
