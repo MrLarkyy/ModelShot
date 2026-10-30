@@ -23,11 +23,15 @@ export interface FakeWebGlFloat {
   readonly maxSize: number;
   /** Framebuffers are incomplete while the last texture storage was of a size this returns true for (layers 1: 2D). */
   readonly rejects?: (width: number, height: number, layers: number) => boolean;
+  /** Framebuffers are incomplete while the last storage was a multisampled renderbuffer of a format this returns true for. */
+  readonly rejectsRenderbuffer?: (format: number, samples: number) => boolean;
 }
 
 export interface FakeWebGlOptions {
   /** `EXT_color_buffer_float` exists, with these limits: the renderer takes its float path. */
   readonly float?: FakeWebGlFloat;
+  /** `readPixels` fills its buffer with this byte (every channel; a texture's alpha readback); default 0. */
+  readonly pixelByte?: number;
 }
 
 export function fakeWebGl(options: FakeWebGlOptions = {}): FakeWebGl {
@@ -52,9 +56,18 @@ export function fakeWebGl(options: FakeWebGlOptions = {}): FakeWebGl {
   };
   const framebufferStatus = (): number => {
     const storage = ordered.findLast(([name]) => name === 'texStorage2D' || name === 'texStorage3D')?.[1];
-    const rejected =
+    const textureRejected =
       float?.rejects && storage && float.rejects(Number(storage[3]), Number(storage[4]), Number(storage[5] ?? 1));
-    return constant(rejected ? 'FRAMEBUFFER_INCOMPLETE_ATTACHMENT' : 'FRAMEBUFFER_COMPLETE');
+    const last = ordered.findLast(([name]) =>
+      ['texStorage2D', 'texStorage3D', 'renderbufferStorageMultisample'].includes(name),
+    );
+    const renderbufferRejected =
+      float?.rejectsRenderbuffer &&
+      last?.[0] === 'renderbufferStorageMultisample' &&
+      float.rejectsRenderbuffer(Number(last[1][2]), Number(last[1][1]));
+    return constant(
+      textureRejected || renderbufferRejected ? 'FRAMEBUFFER_INCOMPLETE_ATTACHMENT' : 'FRAMEBUFFER_COMPLETE',
+    );
   };
   const results: Readonly<Record<string, (...args: unknown[]) => unknown>> = {
     getExtension: (name) => (float && name === 'EXT_color_buffer_float' ? {} : null),
@@ -70,6 +83,10 @@ export function fakeWebGl(options: FakeWebGlOptions = {}): FakeWebGl {
     getUniformLocation: (_program, name) => ({ name }),
     getAttribLocation: () => 0,
     getUniformBlockIndex: () => 0,
+    readPixels: (...args) => {
+      const pixels = args[6];
+      if (pixels instanceof Uint8Array) pixels.fill(options.pixelByte ?? 0);
+    },
   };
   const listeners = new Map<string, Set<(event: Event) => void>>();
   const gl = new Proxy(

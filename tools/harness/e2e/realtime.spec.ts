@@ -30,6 +30,7 @@ import { shadowStep } from '../src/shadowStep';
 import { OUTLINE_HULL_BOARD_LEVELS, outlineHullProbe } from '../src/outlineHullProbe';
 import { edgesSceneSharpEdges } from '../fixtures/src/edgesScene';
 import { CUTOUT_EDGE_TEXELS, cutoutEdgeOpaque, cutoutEdgePoint } from '../fixtures/src/cutoutEdge';
+import { PARTIAL_EDGE_STRIP_ROW, PARTIAL_EDGE_TEXELS, partialEdgeTexel } from '../fixtures/src/partialEdge';
 import { agxInverse } from '../src/agxInverse';
 import { cutoutSeams } from '../src/cutoutSeams';
 import type { ModelViewProbe, PtProbe, RtBakeOutcome, RtBakeRequest } from '../fixtures/src/fixtureApi';
@@ -65,6 +66,8 @@ const GOLDENS = [
   ...PLAYER,
   // MS-15: rounded edges on a cube and a wedge, none on a plane, a card and a sphere; paired with pt-edges.
   spec('edges', 'edges'),
+  // MS-60: anti-aliased partial-alpha seams and a partial face outline (4x MSAA); paired with pt-partial-edge.
+  spec('partial-edge', 'partial-edge'),
 ];
 // Baked light (MS-16): 64 samples, seed 1, shadow catcher on; the cut-out checker's pair is pt-cutout-checker. The
 // look presets (MS-19) bake under their own look; pairs pt-preset-marketplace and pt-preset-rim.
@@ -410,6 +413,239 @@ test.describe('anti-aliased cutout seams (alpha-to-coverage, MS-30)', () => {
     await openFixture(page, '/rt.html?variant=cutout-checker&bake=4');
     const baked = await page.evaluate(() => window.__msFixture!.rt!.drawStatesPerFrame());
     expect(baked.some((state) => state.program === 'catcher' && !state.alphaToCoverage)).toBe(true);
+  });
+});
+
+/** The partial-edge quad's texel rectangle [u0, u1] x [v0, v1] (texels, v down) in image pixels of the current view. */
+async function partialEdgeRect(
+  page: Page,
+  u0: number,
+  v0: number,
+  u1: number,
+  v1: number,
+): Promise<[number, number][]> {
+  const corners = [cutoutEdgePoint(u0, v0), cutoutEdgePoint(u1, v0), cutoutEdgePoint(u1, v1), cutoutEdgePoint(u0, v1)];
+  return Promise.all(corners.map((corner) => projectPoint(page, corner)));
+}
+
+/**
+ * The partial-edge regions of the current view: `seams` the rows 0-4 (to row 4's centre) and a texel past the outline,
+ * so partial|invisible seams and the outline of partial texels; `inner` the same rows inside the ring's centres, seams
+ * only; `outline` the left edge between the ring's texel centres and the backdrop (a near-vertical edge, so its error
+ * counts per row); `strip` rows 5-6 between texel centres,
+ * opaque|partial seams only.
+ */
+async function partialEdgeRegions(
+  page: Page,
+): Promise<Record<'seams' | 'inner' | 'outline' | 'strip', [number, number][]>> {
+  return {
+    seams: await partialEdgeRect(page, -0.5, -0.5, PARTIAL_EDGE_TEXELS + 0.5, PARTIAL_EDGE_STRIP_ROW - 0.5),
+    inner: await partialEdgeRect(page, 0.5, 0.5, PARTIAL_EDGE_TEXELS - 0.5, PARTIAL_EDGE_STRIP_ROW - 0.5),
+    outline: await partialEdgeRect(page, -0.5, 1.5, 0.5, PARTIAL_EDGE_TEXELS - 1.5),
+    strip: await partialEdgeRect(
+      page,
+      0.5,
+      PARTIAL_EDGE_STRIP_ROW + 0.5,
+      PARTIAL_EDGE_TEXELS - 0.5,
+      PARTIAL_EDGE_STRIP_ROW + 1.5,
+    ),
+  };
+}
+
+/** Texel centres of the partial-edge quad: within 1 level of the hard frame, a cut-out texel's exactly the backdrop. */
+async function expectPartialTexelCentres(page: Page, frame: Image, hard: Image, backdrop: Image): Promise<void> {
+  for (let row = 0; row < PARTIAL_EDGE_TEXELS; row++) {
+    for (let column = 0; column < PARTIAL_EDGE_TEXELS; column++) {
+      const [x, y] = await projectPoint(page, cutoutEdgePoint(column + 0.5, row + 0.5));
+      const label = `texel ${column}, ${row}`;
+      if (partialEdgeTexel(column, row) === 'invisible')
+        expect(pixel(frame, x, y), label).toEqual(pixel(backdrop, x, y));
+      else expect(near(pixel(frame, x, y), pixel(hard, x, y), 1), label).toBe(true);
+    }
+  }
+}
+
+/** Pixels inside `region` where some channel of `a` and `b` differs by more than `levels`. */
+function pixelsApartIn(a: Image, b: Image, region: readonly [number, number][], levels: number): number {
+  const inside = (x: number, y: number): boolean => {
+    let sign = 0;
+    for (let i = 0; i < region.length; i++) {
+      const [ax, ay] = region[i] ?? [0, 0];
+      const [bx, by] = region[(i + 1) % region.length] ?? [0, 0];
+      const cross = (bx - ax) * (y + 0.5 - ay) - (by - ay) * (x + 0.5 - ax);
+      if (cross === 0) continue;
+      if (sign === 0) sign = Math.sign(cross);
+      else if (Math.sign(cross) !== sign) return false;
+    }
+    return true;
+  };
+  let count = 0;
+  for (let y = 0; y < a.height; y++) {
+    for (let x = 0; x < a.width; x++) {
+      if (inside(x, y) && !near(pixel(a, x, y), pixel(b, x, y), levels)) count++;
+    }
+  }
+  return count;
+}
+
+/**
+ * Opaque|partial strip of `partial-edge` at 4 samples: A2C quantises the opaque side (coverage 0.75-1 beside an
+ * alpha-128 texel) to the samples' levels, which WebGL2 cannot refine (no gl_SampleMask), so the covered area exceeds the
+ * hard shape: measured 26.5 px over 280 seam crossings (0.095 each), held at 0.15 per crossing. Opaque-side mixes:
+ * measured 26, required at least half; with the opaque pass's coverage of 1 there (before MS-60) 0 mixes and an excess
+ * of 39.5 px (0.141 per crossing), so the mixes are what tells the two apart.
+ */
+const STRIP_EXCESS_PER_CROSSING = 0.15;
+const STRIP_MIN_OPAQUE_MIXES = 13;
+
+/**
+ * MS-60: the OIT pass ramps partial|invisible and partial|partial seams over one pixel with the 50 % point on the texel
+ * boundary; with the opaque pass under alpha-to-coverage an opaque|partial seam ramps from the opaque texel to the
+ * partial one, and raster frames draw the OIT pass per MSAA sample, so a face outline of partial texels is
+ * anti-aliased too. The hard reference draws nearest texels at pixel centres (aa=0, msaa=0); `partial-edge-under` (the
+ * opaque texels partial) is what an opaque texel covers, the backdrop of the opaque|partial seams.
+ */
+test.describe('anti-aliased partial-alpha seams in the OIT pass (MS-60)', () => {
+  // 5.4-11.8 s a test at six parallel workers (MS-74), the 180 s of the transparency describe.
+  test.describe.configure({ timeout: 180_000 });
+
+  test('raster frames anti-alias partial seams, the partial outline and opaque|partial seams; texel centres keep', async ({
+    page,
+  }) => {
+    const backdrop = (await render(page, 'scene=empty&look=edge')).image;
+    const hard = (await render(page, 'variant=partial-edge&aa=0&msaa=0')).image;
+    const under = (await render(page, 'scene=partial-edge-under&look=edge&aa=0&msaa=0')).image;
+    const soft = (await render(page, 'variant=partial-edge')).image;
+    expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('raster');
+    expect(await page.evaluate(() => window.__msFixture?.rt?.msaaSamples)).toBeGreaterThan(1);
+    const regions = await partialEdgeRegions(page);
+    const seams = cutoutSeams(soft, hard, backdrop, regions.seams, studioLinear, under);
+    const outline = cutoutSeams(soft, hard, backdrop, regions.outline, studioLinear, under);
+    const strip = cutoutSeams(soft, hard, under, regions.strip, studioLinear, backdrop);
+    for (const [label, measured] of [
+      ['partial seams and outline', seams],
+      ['outline', outline],
+      ['opaque|partial strip', strip],
+    ] as const) {
+      const summary = `${label}: ${JSON.stringify(measured)}`;
+      console.log(`[rt probe] partial-edge ${summary}`);
+      // (a) Only pixels beside a texel or face boundary change.
+      expect(measured.farChanges, summary).toBe(0);
+      // (b) Most seam pixels resolve to a mix of both sides.
+      expect(measured.mixedTransitions, summary).toBeGreaterThanOrEqual(measured.transitions * 0.5);
+      // (c) The covered area (linear light) is the hard shape's: the 50 % contour lies on the boundaries.
+      if (measured !== strip) {
+        expect(Math.abs(measured.area - measured.hardArea), summary).toBeLessThanOrEqual(0.5 * measured.boundaryRows);
+      }
+    }
+    // The opaque|partial strip: the opaque side ramps too (opaque.frag.glsl writes the taps' alpha-weighted coverage
+    // under A2C; with the opaque coverage of 1 there it never mixes), and the area's excess stays within what 4x A2C
+    // quantisation of that side leaves (docs/realtime-renderer.md): 0.15 px per seam crossing.
+    const stripSummary = JSON.stringify(strip);
+    expect(strip.modelMixes, stripSummary).toBeGreaterThanOrEqual(STRIP_MIN_OPAQUE_MIXES);
+    expect(Math.abs(strip.area - strip.hardArea), stripSummary).toBeLessThanOrEqual(
+      STRIP_EXCESS_PER_CROSSING * strip.transitions,
+    );
+    expect(seams.transitions, 'partial seam transitions').toBeGreaterThan(200);
+    expect(outline.transitions, 'outline transitions').toBeGreaterThan(80);
+    expect(strip.transitions, 'opaque|partial transitions').toBeGreaterThan(100);
+    // (d) Texel centres as in the hard frame, a cut-out texel's exactly the backdrop.
+    await expectPartialTexelCentres(page, soft, hard, backdrop);
+  });
+
+  test('without MSAA the seams still ramp; the outline and the opaque|partial seams stay hard', async ({ page }) => {
+    const backdrop = (await render(page, 'scene=empty&look=edge')).image;
+    const hard = (await render(page, 'variant=partial-edge&aa=0&msaa=0')).image;
+    const under = (await render(page, 'scene=partial-edge-under&look=edge&aa=0&msaa=0')).image;
+    const single = (await render(page, 'variant=partial-edge&msaa=0')).image;
+    expect(await page.evaluate(() => window.__msFixture?.rt?.msaaSamples)).toBe(0);
+    const regions = await partialEdgeRegions(page);
+    const inner = cutoutSeams(single, hard, backdrop, regions.inner, studioLinear, under);
+    const summary = JSON.stringify(inner);
+    console.log(`[rt probe] partial-edge msaa=0 seams: ${summary}`);
+    expect(inner.farChanges, summary).toBe(0);
+    expect(inner.transitions, summary).toBeGreaterThan(200);
+    expect(inner.mixedTransitions, summary).toBeGreaterThanOrEqual(inner.transitions * 0.5);
+    expect(Math.abs(inner.area - inner.hardArea), summary).toBeLessThanOrEqual(0.5 * inner.boundaryRows);
+    await expectPartialTexelCentres(page, single, hard, backdrop);
+    const outline = cutoutSeams(single, hard, backdrop, regions.outline, studioLinear, under);
+    expect(outline.mixes, JSON.stringify(outline)).toBe(0);
+    const strip = cutoutSeams(single, hard, under, regions.strip, studioLinear, backdrop);
+    expect(strip.mixes, JSON.stringify(strip)).toBe(0);
+  });
+
+  test('accumulated exact frames add no ramp of their own; an exact frame drawn once ramps like a raster one', async ({
+    page,
+  }) => {
+    const backdrop = (await render(page, 'scene=empty&look=edge&depth=inside')).image;
+    // The 4 rotated-grid passes already antialias the seams (MS-35): with and without texel AA the same image there.
+    const accumulated = (await render(page, 'variant=partial-edge-inside')).image;
+    expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('exact');
+    const regions = await partialEdgeRegions(page);
+    const accumulatedHard = (await render(page, 'variant=partial-edge-inside&aa=0')).image;
+    expect(pixelsApartIn(accumulated, accumulatedHard, regions.seams, 2), 'rows 0-4 against aa=0').toBe(0);
+    // Without MSAA an exact frame is drawn once at the pixel centre: its partial seams ramp (seam mode 1).
+    const hard = (await render(page, 'variant=partial-edge-inside&aa=0&msaa=0')).image;
+    const under = (await render(page, 'scene=partial-edge-under&look=edge&depth=inside&aa=0&msaa=0')).image;
+    const single = (await render(page, 'variant=partial-edge-inside&msaa=0')).image;
+    expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('exact');
+    const inner = cutoutSeams(single, hard, backdrop, regions.inner, studioLinear, under);
+    const summary = JSON.stringify(inner);
+    console.log(`[rt probe] partial-edge-inside msaa=0 seams: ${summary}`);
+    expect(inner.farChanges, summary).toBe(0);
+    expect(inner.mixedTransitions, summary).toBeGreaterThanOrEqual(inner.transitions * 0.5);
+    expect(Math.abs(inner.area - inner.hardArea), summary).toBeLessThanOrEqual(0.5 * inner.boundaryRows);
+  });
+
+  test('the fallback keeps its per-texel shape with partial geometry, and takes over when float targets fail', async ({
+    page,
+  }) => {
+    const backdrop = (await render(page, 'scene=empty&look=edge&fallback=1')).image;
+    const hard = (await render(page, 'variant=partial-edge&aa=0&fallback=1')).image;
+    const soft = (await render(page, 'variant=partial-edge&fallback=1')).image;
+    expect(await page.evaluate(() => window.__msFixture?.rt?.path)).toBe('fallback');
+    let classChanges = 0;
+    for (let y = 0; y < hard.height; y++) {
+      for (let x = 0; x < hard.width; x++) {
+        const b = pixel(backdrop, x, y);
+        if (near(pixel(soft, x, y), b, 2) !== near(pixel(hard, x, y), b, 2)) classChanges++;
+      }
+    }
+    expect(classChanges, 'pixels that change between model and backdrop with texel AA (fallback)').toBe(0);
+
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(String(error)));
+    const info = await openFixture(page, '/rt.html?variant=partial-edge');
+    await page.evaluate(async () => {
+      const rt = window.__msFixture!.rt!;
+      rt.breakFramebuffers();
+      await rt.setCssSize(200, 200);
+    });
+    expect(await page.evaluate(() => window.__msFixture?.rt?.path)).toBe('fallback');
+    const image = decodePng(await readPng(page, info));
+    expect(modelBox(image).x1 - modelBox(image).x0).toBeGreaterThan(50);
+    expect(errors).toEqual([]);
+  });
+
+  test('overlapping partial-edge quads do not depend on draw order (MSAA, single-sampled, exact)', async ({ page }) => {
+    for (const extra of ['', '&msaa=0', '&depth=inside', '&depth=inside&msaa=0']) {
+      const query = `scene=partial-edge-pair&look=edge${extra}`;
+      const forward = await render(page, query);
+      const reversed = await render(page, `${query}&reverse=1`);
+      expect(reversed.png.equals(forward.png), query).toBe(true);
+    }
+  });
+
+  // A linear texture (MS-38) filters only the colour: the seam coverage (premultiplied.a, opaqueCoverage) stays the
+  // nearest texels'. The texels are all white, so the filtered colour is too and any change would be coverage.
+  test('a linear-filtered texture keeps the seam coverage of a nearest one (MSAA and single-sampled)', async ({
+    page,
+  }) => {
+    for (const extra of ['', '&msaa=0']) {
+      const nearest = (await render(page, `scene=partial-edge&look=edge${extra}`)).image;
+      const linear = (await render(page, `scene=partial-edge-linear&look=edge${extra}`)).image;
+      expect(pixelsApart(linear, nearest, 1), `pixels over 1 level apart${extra}`).toBe(0);
+    }
   });
 });
 

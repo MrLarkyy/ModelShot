@@ -45,6 +45,8 @@ import {
 } from './rendererPrograms';
 import { RendererError } from './RendererError';
 import type { RendererWarning } from './RendererWarning';
+import { oitMsaaActive } from './oitMsaa';
+import { oitSeamCoverageMode, type OitSeamCoverageMode } from './oitSeamCoverage';
 import { RenderTargets } from './RenderTargets';
 import { backSidesVisible, closedOpaqueMeshes } from './closedOpaque';
 import {
@@ -843,7 +845,8 @@ export class RealtimeRenderer {
    * slope-scaled push that keeps a back side behind the front face it meets at a silhouette (the −1/16 order is below
    * the interpolation error there), and skips closed batches opaque on every face while the camera is outside their
    * bounds and the near plane does not reach them (`backSidesVisible`). The depth test is set by the caller, and so is
-   * `SAMPLE_ALPHA_TO_COVERAGE` when `alphaToCoverage` (the opaque pass's `u_alphaToCoverage`) is true.
+   * `SAMPLE_ALPHA_TO_COVERAGE` when `alphaToCoverage` (the opaque pass's `u_alphaToCoverage`) is true. `seamCoverage`:
+   * the OIT pass's `u_seamCoverage` (`oitSeamCoverageMode`).
    */
   private drawItems(
     gpu: GpuResources,
@@ -851,6 +854,7 @@ export class RealtimeRenderer {
     items: readonly DrawItem[],
     frame: FrameView,
     alphaToCoverage = false,
+    seamCoverage: OitSeamCoverageMode = 0,
   ): void {
     const pass = gpu.programs.meshPasses[frame.mode][passName];
     if (!pass) return;
@@ -868,6 +872,7 @@ export class RealtimeRenderer {
     gl.uniform1i(pass.texture, 0);
     gl.uniform1i(pass.texelAntialias, this.options.texelAntialias === false ? 0 : 1);
     gl.uniform1i(pass.alphaToCoverage, alphaToCoverage ? 1 : 0);
+    gl.uniform1i(pass.seamCoverage, seamCoverage);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, gpu.lighting?.lightmap ?? gpu.unbakedLight);
     gl.uniform1i(pass.lightmap, 1);
@@ -1012,11 +1017,11 @@ export class RealtimeRenderer {
     this.drawBackdrop(gpu, height, false);
     if (frame) this.drawCatcher(gpu, frame, false);
     gl.enable(gl.DEPTH_TEST);
+    const texelAntialias = this.options.texelAntialias !== false;
+    const alphaToCoverage = alphaToCoverageActive(msaa !== null, targets.samples, texelAntialias);
     if (scene && frame) {
       // Cutout seams covered per sample (alphaToCoverage.ts). Set and reset within the frame, so nothing else (a
       // restored context included) sees it; alpha stays as the backdrop wrote it, the shader's alpha is coverage.
-      const texelAntialias = this.options.texelAntialias !== false;
-      const alphaToCoverage = alphaToCoverageActive(msaa !== null, targets.samples, texelAntialias);
       if (alphaToCoverage) {
         gl.enable(gl.SAMPLE_ALPHA_TO_COVERAGE);
         gl.colorMask(true, true, true, false);
@@ -1046,13 +1051,21 @@ export class RealtimeRenderer {
     }
 
     if (scene && frame && scene.partial.length > 0) {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, targets.oitFramebuffer);
+      // Raster frames draw the partial layers per sample against the opaque samples when the targets fit
+      // (oitMsaa.ts), so faces with only partial texels get anti-aliased outlines; the resolve averages each sum.
+      const oitMsaa =
+        msaa && oitMsaaActive(width, height, targets.samples, gpu.capabilities.limits)
+          ? targets.multisampledOit()
+          : null;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, oitMsaa ?? targets.oitFramebuffer);
       gl.clearBufferfv(gl.COLOR, 0, [0, 0, 0, 1]);
       gl.clearBufferfv(gl.COLOR, 1, [0, 0, 0, 0]);
       gl.depthMask(false);
       gl.enable(gl.BLEND);
       gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE_MINUS_SRC_ALPHA);
-      this.drawItems(gpu, 'oitAccum', scene.partial, frame);
+      const seamCoverage = oitSeamCoverageMode(history !== null, texelAntialias, alphaToCoverage);
+      this.drawItems(gpu, 'oitAccum', scene.partial, frame, false, seamCoverage);
+      if (oitMsaa) targets.resolveOit();
 
       gl.bindFramebuffer(gl.FRAMEBUFFER, targets.resolveFramebuffer);
       gl.disable(gl.DEPTH_TEST);

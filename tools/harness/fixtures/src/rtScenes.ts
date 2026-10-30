@@ -18,6 +18,7 @@ import { cutoutChecker } from './cutoutChecker';
 import { cutoutEdge } from './cutoutEdge';
 import { edgesBbmodel, edgesHostileScene, edgesLoadScene, edgesScene, edgesWeldScene } from './edgesScene';
 import { MODEL_VIEW_LOOK, type Point3 } from './modelViewCamera';
+import { partialEdge } from './partialEdge';
 import { holdingCube, playerScene, posedPlayer } from './playerScenes';
 import { textureFilterScene } from './textureFilterScene';
 import { textureWrapScene } from './textureWrapScene';
@@ -72,6 +73,10 @@ export const RT_SCENE_NAMES = [
   'grass-field',
   'cutout-checker',
   'cutout-edge',
+  'partial-edge',
+  'partial-edge-under',
+  'partial-edge-pair',
+  'partial-edge-linear',
   'lightmap-overflow',
   'edges',
   'edges-200k',
@@ -244,6 +249,9 @@ export const RT_VARIANTS: Readonly<Record<string, Partial<RtView>>> = {
   // key (near = far x 1e-4), whose frames draw single-sampled.
   'cutout-edge': { scene: 'cutout-edge', look: 'edge' },
   'cutout-edge-inside': { scene: 'cutout-edge', look: 'edge', depth: 'inside' },
+  // MS-60: anti-aliased partial-alpha seams and outlines in the OIT pass, same camera; `-inside` under the exact key.
+  'partial-edge': { scene: 'partial-edge', look: 'edge' },
+  'partial-edge-inside': { scene: 'partial-edge', look: 'edge', depth: 'inside' },
   'bake-alpha-plane': { scene: 'alpha-plane', look: 'model-view', bake: 64 },
   'bake-turntable-y030': { yawDeg: 30, bake: 64 },
   // Edge rounding (MS-15): sharp-edged cube and wedge beside a plane, a card and a smooth sphere.
@@ -407,6 +415,14 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return cutoutChecker(load(showcaseSource));
     case 'cutout-edge':
       return cutoutEdge(load(showcaseSource));
+    case 'partial-edge':
+      return partialEdge(load(showcaseSource));
+    case 'partial-edge-under':
+      return partialEdge(load(showcaseSource), { under: true });
+    case 'partial-edge-pair':
+      return partialEdge(load(showcaseSource), { pair: true });
+    case 'partial-edge-linear':
+      return partialEdge(load(showcaseSource), { linear: true });
     case 'lightmap-overflow':
       return lightmapOverflow(load(showcaseSource));
     case 'edges-200k':
