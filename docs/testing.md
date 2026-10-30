@@ -167,10 +167,15 @@ The embed suite (`packages/embed/e2e`, `pnpm --filter @modelshot/embed run test:
 `test:browser`) runs two servers on two origins: the production embed build (`serve:e2e`, `vite preview`) on
 `MS_EMBED_PORT`, else a per-checkout port like the harness's, and `e2e/hostServer.mjs` on `MS_EMBED_HOST_PORT`, else
 that port plus 1000, which serves the host page and the test models in place (`/cors/`, `/nocors/`, a 404, 65 MiB
-bodies with and without `Content-Length`, a stalled body, a non-model) and lists what it was asked at `/__requests`.
+bodies with and without `Content-Length`, a stalled body, a non-model, and `/mainthread/` glTF models of up to 63 MiB
+made in memory on first request) and lists what it was asked at `/__requests`.
 The specs cover the element and a plain iframe, lazy loading, CORS and other download errors, limits with the host
 page staying responsive, the requests made and the background colour per look; no goldens (pixel checks are coarse
-differences after "Preview lit."). See [embed.md](embed.md#tests).
+differences after "Preview lit."). `embed.mainThread.spec.ts` records the frame's long tasks (`PerformanceObserver`,
+`longtask`) from the end of the model's response (resource timing) to its first file request or its failure and
+fails on one of 100 ms or more (MS-86). Measured 2026-10-30 on the dev machine: with the frame listing the references
+itself (as before MS-86) the 63 MiB `big.gltf` gave one 172 ms task in a 233 ms window and failed; with the load
+worker listing them, no long task in a 218 ms window (`long-uri.gltf` 131 ms, `duplicates.gltf` 44 ms, none). See [embed.md](embed.md#tests).
 
 The deploy suite (`tools/deploy/e2e`, `pnpm --filter @modelshot/deploy run test:browser`, part of the root
 `test:browser`) builds `@modelshot/deploy...` itself, then serves the assembled `tools/deploy/dist` on `MS_DEPLOY_PORT`, else a

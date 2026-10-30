@@ -78,6 +78,9 @@ const fakes = vi.hoisted(() => ({
   sidecarsWait: new Set<string>(),
   sidecars: [] as unknown[],
   groups: [] as File[][],
+  /** Per openModel session: its lister, whether it was closed, and the options fetchSidecars got. */
+  sessions: [] as { listReferences: () => Promise<string[]>; closed: boolean }[],
+  sidecarOptions: [] as { listReferences?: unknown }[],
 }));
 
 vi.mock('@modelshot/app/viewer', () => ({
@@ -97,8 +100,19 @@ vi.mock('@modelshot/app/intake', () => ({
     fakes.groups.push(files);
     return { kind: 'model', model: files[0], resources: files.slice(1) };
   },
-  loadModel: (request: { model: File }, options: { signal: AbortSignal }) =>
-    pending(fakes.reads as Pending<{ doc: unknown }>[], request.model.name, options.signal),
+  openModel: (options: { signal: AbortSignal }) => {
+    const session = {
+      listReferences: () => Promise.resolve([]),
+      load: (request: { model: File }) =>
+        pending(fakes.reads as Pending<{ doc: unknown }>[], request.model.name, options.signal),
+      close: () => {
+        session.closed = true;
+      },
+      closed: false,
+    };
+    fakes.sessions.push(session);
+    return session;
+  },
 }));
 
 vi.mock('../src/frame/fetchModel', () => ({
@@ -107,10 +121,12 @@ vi.mock('../src/frame/fetchModel', () => ({
 }));
 
 vi.mock('../src/frame/fetchSidecars', () => ({
-  fetchSidecars: (_model: File, url: string, options: { signal: AbortSignal }) =>
-    fakes.sidecarsWait.has(url)
+  fetchSidecars: (_model: File, url: string, options: { signal: AbortSignal; listReferences?: unknown }) => {
+    fakes.sidecarOptions.push(options);
+    return fakes.sidecarsWait.has(url)
       ? pending(fakes.sidecars as Pending<File[]>[], url, options.signal)
-      : Promise.resolve([]),
+      : Promise.resolve([]);
+  },
 }));
 
 vi.mock('../src/frame/autorotate', () => ({
@@ -190,6 +206,8 @@ beforeEach(() => {
   fakes.sidecarsWait.clear();
   fakes.sidecars.length = 0;
   fakes.groups.length = 0;
+  fakes.sessions.length = 0;
+  fakes.sidecarOptions.length = 0;
   vi.stubGlobal('document', {
     createElement: () => ({ setAttribute: vi.fn(), addEventListener: vi.fn(), remove: vi.fn() }),
   });
@@ -414,6 +432,36 @@ describe('showEmbed', () => {
     await settle();
     expect(embed.page.stage.dataset['state']).toBe('shown');
     expect(embed.posts()).toEqual(['load']);
+  });
+
+  it("lists the model's files through the worker session that then loads it, and closes the session", async () => {
+    const G = 'https://models.example/g/scene.gltf';
+    fakes.sidecarsWait.add(G);
+    start(fragment(G));
+    await settle();
+    fetches()[0]?.answer.resolve(new File(['{}'], 'scene.gltf'));
+    await settle();
+    expect(fakes.sessions).toHaveLength(1);
+    expect(fakes.sidecarOptions.at(-1)?.listReferences).toBe(fakes.sessions[0]?.listReferences);
+    sidecars()[0]?.answer.resolve([new File(['b'], 'scene.bin')]);
+    await settle();
+    expect(reads()).toHaveLength(1);
+    expect(fakes.sessions[0]?.closed).toBe(false);
+    reads()[0]?.answer.resolve({ doc: 'doc scene.gltf' });
+    await settle();
+    expect(fakes.sessions[0]?.closed).toBe(true);
+  });
+
+  it('closes the session when a file of the model fails', async () => {
+    const G = 'https://models.example/g/scene.gltf';
+    fakes.sidecarsWait.add(G);
+    start(fragment(G));
+    await settle();
+    fetches()[0]?.answer.resolve(new File(['{}'], 'scene.gltf'));
+    await settle();
+    sidecars()[0]?.answer.reject(new EmbedError('SIDECAR_REFUSED', 'The model refers to "//evil.example/a.png".'));
+    await settle();
+    expect(fakes.sessions[0]?.closed).toBe(true);
   });
 
   it('a failed file of the model posts error and shows the alert, without reading the model', async () => {

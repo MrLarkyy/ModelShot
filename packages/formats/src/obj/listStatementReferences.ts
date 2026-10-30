@@ -1,7 +1,7 @@
 import type { ReferenceList } from '../resources/ReferenceList';
 import { ObjError } from './ObjError';
 import { DEFAULT_OBJ_LIMITS } from './ObjLoadOptions';
-import { forEachStatement, readObjText, type ObjStatement } from './objText';
+import { forEachStatement, readObjText, type DecodedObjText, type ObjStatement } from './objText';
 
 /** Ends the scan once the list is full. */
 class ListFull extends Error {}
@@ -11,7 +11,7 @@ class ListFull extends Error {}
  * full; `false` when the loader would refuse the text (it then reports why).
  */
 export function listStatementReferences(
-  input: string | Uint8Array,
+  input: string | Uint8Array | DecodedObjText,
   fileName: string,
   list: ReferenceList,
   visit: (statement: ObjStatement) => void,

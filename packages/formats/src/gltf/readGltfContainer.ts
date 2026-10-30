@@ -1,17 +1,26 @@
 import { quoteValue } from '../text/quoteValue';
+import { utf8Length } from '../text/utf8Length';
 import { utf8LengthExceeds } from '../text/utf8LengthExceeds';
 import { GltfError } from './GltfError';
 import { field, isJsonObject, type JsonObject } from '../json/JsonObject';
 import { readString } from './gltfFields';
 
-/** The glTF JSON and, for a GLB, its binary chunk (buffer 0 when that buffer has no `uri`). */
+/**
+ * The glTF JSON and, for a GLB, its binary chunk (buffer 0 when that buffer has no `uri`): a file read once, for
+ * `listGltfReferences` and `loadGltf` to share. Only a container `readGltfContainer` returned is taken as one.
+ */
 export interface GltfContainer {
   readonly kind: 'gltf' | 'glb';
   readonly json: JsonObject;
   readonly bin: Uint8Array | null;
   /** `asset.version`, e.g. `"2.0"`. */
   readonly version: string;
+  /** Size of the file it was read from (UTF-8 bytes for text). */
+  readonly byteLength: number;
 }
+
+// A caller-made object could hold getters, cycles or values JSON cannot hold; only what this module parsed is taken.
+const READ = new WeakSet<object>();
 
 const GLB_MAGIC = 0x46546c67; // "glTF" little-endian
 const CHUNK_JSON = 0x4e4f534a; // "JSON"
@@ -22,9 +31,17 @@ const CHUNK_HEADER_BYTES = 8;
 /**
  * Size-checks the file, splits a GLB into its chunks (every length checked against the bytes present before anything is
  * sliced), decodes strict UTF-8, parses the JSON and checks `asset.version`. A `.gltf` given as text is never a GLB.
+ * A container this function returned is checked against `maxFileBytes` again and returned as it is, read no more.
  */
-export function readContainer(input: string | Uint8Array, maxFileBytes: number): GltfContainer {
+export function readGltfContainer(input: string | Uint8Array | GltfContainer, maxFileBytes: number): GltfContainer {
+  if (typeof input === 'object' && !(input instanceof Uint8Array) && READ.has(input)) {
+    if (input.byteLength > maxFileBytes) {
+      throw new GltfError('FILE_TOO_LARGE', '$', `${input.byteLength} bytes, the limit is ${maxFileBytes}`);
+    }
+    return input;
+  }
   let text: string;
+  let byteLength: number;
   let bin: Uint8Array | null = null;
   let kind: GltfContainer['kind'] = 'gltf';
   if (typeof input === 'string') {
@@ -32,10 +49,12 @@ export function readContainer(input: string | Uint8Array, maxFileBytes: number):
       throw new GltfError('FILE_TOO_LARGE', '$', `more than the limit of ${maxFileBytes} bytes`);
     }
     text = input;
+    byteLength = utf8Length(input);
   } else if (input instanceof Uint8Array) {
     if (input.byteLength > maxFileBytes) {
       throw new GltfError('FILE_TOO_LARGE', '$', `${input.byteLength} bytes, the limit is ${maxFileBytes}`);
     }
+    byteLength = input.byteLength;
     if (hasGlbMagic(input)) {
       kind = 'glb';
       const chunks = readGlbChunks(input);
@@ -48,7 +67,9 @@ export function readContainer(input: string | Uint8Array, maxFileBytes: number):
     throw new GltfError('NOT_JSON', '$', 'expected the file as a string or bytes');
   }
   const json = parseJson(text.startsWith('\uFEFF') ? text.slice(1) : text);
-  return { kind, json, bin, version: readAssetVersion(json) };
+  const container: GltfContainer = { kind, json, bin, version: readAssetVersion(json), byteLength };
+  READ.add(container);
+  return container;
 }
 
 function hasGlbMagic(bytes: Uint8Array): boolean {
