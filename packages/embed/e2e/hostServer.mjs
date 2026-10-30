@@ -8,7 +8,8 @@
 //   /big-length.bbmodel      65 MiB declared in Content-Length, then zeros until the client stops
 //   /big-stream.bbmodel      zeros without Content-Length until the client stops
 //   /stall.bbmodel           headers, then nothing
-//   /sidecars/<path>         a file of e2e/fixtures/sidecars (a model and the files it refers to), with CORS
+//   /sidecars/<path>         a file of e2e/fixtures/sidecars (a model and the files it refers to), with CORS; any other
+//                            path under it a 404 with CORS
 //   /sidecars-partial/<path> the same, the .png files without Access-Control-Allow-Origin
 //   /hostile/<case>          a model referring to a file the embed must refuse, after one it may download:
 //                            absolute.gltf (another origin), protocol-relative.gltf, backslash.gltf, javascript.gltf,
@@ -182,6 +183,11 @@ const server = createServer((request, response) => {
     });
     if (head) response.end();
     else createReadStream(sidecarPath).pipe(response);
+    return;
+  }
+  if (sidecar) {
+    response.writeHead(404, { ...cors, 'content-type': 'text/plain' });
+    response.end(head ? undefined : 'not here');
     return;
   }
   const hostileCase = /^\/hostile\/([^/]+)$/.exec(path);
