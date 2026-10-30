@@ -12,6 +12,10 @@ export default defineConfig({
   outputDir: 'test-results',
   // Six parallel SwiftShader workers stretch a 3.4 s test to 24 s (MS-74); the limit keeps that under half of it.
   timeout: 60_000,
+  // CI jobs are cancelled at 20 minutes, which skips the artefact upload and loses every number. 17 minutes is the job
+  // limit less about 1 for setup and 2 for teardown and upload, so a hang or a slow bake fails the run with the finished
+  // sections reported. The largest e2e shard is 6.4 minutes of tests (docs/testing.md), the bench job 16-17 on a slow runner.
+  globalTimeout: ci ? 17 * 60_000 : 0,
   workers: playwrightWorkers(process.env, availableParallelism(), totalmem()),
   retries: 0,
   forbidOnly: ci,
@@ -38,7 +42,8 @@ export default defineConfig({
   // the path-tracer tests (golden-pt), the baked lighting tests (bake) and the preview-vs-render pairing tests (pair).
   // Locally 'test:browser' runs two phases (src/browserPhases.ts): every test without @timing with the worker count of
   // src/workerCount.ts, then the bench project alone with one worker. The bench project is every @timing test, so a
-  // measure never shares the machine with another test. It has no dependency on the goldens: that would skip it after
+  // measure never shares the machine with another test. Its one worker runs the tests one after another;
+  // fullyParallel only makes `--shard` split the project per test instead of per file. It has no dependency on the goldens: that would skip it after
   // a golden failure and pull every golden test into its CI shard.
   // Playwright queues the test groups of one run in project order, so the projects with the longest tests come first
   // and the short golden tests fill the workers at the end of phase 1 instead of one long test running on alone.
@@ -71,6 +76,6 @@ export default defineConfig({
         'textureWrap.spec.ts',
       ],
     },
-    { name: 'bench', grep: /@timing/, workers: 1, outputDir: 'test-results/serial' },
+    { name: 'bench', fullyParallel: true, grep: /@timing/, workers: 1, outputDir: 'test-results/serial' },
   ],
 });
