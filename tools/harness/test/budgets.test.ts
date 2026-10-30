@@ -49,6 +49,11 @@ describe('checkBudgets', () => {
     expect(violations.map((v) => v.message)).toEqual(['frameTimeMs.a: measured 10.5 exceeds budget max 10']);
   });
 
+  it('fails a non-finite measurement', () => {
+    const violations = checkBudgets(budgets, { ...measured, frameTimeMs: { a: Number.NaN } });
+    expect(violations.map((v) => v.message)).toEqual(['frameTimeMs.a: measured NaN is not a finite number']);
+  });
+
   it('checks the bake groups like the others', () => {
     const violations = checkBudgets(budgets, { ...measured, bakeTimeMs: { d: 41 }, mainThreadBlockMs: { e: 50 } });
     expect(violations.map((v) => v.message)).toEqual(['bakeTimeMs.d: measured 41 exceeds budget max 40']);

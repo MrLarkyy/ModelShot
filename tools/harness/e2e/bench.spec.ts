@@ -1,52 +1,110 @@
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { cpus, totalmem } from 'node:os';
+import type { Page, TestInfo } from '@playwright/test';
 import { expect, test } from '../src/harnessTest';
-import { budgetReport, checkBudgets, loadBudgets, type Measured } from '../src/budgets';
+import { sectionBudgets, writeSectionMeasured, type BenchSection } from '../src/benchSections';
+import { budgetReport, checkBudgets, loadBudgets, type BudgetGroup, type Measured } from '../src/budgets';
 import { BUNDLE_TARGETS, measureBundle } from '../src/bundleSize';
 import { openFixture } from '../src/expectGolden';
 import { traceMainThread } from '../src/mainThreadTrace';
 import { median } from '../src/measure';
 
-test(
-  'frame time, time to samples and bundle size stay inside budgets.json',
-  { tag: '@timing' },
-  async ({ page }, testInfo) => {
-    // The path-tracer runs and the bakes take seconds each on SwiftShader, and a CI runner is 3-5x slower than the dev
-    // machine. Room for three bakes at their budget max plus everything else, so a slow bake fails its budget, not the
-    // test timeout.
-    const budgets = loadBudgets();
-    const bakeMax = budgets.bakeTimeMs['bake-bench-n16']?.max ?? 0;
-    test.setTimeout(3 * bakeMax + 300_000);
+// One test per section of budgets.json (src/benchSections.ts), each with its own timeout: a slow runner fails one section
+// with its numbers, the worker restarts and the other sections still measure and report (docs/testing.md, Budgets). The
+// timeouts are backstops that leave room for a section at its budget maxima plus setup. On CI the 17-minute globalTimeout
+// bounds the run: the bake section starts about 10.5 minutes in, so on a slow runner bakes of over ~130 s each (inside
+// the budget) are stopped by it; finished sections keep their numbers and the per-bake log lines show the finished bakes.
+const budgets = loadBudgets();
+const maxOf = (group: BudgetGroup, key: string): number => budgets[group][key]?.max ?? 0;
 
-    await openFixture(page, '/gradient.html');
-    const frames = await page.evaluate(() => {
+// 4 warm frames are one full cycle of an exact frame's sample history (MS-35), the odd 11 timed frames give an exact
+// median; the 512 px frames take seconds each on a slow runner. The gradient frame is under 1 s: its 0.1 ms timer ticks
+// need 30.
+const WARM_FRAMES = 4;
+const TIMED_FRAMES = 11;
+
+const FRAMES_TIMEOUT_MS =
+  (WARM_FRAMES + TIMED_FRAMES) *
+    (maxOf('frameTimeMs', 'rt-bench-512') +
+      2 * maxOf('frameTimeMs', 'rt-bench-order-512') +
+      maxOf('frameTimeMs', 'rt-frame-partial-edge-512')) +
+  120_000;
+const BAKE_TIMEOUT_MS = 3 * maxOf('bakeTimeMs', 'bake-bench-n16') + 120_000;
+// Hang backstops, not the run's bound (globalTimeout in playwright.config.ts is): the slowest CI run (before the sections
+// were split) needed 5.9 min for the loads plus every path-tracer run; the path-tracer section holds 3 x 52 s and 3 x 73 s at their maxima.
+const LOADS_TIMEOUT_MS = 360_000;
+const PATH_TRACER_TIMEOUT_MS = 600_000;
+const EXPORT_TIMEOUT_MS = 180_000;
+const BUNDLE_TIMEOUT_MS = 180_000;
+
+const sectionTimeouts: Record<BenchSection, number> = {
+  frames: FRAMES_TIMEOUT_MS,
+  loads: LOADS_TIMEOUT_MS,
+  pathTracer: PATH_TRACER_TIMEOUT_MS,
+  export: EXPORT_TIMEOUT_MS,
+  bundle: BUNDLE_TIMEOUT_MS,
+  bake: BAKE_TIMEOUT_MS,
+};
+
+/** Runner class in the log and the report, so a slow number can be told from a slow machine. */
+function logRunner(testInfo: TestInfo): void {
+  const processors = cpus();
+  const line = `${processors[0]?.model.trim() ?? 'unknown CPU'} x${processors.length}, ${(totalmem() / 2 ** 30).toFixed(1)} GiB`;
+  console.log(`[bench] runner: ${line}`);
+  testInfo.annotations.push({ type: 'runner', description: line });
+}
+
+async function finishSection(section: BenchSection, measured: Partial<Measured>, testInfo: TestInfo): Promise<void> {
+  const json = JSON.stringify(measured, null, 2);
+  writeSectionMeasured(testInfo.project.outputDir, section, measured);
+  await testInfo.attach(`budgets-measured-${section}`, { body: json, contentType: 'application/json' });
+  const own = sectionBudgets(budgets, section);
+  for (const line of budgetReport(own, measured)) {
+    console.log(`[budget] ${line}`);
+    testInfo.annotations.push({ type: 'budget', description: line });
+  }
+  expect(checkBudgets(own, measured).map((v) => v.message)).toEqual([]);
+}
+
+async function renderFrames(page: Page, warm: number, timed: number): Promise<number[]> {
+  return page.evaluate(
+    ([warmFrames, timedFrames]) => {
       const fixture = window.__msFixture;
       if (!fixture?.renderFrames) throw new Error('frame bench missing');
-      fixture.renderFrames(5);
-      return fixture.renderFrames(30);
-    });
+      fixture.renderFrames(warmFrames);
+      return fixture.renderFrames(timedFrames);
+    },
+    [warm, timed] as const,
+  );
+}
+
+const frameTimes = (page: Page): Promise<number[]> => renderFrames(page, WARM_FRAMES, TIMED_FRAMES);
+
+const timeScene = (page: Page, scene?: string): Promise<number> =>
+  page.evaluate(async (name) => {
+    const fixture = window.__msFixture;
+    if (!fixture?.timeScene) throw new Error('scene bench missing');
+    return fixture.timeScene(name);
+  }, scene);
+
+test.describe('bench sections', () => {
+  test('frame times stay inside budgets.json', { tag: '@timing' }, async ({ page }, testInfo) => {
+    test.setTimeout(sectionTimeouts.frames);
+    logRunner(testInfo);
+
+    await openFixture(page, '/gradient.html');
+    const frames = await renderFrames(page, 5, 30);
 
     const rtBench = await openFixture(page, '/rt.html?scene=bench&size=512');
     expect([rtBench.width, rtBench.height]).toEqual([512, 512]);
     // 128 group nodes, one batch each, drawn front and back in the opaque and the transparency pass.
     expect(await page.evaluate(() => window.__msFixture?.rt?.drawCallsPerFrame())).toBe(128 * 2 * 2);
-    const rtFrames = await page.evaluate(() => {
-      const fixture = window.__msFixture;
-      if (!fixture?.renderFrames) throw new Error('frame bench missing');
-      fixture.renderFrames(5);
-      return fixture.renderFrames(30);
-    });
+    const rtFrames = await frameTimes(page);
 
     // MS-60: the partial-edge quad filling most of a 512 px frame, raster key, 4x MSAA: the transparency pass per sample
     // into its multisampled targets with the seam ramp, and their resolve.
     await openFixture(page, '/rt.html?variant=partial-edge&size=512');
     expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('raster');
-    const partialEdgeFrames = await page.evaluate(() => {
-      const fixture = window.__msFixture;
-      if (!fixture?.renderFrames) throw new Error('frame bench missing');
-      fixture.renderFrames(5);
-      return fixture.renderFrames(30);
-    });
+    const partialEdgeFrames = await frameTimes(page);
 
     // The same scene with one mesh at render order 1: every frame uses the exact depth key (gl_FragDepth). A still
     // exact frame draws one shifted pass of its sample history per render (MS-35): the draws of the single-sampled
@@ -55,17 +113,10 @@ test(
       await openFixture(page, `/rt.html?scene=bench-order&size=512${query}`);
       expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('exact');
       const draws = (await page.evaluate(() => window.__msFixture!.rt!.drawStatesPerFrame())).length;
-      const times = await page.evaluate(() => {
-        const fixture = window.__msFixture;
-        if (!fixture?.renderFrames) throw new Error('frame bench missing');
-        fixture.renderFrames(5);
-        return fixture.renderFrames(30);
-      });
-      return { draws, times };
+      return { draws, times: await frameTimes(page) };
     };
     const singleOrder = await orderFrames('&msaa=0');
     const order = await orderFrames('');
-    const rtOrderFrames = order.times;
     console.log(
       `[bench] rt-bench-order-512: ${order.draws} draws, median ${median(order.times).toFixed(1)} ms; ` +
         `single-sampled (msaa=0) ${singleOrder.draws} draws, median ${median(singleOrder.times).toFixed(1)} ms`,
@@ -75,34 +126,93 @@ test(
       1.25 * median(singleOrder.times),
     );
 
+    await finishSection(
+      'frames',
+      {
+        frameTimeMs: {
+          'gradient-256': median(frames),
+          'rt-bench-512': median(rtFrames),
+          'rt-bench-order-512': median(order.times),
+          'rt-frame-partial-edge-512': median(partialEdgeFrames),
+        },
+      },
+      testInfo,
+    );
+  });
+
+  test('loads stay inside budgets.json', { tag: '@timing' }, async ({ page }, testInfo) => {
+    test.setTimeout(sectionTimeouts.loads);
+    logRunner(testInfo);
+
     // Load and first frame of a scene at the loader's limits with render order: decode, upload, the exact key's
     // de-indexed geometry, one frame.
     await openFixture(page, '/rt.html?scene=empty&size=512');
-    const loadMs = await page.evaluate(async () => {
-      const fixture = window.__msFixture;
-      if (!fixture?.timeScene) throw new Error('scene bench missing');
-      return fixture.timeScene();
-    });
+    const loadMs = await timeScene(page);
 
     // Sharp-edge detection (MS-15) in a load and first frame, on fresh meshes: 200 004 triangles of separate cubes, and
     // the hostile plate whose single patch would ask 2 · 10⁸ slot checks (cut at MAX_EDGE_CHECKS).
-    const timeScene = (scene: string) =>
-      page.evaluate(async (name) => {
-        const fixture = window.__msFixture;
-        if (!fixture?.timeScene) throw new Error('scene bench missing');
-        return fixture.timeScene(name);
-      }, scene);
     await openFixture(page, '/rt.html?scene=empty&size=512');
-    const edgesLoadMs = await timeScene('edges-200k');
+    const edgesLoadMs = await timeScene(page, 'edges-200k');
     await openFixture(page, '/rt.html?scene=empty&size=512');
-    const edgesHostileMs = await timeScene('edges-hostile');
+    const edgesHostileMs = await timeScene(page, 'edges-hostile');
     // And the matching of positions and edges where every coordinate is a multiple of 2^20 (a hash's worst case).
     await openFixture(page, '/rt.html?scene=empty&size=512');
-    const edgesWeldMs = await timeScene('edges-weld');
+    const edgesWeldMs = await timeScene(page, 'edges-weld');
     // World-density lightmap charts (MS-41): 49 untextured meshes of 4096 triangles, none coplanar, unwrapped and drawn
     // de-indexed per corner.
     await openFixture(page, '/rt.html?scene=empty&size=512');
-    const worldLoadMs = await timeScene('world-200k');
+    const worldLoadMs = await timeScene(page, 'world-200k');
+
+    // Path-tracer load at the loader's limits: validate, flatten, build the BVH of 200 000 triangles, upload, one sample.
+    await openFixture(page, '/pt.html?scene=empty&size=128&samples=1');
+    const ptLoadMs = await timeScene(page);
+    expect(await page.evaluate(() => window.__msFixture?.pt?.triangles)).toBe(200_000);
+
+    // What the path tracer's setScene costs the main thread for a document at the loaders' limits (MS-40): validation,
+    // the mesh stream to the geometry worker, taking its buffers back, the banded upload and the swap, as the most one
+    // task blocked (CPU plus GPU wait). The document is built before the traced window.
+    await openFixture(page, '/pt.html?scene=empty&size=128&samples=1');
+    await page.evaluate(() => window.__msFixture?.pt?.prepareLarge());
+    let ptSet = { applied: false, triangles: 0, ms: 0 };
+    const ptSetTrace = await traceMainThread(page, async () => {
+      ptSet = await page.evaluate(async () => {
+        const pt = window.__msFixture?.pt;
+        if (!pt) throw new Error('pt controls missing');
+        const start = performance.now();
+        const result = await pt.setLarge();
+        return { ...result, ms: performance.now() - start };
+      });
+    });
+    expect({ applied: ptSet.applied, triangles: ptSet.triangles }).toEqual({ applied: true, triangles: 200_000 });
+    expect(await page.evaluate(() => window.__msFixture?.pt?.geometryInWorker)).toBe(true);
+    console.log(
+      `[bench] pt setScene of 200 000 triangles: ${ptSetTrace.tasks} tasks, max blocking per task ` +
+        `${ptSetTrace.maxBlocking.toFixed(1)} ms (CPU ${ptSetTrace.maxCpu.toFixed(1)} ms, GPU wait ` +
+        `${ptSetTrace.maxGpuWait.toFixed(1)} ms); longest ${ptSetTrace.longestWall.toFixed(1)} ms wall / ` +
+        `${ptSetTrace.longestCpu.toFixed(1)} ms CPU, largest wall-CPU gap ${ptSetTrace.largestGap.toFixed(1)} ms; ` +
+        `call to applied ${ptSet.ms.toFixed(0)} ms`,
+    );
+
+    await finishSection(
+      'loads',
+      {
+        frameTimeMs: {
+          'rt-load-first-frame-200k-order': loadMs,
+          'rt-load-first-frame-200k-edges': edgesLoadMs,
+          'rt-load-first-frame-edges-hostile': edgesHostileMs,
+          'rt-load-first-frame-edges-weld': edgesWeldMs,
+          'rt-load-first-frame-200k-world': worldLoadMs,
+          'pt-load-200k': ptLoadMs,
+        },
+        mainThreadBlockMs: { 'pt-setscene-200k': ptSetTrace.maxBlocking },
+      },
+      testInfo,
+    );
+  });
+
+  test('path-tracer times stay inside budgets.json', { tag: '@timing' }, async ({ page }, testInfo) => {
+    test.setTimeout(sectionTimeouts.pathTracer);
+    logRunner(testInfo);
 
     await openFixture(page, '/progressive.html?seed=7&samples=64');
     const runs = await page.evaluate(() => {
@@ -140,106 +250,23 @@ test(
       return [fixture.maxStepMs(64), fixture.maxStepMs(64), fixture.maxStepMs(64)];
     });
 
-    // Path-tracer load at the loader's limits: validate, flatten, build the BVH of 200 000 triangles, upload, one sample.
-    await openFixture(page, '/pt.html?scene=empty&size=128&samples=1');
-    const ptLoadMs = await page.evaluate(async () => {
-      const fixture = window.__msFixture;
-      if (!fixture?.timeScene) throw new Error('scene bench missing');
-      return fixture.timeScene();
-    });
-    expect(await page.evaluate(() => window.__msFixture?.pt?.triangles)).toBe(200_000);
+    await finishSection(
+      'pathTracer',
+      {
+        frameTimeMs: { 'pt-bench-128-x2-denoised-step': median(ptStepRuns) },
+        timeToSamplesMs: {
+          'progressive-256-n64': median(runs),
+          'pt-bench-128-n256': median(ptRuns),
+          'pt-bench-128-n64-x2-denoised': median(ptQualityRuns),
+        },
+      },
+      testInfo,
+    );
+  });
 
-    // What the path tracer's setScene costs the main thread for a document at the loaders' limits (MS-40): validation,
-    // the mesh stream to the geometry worker, taking its buffers back, the banded upload and the swap, as the most one
-    // task blocked (CPU plus GPU wait). The document is built before the traced window.
-    await openFixture(page, '/pt.html?scene=empty&size=128&samples=1');
-    await page.evaluate(() => window.__msFixture?.pt?.prepareLarge());
-    let ptSet = { applied: false, triangles: 0, ms: 0 };
-    const ptSetTrace = await traceMainThread(page, async () => {
-      ptSet = await page.evaluate(async () => {
-        const pt = window.__msFixture?.pt;
-        if (!pt) throw new Error('pt controls missing');
-        const start = performance.now();
-        const result = await pt.setLarge();
-        return { ...result, ms: performance.now() - start };
-      });
-    });
-    expect({ applied: ptSet.applied, triangles: ptSet.triangles }).toEqual({ applied: true, triangles: 200_000 });
-    expect(await page.evaluate(() => window.__msFixture?.pt?.geometryInWorker)).toBe(true);
-    console.log(
-      `[bench] pt setScene of 200 000 triangles: ${ptSetTrace.tasks} tasks, max blocking per task ` +
-        `${ptSetTrace.maxBlocking.toFixed(1)} ms (CPU ${ptSetTrace.maxCpu.toFixed(1)} ms, GPU wait ` +
-        `${ptSetTrace.maxGpuWait.toFixed(1)} ms); longest ${ptSetTrace.longestWall.toFixed(1)} ms wall / ` +
-        `${ptSetTrace.longestCpu.toFixed(1)} ms CPU, largest wall-CPU gap ${ptSetTrace.largestGap.toFixed(1)} ms; ` +
-        `call to applied ${ptSet.ms.toFixed(0)} ms`,
-    );
-
-    // The light bake of the benchmark scene in its worker: 16 samples with the shadow catcher, from bake() to the final
-    // lighting, median of 3; and the main thread's longest event-loop lag over those bakes (posting, three progress
-    // uploads per bake, drawing them).
-    // Each run is checked against the budget as it completes.
-    await openFixture(page, '/rt.html?scene=bench&lag=1');
-    await page.evaluate(() => window.__msFixture?.rt?.resetLag());
-    const bakeRuns: number[] = [];
-    // Traced, so a slow phase can be told apart: page work (CPU time) or the OS not running the thread (wall only).
-    const trace = await traceMainThread(page, async () => {
-      for (let run = 0; run < 3; run++) {
-        const ms = await page.evaluate(async () => {
-          const fixture = window.__msFixture;
-          if (!fixture?.timeBake) throw new Error('bake bench missing');
-          return fixture.timeBake();
-        });
-        expect(ms, `bake run ${run + 1}: ${ms.toFixed(0)} ms / max ${bakeMax}`).toBeLessThanOrEqual(bakeMax);
-        bakeRuns.push(ms);
-      }
-    });
-    // The budget is the most one main-thread task blocked over the three bakes: its CPU time plus its synchronous waits
-    // for the GPU process (the trace sees every task, the Playwright evaluate that calls bake() included). Wall time also
-    // counts the OS not running the thread on a loaded machine, so the wall-time block and the heartbeat lag are printed
-    // beside it, not asserted (docs/testing.md).
-    console.log(
-      `[bench] bake main thread (trace): ${trace.tasks} tasks, max blocking per task ${trace.maxBlocking.toFixed(1)} ms ` +
-        `(CPU ${trace.maxCpu.toFixed(1)} ms, GPU wait ${trace.maxGpuWait.toFixed(1)} ms); longest ` +
-        `${trace.longestWall.toFixed(1)} ms wall / ${trace.longestCpu.toFixed(1)} ms CPU, largest wall-CPU gap ` +
-        `${trace.largestGap.toFixed(1)} ms`,
-    );
-    const bakeBlock = await page.evaluate(() => ({
-      block: window.__msFixture?.rt?.mainThreadBlock() ?? -1,
-      lag: window.__msFixture?.rt?.maxLag() ?? -1,
-      report: window.__msFixture?.rt?.blockReport(),
-    }));
-    console.log(
-      `[bench] bake runs ${bakeRuns.map((ms) => ms.toFixed(0)).join(', ')} ms, wall-time block ` +
-        `${bakeBlock.block.toFixed(1)} ms (heartbeat lag ${bakeBlock.lag.toFixed(1)} ms)`,
-    );
-    // Which work the block came from: the longest stretch per phase, every long task and the slow phases around them.
-    const phases = Object.entries(bakeBlock.report?.phases ?? {}).map(([phase, ms]) => `${phase} ${ms.toFixed(1)}`);
-    console.log(`[bench] bake phases (max ms): ${phases.join(', ')}`);
-    console.log(`[bench] bake long tasks: ${JSON.stringify(bakeBlock.report?.longTasks ?? [])}`);
-    console.log(`[bench] bake slow phases: ${JSON.stringify(bakeBlock.report?.slowPhases.slice(-40) ?? [])}`);
-
-    // What a bake costs the main thread for a document at the loaders' limits (200 000 triangles): the call, the mesh
-    // stream and the update, as the most CPU time one task used over the whole 1-sample bake.
-    await openFixture(page, '/rt.html?scene=large-order&lag=1');
-    let post = { call: 0, block: 0, lag: 0 };
-    const postTrace = await traceMainThread(page, async () => {
-      post = await page.evaluate(async () => {
-        const rt = window.__msFixture?.rt;
-        if (!rt) throw new Error('rt controls missing');
-        rt.resetLag();
-        const start = performance.now();
-        const pending = rt.bake({ samples: 1 });
-        const call = performance.now() - start;
-        const result = await pending;
-        if (result.error) throw new Error(result.error);
-        return { call, block: rt.mainThreadBlock(), lag: rt.maxLag() };
-      });
-    });
-    console.log(
-      `[bench] bake() of 200 000 triangles: max blocking per task ${postTrace.maxBlocking.toFixed(1)} ms (CPU ` +
-        `${postTrace.maxCpu.toFixed(1)} ms, GPU wait ${postTrace.maxGpuWait.toFixed(1)} ms); call ` +
-        `${post.call.toFixed(1)} ms, wall-time block ${post.block.toFixed(1)} ms (heartbeat lag ${post.lag.toFixed(1)} ms)`,
-    );
+  test('export times stay inside budgets.json', { tag: '@timing' }, async ({ page }, testInfo) => {
+    test.setTimeout(sectionTimeouts.export);
+    logRunner(testInfo);
 
     // An export (MS-22): a transparent 4-frame turntable of the showcase at 64 x 64, 16 samples a frame, as APNG, from a
     // fresh tracer: scene upload, the frames, the encoding. Median of 3.
@@ -295,49 +322,113 @@ test(
       );
     }
 
+    await finishSection(
+      'export',
+      {
+        frameTimeMs: {
+          'export-turntable-64-f4-n16': median(exportRuns),
+          'export-animation-64-f4-n16': animationMedians['undefined']?.pose ?? Number.NaN,
+          'export-animation-atlas2048-64-f4-n16': animationMedians['2048']?.pose ?? Number.NaN,
+        },
+      },
+      testInfo,
+    );
+  });
+
+  // Playwright reads the fixtures from the destructuring, and this test needs none (no page).
+  // eslint-disable-next-line no-empty-pattern
+  test('bundle sizes stay inside budgets.json', { tag: '@timing' }, async ({}, testInfo) => {
+    test.setTimeout(sectionTimeouts.bundle);
+    logRunner(testInfo);
+
     // Every target, so a budget row cannot go unmeasured; one at a time, as `site` and `site-assets` build the same package.
     const bundleGzipBytes: Record<string, number> = {};
     for (const target of BUNDLE_TARGETS) bundleGzipBytes[target] = (await measureBundle(target)).gzipBytes;
 
-    const measured: Measured = {
-      frameTimeMs: {
-        'gradient-256': median(frames),
-        'rt-bench-512': median(rtFrames),
-        'rt-bench-order-512': median(rtOrderFrames),
-        'rt-frame-partial-edge-512': median(partialEdgeFrames),
-        'rt-load-first-frame-200k-order': loadMs,
-        'rt-load-first-frame-200k-edges': edgesLoadMs,
-        'rt-load-first-frame-edges-hostile': edgesHostileMs,
-        'rt-load-first-frame-edges-weld': edgesWeldMs,
-        'rt-load-first-frame-200k-world': worldLoadMs,
-        'pt-bench-128-x2-denoised-step': median(ptStepRuns),
-        'pt-load-200k': ptLoadMs,
-        'export-turntable-64-f4-n16': median(exportRuns),
-        'export-animation-64-f4-n16': animationMedians['undefined']?.pose ?? Number.NaN,
-        'export-animation-atlas2048-64-f4-n16': animationMedians['2048']?.pose ?? Number.NaN,
-      },
-      timeToSamplesMs: {
-        'progressive-256-n64': median(runs),
-        'pt-bench-128-n256': median(ptRuns),
-        'pt-bench-128-n64-x2-denoised': median(ptQualityRuns),
-      },
-      bundleGzipBytes,
-      bakeTimeMs: { 'bake-bench-n16': median(bakeRuns) },
-      mainThreadBlockMs: {
-        'bake-bench': trace.maxBlocking,
-        'bake-post-200k': postTrace.maxBlocking,
-        'pt-setscene-200k': ptSetTrace.maxBlocking,
-      },
-    };
-    const json = JSON.stringify(measured, null, 2);
-    writeFileSync(join(testInfo.project.outputDir, 'budgets-measured.json'), json);
-    await testInfo.attach('budgets-measured', { body: json, contentType: 'application/json' });
+    await finishSection('bundle', { bundleGzipBytes }, testInfo);
+  });
 
-    for (const line of budgetReport(budgets, measured)) {
-      console.log(`[budget] ${line}`);
-      testInfo.annotations.push({ type: 'budget', description: line });
-    }
-    const violations = checkBudgets(budgets, measured);
-    expect(violations.map((v) => v.message)).toEqual([]);
-  },
-);
+  test('bake times stay inside budgets.json', { tag: '@timing' }, async ({ page }, testInfo) => {
+    // Last: the longest section (three bakes at SwiftShader speed), so a timeout here loses no finished section.
+    test.setTimeout(sectionTimeouts.bake);
+    logRunner(testInfo);
+    const bakeMax = maxOf('bakeTimeMs', 'bake-bench-n16');
+
+    // The light bake of the benchmark scene in its worker: 16 samples with the shadow catcher, from bake() to the final
+    // lighting, median of 3; and the main thread's longest event-loop lag over those bakes (posting, three progress
+    // uploads per bake, drawing them).
+    // Each run is checked against the budget as it completes.
+    await openFixture(page, '/rt.html?scene=bench&lag=1');
+    await page.evaluate(() => window.__msFixture?.rt?.resetLag());
+    const bakeRuns: number[] = [];
+    // Traced, so a slow phase can be told apart: page work (CPU time) or the OS not running the thread (wall only).
+    const trace = await traceMainThread(page, async () => {
+      for (let run = 0; run < 3; run++) {
+        const ms = await page.evaluate(async () => {
+          const fixture = window.__msFixture;
+          if (!fixture?.timeBake) throw new Error('bake bench missing');
+          return fixture.timeBake();
+        });
+        console.log(`[bench] bake run ${run + 1}: ${ms.toFixed(0)} ms`);
+        expect(ms, `bake run ${run + 1}: ${ms.toFixed(0)} ms / max ${bakeMax}`).toBeLessThanOrEqual(bakeMax);
+        bakeRuns.push(ms);
+      }
+    });
+    // The budget is the most one main-thread task blocked over the three bakes: its CPU time plus its synchronous waits
+    // for the GPU process (the trace sees every task, the Playwright evaluate that calls bake() included). Wall time also
+    // counts the OS not running the thread on a loaded machine, so the wall-time block and the heartbeat lag are printed
+    // beside it, not asserted (docs/testing.md).
+    console.log(
+      `[bench] bake main thread (trace): ${trace.tasks} tasks, max blocking per task ${trace.maxBlocking.toFixed(1)} ms ` +
+        `(CPU ${trace.maxCpu.toFixed(1)} ms, GPU wait ${trace.maxGpuWait.toFixed(1)} ms); longest ` +
+        `${trace.longestWall.toFixed(1)} ms wall / ${trace.longestCpu.toFixed(1)} ms CPU, largest wall-CPU gap ` +
+        `${trace.largestGap.toFixed(1)} ms`,
+    );
+    const bakeBlock = await page.evaluate(() => ({
+      block: window.__msFixture?.rt?.mainThreadBlock() ?? -1,
+      lag: window.__msFixture?.rt?.maxLag() ?? -1,
+      report: window.__msFixture?.rt?.blockReport(),
+    }));
+    console.log(
+      `[bench] bake runs ${bakeRuns.map((ms) => ms.toFixed(0)).join(', ')} ms, wall-time block ` +
+        `${bakeBlock.block.toFixed(1)} ms (heartbeat lag ${bakeBlock.lag.toFixed(1)} ms)`,
+    );
+    // Which work the block came from: the longest stretch per phase, every long task and the slow phases around them.
+    const phases = Object.entries(bakeBlock.report?.phases ?? {}).map(([phase, ms]) => `${phase} ${ms.toFixed(1)}`);
+    console.log(`[bench] bake phases (max ms): ${phases.join(', ')}`);
+    console.log(`[bench] bake long tasks: ${JSON.stringify(bakeBlock.report?.longTasks ?? [])}`);
+    console.log(`[bench] bake slow phases: ${JSON.stringify(bakeBlock.report?.slowPhases.slice(-40) ?? [])}`);
+
+    // What a bake costs the main thread for a document at the loaders' limits (200 000 triangles): the call, the mesh
+    // stream and the update, as the most CPU time one task used over the whole 1-sample bake.
+    await openFixture(page, '/rt.html?scene=large-order&lag=1');
+    let post = { call: 0, block: 0, lag: 0 };
+    const postTrace = await traceMainThread(page, async () => {
+      post = await page.evaluate(async () => {
+        const rt = window.__msFixture?.rt;
+        if (!rt) throw new Error('rt controls missing');
+        rt.resetLag();
+        const start = performance.now();
+        const pending = rt.bake({ samples: 1 });
+        const call = performance.now() - start;
+        const result = await pending;
+        if (result.error) throw new Error(result.error);
+        return { call, block: rt.mainThreadBlock(), lag: rt.maxLag() };
+      });
+    });
+    console.log(
+      `[bench] bake() of 200 000 triangles: max blocking per task ${postTrace.maxBlocking.toFixed(1)} ms (CPU ` +
+        `${postTrace.maxCpu.toFixed(1)} ms, GPU wait ${postTrace.maxGpuWait.toFixed(1)} ms); call ` +
+        `${post.call.toFixed(1)} ms, wall-time block ${post.block.toFixed(1)} ms (heartbeat lag ${post.lag.toFixed(1)} ms)`,
+    );
+
+    await finishSection(
+      'bake',
+      {
+        bakeTimeMs: { 'bake-bench-n16': median(bakeRuns) },
+        mainThreadBlockMs: { 'bake-bench': trace.maxBlocking, 'bake-post-200k': postTrace.maxBlocking },
+      },
+      testInfo,
+    );
+  });
+});
