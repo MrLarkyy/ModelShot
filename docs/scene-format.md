@@ -189,8 +189,8 @@ texel lookup past the image reads. Every renderer first keeps a lookup inside th
 frame 0, the frame the UVs map into: rows 0 to ceil(`height` / `frames.count`) − 1, so a lookup never reads another
 frame (a player of frames must offset this by the played frame). `textureSampling(texture)` resolves `wrap` and the
 frame count with their defaults (`{ wrap, frames, filter }`); renderers read them only through that function. The bbmodel loader stores `'repeat'` for a
-texture whose `wrap_mode` is `repeat` and leaves the key out otherwise ([bbmodel.md](bbmodel.md)); the glTF and OBJ
-loaders leave it out (their images clamp).
+texture whose `wrap_mode` is `repeat` and leaves the key out otherwise ([bbmodel.md](bbmodel.md)); the glTF loader stores `'repeat'` from its samplers
+([gltf.md](gltf.md), Texture wrap) and the OBJ loader leaves it out (its images clamp).
 
 `filter` (`SceneTextureFilter`, optional: `'nearest'` or `'linear'`; absent: `DEFAULT_TEXTURE_FILTER`, `'nearest'`)
 says how the colour is read between texel centres. `nearest` reads the one texel a point lies in (pixel art; the
@@ -388,7 +388,8 @@ without it means what renderers now draw for every texture: the edge texel past 
 faces draw: a lookup past the image used to be undefined in the realtime renderer and read a neighbouring image in the
 path tracer, and on a strip (`frames`) a face past frame 0 read frame 1's texels in both renderers; it now clamps (or
 repeats) within the image, and on a strip within frame 0. Loaders leave the key out except for a repeating bbmodel
-texture; no migration.
+texture; no migration. Since MS-70 the glTF loader also writes it: files whose samplers repeat (the default) now draw
+repeated where they were clamped, and linear-filtered edges blend across the wrap seam as hardware does.
 Added within version 1 (MS-38), optional: `SceneTexture.filter` (absent: `'nearest'`), with the type
 `SceneTextureFilter`, the exports `DEFAULT_TEXTURE_FILTER` and `SCENE_TEXTURE_FILTERS`, and
 `TextureSampling.filter`. A document without it is drawn as before, every texture nearest; renderer-rt's

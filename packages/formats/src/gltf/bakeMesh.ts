@@ -71,15 +71,21 @@ export function bakeMesh(
     const range = { firstVertex: base, endVertex: base + plan.vertices, start, count: plan.triangles * 3 };
     if (materialUvs?.textured) {
       writeUvRects(uvs, indices, uvRects, range);
-      const reported = context.reportedWrap;
-      if (materialUvs.wraps && !reported.has(plan.material) && outsideUnit(uvs, base, base + plan.vertices)) {
-        reported.add(plan.material);
-        context.warnings.add(
-          'UV_WRAP_CLAMPED',
-          materialUvs.path,
-          'UVs leave 0..1 under a repeating sampler; the texture is clamped at its edges',
-        );
+      const lost: string[] = [];
+      for (const axis of [0, 1] as const) {
+        const loss = axis === 0 ? materialUvs.wrapLoss.s : materialUvs.wrapLoss.t;
+        const key = plan.material * 2 + axis;
+        if (
+          !loss ||
+          context.reportedWrap.has(key) ||
+          !reachesWrap(uvs, base, base + plan.vertices, axis, loss.margin)
+        ) {
+          continue;
+        }
+        context.reportedWrap.add(key);
+        lost.push(loss.message);
       }
+      if (lost.length > 0) context.warnings.add('UV_WRAP_APPROXIMATED', materialUvs.path, lost.join('; '));
     } else writeUntexturedUvs(uvs, uvRects, base, base + plan.vertices);
     groups.push({
       material: plan.material,
@@ -142,10 +148,12 @@ function writeNormals(normals: Float32Array, positions: Float32Array, indices: U
   }
 }
 
-function outsideUnit(uvs: Float32Array, from: number, to: number): boolean {
-  for (let i = from * 2; i < to * 2; i++) {
+/** A UV on the axis outside `margin`..1 − `margin` (with a 1e-6 slack at margin 0), where a wrap shows. */
+function reachesWrap(uvs: Float32Array, from: number, to: number, axis: 0 | 1, margin: number): boolean {
+  const slack = margin === 0 ? 1e-6 : 0;
+  for (let i = from * 2 + axis; i < to * 2; i += 2) {
     const value = uvs[i] ?? 0;
-    if (value < -1e-6 || value > 1 + 1e-6) return true;
+    if (value < margin - slack || value > 1 - margin + slack) return true;
   }
   return false;
 }
