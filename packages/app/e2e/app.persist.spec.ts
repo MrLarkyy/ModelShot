@@ -123,10 +123,12 @@ test('says where the settings are kept, and keeps working when the browser refus
   await expect(page.getByRole('button', { name: 'Render' })).toBeEnabled();
 });
 
-function differing(a: Rgba, b: Rgba): number {
-  let count = 0;
-  for (let i = 0; i < a.data.length; i++) if (a.data[i] !== b.data[i]) count += 1;
-  return count;
+const TEXTURE = 'tex16.png';
+
+function sad(a: Rgba, b: Rgba): number {
+  let sum = 0;
+  for (let i = 0; i < a.data.length; i++) sum += Math.abs((a.data[i] ?? 0) - (b.data[i] ?? 0));
+  return sum;
 }
 
 async function renderOnce(page: Page, renders: number): Promise<Rgba> {
@@ -136,7 +138,7 @@ async function renderOnce(page: Page, renders: number): Promise<Rgba> {
 }
 
 async function switchFilterByKeyboard(page: Page): Promise<void> {
-  const select = page.locator('#scene-panel').getByRole('combobox');
+  const select = page.locator('#scene-panel').getByRole('combobox', { name: TEXTURE });
   await select.focus();
   await page.keyboard.press('ArrowDown');
 }
@@ -147,9 +149,10 @@ test('the texture filter follows in the preview and the render, is saved and res
   const samples = page.locator('#render-panel').getByLabel('Samples');
   await samples.fill('8');
   await samples.dispatchEvent('change');
-  const select = page.locator('#scene-panel').getByRole('combobox');
+  const select = page.locator('#scene-panel').getByRole('combobox', { name: TEXTURE });
   await expect(select).toHaveCount(1);
   await expect(select).toHaveValue('nearest');
+  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
   const nearestPreview = await waitForModel(page);
   const nearestRender = await renderOnce(page, 1);
 
@@ -166,12 +169,13 @@ test('the texture filter follows in the preview and the render, is saved and res
 
   await page.reload();
   await expect(page.getByRole('status')).toContainText('Opened single-cube.bbmodel', { timeout: 30_000 });
-  await expect(page.locator('#scene-panel').getByRole('combobox')).toHaveValue('linear');
+  await expect(page.locator('#scene-panel').getByRole('combobox', { name: TEXTURE })).toHaveValue('linear');
   await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
   const restored = await waitForModel(page);
   expect(restored.data.equals(nearestPreview.data), 'the restored preview is not the nearest look').toBe(false);
-  expect(differing(restored, linearPreview), 'the restored preview is closer to linear').toBeLessThan(
-    differing(restored, nearestPreview),
+  // The restored preview sits within lighting noise of the linear one and far from the nearest one.
+  expect(sad(restored, linearPreview) * 4, 'the restored preview is the linear look').toBeLessThan(
+    sad(restored, nearestPreview),
   );
 });
 
