@@ -1,5 +1,6 @@
 import { LOOK_PRESETS } from '@modelshot/looks';
 import { MAX_FOV_DEG, MAX_PITCH_DEG, MIN_FOV_DEG, MIN_PITCH_DEG, type OrbitState } from '@modelshot/renderer-rt';
+import type { SceneTextureFilter } from '@modelshot/scene';
 import { CLIP_FORMAT_CHOICES, EXPORT_KINDS, type ExportSettings } from '../export/ExportSettings';
 import { findHandoffViolation } from '../handoff/findHandoffViolation';
 import type { PlayerArmsChoice } from '../intake/LoadMessages';
@@ -8,6 +9,8 @@ import { APP_STATE_VERSION, type ModelState, type SessionState } from './AppStat
 
 const MAX_INDEX = 100_000;
 const MAX_HIDDEN = 100_000;
+/** Textures whose filter is remembered. */
+export const MAX_TEXTURE_FILTERS = 4096;
 const MODEL_KEY = /^[0-9a-f]{64}$/;
 
 // Own data properties only: a getter or an inherited value never runs or counts.
@@ -36,6 +39,17 @@ function indices(value: unknown): number[] | null {
     const index = integer(entry, 0, MAX_INDEX);
     if (index === null) return null;
     out.push(index);
+  }
+  return out;
+}
+
+function readTextureFilters(value: unknown): SceneTextureFilter[] | null {
+  if (!Array.isArray(value) || value.length > MAX_TEXTURE_FILTERS) return null;
+  const list: unknown[] = Array.from(value as unknown[]);
+  const out: SceneTextureFilter[] = [];
+  for (const entry of list) {
+    if (entry !== 'nearest' && entry !== 'linear') return null;
+    out.push(entry);
   }
   return out;
 }
@@ -121,6 +135,7 @@ export function readModelState(value: unknown): ModelState | null {
     if (typeof look !== 'string' || !Object.hasOwn(LOOK_PRESETS, look)) return null;
     const armsValue = own(value, 'arms');
     const arms: PlayerArmsChoice | undefined = armsValue === 'classic' || armsValue === 'slim' ? armsValue : undefined;
+    const textureFilters = readTextureFilters(own(value, 'textureFilters'));
     const exportSettings = readExport(own(value, 'export'));
     return {
       v: APP_STATE_VERSION,
@@ -128,6 +143,7 @@ export function readModelState(value: unknown): ModelState | null {
       look,
       hiddenNodes,
       hiddenMeshes,
+      ...(textureFilters ? { textureFilters } : {}),
       ...(arms ? { arms } : {}),
       render,
       ...(exportSettings ? { export: exportSettings } : {}),

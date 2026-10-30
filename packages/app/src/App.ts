@@ -1,6 +1,6 @@
 import { DEFAULT_LOOK, LOOK_PRESETS, type LookPreset } from '@modelshot/looks';
 import { OrbitController, type CanvasCssSize } from '@modelshot/renderer-rt';
-import type { SceneDocument } from '@modelshot/scene';
+import type { SceneDocument, SceneTextureFilter } from '@modelshot/scene';
 import { ExportDialog } from './export/ExportDialog';
 import type { ExportSettings } from './export/ExportSettings';
 import { describeHandoff } from './handoff/describeHandoff';
@@ -19,6 +19,7 @@ import { RenderSession } from './render/RenderSession';
 import { DEFAULT_RENDER_SETTINGS, type RenderSettingsValues } from './render/RenderSettings';
 import { applyLook } from './session/applyLook';
 import { hiddenIndices, visibilityFromHidden } from './session/visibility';
+import { textureFilters, withTextureFilters } from './session/withTextureFilters';
 import { withVisibility } from './session/withVisibility';
 import { bindShortcuts } from './shortcuts/bindShortcuts';
 import { HelpDialog } from './shortcuts/HelpDialog';
@@ -63,6 +64,7 @@ export class App {
   private base: SceneDocument | null = null;
   private nodeVisible: boolean[] = [];
   private meshVisible: boolean[] = [];
+  private textureFilter: SceneTextureFilter[] = [];
   private look: LookPreset = DEFAULT_LOOK;
   private arms: PlayerArmsChoice = 'classic';
   private renderValues: RenderSettingsValues = { ...DEFAULT_RENDER_SETTINGS };
@@ -116,6 +118,7 @@ export class App {
       setNodeVisible: (index, visible) => this.setVisible(this.nodeVisible, index, visible),
       setMeshVisible: (index, visible) => this.setVisible(this.meshVisible, index, visible),
       setArms: (arms) => void this.changeArms(arms),
+      setTextureFilter: (index, filter) => this.setTextureFilter(index, filter),
     });
     this.lookPanel = new LookPanel(byId('look-panel', HTMLElement), this.look.id, (id) => this.selectLook(id));
     this.cameraPanel = new CameraPanel(byId('camera-panel', HTMLElement), {
@@ -268,11 +271,18 @@ export class App {
       nodeVisible = this.nodeVisible;
       meshVisible = this.meshVisible;
     }
+    let filters = textureFilters(doc);
+    const savedFilters = saved?.textureFilters;
+    if (savedFilters) {
+      filters = filters.map((own, i) => savedFilters[i] ?? own);
+    } else if (!saved && !reframe && this.textureFilter.length === filters.length) {
+      filters = this.textureFilter;
+    }
     const look = (saved && Object.hasOwn(LOOK_PRESETS, saved.look) ? LOOK_PRESETS[saved.look] : undefined) ?? this.look;
     this.committing = true;
     let result;
     try {
-      result = await this.setDocument(viewer, withVisibility(doc, nodeVisible, meshVisible), reframe);
+      result = await this.setDocument(viewer, this.shown(doc, nodeVisible, meshVisible, filters), reframe);
       if (!result.applied) return false;
       this.look = applyLook(look, [viewer, this.renderSession.existingTracer()]);
       this.open = open;
@@ -280,6 +290,7 @@ export class App {
       this.base = doc;
       this.nodeVisible = [...nodeVisible];
       this.meshVisible = [...meshVisible];
+      this.textureFilter = [...filters];
       if (saved) {
         this.renderValues = saved.render;
         if (saved.export) this.exportValues = saved.export;
@@ -309,6 +320,7 @@ export class App {
             doc: this.base,
             nodeVisible: this.nodeVisible,
             meshVisible: this.meshVisible,
+            textureFilter: this.textureFilter,
             player: open.loaded.kind === 'skin' ? { arms: this.arms } : null,
           }
         : null,
@@ -333,14 +345,37 @@ export class App {
       return;
     }
     flags[index] = visible;
-    void this.applyVisibility();
+    void this.applySetup();
   }
 
-  private async applyVisibility(): Promise<void> {
+  private setTextureFilter(index: number, filter: SceneTextureFilter): void {
+    if (this.loading) {
+      this.showPanels();
+      return;
+    }
+    if (index < 0 || index >= this.textureFilter.length) return;
+    this.textureFilter[index] = filter;
+    void this.applySetup();
+  }
+
+  private shown(
+    base: SceneDocument,
+    nodeVisible: readonly boolean[],
+    meshVisible: readonly boolean[],
+    filters: readonly SceneTextureFilter[],
+  ): SceneDocument {
+    return withTextureFilters(withVisibility(base, nodeVisible, meshVisible), filters);
+  }
+
+  private async applySetup(): Promise<void> {
     const base = this.base;
     if (!base || !this.viewer) return;
     try {
-      await this.setDocument(this.viewer, withVisibility(base, this.nodeVisible, this.meshVisible), false);
+      await this.setDocument(
+        this.viewer,
+        this.shown(base, this.nodeVisible, this.meshVisible, this.textureFilter),
+        false,
+      );
       this.scheduleSave();
     } catch (error) {
       this.notices.alert(`Could not update the view: ${error instanceof Error ? error.message : String(error)}`);
@@ -394,6 +429,7 @@ export class App {
       look: this.look.id,
       hiddenNodes: hiddenIndices(this.nodeVisible),
       hiddenMeshes: hiddenIndices(this.meshVisible),
+      textureFilters: [...this.textureFilter],
       ...(this.open?.loaded.kind === 'skin' ? { arms: this.arms } : {}),
       render: this.renderValues,
       ...(this.exportValues ? { export: this.exportValues } : {}),

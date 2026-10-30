@@ -88,6 +88,22 @@ describe('readModelState', () => {
     expect(state).not.toHaveProperty('export');
   });
 
+  it('keeps valid texture filters and reads an older record without them', () => {
+    expect(readModelState(model({ textureFilters: ['linear', 'nearest'] }))?.textureFilters).toEqual([
+      'linear',
+      'nearest',
+    ]);
+    expect(readModelState(model())).not.toHaveProperty('textureFilters');
+  });
+
+  it('drops invalid texture filters but keeps the rest', () => {
+    for (const bad of [['smooth'], 'linear', [1], new Array(4097).fill('linear'), { length: 1, 0: 'linear' }]) {
+      const state = readModelState(model({ textureFilters: bad }));
+      expect(state).not.toBeNull();
+      expect(state).not.toHaveProperty('textureFilters');
+    }
+  });
+
   it('keeps a valid export block and the arms', () => {
     const exportBlock = {
       kind: 'turntable',

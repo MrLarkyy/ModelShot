@@ -110,3 +110,17 @@ test('says where the settings are kept, and keeps working when the browser refus
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Render' })).toBeEnabled();
 });
+
+test('a texture filter is switched by keyboard, saved with the model and restored on reload', async ({ page }) => {
+  await openApp(page);
+  await openFiles(page, [CUBE], 'single-cube.bbmodel');
+  const filter = page.locator('#scene-panel').getByRole('combobox');
+  await expect(filter).toHaveCount(1);
+  await expect(filter).toHaveValue('nearest');
+  await filter.focus();
+  await filter.selectOption('linear');
+  await waitForStored(page, (record) => JSON.stringify(record['textureFilters']) === '["linear"]');
+  await page.reload();
+  await expect(page.getByRole('status')).toContainText('Opened single-cube.bbmodel', { timeout: 30_000 });
+  await expect(page.locator('#scene-panel').getByRole('combobox')).toHaveValue('linear');
+});

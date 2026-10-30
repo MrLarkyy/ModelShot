@@ -1,4 +1,5 @@
 import type { OrbitState } from '@modelshot/renderer-rt';
+import type { SceneTextureFilter } from '@modelshot/scene';
 import type { ExportSettings } from '../export/ExportSettings';
 import type { PlayerArmsChoice } from '../intake/LoadMessages';
 import type { RenderSettingsValues } from '../render/RenderSettings';
@@ -27,6 +28,8 @@ export interface ModelState {
   /** Indices into `SceneDocument.nodes` / `meshes` that are hidden. */
   readonly hiddenNodes: readonly number[];
   readonly hiddenMeshes: readonly number[];
+  /** Filter per `SceneDocument.textures` index; absent in records saved before the control existed. */
+  readonly textureFilters?: readonly SceneTextureFilter[];
   readonly arms?: PlayerArmsChoice;
   readonly render: RenderSettingsValues;
   readonly export?: ExportSettings;
