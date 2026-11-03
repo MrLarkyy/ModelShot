@@ -10,9 +10,10 @@ import { median } from '../src/measure';
 
 // One test per section of budgets.json (src/benchSections.ts), each with its own timeout: a slow runner fails one section
 // with its numbers, the worker restarts and the other sections still measure and report (docs/testing.md, Budgets). The
-// timeouts are backstops that leave room for a section at its budget maxima plus setup. On CI the 17-minute globalTimeout
-// bounds the run: the bake section starts about 10.5 minutes in, so on a slow runner bakes of over ~130 s each (inside
-// the budget) are stopped by it; finished sections keep their numbers and the per-bake log lines show the finished bakes.
+// timeouts are backstops that leave room for a section at its budget maxima plus setup. On CI the bake section runs on shard 2
+// beside only the realtime tests, so on a slow runner bakes of over about 220 s each (inside the budget) are stopped by the
+// section timeout; the 17-minute globalTimeout (per shard process) only bounds a hang beyond that. Finished sections keep
+// their numbers and the per-bake log lines show the finished bakes.
 const budgets = loadBudgets();
 const maxOf = (group: BudgetGroup, key: string): number => budgets[group][key]?.max ?? 0;
 

@@ -1403,9 +1403,10 @@ round 7); its max was 750 ms then.
 - `bakeTimeMs.bake-bench-n16` (MS-16): `LightBaker.bake` of the benchmark scene in its worker, 16 samples with the
   shadow catcher (lightmap 2048 wide, catcher 512 x 512), from the call to the final lighting, median of 3. Local
   SwiftShader 22 873, 22 113 and 22 141 ms; max 222 000 ms (10x the middle run, rounded up). Each run is asserted
-  against the max as it completes, and the bake section's timeout is 3 x that max + 120 s (MS-81), a backstop; on CI the 17-minute
-  `globalTimeout` bounds the run, and bakes of over ~130 s each (inside the budget) are stopped by it on a slow runner,
-  the per-bake log lines showing the finished bakes.
+  against the max as it completes, and the bake section's timeout is 3 x that max + 120 s (MS-81), a backstop; on CI the bake
+  section runs on shard 2 beside only the three realtime tests, so bakes of over about 220 s each (inside the budget) are
+  stopped by the section timeout on a slow runner, the per-bake log lines showing the finished bakes; the 17-minute
+  `globalTimeout` (per shard process) only matters for a hang beyond that.
 - `mainThreadBlockMs.bake-bench` and `mainThreadBlockMs.bake-post-200k` (MS-16): **the most one task of the page's
   main thread blocked**: its CPU time plus the time it waited synchronously for the GPU process, from a Chrome trace
   over the bake window (`src/mainThreadTrace.ts`: CDP categories `toplevel,gpu`; top-level tasks `RunTask` with their
