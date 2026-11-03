@@ -219,6 +219,15 @@ describe('shader sources', () => {
     expect(fragment).toContain('u_toneMap ? agxToneMap(color) : color');
   });
 
+  it('shades the catcher through the loss form on an exact bilinear, so an unshadowed point is the bare backdrop', () => {
+    const { fragment } = shaderProgramSource('catcher');
+    const main = fragment.slice(fragment.indexOf('void main()'));
+    expect(fragment).toContain('return a + (b - a) * f;');
+    expect(main).toContain('vec3 fillLost = hemisphereFill(vec3(0.0, 1.0, 0.0)) * (1.0 - light.rgb);');
+    expect(main).toContain('catcherShadeOfLoss(fillLost, 1.0 - light.a, v_xz, u_catcherRect)');
+    expect(main).not.toMatch(/catcherShade\(|mix\(/);
+  });
+
   it('surfaces a compile error with the info log as RendererError', () => {
     const { gl, deleted } = fakeGl();
     const { vertex } = shaderProgramSource('opaque');

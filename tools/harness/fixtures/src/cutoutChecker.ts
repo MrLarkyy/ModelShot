@@ -43,6 +43,11 @@ function checkerTexture(): SceneTexture {
   return texture('cutout-checker.png', 8, rgba);
 }
 
+/** Every texel cut out (alpha 0). */
+function ghostTexture(): SceneTexture {
+  return texture('cutout-ghost.png', 8, new Uint8Array(8 * 8 * 4));
+}
+
 function greyTexture(): SceneTexture {
   return texture('cutout-checker-grey.png', CUBE_TEXELS, new Uint8Array(CUBE_TEXELS * CUBE_TEXELS * 4).fill(200));
 }
@@ -116,6 +121,32 @@ function box(s0: number, s1: number, d0: number, d1: number, h: number): SceneMe
  * generated here (no file, nothing to license).
  */
 export function cutoutChecker(base: SceneDocument): SceneDocument {
+  return {
+    ...checkerGeometry(base),
+    materials: [
+      { name: 'checker', texture: 0, alphaMode: 'mask', alphaCutoff: 0.5 },
+      { name: 'grey', texture: 1 },
+    ],
+    textures: [checkerTexture(), greyTexture()],
+  };
+}
+
+/**
+ * The same plane and box with every texel of both cut out: nothing a bake ray can hit, so every catcher texel bakes
+ * exactly 1 and the preview's catcher is the bare backdrop. The catcher still exists: it follows the geometry's bounds.
+ */
+export function cutoutGhost(base: SceneDocument): SceneDocument {
+  return {
+    ...checkerGeometry(base),
+    materials: [
+      { name: 'checker', texture: 0, alphaMode: 'mask', alphaCutoff: 0.5 },
+      { name: 'grey', texture: 0, alphaMode: 'mask', alphaCutoff: 0.5 },
+    ],
+    textures: [ghostTexture()],
+  };
+}
+
+function checkerGeometry(base: SceneDocument): SceneDocument {
   const p = checkerPoint;
   const top = CHECKER_BOTTOM + 8;
   const plane = quads(
@@ -134,10 +165,5 @@ export function cutoutChecker(base: SceneDocument): SceneDocument {
     nodes: [],
     rootNodes: [],
     meshes: [plane, box(0.25, 4.25, 0.5, 3.5, BOX_HEIGHT)],
-    materials: [
-      { name: 'checker', texture: 0, alphaMode: 'mask', alphaCutoff: 0.5 },
-      { name: 'grey', texture: 1 },
-    ],
-    textures: [checkerTexture(), greyTexture()],
   };
 }
