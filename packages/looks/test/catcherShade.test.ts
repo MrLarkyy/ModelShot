@@ -97,6 +97,26 @@ describe('catcherShadeOfLoss', () => {
     }
   });
 
+  it('shades the baked catcher as the preview does: lost = sky x (1 - rgb), exactly 1 where the texels are all 1', () => {
+    const next = lcg(63);
+    for (const look of [rig, ...Object.values(LOOK_PRESETS)]) {
+      const { sky } = look.environment;
+      const lostOf = (rgb: Rgb): Rgb => [sky[0] * (1 - rgb[0]), sky[1] * (1 - rgb[1]), sky[2] * (1 - rgb[2])];
+      for (const xz of POINTS) expect(catcherShadeOfLoss(look, lostOf([1, 1, 1]), 1 - 1, xz, RECT)).toBe(1);
+      // A fully blocked texel's unclamped mean may dip below 0: the baked rgb range is [-0.25, 1].
+      for (let i = 0; i < 200; i++) {
+        const rgb: Rgb = [next() * 1.25 - 0.25, next() * 1.25 - 0.25, next() * 1.25 - 0.25];
+        const a = next();
+        const xz: [number, number] = [next() * 24 - 12, next() * 24 - 12];
+        const fill: Rgb = [rgb[0] * sky[0], rgb[1] * sky[1], rgb[2] * sky[2]];
+        expect(catcherShadeOfLoss(look, lostOf(rgb), 1 - a, xz, RECT)).toBeCloseTo(
+          catcherShade(look, fill, a, xz, RECT),
+          12,
+        );
+      }
+    }
+  });
+
   it('a lightless look (sky, ground and key 0) has no catcher: both shades are exactly 1 whatever blocks', () => {
     const dark: LightRig = {
       ...rig,

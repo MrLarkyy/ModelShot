@@ -147,6 +147,36 @@ describe('path tracer shaders', () => {
     expect(trace).toContain('coverage = 1.0 - shade;');
   });
 
+  it('bakes the catcher with the same control variate: 1 less the fill lost, guarded against dark channels', () => {
+    const bake = pathTracerProgramSource('bake').fragment;
+    const catcher = bake.slice(bake.indexOf('vec4 bakeCatcher('), bake.indexOf('vec4 bakeChart('));
+    expect(catcher).toMatch(
+      /vec3 lost = closestHit\(origin, d, 0\.0, 3\.0e38, 1\.0, -1, key, ALPHA_DIMENSION, blocker\) \? environmentRadiance\(d\)\s*: vec3\(0\.0\);/,
+    );
+    expect(catcher).toContain('return vec4(1.0 - lostShare(lost, hemisphereFill(up)), keyT);');
+    expect(catcher).not.toMatch(/fill \/|hemisphereFill\(normal\)|bakePoint\(/);
+    // A channel the look leaves at 0 divides by nothing: its share is fixed, never 0 / 0.
+    expect(bake).toContain('full.r > 0.0 ? lost.r / full.r : 0.0');
+    expect(bake).toContain('full.b > 0.0 ? light.b / full.b : 1.0');
+    expect(bake).toContain('return vec4(fillShare(fill, hemisphereFill(normal)), keyT);');
+    // A non-finite component is replaced alone, the key's visibility kept.
+    expect(bake).toContain('if (isnan(value[c]) || isinf(value[c])) value[c] = 1.0;');
+    expect(bake).not.toContain('value = vec4(1.0);');
+    // The same random dimensions as before: chart texels and the key's bytes keep their seeds.
+    expect(bake).toContain('const uint KEY_DIMENSION = 2u;');
+    expect(bake).toContain('const uint FILL_DIMENSION = 4u;');
+    expect(bake).toContain('const uint ALPHA_DIMENSION = 6u;');
+    expect(bake).toContain(
+      'keyConeDirection(unitRandom(key, KEY_DIMENSION, 0u), unitRandom(key, KEY_DIMENSION + 1u, 0u))',
+    );
+    expect(catcher.match(/unitRandom\(key, ([A-Z_]+|\du)( \+ 1u)?, 0u\)/g)).toEqual([
+      'unitRandom(key, 0u, 0u)',
+      'unitRandom(key, 1u, 0u)',
+      'unitRandom(key, FILL_DIMENSION, 0u)',
+      'unitRandom(key, FILL_DIMENSION + 1u, 0u)',
+    ]);
+  });
+
   it('sums squared luminance into the second target only when asked', () => {
     const trace = pathTracerProgramSource('trace').fragment;
     expect(trace).toContain('layout(location = 0) out vec4 outSum;');

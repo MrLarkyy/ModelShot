@@ -1,3 +1,5 @@
+import type { LookPreset } from '@modelshot/looks';
+import type { BakedCatcherStats } from './bakedCatcherStats';
 import type { BlockReport } from './eventLoopLag';
 import type { DrawState } from './drawStates';
 
@@ -104,6 +106,8 @@ export interface RtControls {
   bakeScene: (name: string, samples: number) => Promise<RtBakeOutcome>;
   /** Bakes a named scene counting the traversals its rays stop at the node cap: texels with any, or the error. */
   bakeCapped: (name: string, samples: number) => Promise<{ texels: number; error: string }>;
+  /** Bakes a named scene (seed 1, catcher on) under `look` (default Studio, checked by the baker): its texel counts. */
+  bakeCatcherStats: (name: string, samples: number, look?: LookPreset) => Promise<BakedCatcherStats>;
   /**
    * Bakes the shown document's textures with lightmap-overflow's meshes (refused with SCENE_TOO_LARGE after the bytes
    * were posted), then the shown document with the same textures array: both outcomes.

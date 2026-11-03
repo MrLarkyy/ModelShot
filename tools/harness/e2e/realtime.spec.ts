@@ -34,6 +34,7 @@ import { PARTIAL_EDGE_STRIP_ROW, PARTIAL_EDGE_TEXELS, partialEdgeTexel } from '.
 import { agxInverse } from '../src/agxInverse';
 import { cutoutSeams } from '../src/cutoutSeams';
 import type { ModelViewProbe, PtProbe, RtBakeOutcome, RtBakeRequest } from '../fixtures/src/fixtureApi';
+import type { LookPreset } from '../../../packages/looks/src/LookPreset';
 
 const spec = (name: string, variant: string): RasterGoldenSpec => ({
   kind: 'raster',
@@ -82,6 +83,9 @@ const BAKED = [
   // MS-41: world-density charts on an image-less glTF ground and box; pair pt-gltf-contact.
   'bake-gltf-contact',
 ].map((variant) => spec(variant, variant));
+
+/** MS-63: share of the showcase's 64-sample catcher texels (studio, seed 1) whose baked fill is exactly 1. */
+const RGB_ONES_SHARE = 0.0685;
 
 async function render(page: Page, query: string): Promise<{ png: Buffer; image: Image; info: FixtureInfo }> {
   const info = await openFixture(page, `/rt.html?${query}`);
@@ -156,10 +160,12 @@ test('MSAA silhouette pixels are shaded on the face: the outline band of turntab
   page,
 }) => {
   test.setTimeout(240_000);
-  // Measured mean 1.6961 over 4 028 px against the MS-59 render; 1.7219 when shaded at the pixel centre (before MS-54).
+  // Measured mean 1.7485 over 3 745 px against the MS-59 render; 1.7781 over the same pixels when shaded at the pixel
+  // centre (the centroid qualifiers reverted). MS-63: the preview catcher is now exactly the backdrop where the bake is
+  // 1, so the band drops the low-delta pixels it used to select (1.6961 over 4 028 px, pixel centre 1.7219 before).
   // The bound is their midpoint, so a revert of the centroid qualifiers fails it.
   const maxMean = 2.12;
-  const midpoint = 1.709;
+  const midpoint = 1.7633;
   const traced = decodePng(
     readFileSync(
       goldenPath({
@@ -1390,6 +1396,60 @@ test.describe('baked lighting', () => {
         expect(transition, `${variant} ${surface}: ${values.join(', ')}`).toBeLessThanOrEqual(2);
       }
     }
+  });
+
+  test('nothing blocks: a fully cut-out model bakes a catcher of exactly 1 and the preview is the bare backdrop', async ({
+    page,
+  }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030');
+    const stats = await page.evaluate(() => window.__msFixture!.rt!.bakeCatcherStats('cutout-ghost', 64));
+    console.log(`[rt probe] cutout-ghost catcher: ${JSON.stringify(stats)}`);
+    expect(stats.texels).toBeGreaterThan(0);
+    expect(stats.exactOnes, 'catcher texels exactly 1 in every channel').toBe(stats.texels);
+    expect(stats.nonFinite).toBe(0);
+    // The catcher is drawn (its rectangle follows the geometry), yet changes no pixel.
+    for (const extra of ['', '&fallback=1']) {
+      const shown = (await render(page, `variant=bake-cutout-ghost${extra}`)).image;
+      const bare = (await render(page, `variant=bake-cutout-ghost&catcher=0${extra}`)).image;
+      let apart = 0;
+      for (let i = 0; i < shown.data.length; i++) if (shown.data[i] !== bare.data[i]) apart++;
+      expect(apart, `channel values that differ with the catcher on${extra}`).toBe(0);
+    }
+  });
+
+  test('the lit catcher is exact away from the model', async ({ page }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030');
+    const stats = await page.evaluate(() => window.__msFixture!.rt!.bakeCatcherStats('showcase', 64));
+    const share = stats.rgbOnes / stats.texels;
+    console.log(`[rt probe] showcase catcher: ${JSON.stringify(stats)}, fill exactly 1 on ${share.toFixed(4)}`);
+    // MS-63: measured RGB_ONES_SHARE with the control variate; the plain estimator had about 0.
+    expect(share).toBeGreaterThanOrEqual(RGB_ONES_SHARE / 1.25);
+  });
+
+  test('a look with a zero channel keeps its baked key shadow', async ({ page }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030');
+    const studio = lookPresetFile('studio');
+    const zero: LookPreset = {
+      ...studio,
+      environment: {
+        ...studio.environment,
+        sky: [studio.environment.sky[0], studio.environment.sky[1], 0],
+        ground: [studio.environment.ground[0], studio.environment.ground[1], 0],
+      },
+    };
+    const { plain, dark } = await page.evaluate(async (look) => {
+      const rt = window.__msFixture!.rt!;
+      return {
+        plain: await rt.bakeCatcherStats('showcase', 64),
+        dark: await rt.bakeCatcherStats('showcase', 64, look),
+      };
+    }, zero);
+    console.log(`[rt probe] zero blue channel: ${JSON.stringify(dark)} against studio ${JSON.stringify(plain)}`);
+    expect(dark.nonFinite).toBe(0);
+    expect(dark.chartNonFinite).toBe(0);
+    expect(dark.keyShadowed).toBeGreaterThan(0);
+    expect(Math.abs(dark.keyShadowed - plain.keyShadowed)).toBeLessThanOrEqual(0.1 * plain.keyShadowed);
+    expect(dark.chartKeyShadowed).toBeGreaterThan(0);
   });
 
   test('world charts put the contact shadow of an image-less glTF box where the path tracer has it', async ({
