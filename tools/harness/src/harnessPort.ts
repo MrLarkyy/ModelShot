@@ -4,15 +4,33 @@ import { fileURLToPath } from 'node:url';
 const BASE_PORT = 4410;
 const PORT_SPAN = 500;
 
-export function harnessPort(env: Record<string, string | undefined> = process.env): number {
-  const raw = env['MS_HARNESS_PORT'];
-  if (raw !== undefined && raw !== '') {
-    const port = Number(raw);
-    if (!Number.isInteger(port) || port < 1024 || port > 65535) {
-      throw new Error(`MS_HARNESS_PORT must be an integer in 1024..65535, got "${raw}"`);
-    }
-    return port;
+type Env = Record<string, string | undefined>;
+
+// Fixed bands of PORT_SPAN above the harness band, one per server; all far below the Windows dynamic range (49152).
+const SUITE_BANDS = [
+  ['site', 'MS_SITE_PORT'],
+  ['app', 'MS_APP_PORT'],
+  ['embedFrame', 'MS_EMBED_PORT'],
+  ['embedHost', 'MS_EMBED_HOST_PORT'],
+  ['deploySite', 'MS_DEPLOY_PORT'],
+  ['deployHost', 'MS_DEPLOY_HOST_PORT'],
+] as const;
+
+export type SuitePorts = Record<(typeof SUITE_BANDS)[number][0], number>;
+
+function portFromEnv(env: Env, name: string): number | null {
+  const raw = env[name];
+  if (raw === undefined || raw === '') return null;
+  const port = Number(raw);
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) {
+    throw new Error(`${name} must be an integer in 1024..65535, got "${raw}"`);
   }
+  return port;
+}
+
+export function harnessPort(env: Env = process.env): number {
+  const override = portFromEnv(env, 'MS_HARNESS_PORT');
+  if (override !== null) return override;
   return portForDirectory(dirname(dirname(fileURLToPath(import.meta.url))));
 }
 
@@ -22,4 +40,26 @@ export function portForDirectory(directory: string): number {
     hash = Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0;
   }
   return BASE_PORT + (hash % PORT_SPAN);
+}
+
+// The four browser suites run at the same time, so their six servers get one offset per checkout (from the repository
+// root) in six disjoint bands: distinct by construction. Any two of the six on one port, an override equal to another
+// server's default included, fail before a server starts.
+export function suitePorts(
+  env: Env = process.env,
+  root = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url))))),
+): SuitePorts {
+  const offset = portForDirectory(root) - BASE_PORT;
+  const ports: Partial<SuitePorts> = {};
+  const owner = new Map<number, string>();
+  SUITE_BANDS.forEach(([key, name], index) => {
+    const override = portFromEnv(env, name);
+    const port = override ?? BASE_PORT + PORT_SPAN * (index + 1) + offset;
+    const label = override === null ? `${name} (default)` : name;
+    const other = owner.get(port);
+    if (other !== undefined) throw new Error(`${other} and ${label} both resolve to port ${port}`);
+    owner.set(port, label);
+    ports[key] = port;
+  });
+  return ports as SuitePorts;
 }

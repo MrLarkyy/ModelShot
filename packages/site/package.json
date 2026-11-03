@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:with-app": "vite build && vite build ../app --outDir ../site/dist/app --emptyOutDir",
+    "serve:e2e": "pnpm run build:e2e && pnpm run preview:e2e",
+    "preview:e2e": "vite preview --outDir dist-e2e --strictPort",
+    "build:e2e": "vite build --outDir dist-e2e && vite build ../app --outDir ../site/dist-e2e/app --emptyOutDir",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test:browser": "playwright test",
