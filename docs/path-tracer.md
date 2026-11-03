@@ -357,7 +357,9 @@ dome and two unshadowed accents ([look-presets.md](look-presets.md#lighting-mode
   `environmentRadiance` over the up hemisphere is exactly `hemisphereFill(up)` (a unit test pins it per look). The fill
   ray accepts partial texels with its own random number (vertex 0's roulette dimension, unused there), not the camera
   ray's, so a catcher point seen through glass still has the glass's fill shadow, as in the bake. The shade is affine
-  in both losses, so the mean over samples equals the preview's `catcherShade` of its baked means. A lightless look
+  in both losses, so the mean over samples equals the shade the preview computes from its baked means, which the bake
+  estimates with the same control variate and the preview turns into a shade through the same `catcherShadeOfLoss`
+  (MS-63, light baker below). A lightless look
   (sky, ground and key all 0: the light weight at most 1e-6) has nothing a model could take, so both functions return
   exactly 1 there and the catcher is invisible in the preview and the render alike. The plane is invisible to every
   other ray, so the model renders exactly as without it.
@@ -441,8 +443,15 @@ DEFAULT_LOOK, onProgress })` resolves `{ applied, warnings, lighting }`. The loo
   holds): the UV of the texel point, or for a world chart the point itself, then the barycentrics of the triangle
   that holds it (else the one it is nearest to inside), `surfaceAt`, one key ray in the cone (`shadowTransmittance`, skipping the texel's triangle, only where its
   side faces the key) and one cosine-weighted fill ray around the shading normal (escaped: `environmentRadiance`,
-  below the surface 0) divided by `hemisphereFill(n)`. No interreflection. Catcher texels do the same on the plane
-  with the normal up.
+  below the surface 0) divided by `hemisphereFill(n)`. No interreflection. Catcher texels (MS-63) trace the same key
+  ray and fill ray on the plane, normal up, and store the path tracer's control variate: rgb = 1 − the
+  `environmentRadiance` a blocked fill ray would have brought, over `hemisphereFill(up)` (no side test: a cosine
+  direction about up never points below the plane), a = key visibility. A texel none of whose fill rays was blocked
+  is exactly 1 per channel, so the preview's lit catcher is the bare backdrop as in the render; the mean is the plain
+  estimator's (the cosine mean of `environmentRadiance` is `hemisphereFill(up)`), unclamped, so a fully blocked texel
+  may average slightly below 0. A colour channel a look's dome leaves at 0 (sky and ground both 0 in it, which
+  `checkLookPreset` allows) divides by nothing: its share is fixed (model texels 1, catcher loss 0) instead of 0 / 0,
+  and a non-finite component that still occurs is replaced by 1 alone, so the key's visibility survives.
 - Determinism: seeded `sampleHash(seed, sample, texel)`, exact float32 ping-pong sums in sample order, per-texel
   independence, so tiles of 32 or 64, the progress cadence and message order change no byte (tested). The lighting is
   a pure function of document, seed, sample count, catcher option and look.

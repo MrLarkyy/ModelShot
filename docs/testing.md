@@ -5,7 +5,7 @@
 
 1. `pnpm test:unit`: Vitest, every package plus `tools/harness/test` (comparator, golden store, budgets, bundle size,
    model-view helpers) and `tools/wiki/test` (page table, link and anchor check over the real docs, publish against a local bare repo).
-2. `pnpm test:browser`: Playwright in a pinned headless Chromium on software WebGL (SwiftShader), `tools/harness`, the landing page's suite in `packages/site` (its own Playwright config, docs/site.md), the app's in `packages/app` (its own config, docs/app.md), the embed's in `packages/embed` and the deploy suite in `tools/deploy` (below).
+2. `pnpm test:browser`: Playwright in a pinned headless Chromium on software WebGL (SwiftShader): first `tools/harness` (both phases), then the four suites at the same time, the landing page's in `packages/site` (its own Playwright config, docs/site.md), the app's in `packages/app` (its own config, docs/app.md), the embed's in `packages/embed` and the deploy suite in `tools/deploy` (below).
 
 Run `pnpm browsers` once per machine (and after a Playwright version bump) to install the browser. Playwright is pinned
 to an exact version in `tools/harness/package.json`, which pins the Chromium revision.
@@ -150,6 +150,8 @@ unchanged.
 
 `pnpm test:browser` in `tools/harness` (`src/runBrowserTests.ts`) runs two phases. Phase 1 is `playwright test --grep-invert @timing`: every golden, path-tracer, bake and pairing test with several workers. Playwright hands out the tests of one run in the order of the `projects` list, so the list starts with the projects whose tests run longest (`pair`, `bake`, `golden-pt`, then `golden`): the many short golden tests fill the workers at the end instead of one long test running on alone. Phase 2 is `playwright test --project=bench --workers=1`: the `bench` project is every test tagged `@timing` (the six section tests of `bench.spec.ts` and the three `baked lighting` tests that check the main-thread measures), run alone on an idle machine, with its own output directory `test-results/serial`. Phase 2 runs after a failed phase 1 (exit 1) but not after a kill or interrupt (any other exit code, a signal or a failed launch), which stops the runner with that non-zero code; SIGINT, SIGTERM and SIGBREAK are forwarded to Playwright. The script takes no arguments: use `pnpm exec playwright test <filter>` for a filtered run. The exit code is non-zero if either phase failed. A plain `playwright test` mixes the two, so use the script for a full local run. A test whose result depends on how busy the machine is gets `{ tag: '@timing' }`; every other project excludes the tag. There is no project dependency: it would skip the timing tests after a golden failure and pull the goldens into the CI bench job.
 
+The root `test:browser` is the harness script, then `pnpm --filter @modelshot/harness run test:suites` (`src/runBrowserSuites.ts`), joined by `&&`, so the suites never run during the bench phase. The whole order of a full `pnpm test`: unit tests; harness phase 1; harness phase 2 (bench, alone); the suite build phase, in which the app, embed, site and deploy builds run at the same time and no test runs; the suite test phase, in three lanes at the same time (app | embed | site, then deploy), each Playwright run with one worker. The builds write disjoint directories (`src/browserSuites.ts` lists them, a unit test fails on an overlap): app, embed and site e2e builds go to their package's `dist-e2e/` (`build:e2e`; the site's holds the app under `dist-e2e/app`), and only the deploy build writes `dist/` of app, embed, site and the six library packages (their `tsc` build) and `tools/deploy/dist`, so no server loses its files to another build. The runner sets `MS_E2E_PREBUILT=1` for the test step only, and each Playwright config then starts just its server (app, embed and site run `node node_modules/vite/bin/vite.js` with the flags of the package's `preview:e2e` script, `src/previewCommand.ts`, without the pnpm wrapper: under load pnpm reported Playwright's teardown kill of the server as `ELIFECYCLE`; deploy runs `serve.ts`); without it (CI, `pnpm --filter @modelshot/<suite> run test:browser`, `build browser --package`) a suite builds what it serves itself, so a standalone run never tests a stale build. Every output line carries a `[app]`, `[embed]`, `[site]` or `[deploy]` prefix (builds `[app] build:`), a run ends with one line `[suites] build app 0 41s, ..., test site 0 30s, ...`, and the exit code is non-zero if any build or test failed. A build that failed skips only that suite's tests; a killed or interrupted child (any exit other than 0 or 1) stops the runner without starting anything new. The ports of the six servers are one per-checkout offset in six bands of 500 above the harness band (`suitePorts` in `src/harnessPort.ts`): site 4910+, app 5410+, embed 5910+, embed host 6410+, deploy 6910+, deploy host 7410+, so they are distinct within a checkout; `MS_SITE_PORT`, `MS_APP_PORT`, `MS_EMBED_PORT`, `MS_EMBED_HOST_PORT`, `MS_DEPLOY_PORT` and `MS_DEPLOY_HOST_PORT` override one each, and any two of the six servers on one port, an override equal to another server's default included, fail before a server starts, naming both variables (a default is marked, e.g. `MS_SITE_PORT (default)`). The runner takes no arguments.
+
 The worker count (`src/workerCount.ts`) is `MS_PW_WORKERS` (integer 1..32, anything else fails naming the variable), else 1 when `CI` is set, else the smaller of 6, one per four logical CPUs (SwiftShader runs several threads per page) and one per 2 GiB of RAM, at least 1. Timeouts stay fixed numbers; lower `MS_PW_WORKERS` if a loaded machine times out.
 
 Fixtures in `tools/harness/fixtures` are self-contained WebGL2 pages served by a local Vite server on
@@ -164,9 +166,9 @@ fails with that list when the test has 40 s left for both waits (a fixture opene
 run); the cause is unknown, so the reload is a guard and the printed list is the trace to find it. Fixture image code uses no clock or random source (lint rule; timing lives in `fixtures/src/bench.ts` only).
 
 The embed suite (`packages/embed/e2e`, `pnpm --filter @modelshot/embed run test:browser`, part of the root
-`test:browser`) runs two servers on two origins: the production embed build (`serve:e2e`, `vite preview`) on
-`MS_EMBED_PORT`, else a per-checkout port like the harness's, and `e2e/hostServer.mjs` on `MS_EMBED_HOST_PORT`, else
-that port plus 1000, which serves the host page and the test models in place (`/cors/`, `/nocors/`, a 404, 65 MiB
+`test:browser`) runs two servers on two origins: the production embed build (`serve:e2e` builds into `dist-e2e`, `vite preview` serves it) on
+`MS_EMBED_PORT`, else its per-checkout band port (above), and `e2e/hostServer.mjs` on `MS_EMBED_HOST_PORT`, else
+its band port, which serves the host page and the test models in place (`/cors/`, `/nocors/`, a 404, 65 MiB
 bodies with and without `Content-Length`, a stalled body, a non-model, and `/mainthread/` glTF models of up to 63 MiB
 made in memory on first request) and lists what it was asked at `/__requests`.
 The specs cover the element and a plain iframe, lazy loading, CORS and other download errors, limits with the host
@@ -178,8 +180,7 @@ itself (as before MS-86) the 63 MiB `big.gltf` gave one 172 ms task in a 233 ms 
 worker listing them, no long task in a 218 ms window (`long-uri.gltf` 131 ms, `duplicates.gltf` 44 ms, none). See [embed.md](embed.md#tests).
 
 The deploy suite (`tools/deploy/e2e`, `pnpm --filter @modelshot/deploy run test:browser`, part of the root
-`test:browser`) builds `@modelshot/deploy...` itself, then serves the assembled `tools/deploy/dist` on `MS_DEPLOY_PORT`, else a
-per-checkout port, under `/ModelShot/` like GitHub Pages, and a host page on that port plus 2000. With `MS_DEPLOY_URL`
+`test:browser`) builds `@modelshot/deploy...` itself (in the concurrent run: in the build phase), then serves the assembled `tools/deploy/dist` on `MS_DEPLOY_PORT`, else its band port, under `/ModelShot/` like GitHub Pages, and a host page on `MS_DEPLOY_HOST_PORT`, else its band port. With `MS_DEPLOY_URL`
 set it serves only the host page and tests the deployed site instead; `pages.yml` runs it that way after each deploy (`ci.yml` does not run it yet).
 See [hosting.md](hosting.md#tests).
 
@@ -572,9 +573,10 @@ none changed: `turntable-y030` 141, 0.00215, 0.713, `iso` 265, 0.00404, 0.879, `
 0.00374, 0.461, `gltf-nodes-y030` 316, 0.00482, 0.948.
 Probes: **MSAA silhouette pixels are shaded on the face**:
 the baked `turntable-y030` preview against its render (the `pt-turntable-y030` golden PNG), the mean largest-channel
-difference over the 2 px outline band both draw (`outlineBand`), 1.6961 over 4 028 pixels against the render MS-59
-regenerated (1.7219 when shaded at the pixel centre; before MS-59 1.7461 and 1.7726 over 3 919), at most measured x 1.25
-= 2.12 and below the midpoint 1.709 (a revert of the centroid qualifiers measures 1.7219 and fails); frame on the raster
+difference over the 2 px outline band both draw (`outlineBand`), 1.7485 over 3 745 pixels against the render MS-59
+regenerated (MS-63: the preview catcher is exactly the backdrop where the bake is 1, so the band lost its low-delta
+pixels, 1.6961 over 4 028 before; 1.7781 when shaded at the pixel centre, 1.7219 before; before MS-59 1.7461 and 1.7726 over 3 919), at most measured x 1.25
+= 2.12 and below the midpoint 1.7633 (a revert of the centroid qualifiers measures 1.7781 and fails); frame on the raster
 key with MSAA (asserted). **The edge band keeps its width across quad diagonals**: the `edges` view with MSAA against
 `msaa=0`, off every mesh's outline (more than 1 px from a `maskBoundary` of the mesh's pixels from `hide=`): 0 pixels
 over 2 levels at the look's width; at width 0.1 133 pixels differ at all (135 with the 0.25 determinant bound in round 3, 227
@@ -746,6 +748,40 @@ tolerance 0; the same view with the model casting differs in 3 169 and 3 112 pix
 it failed with 16 734 pixels. The noise-threshold test pins no sample count (368 and 800 samples at 0.1 and 0.07 on
 `closeup`).
 
+MS-63 gave the light bake's catcher the same control variate (path-tracer.md, light baker): a catcher texel stores
+1 − the fill its rays lost over `hemisphereFill(up)`, and the preview shades it with `catcherShadeOfLoss` on an exact
+bilinear (realtime-renderer.md, shadow catcher). Model lightmap texels keep their estimator: the catcher-off previews
+of every view below and `rt-bake-gltf-contact` (catcher off) render byte-identical before and after, and no `pt-*` or
+export golden changed. Regenerated on purpose (seed 1, 64 samples, sizes unchanged; changed pixels, max channel delta,
+mean delta per channel, against the d0dae68 render of the same view): `rt-bake-cutout-checker` 10 167 px, 2, 0.066;
+`rt-bake-cutout-checker-fallback` 10 136, 2, 0.066; `rt-bake-alpha-plane` 14, 1, 0.0001; `rt-bake-turntable-y030`
+5 280, 3, 0.034; `rt-preset-marketplace` 1 533, 1, 0.008; `rt-preset-rim` 709, 1, 0.005;
+`rt-preset-marketplace-fallback` 2 322, 1, 0.013. Every changed pixel is a catcher pixel: outside the model mask (the
+catcher-off preview against the empty scene) or on its silhouette, where MSAA blends the model with the catcher (161,
+2, 62 and 2 pixels by at most 2 levels on the MSAA views, none on the fallback ones), plus 5 interior pixels of
+`rt-bake-turntable-y030` by 1 level where partial-alpha texels show the catcher behind them (they differ between
+catcher on and off); no shadow shape moved. The committed
+`rt-bake-turntable-y030` also differed from the d0dae68 render in 286 model pixels (up to 89 levels) within its
+tolerance, from MS-60 (its paragraph above records these); the regenerated PNG carries that too (5 564 px, 89, 0.070 against the old file). The
+showcase's 64-sample catcher (512 x 512) has 17 968 texels of fill exactly 1 (6.85 %; 358 before), the cut-out ghost
+all 49 296 (1 040 before). Pairs before -> after (ratio / mean delta), limits unchanged: `turntable-y030` 0.00188 /
+0.697 -> 0.00189 / 0.692, `iso` 0.00381 / 0.869 -> 0.00381 / 0.864, `cutout-checker` 0.00340 / 0.611 -> 0.00342 /
+0.598, `edges` 0.00063 / 0.373 -> 0.00064 / 0.361, `outline-hull` 0.00262 / 0.423 -> 0.00262 / 0.416,
+`obj-shapes-y030` 0.00368 / 0.455 -> 0.00368 / 0.448, `gltf-nodes-y030` 0.00444 / 0.943 -> 0.00444 / 0.936,
+`preset-marketplace` 0.00912 / 0.793 -> 0.00912 / 0.792, the denoised 2x turntable 0.00150 / 0.598 -> 0.00151 /
+0.591; `alpha-plane`, `player-hold-34`, `preset-rim`, `preset-marketplace-yaw30` and `gltf-contact` unchanged.
+`partial-edge` went from 2 to 3 pixels (0.00005 against the old limit 0.00004; mean 1.124 -> 1.120): one
+silhouette edge pixel (row 194, x about 50: the preview steps 101 to 174 where the render blends about 126) moved by
+1 level in blue towards the render, which crosses pixelmatch's OKLab threshold. Its limit was re-measured, x 1.25: 0.00006 / 1.4 (was 0.00004 / 1.405); no other
+limit changed. New: realtime.spec "nothing blocks" (the `cutout-ghost` scene, the checker geometry with every texel
+cut out: every catcher texel exactly 1 in all four channels, the preview
+byte-identical with and without the catcher; it failed before with 1 040 of 49 296), "the lit catcher is exact away
+from the model" (share of fill-exact texels at least 0.0685 / 1.25; 0.0014 before) and "a look with a zero channel
+keeps its baked key shadow" (Studio with sky and ground blue 0: no non-finite texel, 44 152 shadowed catcher texels as
+under Studio, 5 352 shadowed model texels; before, 0 / 0 turned every texel into 1 and both counts were 0), through
+the `bakeCatcherStats` hook; source pins of the bake and catcher shaders and the preview form over baked rgb in
+[−0.25, 1] (`catcherShade.test.ts`).
+
 - Tolerance: an override of `threshold 0` only (its reason in the spec); `maxDiffRatio 0.001` and `maxMeanDelta 1`
   stay the defaults. The tracer converges, so at the default threshold 0.1 another seed or one sample more or less
   still passes (seed 2 at 64 samples: 7 of 65 536 pixels, mean delta 0.30; 63 samples: 0 pixels, mean delta 0.027). At
@@ -796,7 +832,7 @@ look's backdrop in that row, `agxToneMap(backdropColor(look, y), look.toneMappin
 before MS-19 the top-left pixel) must agree on every pixel off the silhouette (a pixel whose 3 x 3 neighbourhood in the preview holds
 both classes) that the two images draw more than 2 levels apart (a dark texel near the backdrop colour falls on either
 side of the mask test, with the same colour in both views); 0 mismatches is the limit. Radiance, catcher on both: pixelmatch `threshold 0.1` with `maxDiffRatio`
-and `maxMeanDelta` = measured x 1.25 and never above the previous limit, never widened; the render differs where it
+and `maxMeanDelta` = measured x 1.25 and never above the previous limit, never widened; the one exception is a limit re-measured x 1.25 after a deliberate change whose pixels all moved toward the render (MS-63: `partial-edge`, one silhouette edge pixel on row 194, x about 50, where the preview steps 101 to 174 and the render blends about 126 because the plane partly covers it, flipped over pixelmatch's OKLab threshold as the added blue raised the chroma difference), with the change named beside it; the render differs where it
 has interreflection and noise. Logged as `[pt pair] <view>: ...`, values in `test-results/pt-pair-<view>.json`.
 Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with rounded edges and the mirrored bounce
 (MS-16's values in brackets; every limit stayed, none widened, `edges` is new at measured x 1.25):
@@ -819,7 +855,7 @@ Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with r
 | `gltf-jpeg-y030`           | 0 (1 476)                           | 36, 0.00055, 0.409 (MS-83, new)                        | 0.00069, 0.511                             |
 | `obj-jpeg-y030`            | 0 (1 476)                           | 71, 0.00108, 0.420 (MS-83, new)                        | 0.00135, 0.525                             |
 | `texture-wrap`             | 0 (3 444)                           | 46, 0.00070, 0.671 (MS-52, new; textureWrap.spec.ts)   | 0.00088, 0.839                             |
-| `partial-edge`             | 0 (3 844)                           | 2, 0.00003, 1.124 (MS-60, new)                         | 0.00004, 1.405                             |
+| `partial-edge`             | 0 (3 844)                           | 3, 0.00005, 1.120 (MS-63; MS-60 2, 0.00003, 1.124)     | 0.00006, 1.4 (MS-63; was 0.00004, 1.405)   |
 | `texture-filter`           | 0 (2 600)                           | 6, 0.00009, 0.390 (MS-60; MS-38 7, 0.00011, 0.396)     | 0.00011, 0.488 (MS-60; was 0.00014, 0.495) |
 
 MS-60 (anti-aliased partial seams, opaque|partial seams and partial outlines in the preview's raster frames)
@@ -1131,6 +1167,9 @@ shading include:
   offset. Interpolated positions or depths are not precise enough for the 0.001 tie (the rasteriser's error at a
   grazing angle is several times larger), which is why the fixture writes `gl_FragDepth` and gives up early-z: it is a
   reference, not a renderer; `@modelshot/renderer-rt` realises the key its own way (realtime-renderer.md).
+  The camera target is single-sampled (checked at creation), so every shaded fragment has its pixel centre on the
+  face and interpolated normals and positions are never extrapolated; `@modelshot/renderer-rt` is multisampled and
+  uses `centroid` for that reason (MS-54).
 - `raycast`: per pixel centre, a camera ray to the nearest triangle whose texel passes the alpha test
   (single-sided triangles only from the front; the smallest render-order key wins, the same key), shaded with the barycentric vertex normal, then one shadow ray toward the light that an
   alpha-passing
@@ -1258,7 +1297,7 @@ attached vertex formula in four poses, re-posing, nesting, index remapping, ever
 ## Budgets
 
 `budgets.json` (root, `"version": 1`) holds `max` values for frame time, load time, time to N samples and gzip bundle
-size of `app`, `app-entry`, `embed`, `embed-frame`, `site`, `site-assets` and `export`. `embed` is the element script `modelshot-embed.js` (its own Vite lib build, `vite.element.config.ts`) with any chunk it imports statically, what a host page loads; `embed-frame` is every JS, CSS and HTML file of the frame page's build (entry, lazy bake chunk, load and bake workers), what the iframe loads. `app` is every JS and CSS file of `packages/app`'s build (the entry, the lazy path tracer and export chunks, the loaders and the workers); `app-entry` is `index.html`, the stylesheet and the entry script with the chunks it imports statically, what the page loads before a model is opened. `site` is a plain `vite build` of `packages/site` without the `/app/` copy that `build:with-app` adds; `site-assets` is the same build's woff2 and svg files; `export` is `@modelshot/export` built as a library (Vite lib mode, the workspace packages external), the entry chunk and the chunks it imports statically, each gzipped, so the encoders, loaded on demand, are not counted. `pnpm test` measures them (`bench.spec.ts`; the bundle is built fresh into a temporary directory, so
+size of `app`, `app-entry`, `embed`, `embed-frame`, `site`, `site-assets` and `export`. `embed` is the element script `modelshot-embed.js` (its own Vite lib build, `vite.element.config.ts`) with any chunk it imports statically, what a host page loads; `embed-frame` is every JS, CSS and HTML file of the frame page's build (entry, lazy bake chunk, load and bake workers), what the iframe loads. `app` is every JS and CSS file of `packages/app`'s build (the entry, the lazy path tracer and export chunks, the loaders and the workers); `app-entry` is `index.html`, the stylesheet and the entry script with the chunks it imports statically, what the page loads before a model is opened. `site` is a plain `vite build` of `packages/site` without the `/app/` copy that `build:e2e` adds; `site-assets` is the same build's woff2 and svg files; `export` is `@modelshot/export` built as a library (Vite lib mode, the workspace packages external), the entry chunk and the chunks it imports statically, each gzipped, so the encoders, loaded on demand, are not counted. `pnpm test` measures them (`bench.spec.ts`; the bundle is built fresh into a temporary directory, so
 it does not depend on `pnpm -r build`) and fails when a value exceeds its `max`, when a budget has no measurement, when a measured value is not a finite number, or
 a measurement has no budget. `bench.spec.ts` is one test per section (`src/benchSections.ts`: frames, loads, pathTracer, export, bundle, bake), each checking only its rows; `test/benchSections.test.ts` pins every row to exactly one section. The measured values are in `tools/harness/test-results/serial/budgets-measured-<section>.json` per section and merged in `budgets-measured.json` (every row of the sections that ran), and each section logs `[bench] runner: <CPU model> x<count>, <GiB> GiB`, so a slow number can be told from a slow runner. And
 every run prints each one against its max (`[budget] <group>.<key>: measured … / max …`, from `bench.spec.ts` and

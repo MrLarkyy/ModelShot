@@ -12,6 +12,8 @@ import { PT_PAIR_TOLERANCE } from '../src/ptPairTolerance';
 const CENSUS: Readonly<Record<string, { world: readonly string[]; key?: string }>> = {
   'bake-cutout-checker': { world: [], key: 'd713fc70842b7e60' },
   'bake-cutout-checker-fallback': { world: [], key: 'd713fc70842b7e60' },
+  // MS-63: the checker geometry, every texel cut out; new, so no key from before world charts.
+  'bake-cutout-ghost': { world: [] },
   'bake-alpha-plane': { world: ['ground'] },
   'bake-turntable-y030': { world: [], key: 'e225d06c95593c4a' },
   'preset-marketplace': { world: [], key: 'a85876914bc0f880' },

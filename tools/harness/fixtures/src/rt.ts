@@ -14,6 +14,7 @@ import { installBakeBench, installFrameBench, installFrameReadout, installSceneB
 import { readDrawingBufferBase64 } from './context';
 import { spinMainThread, startEventLoopLag } from './eventLoopLag';
 import type { MsFixture, RtBakeOutcome, RtBakeRequest, RtControls } from './fixtureApi';
+import { bakedCatcherStats } from './bakedCatcherStats';
 import { breakFramebuffers } from './breakFramebuffers';
 import { decodeProbe } from './decodeProbe';
 import { recordDrawStates } from './drawStates';
@@ -397,6 +398,13 @@ async function start(): Promise<void> {
       } catch (error) {
         return { texels: -1, error: errorText(error) };
       }
+    },
+    bakeCatcherStats: async (name, samples, look) => {
+      if (!isRtSceneName(name)) throw new Error(`unknown scene "${name}"`);
+      baker ??= LightBaker.create({ testHooks: true });
+      const { lighting } = await baker.bake(rtScene(name), { samples, seed: 1, ...(look ? { look } : {}) });
+      if (!lighting) throw new Error('bake not applied');
+      return bakedCatcherStats(lighting);
     },
     uploadStates: async () => {
       baker ??= LightBaker.create({ testHooks: true });

@@ -6,6 +6,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test:browser": "node src/runBrowserTests.ts",
+    "test:suites": "node src/runBrowserSuites.ts",
     "golden:update": "playwright test --update-snapshots=all --grep-invert @timing",
     "browsers": "playwright install --only-shell chromium"
   },

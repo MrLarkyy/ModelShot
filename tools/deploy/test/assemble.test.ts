@@ -41,11 +41,13 @@ describe('assemble', () => {
     });
   });
 
-  it('refuses a site build that already holds app/ (left over from build:with-app)', async () => {
+  it('refuses a site build that already holds app/ (left over from an older site build)', async () => {
     await withTemp(async (dir) => {
       await builtRepo(dir);
       await writeTree(dir, { 'packages/site/dist/app/index.html': 'stale' });
-      await expect(assemble({ root: dir, out: join(dir, 'out') })).rejects.toThrow(/packages\/site\/dist\/app exists/);
+      await expect(assemble({ root: dir, out: join(dir, 'out') })).rejects.toThrow(
+        /packages\/site\/dist\/app exists: it is left over from an older site build/,
+      );
     });
   });
 

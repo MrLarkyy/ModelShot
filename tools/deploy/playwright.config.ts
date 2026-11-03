@@ -3,6 +3,8 @@ import { deployPorts } from './e2e/deployPort.ts';
 
 const ports = deployPorts();
 const ci = Boolean(process.env['CI']);
+// Set by the concurrent runner (tools/harness/src/runBrowserSuites.ts) after it built every suite: only serve then.
+const prebuilt = process.env['MS_E2E_PREBUILT'] === '1';
 const live = process.env['MS_DEPLOY_URL'] ?? '';
 const baseURL = live === '' ? `http://127.0.0.1:${ports.site}/ModelShot/` : live.replace(/\/*$/, '/');
 
@@ -23,7 +25,7 @@ export default defineConfig({
     // Local mode builds first: the assembled dist must be the current code, never a leftover of an earlier build.
     command:
       live === ''
-        ? 'pnpm --filter "@modelshot/deploy..." run build && node e2e/serve.ts'
+        ? `${prebuilt ? '' : 'pnpm --filter "@modelshot/deploy..." run build && '}node e2e/serve.ts`
         : 'node e2e/serve.ts --host-only',
     url: `http://127.0.0.1:${ports.host}/host.html`,
     reuseExistingServer: false,

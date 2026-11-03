@@ -1,6 +1,6 @@
 // The shadow catcher: a horizontal plane under the model that shows only how much light the model takes from it. A
-// catcher point multiplies the backdrop by catcherShade (the preview, on baked means) or catcherShadeOfLoss (the path
-// tracer, per sample); catcherShade.ts mirrors both.
+// catcher point multiplies the backdrop by catcherShadeOfLoss, the path tracer per sample and the preview on the baked
+// means (both lose fill as hemisphereFill(up) less what the blocked rays bring); catcherShade.ts mirrors both forms.
 #include "lightRig"
 
 float catcherLuminance(vec3 c) {
@@ -30,7 +30,8 @@ float catcherFade(vec2 xz, vec4 rect) {
 // fill: the fill light reaching the point (environment radiance of the unblocked cosine-weighted directions, whose
 // unoccluded mean is hemisphereFill(up)); keyT: the key's visibility 0..1; xz: the point. Affine in fill and keyT, so
 // the path tracer may average it over samples and the preview may evaluate it once on baked means: both give the same
-// value. 1 where nothing blocks the light (up to rounding), fading to 1 at the edge.
+// value. 1 where nothing blocks the light (up to rounding: neither renderer shades with it, it is the reference form),
+// fading to 1 at the edge.
 float catcherShade(vec3 fill, float keyT, vec2 xz, vec4 rect) {
   float weight = catcherLightWeight();
   if (weight <= CATCHER_NO_LIGHT) return 1.0;
