@@ -86,10 +86,19 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-  # The budget bench alone on a VM, so its numbers do not share a machine with a golden shard.
+  # The budget bench alone on its VMs, so its numbers do not share a machine with a golden shard. One VM ran it in 16.4
+  # of the 17-minute globalTimeout (run 41115750426), so it is 2 shards, split per test: shard 1 the frame, load,
+  # path-tracer, export and bundle sections (9.4 minutes on that runner), shard 2 the bake section and the three
+  # realtime @timing tests (6.9). Each shard is one worker, so the measures still run one at a time on their VM.
   bench:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { shard-name: bench-1, shard: '1/2' }
+          - { shard-name: bench-2, shard: '2/2' }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -102,11 +111,11 @@ jobs:
         with:
           package: '@modelshot/harness'
       - run: pnpm -r build
-      - run: pnpm --filter @modelshot/harness exec playwright test --project=bench
+      - run: pnpm --filter @modelshot/harness exec playwright test --project=bench --shard=${{ matrix.shard }}
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
-          name: browser-test-results-bench
+          name: browser-test-results-${{ matrix.shard-name }}
           path: tools/harness/test-results/
           retention-days: 14
           if-no-files-found: ignore
