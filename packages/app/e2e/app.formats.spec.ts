@@ -40,8 +40,11 @@ for (const [model, files] of [
       model,
     );
     await waitForModel(page);
-    // A note would name UNSUPPORTED_IMAGE, MISSING_RESOURCE or a renderer texture warning after "with N note(s)".
-    await expect(page.getByRole('status')).toHaveText(`Opened ${model}.`);
+    // A loader or renderer warning (UNSUPPORTED_IMAGE, MISSING_RESOURCE, TEXTURE_*) would read "Opened <model> with N
+    // note(s): ..." instead; the bake's "Lighting the preview…" may follow.
+    const status = page.getByRole('status');
+    await expect(status).toContainText(`Opened ${model}.`);
+    await expect(status).not.toContainText('note(s)');
     await expect(page.getByRole('alert')).toHaveCount(0);
   });
 }
