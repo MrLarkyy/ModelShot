@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { planTextureDecode } from '../src/index';
-import { pngHeaderSize } from '../src/pngHeaderSize';
+import { jpegFrame, jpegWith } from '../../formats/test/jpeg/jpegHeaderCases';
 import { pngHeader, testTexture } from './testScene';
 
 const limits = { maxTextureSide: 64, maxTexturePixelsTotal: 64 * 64 * 2 };
@@ -37,7 +37,7 @@ describe('planTextureDecode', () => {
   });
 });
 
-describe('planTextureDecode reads the PNG header, not the declared size', () => {
+describe('planTextureDecode reads the image header, not the declared size', () => {
   it('rejects a header over the limit even when the declared size is small', () => {
     const plan = planTextureDecode([testTexture({ bytes: pngHeader(16384, 16384) })], limits);
     expect(plan.decode).toEqual([false]);
@@ -62,11 +62,47 @@ describe('planTextureDecode reads the PNG header, not the declared size', () => 
   });
 });
 
-describe('pngHeaderSize', () => {
-  it('reads width and height big-endian, also from a view into a larger buffer', () => {
-    expect(pngHeaderSize(pngHeader(300, 70_000))).toEqual({ width: 300, height: 70_000 });
-    const larger = new Uint8Array(40);
-    larger.set(pngHeader(5, 6), 8);
-    expect(pngHeaderSize(larger.subarray(8))).toEqual({ width: 5, height: 6 });
+describe('planTextureDecode admits JPEG by its frame header', () => {
+  const jpeg = (width: number, height: number, declared = { width, height }) =>
+    testTexture({
+      name: 't.jpg',
+      mimeType: 'image/jpeg',
+      bytes: jpegWith(jpegFrame(0xc2, width, height)),
+      ...declared,
+    });
+
+  it('admits a JPEG and counts it toward the pixel total with the PNGs', () => {
+    const plan = planTextureDecode([jpeg(64, 64), testTexture({ width: 64, height: 64 }), jpeg(1, 1)], limits);
+    expect(plan.decode).toEqual([true, true, false]);
+    expect(plan.warnings).toMatchObject([{ code: 'TEXTURE_TOO_LARGE', texture: 2 }]);
+    expect(plan.warnings[0]?.message).toContain('total');
+  });
+
+  it('rejects a JPEG side over the limit and a header that disagrees with the declared size', () => {
+    const plan = planTextureDecode(
+      [jpeg(16384, 16, { width: 16, height: 16 }), jpeg(32, 32, { width: 16, height: 16 })],
+      limits,
+    );
+    expect(plan.warnings.map((w) => [w.code, w.texture])).toEqual([
+      ['TEXTURE_TOO_LARGE', 0],
+      ['TEXTURE_SIZE_MISMATCH', 1],
+    ]);
+    expect(plan.warnings[0]?.message).toContain('16384x16');
+    expect(plan.warnings[1]?.message).toContain('32x32 image header');
+  });
+
+  it('rejects bytes of another kind than the declared mimeType', () => {
+    const plan = planTextureDecode(
+      [
+        testTexture({ bytes: jpegWith(jpegFrame(0xc0, 16, 16)) }),
+        testTexture({ mimeType: 'image/jpeg', bytes: pngHeader(16, 16) }),
+        testTexture({ mimeType: 'image/jpeg', bytes: jpegWith(jpegFrame(0xc9, 16, 16)) }),
+      ],
+      limits,
+    );
+    expect(plan.decode).toEqual([false, false, false]);
+    expect(plan.warnings.map((w) => w.code)).toEqual(Array(3).fill('TEXTURE_DECODE_FAILED'));
+    expect(plan.warnings[0]?.message).toBe('texture 0 holds image/jpeg bytes, the scene says image/png');
+    expect(plan.warnings[2]?.message).toBe('texture 2 is not a PNG or JPEG (no readable header)');
   });
 });

@@ -15,7 +15,7 @@ export interface ObjLimits {
   readonly maxObjects: number;
   readonly maxMaterials: number;
   readonly maxTextures: number;
-  /** Width or height of a texture in pixels (from the PNG header). */
+  /** Width or height of a texture in pixels (from the image header). */
   readonly maxTextureSide: number;
   readonly maxTexturePixels: number;
   /** Length of a name or file reference. */
@@ -43,8 +43,9 @@ export interface ObjLoadOptions {
   /** Overrides for some of `DEFAULT_OBJ_LIMITS`: positive integers or `Infinity`, else a `RangeError`. */
   readonly limits?: Partial<ObjLimits>;
   /**
-   * Files the user picked next to the `.obj` (`.mtl` libraries, `.png` textures), keyed by file name or relative path;
-   * `mtllib` and `map_Kd` are matched by exact relative path, then case-insensitive base name. Nothing else is read.
+   * Files the user picked next to the `.obj` (`.mtl` libraries, `.png` / `.jpg` textures), keyed by file name or
+   * relative path; `mtllib` and `map_Kd` are matched by exact relative path, then case-insensitive base name. Nothing
+   * else is read.
    */
   readonly files?: ReadonlyMap<string, Uint8Array>;
   /** Name of the `.obj` file, for messages and the object of faces before any `o`/`g`; default `model.obj`. */

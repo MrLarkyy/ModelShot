@@ -1,0 +1,4 @@
+# ModelShot test fixture (jpeg/generate.mjs)
+newmtl crate
+Kd 1 1 1
+map_Kd crate.jpg

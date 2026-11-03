@@ -407,12 +407,13 @@ every frame is a full layout and decode that supersedes the previous one, and th
   node's subtree from the image and the bounds without a word), `renderOrder` an integer in ±1024, `doubleSided` and `cameraOnly` booleans, texture `wrap` `clamp` or `repeat` (all optional; material
   `alphaMode` / `alphaCutoff` are not checked, `resolveMaterialAlpha` turns any value into a valid rule). A failure
   rejects with `RendererError` `INVALID_SCENE` naming the path, e.g. `meshes[0].indices[5]`.
-- Textures are checked from the PNG header in their bytes (signature and IHDR) before decoding, never from the size
-  the document declares: each side at most min(`maxTextureSide`, default 4096, `MAX_TEXTURE_SIZE`), at most
+- Textures are checked from the image header in their bytes (PNG signature and IHDR, or a JPEG's first frame header:
+  SOF0-2, 8-bit, 1, 3 or 4 components; of the kind `mimeType` names) before decoding, never from the size the
+  document declares: each side at most min(`maxTextureSide`, default 4096, `MAX_TEXTURE_SIZE`), at most
   `maxTexturePixelsTotal` (default 64 Mi) pixels per scene, and the header size must equal the declared size.
   Decoding uses `createImageBitmap` on a `Blob` of the bytes (never a URL, so nothing is fetched); the decoded size is
   checked again.
-- A texture that is missing, not a PNG, too large, fails to decode or whose size disagrees becomes a 2 × 2
+- A texture that is missing, not a PNG or JPEG, too large, fails to decode or whose size disagrees becomes a 2 × 2
   grey checker, and `setScene` resolves with a `RendererWarning` (`TEXTURE_MISSING`, `TEXTURE_TOO_LARGE`,
   `TEXTURE_DECODE_FAILED`, `TEXTURE_SIZE_MISMATCH`, with the texture index); the rest of the model draws.
 - A later `setScene` or `dispose()` supersedes a pending one: it resolves with `applied: false` and closes the images

@@ -2,14 +2,16 @@ import type { SceneTextureFrames } from './SceneTextureFrames';
 import type { SceneTextureFilter, SceneTextureWrap } from './SceneTextureSampling';
 
 /**
- * A PNG image carried as its encoded bytes, unchanged by the loader (only `loadSkin` decodes pixels, of a legacy skin,
- * once, to apply the legacy hat rule). `width` × `height` is the pixel size from the PNG header; UVs are normalised by
+ * A PNG or JPEG image carried as its encoded bytes, unchanged by the loader (only `loadSkin` decodes pixels, of a legacy
+ * skin, once, to apply the legacy hat rule). `mimeType` names the kind the bytes are (JPEG added within version 1,
+ * MS-83; only the glTF and OBJ loaders write it). `width` × `height` is the pixel size from the image header (PNG IHDR
+ * or JPEG SOF); UVs are normalised by
  * `uvWidth` × `uvHeight` (the model's texture space), so one UV unit covers `width / uvWidth` pixels. On a strip
  * (`frames`) v is normalised by `uvHeight` × `frames.count`, so the UVs fall in frame 0.
  */
 export interface SceneTexture {
   readonly name: string;
-  readonly mimeType: 'image/png';
+  readonly mimeType: 'image/png' | 'image/jpeg';
   /** `null` when the texture is missing. */
   readonly bytes: Uint8Array | null;
   /** Pixel size; 0 when missing. */

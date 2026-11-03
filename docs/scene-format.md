@@ -32,7 +32,7 @@ import type { SceneDocument } from '@modelshot/scene';
 | `rootNodes`     | `number[]`                                                                         | nodes without a parent, in source order     |
 | `meshes`        | `SceneMesh[]`                                                                      | triangle meshes                             |
 | `materials`     | `SceneMaterial[]`                                                                  | see [SceneMaterial](#scenematerial)         |
-| `textures`      | `SceneTexture[]`                                                                   | PNG images                                  |
+| `textures`      | `SceneTexture[]`                                                                   | PNG or JPEG images                          |
 | `pose?`         | `ScenePose`                                                                        | last `poseScene` pose; absent: none applied |
 | `attachments?`  | `SceneAttachment[]`                                                                | models merged under a bone; absent: none    |
 | `animations?`   | `SceneAnimation[]`                                                                 | keyframed clips; absent: none               |
@@ -162,15 +162,17 @@ reads them yet.
 
 ### `SceneTexture`
 
-`{ name, mimeType: 'image/png', bytes, width, height, uvWidth, uvHeight, missing, frames?, wrap?, filter? }`
+`{ name, mimeType, bytes, width, height, uvWidth, uvHeight, missing, frames?, wrap?, filter? }`
 
-`bytes` is the encoded PNG as the file had it; model loaders only check its header, and `loadSkin` decodes a legacy
-skin's pixels once to set `legacyHatOpaque` ([player.md](player.md#legacy-hat)). `width` × `height` is the pixel size
-from the PNG header. UVs were normalised by `uvWidth` × `uvHeight`, the model's texture space; one UV unit therefore
-covers `width / uvWidth` pixels (a 32×32 image on a 16×16 UV space has 2×2 pixels per unit). On a strip (`frames`
-below) v was normalised by `uvHeight` × `frames.count` instead, so the UVs fall in frame 0. A texture the model
-references but whose image was neither embedded nor supplied has `missing: true`, `bytes: null` and size 0; renderers
-show a placeholder.
+`mimeType` is `'image/png'` or `'image/jpeg'` (JPEG added within version 1, MS-83: the glTF and OBJ loaders write it for
+JPEG bytes; `.bbmodel` textures and skins stay PNG). `bytes` is the encoded image of that kind as the file had it;
+renderers refuse bytes of another kind with `TEXTURE_DECODE_FAILED`. Model loaders only check its header, and `loadSkin`
+decodes a legacy skin's pixels once to set `legacyHatOpaque` ([player.md](player.md#legacy-hat)). `width` × `height` is
+the pixel size from the image header (PNG IHDR or JPEG frame header). UVs were normalised by `uvWidth` × `uvHeight`, the
+model's texture space; one UV unit therefore covers `width / uvWidth` pixels (a 32×32 image on a 16×16 UV space has 2×2
+pixels per unit). On a strip (`frames` below) v was normalised by `uvHeight` × `frames.count` instead, so the UVs fall
+in frame 0. A texture the model references but whose image was neither embedded nor supplied has `missing: true`,
+`bytes: null` and size 0; renderers show a placeholder.
 
 `frames` (`SceneTextureFrames`, optional) marks the image as a vertical strip of frames, frame 0 at the top; absent,
 it is a still. `count` is an integer from 2 to `height` (each frame at least one pixel tall); a frame is `width` ×

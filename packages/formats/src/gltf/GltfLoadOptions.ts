@@ -25,7 +25,7 @@ export interface GltfLimits {
   readonly maxVertices: number;
   /** Depth of the node hierarchy. */
   readonly maxNesting: number;
-  /** Width or height of a texture in pixels (from the PNG header). */
+  /** Width or height of a texture in pixels (from the image header). */
   readonly maxTextureSide: number;
   readonly maxTexturePixels: number;
   /** Length of a `data:` URI of a buffer or image. */
@@ -60,9 +60,9 @@ export interface GltfLoadOptions {
   /** Overrides for some of `DEFAULT_GLTF_LIMITS`: positive integers or `Infinity`, else a `RangeError`. */
   readonly limits?: Partial<GltfLimits>;
   /**
-   * Files the user picked next to a `.gltf` (`.bin` buffers, `.png` images), keyed by file name or relative path. A
-   * `uri` is matched by its exact relative path, then by its case-insensitive base name. Nothing else is ever read,
-   * and no URL is fetched.
+   * Files the user picked next to a `.gltf` (`.bin` buffers, `.png` / `.jpg` images), keyed by file name or relative
+   * path. A `uri` is matched by its exact relative path, then by its case-insensitive base name. Nothing else is ever
+   * read, and no URL is fetched.
    */
   readonly files?: ReadonlyMap<string, Uint8Array>;
   /** Scene units per glTF unit; a finite positive number, else a `RangeError`. Default `DEFAULT_GLTF_UNIT_SCALE`. */

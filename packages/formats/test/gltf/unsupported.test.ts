@@ -168,7 +168,7 @@ const ROWS: Readonly<Record<string, Row>> = {
     doc: () => withTexture({ ...TRIANGLE, uvs: [0, 0, 1.5, 0, 0, 1] }, { wrapS: 33648 }),
     expected: ['warning', 'UV_WRAP_APPROXIMATED', '$.materials[0]'],
   },
-  'non-PNG image': {
+  'truncated JPEG image': {
     covers: [],
     doc: () => {
       const doc = withTexture();
