@@ -1,5 +1,6 @@
 import type { SceneTexture } from '@modelshot/scene';
 import { imageHeaderSize } from './imageHeaderSize';
+import { jpegWithStoredOrientation } from './jpegStoredOrientation';
 import type { RendererWarning } from './RendererWarning';
 
 export interface TextureLimits {
@@ -85,7 +86,9 @@ export function planTextureDecode(textures: readonly SceneTexture[], limits: Tex
 
 async function decodeOne(texture: SceneTexture): Promise<ImageBitmap> {
   // A copy into a plain ArrayBuffer: the scene's bytes may be a view into a larger or shared buffer.
-  const blob = new Blob([new Uint8Array(texture.bytes ?? new Uint8Array(0))], { type: texture.mimeType });
+  const bytes = texture.bytes ?? new Uint8Array(0);
+  const copy = texture.mimeType === 'image/jpeg' ? jpegWithStoredOrientation(bytes) : new Uint8Array(bytes);
+  const blob = new Blob([copy], { type: texture.mimeType });
   return createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none', imageOrientation: 'none' });
 }
 

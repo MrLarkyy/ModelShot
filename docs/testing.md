@@ -274,7 +274,8 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
   (`realtime.spec.ts`, `rt.decodeProbe`) runs the renderers' `decodeTextures` on both scenes' textures: every 8 x 8
   block within 2 levels of the generator's colour, every texel equal to its block's (no ringing), alpha 255 (a JPEG
   under `MASK` stays opaque); and on `wide-exif6.jpg` (16 x 8, Exif orientation 6): stored order, no
-  `TEXTURE_SIZE_MISMATCH`.
+  `TEXTURE_SIZE_MISMATCH` (the pinned Chromium applies the orientation under `imageOrientation: 'none'` and decoded it
+  8 x 16 until `jpegWithStoredOrientation` reset the tag in the decoded copy).
 - Shimmer: between yaw 30° and 30.25°, the share of pixels changing by more than 64 levels must be at most half of
   the same share with nearest sampling (`aa=0`), in the `far` and `closeup` framings.
 - Order independence: reversing the mesh order gives a byte-identical image on the float path and on the fallback,
