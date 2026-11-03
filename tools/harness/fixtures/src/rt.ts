@@ -15,6 +15,7 @@ import { readDrawingBufferBase64 } from './context';
 import { spinMainThread, startEventLoopLag } from './eventLoopLag';
 import type { MsFixture, RtBakeOutcome, RtBakeRequest, RtControls } from './fixtureApi';
 import { breakFramebuffers } from './breakFramebuffers';
+import { decodeProbe } from './decodeProbe';
 import { recordDrawStates } from './drawStates';
 import { installGlTracker } from './glTracker';
 import { computePtProbes, sceneProbes } from './ptProbes';
@@ -348,6 +349,7 @@ async function start(): Promise<void> {
       frame();
       return results.map((result) => result.applied);
     },
+    decodeProbe,
     disposeDuringDecode: async () => {
       const pending = renderer.setScene(sceneOf('showcase'));
       renderer.dispose();

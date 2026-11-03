@@ -246,7 +246,8 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
   isometric), `rt-closeup` (half the fit distance, atlas texels about 28 px), `rt-far` (three times the fit
   distance, brick texels about 0.45 px), `rt-fallback` (no-float path), `rt-fit-flat-cube` (frame-to-fit of a plate
   with zero height), `rt-gltf-nodes-y030` and `rt-obj-shapes-y030` (perspective 35°, pitch 20°, yaw 30°: the glTF
-  and OBJ loader fixtures, below), `rt-partial-edge` (MS-60, the partial-edge quad at 4x MSAA: partial seams, a
+  and OBJ loader fixtures, below), `rt-gltf-jpeg-y030` and `rt-obj-jpeg-y030` (same view: the JPEG crate, below,
+  MS-83), `rt-partial-edge` (MS-60, the partial-edge quad at 4x MSAA: partial seams, a
   partial outline and opaque|partial seams anti-aliased). Default tolerance.
 - Bleeding: no turntable frame has a pixel whose red and blue both exceed green by more than 24 levels (the magenta
   sentinel after lighting and AgX). Without the face-rectangle clamp the 0° frame has 441 such pixels. The same holds
@@ -266,6 +267,14 @@ two overlapping partial-alpha planes in different meshes, rotated and mirrored f
   from negative indices, faces without `vn` or `vt`, a `map_Kd` cut-out, `Kd` only, `d 0.5`). Both are static
   imports, CC0, `LICENSE` next to them. The path-tracer fixture has goldens of both (`pt-gltf-nodes-y030.s1.n128`,
   `pt-obj-shapes-y030.s1.n128`, MS-39); both are also preview-vs-render pairs.
+- JPEG fixtures (MS-83): scene `gltf-jpeg` is `packages/formats/test/fixtures/jpeg/crate.glb` through `loadGltf` (a
+  unit cube whose every face maps the whole 32 x 32 `crate.jpg` in the GLB's buffer, three faces under `MASK`), scene
+  `obj-jpeg` is `crate.obj` with `crate.mtl` and `crate.jpg` through `loadObj`; goldens `rt-` and
+  `pt-gltf-jpeg-y030` / `pt-obj-jpeg-y030` (`.s1.n128`), both preview-vs-render pairs. The decode probe
+  (`realtime.spec.ts`, `rt.decodeProbe`) runs the renderers' `decodeTextures` on both scenes' textures: every 8 x 8
+  block within 2 levels of the generator's colour, every texel equal to its block's (no ringing), alpha 255 (a JPEG
+  under `MASK` stays opaque); and on `wide-exif6.jpg` (16 x 8, Exif orientation 6): stored order, no
+  `TEXTURE_SIZE_MISMATCH`.
 - Shimmer: between yaw 30° and 30.25°, the share of pixels changing by more than 64 levels must be at most half of
   the same share with nearest sampling (`aa=0`), in the `far` and `closeup` framings.
 - Order independence: reversing the mesh order gives a byte-identical image on the float path and on the fallback,
@@ -692,6 +701,8 @@ golden says them (`-x2-denoised`).
 | `pt-gltf-contact.s1.n128`              | contact-shadow.gltf, `contact`, no catcher            | golden; contact probes; pair (MS-41)             |
 | `pt-gltf-nodes-y030.s1.n128`           | scene-nodes.gltf, perspective 35°, pitch 20°, yaw 30° | golden; sentinel bleeding; catcher; pair (MS-39) |
 | `pt-obj-shapes-y030.s1.n128`           | shapes.obj, same view                                 | golden; pair (MS-39)                             |
+| `pt-gltf-jpeg-y030.s1.n128`            | crate.glb (JPEG texture, three faces MASK), same view | golden; pair (MS-83)                             |
+| `pt-obj-jpeg-y030.s1.n128`             | crate.obj with crate.jpg, same view                   | golden; pair (MS-83)                             |
 | `pt-partial-edge.s1.n128`              | generated partial-alpha checker quad, `edge` (MS-60)  | golden; pair; per-row seam area                  |
 | `pt-texture-wrap.s1.n64`               | generated wrap boxes, `wrap` look (MS-52)             | golden; wrap and frame probes; sentinel; pair    |
 | `pt-texture-filter.s1.n64`             | generated glTF filter quads, `filter` look (MS-38)    | golden; filter and fringe probes; sentinel; pair |
@@ -804,6 +815,8 @@ Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with r
 | `gltf-contact`             | 0 (629)                             | 6 987, 0.10661, 5.627 (MS-41, new, no catcher)         | 0.133, 7.03                                |
 | `obj-shapes-y030`          | 0 (1 852)                           | 241, 0.00368, 0.455 (MS-60; MS-54 246, 0.00375, 0.469) | 0.0046, 0.569 (MS-60; was 0.00468, 0.587)  |
 | `gltf-nodes-y030`          | 0 (2 218)                           | 291, 0.00444, 0.943 (MS-60; MS-54 319, 0.00487, 0.955) | 0.00555, 1.179 (MS-60; was 0.00609, 1.194) |
+| `gltf-jpeg-y030`           | 0 (1 476)                           | 36, 0.00055, 0.409 (MS-83, new)                        | 0.00069, 0.511                             |
+| `obj-jpeg-y030`            | 0 (1 476)                           | 71, 0.00108, 0.420 (MS-83, new)                        | 0.00135, 0.525                             |
 | `texture-wrap`             | 0 (3 444)                           | 46, 0.00070, 0.671 (MS-52, new; textureWrap.spec.ts)   | 0.00088, 0.839                             |
 | `partial-edge`             | 0 (3 844)                           | 2, 0.00003, 1.124 (MS-60, new)                         | 0.00004, 1.405                             |
 | `texture-filter`           | 0 (2 600)                           | 6, 0.00009, 0.390 (MS-60; MS-38 7, 0.00011, 0.396)     | 0.00011, 0.488 (MS-60; was 0.00014, 0.495) |
@@ -1200,6 +1213,18 @@ and the raycast's exact shadow ray draws the ring's contact shadow on it; the ra
 receiver offset 0.094) cannot resolve a shadow that close, so the strip stays lit there. It is shadow-map resolution,
 not a disagreement about the scene: the skin probes (opaque base, hat hole, held cube) match in both. The rest are edge
 pixels as above.
+
+## JPEG fixtures
+
+`packages/formats/test/fixtures/jpeg/generate.mjs` with `encodeFlatJpeg.mjs` (no dependencies, deterministic; CC0 with
+the files, `LICENSE` there) writes `crate.jpg`, `crate.gltf` + `crate.bin`, `crate.glb`, `crate.obj` + `crate.mtl`,
+`wide-exif6.jpg` and `big-sof.jpg` (headers only, a 4097 x 16 frame); `test/jpeg/fixtures.test.ts` checks the
+committed files equal its output byte for byte. The rule for a JPEG fixture: every 8 x 8 block one flat colour, 4:4:4
+(no chroma subsampling), every quantiser 1, DC coefficients only. A DC-only block decodes to a constant through any
+IDCT and 4:4:4 needs no upsampling, so every browser's decoder gives the same texels (within the JFIF YCbCr to RGB
+rounding, 2 levels) and the goldens stay deterministic; a photographic JPEG would differ by decoder. The embed's
+`checker tile.jpg` (`e2e/fixtures/sidecars/generate.mjs`) uses the same encoder. `test/jpeg/jpegHeaderCases.ts` holds
+the header vectors both `readJpegSize` (formats) and `imageHeaderSize` (renderer-rt) run.
 
 ## Player skin fixtures
 

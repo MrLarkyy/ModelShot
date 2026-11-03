@@ -17,6 +17,8 @@ export default defineConfig({
         },
       })),
       {
+        // The harness fixtures import the JPEG crate `.glb` with `?inline` (tools/harness/vite.config.ts).
+        assetsInclude: ['**/*.glb'],
         test: {
           name: 'harness',
           root: 'tools/harness',

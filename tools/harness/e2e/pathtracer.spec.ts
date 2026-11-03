@@ -89,6 +89,9 @@ const GOLDENS: readonly PathTracedGoldenSpec[] = [
   // MS-39: MS-13 loader fixtures, paired with rt-<v>.
   pt('gltf-nodes-y030', 'gltf-nodes-y030', 128),
   pt('obj-shapes-y030', 'obj-shapes-y030', 128),
+  // MS-83: the JPEG-textured crate (GLB, OBJ), paired with rt-<v>.
+  pt('gltf-jpeg-y030', 'gltf-jpeg-y030', 128),
+  pt('obj-jpeg-y030', 'obj-jpeg-y030', 128),
   // MS-60: partial-alpha seams, a partial face outline and opaque|partial seams; paired with rt-partial-edge.
   pt('partial-edge', 'partial-edge', 128),
 ];
@@ -939,6 +942,8 @@ const PAIR_SAMPLES: Readonly<Record<string, number>> = {
   'gltf-contact': 128,
   'gltf-nodes-y030': 128,
   'obj-shapes-y030': 128,
+  'gltf-jpeg-y030': 128,
+  'obj-jpeg-y030': 128,
 };
 
 /** Views whose render has no shadow catcher (their variant turns it off): the preview's radiance is compared without. */

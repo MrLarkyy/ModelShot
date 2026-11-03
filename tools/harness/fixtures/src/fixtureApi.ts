@@ -77,6 +77,8 @@ export interface RtControls {
   setScenes: (names: string[]) => Promise<boolean[]>;
   /** Starts a setScene, disposes the renderer before it finishes; resolves with whether it was applied. */
   disposeDuringDecode: () => Promise<boolean>;
+  /** The renderers' `decodeTextures` on a JPEG fixture scene's textures or `wide-exif6.jpg` (decodeProbe.ts). */
+  decodeProbe: (source: string) => Promise<DecodedTextureProbe>;
   /** Depth-key variant (`raster` or `exact`) of the last frame, `none` before one. */
   depthKeyMode: () => string;
   /** `setEdges` then a frame: `ok`, or the error it threw (`name: message`). */
@@ -133,6 +135,13 @@ export interface RtControls {
   /** Busy main thread for `ms` outside any timed bake work (checks that `mainThreadBlock` sees long tasks). */
   spinMainThread: (ms: number) => Promise<void>;
   resetLag: () => void;
+}
+
+/** Textures decoded as the renderers decode them: per texture its pixels (row by row, RGBA) or null, and the warnings. */
+export interface DecodedTextureProbe {
+  mimeTypes: string[];
+  images: ({ width: number; height: number; rgba: number[] } | null)[];
+  warnings: string[];
 }
 
 /** A point of interest in a path-traced image: x right, y down from the top-left, in pixels (not rounded). */
