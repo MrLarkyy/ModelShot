@@ -15,6 +15,9 @@
 //                            absolute.gltf (another origin), protocol-relative.gltf, backslash.gltf, javascript.gltf,
 //                            file.gltf, data-mtllib.obj; many.gltf refers to 32 images;
 //                            missing-mtllib.obj refers to a material library that answers 404 (it still shows)
+//   /mainthread/<case>       large glTF models made in memory on first request, for the frame's main-thread budget:
+//                            big.gltf (63 MiB of JSON with the fixture's buffer and image), long-uri.gltf (an image uri
+//                            of 60 MiB after a fetchable buffer), duplicates.gltf (one image uri 100 000 times)
 //   /__requests      what was asked of this server (method, path, Cookie, Referer, Origin); ?clear=1 empties it
 // Usage: node e2e/hostServer.mjs --port <port>
 import { createReadStream, readdirSync, readFileSync, statSync } from 'node:fs';
@@ -87,6 +90,38 @@ function hostileModels() {
   ]);
 }
 const hostile = hostileModels();
+
+/**
+ * The fixture glTF with its files relative to `/mainthread/`, and `extra` merged in. Made here rather than committed:
+ * too large for the repository, and it is the fixture (its licence) padded.
+ */
+function mainThreadGltf(extra) {
+  const scene = JSON.parse(readFileSync(join(SIDECAR_DIR, 'gltf', 'scene.gltf'), 'utf8'));
+  return JSON.stringify({
+    ...scene,
+    buffers: [{ ...scene.buffers[0], uri: '../sidecars/gltf/bin/scene.bin' }],
+    images: [{ uri: '../sidecars/textures/checker%20tile.png' }],
+    ...extra,
+  });
+}
+
+const MAIN_THREAD_MODELS = {
+  // Numbers, so that parsing the JSON costs what a model's own arrays would.
+  'big.gltf': () => {
+    const json = mainThreadGltf({ extras: { padding: [] } });
+    const count = Math.floor((63 * MIB - json.length) / 9);
+    return json.replace('"padding":[]', `"padding":[${'0.123456,'.repeat(count - 1)}0.123456]`);
+  },
+  'long-uri.gltf': () =>
+    mainThreadGltf({
+      images: [{ uri: '../sidecars/textures/checker%20tile.png' }, { uri: `${'a'.repeat(60 * MIB)}.png` }],
+    }),
+  'duplicates.gltf': () =>
+    mainThreadGltf({
+      images: Array.from({ length: 100_000 }, () => ({ uri: '../sidecars/textures/checker%20tile.png' })),
+    }),
+};
+const mainThreadModels = new Map();
 
 /** The file of `/sidecars/<path>` inside the fixture directory, or null: a path never leaves it. */
 function sidecarFile(path) {
@@ -195,6 +230,16 @@ const server = createServer((request, response) => {
   if (hostileModel !== undefined) {
     response.writeHead(200, { ...cors, 'content-type': MODEL_TYPES[extname(path)] });
     response.end(head ? undefined : hostileModel);
+    return;
+  }
+  const mainThreadCase = /^\/mainthread\/([^/]+)$/.exec(path)?.[1];
+  if (mainThreadCase !== undefined && Object.hasOwn(MAIN_THREAD_MODELS, mainThreadCase)) {
+    if (!mainThreadModels.has(mainThreadCase)) {
+      mainThreadModels.set(mainThreadCase, Buffer.from(MAIN_THREAD_MODELS[mainThreadCase](), 'utf8'));
+    }
+    const body = mainThreadModels.get(mainThreadCase);
+    response.writeHead(200, { ...cors, 'content-type': MODEL_TYPES['.gltf'], 'content-length': String(body.length) });
+    response.end(head ? undefined : body);
     return;
   }
   const match = /^\/(cors|nocors|nocors-nosniff)\/([^/]+)$/.exec(path);

@@ -4,23 +4,25 @@ import {
   ObjError,
   SkinError,
   createPlayerModel,
-  detectModelFormat,
-  loadBbmodel,
-  loadGltf,
-  loadObj,
+  listMtlReferences,
   loadSkin,
 } from '@modelshot/formats';
-import type { SceneDocument } from '@modelshot/scene';
-import type { LoadedModel, LoadMessage, LoadReply } from './LoadMessages';
+import type { ListMessage, ListReply, LoadedModel, LoadFailure, LoadMessage, LoadReply } from './LoadMessages';
+import { ModelSource } from './ModelSource';
 import { collectTransferables } from './collectTransferables';
-
-async function sha256Hex(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
-  return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
-}
+import { sha256Hex } from './sha256Hex';
 
 async function read(file: File): Promise<Uint8Array<ArrayBuffer>> {
   return new Uint8Array(await file.arrayBuffer());
+}
+
+/** The model a list read, kept for its load: the file is read and parsed once. */
+let source: ModelSource | null = null;
+
+async function list({ list: { file, of, maxReferences } }: ListMessage): Promise<string[]> {
+  if (of === 'library') return listMtlReferences(await read(file), { maxReferences });
+  source = await ModelSource.open(file);
+  return source.references(maxReferences);
 }
 
 async function load(message: LoadMessage): Promise<LoadedModel> {
@@ -30,26 +32,14 @@ async function load(message: LoadMessage): Promise<LoadedModel> {
     const doc = createPlayerModel(loadSkin(bytes, { name: request.skin.name }), { arms });
     return { doc, warnings: [], name: request.skin.name, kind: 'skin', key: await sha256Hex(bytes) };
   }
-  const bytes = await read(request.model);
-  const format = detectModelFormat(request.model.name, bytes.subarray(0, 4));
-  const files = new Map<string, Uint8Array>();
-  for (const resource of request.resources) files.set(resource.name, await read(resource));
-  let doc: SceneDocument;
-  let warnings: readonly { readonly message: string }[];
-  if (format === 'bbmodel') ({ scene: doc, warnings } = loadBbmodel(bytes, { textureFiles: files }));
-  else if (format === 'gltf' || format === 'glb') ({ scene: doc, warnings } = loadGltf(bytes, { files }));
-  else if (format === 'obj') ({ scene: doc, warnings } = loadObj(bytes, { files, fileName: request.model.name }));
-  else throw new SkinError('NOT_PNG', 'not a model file');
-  return {
-    doc,
-    warnings: warnings.map((warning) => warning.message),
-    name: request.model.name,
-    kind: 'model',
-    key: await sha256Hex(bytes),
-  };
+  // Only the session knows the File is the one listed: a copy here cannot tell it from another file of that name.
+  const kept = message.listed ? source : null;
+  source = null;
+  const model = kept ?? (await ModelSource.open(request.model));
+  return model.load(request.resources);
 }
 
-function failure(error: unknown): LoadReply {
+function failure(error: unknown): LoadFailure {
   if (error instanceof BbmodelError || error instanceof GltfError || error instanceof ObjError) {
     return { ok: false, code: error.code, message: error.message };
   }
@@ -57,15 +47,25 @@ function failure(error: unknown): LoadReply {
   return { ok: false, code: 'LOAD_FAILED', message: error instanceof Error ? error.message : String(error) };
 }
 
-self.addEventListener('message', (event: MessageEvent<LoadMessage>) => {
+self.addEventListener('message', (event: MessageEvent<LoadMessage | ListMessage>) => {
   void (async () => {
+    const message = event.data;
+    if ('list' in message) {
+      try {
+        const reply: ListReply = { ok: true, references: await list(message) };
+        self.postMessage(reply);
+      } catch (error) {
+        self.postMessage(failure(error));
+      }
+      return;
+    }
     // Test hook: a loader that never returns, for the watchdog. Not in the production build.
-    if (import.meta.env.MODE === 'e2e' && event.data.hang)
+    if (import.meta.env.MODE === 'e2e' && message.hang)
       for (;;) {
         // never returns
       }
     try {
-      const loaded = await load(event.data);
+      const loaded = await load(message);
       const reply: LoadReply = { ok: true, ...loaded };
       self.postMessage(reply, { transfer: collectTransferables(loaded.doc) });
     } catch (error) {
