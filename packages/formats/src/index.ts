@@ -15,11 +15,13 @@ export {
 export type { GltfLoadResult } from './gltf/GltfLoadResult';
 export { MAX_GLTF_WARNINGS, type GltfWarning, type GltfWarningCode } from './gltf/GltfWarning';
 export { loadGltf } from './gltf/loadGltf';
+export { readGltfContainer, type GltfContainer } from './gltf/readGltfContainer';
 export { ObjError, type ObjErrorCode } from './obj/ObjError';
 export { DEFAULT_OBJ_LIMITS, DEFAULT_OBJ_UNIT_SCALE, type ObjLimits, type ObjLoadOptions } from './obj/ObjLoadOptions';
 export type { ObjLoadResult } from './obj/ObjLoadResult';
 export { MAX_OBJ_WARNINGS, type ObjWarning, type ObjWarningCode } from './obj/ObjWarning';
 export { loadObj } from './obj/loadObj';
+export { decodeObjText, type DecodedObjText } from './obj/objText';
 export { BLEND_ALPHA_CUTOFF } from './alpha/blendAlphaCutoff';
 export {
   ACCEPTED_MODEL_EXTENSIONS,

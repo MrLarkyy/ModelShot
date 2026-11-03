@@ -1,3 +1,4 @@
+import { utf8Length } from '../text/utf8Length';
 import { utf8LengthExceeds } from '../text/utf8LengthExceeds';
 import { ObjError } from './ObjError';
 
@@ -12,10 +13,46 @@ export interface ObjStatement {
 }
 
 /**
- * Size-checks and decodes a text file: UTF-8 with invalid bytes replaced (OBJ files from old tools are not always
- * valid UTF-8, and only ASCII keywords matter), a leading byte-order mark dropped.
+ * An `.obj` decoded once by `decodeObjText`, for `listObjReferences` and `loadObj` to share. The text is not given to
+ * them as a string: its UTF-8 length can differ from the file's (a replaced byte is 3) and a second byte-order mark
+ * would be dropped, so the file's own size is kept with it.
  */
-export function readObjText(input: string | Uint8Array, fileName: string, maxFileBytes: number): string {
+export interface DecodedObjText {
+  readonly text: string;
+  /** Size of the file it was decoded from (UTF-8 bytes for text). */
+  readonly byteLength: number;
+}
+
+// Only text this module decoded is taken as decoded: a caller-made object could carry a size that is not the file's.
+const DECODED = new WeakSet<object>();
+
+/** `readObjText` once, keeping the file's size: the result loads and lists without decoding again. */
+export function decodeObjText(input: string | Uint8Array, fileName: string, maxFileBytes: number): DecodedObjText {
+  const text = readObjText(input, fileName, maxFileBytes);
+  const decoded: DecodedObjText = {
+    text,
+    byteLength: typeof input === 'string' ? utf8Length(input) : input.byteLength,
+  };
+  DECODED.add(decoded);
+  return decoded;
+}
+
+/**
+ * Size-checks and decodes a text file: UTF-8 with invalid bytes replaced (OBJ files from old tools are not always
+ * valid UTF-8, and only ASCII keywords matter), a leading byte-order mark dropped. Text from `decodeObjText` is
+ * size-checked again and returned as it was decoded.
+ */
+export function readObjText(
+  input: string | Uint8Array | DecodedObjText,
+  fileName: string,
+  maxFileBytes: number,
+): string {
+  if (typeof input === 'object' && !(input instanceof Uint8Array) && DECODED.has(input)) {
+    if (input.byteLength > maxFileBytes) {
+      throw new ObjError('FILE_TOO_LARGE', fileName, `${input.byteLength} bytes, the limit is ${maxFileBytes}`);
+    }
+    return input.text;
+  }
   let text: string;
   if (typeof input === 'string') {
     if (utf8LengthExceeds(input, maxFileBytes)) {

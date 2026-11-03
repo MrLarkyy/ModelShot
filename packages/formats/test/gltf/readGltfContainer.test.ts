@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GltfError, loadGltf } from '../../src/index';
-import { readContainer } from '../../src/gltf/readContainer';
+import { readGltfContainer } from '../../src/gltf/readGltfContainer';
 import { expectGltfError, json } from './expectGltfError';
 import { gltfDoc, toGlb } from './gltfBuilder';
 
@@ -12,9 +12,9 @@ function withHeader(glb: Uint8Array, change: (view: DataView) => void): Uint8Arr
   return copy;
 }
 
-describe('readContainer', () => {
+describe('readGltfContainer', () => {
   it('reads a GLB: JSON chunk, BIN chunk, version', () => {
-    const container = readContainer(toGlb(gltfDoc()), LIMIT);
+    const container = readGltfContainer(toGlb(gltfDoc()), LIMIT);
     expect(container.kind).toBe('glb');
     expect(container.version).toBe('2.0');
     expect(container.bin?.byteLength).toBeGreaterThan(0);
@@ -23,7 +23,7 @@ describe('readContainer', () => {
   it('reads .gltf text and bytes, with or without a byte-order mark', () => {
     const text = json(gltfDoc());
     for (const input of [text, `\uFEFF${text}`, new TextEncoder().encode(`\uFEFF${text}`)]) {
-      const container = readContainer(input, LIMIT);
+      const container = readGltfContainer(input, LIMIT);
       expect(container.kind).toBe('gltf');
       expect(container.bin).toBeNull();
     }
@@ -80,8 +80,8 @@ describe('readContainer', () => {
   });
 
   it('accepts 2.x and a minVersion up to 2.0 only', () => {
-    expect(readContainer(json({ asset: { version: '2.1' } }), LIMIT).version).toBe('2.1');
-    expect(readContainer(json({ asset: { version: '2.0', minVersion: '2.0' } }), LIMIT).version).toBe('2.0');
+    expect(readGltfContainer(json({ asset: { version: '2.1' } }), LIMIT).version).toBe('2.1');
+    expect(readGltfContainer(json({ asset: { version: '2.0', minVersion: '2.0' } }), LIMIT).version).toBe('2.0');
     expectGltfError(json({ asset: { version: '1.0' } }), 'UNSUPPORTED_VERSION', '$.asset.version');
     expectGltfError(json({ asset: { version: '3.0' } }), 'UNSUPPORTED_VERSION', '$.asset.version');
     expectGltfError(json({ asset: { version: '2' } }), 'UNSUPPORTED_VERSION', '$.asset.version');
