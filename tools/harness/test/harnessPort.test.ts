@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { harnessPort, portForDirectory } from '../src/harnessPort';
+import { harnessPort, portForDirectory, suitePorts } from '../src/harnessPort';
 
 describe('harnessPort', () => {
   it('uses MS_HARNESS_PORT when set and rejects a bad value', () => {
@@ -16,5 +16,58 @@ describe('harnessPort', () => {
     expect(a).toBeLessThan(4910);
     const ports = new Set(Array.from({ length: 20 }, (_, i) => portForDirectory(`/w/MS-${i}/tools/harness`)));
     expect(ports.size).toBeGreaterThan(10);
+  });
+});
+
+describe('suitePorts', () => {
+  const roots = Array.from({ length: 300 }, (_, i) => `/work/checkout-${i}`);
+  const bands = [4910, 5410, 5910, 6410, 6910, 7410];
+
+  it('gives six distinct ports, each in its own band above the harness band and below the dynamic range', () => {
+    for (const root of roots) {
+      const ports = Object.values(suitePorts({}, root));
+      expect(new Set(ports).size).toBe(6);
+      ports.forEach((port, index) => {
+        expect(port).toBeGreaterThanOrEqual(bands[index]!);
+        expect(port).toBeLessThan(bands[index]! + 500);
+        expect(port).toBeLessThan(49152);
+      });
+    }
+  });
+
+  it('is stable per root', () => {
+    expect(suitePorts({}, roots[3])).toEqual(suitePorts({}, roots[3]));
+  });
+
+  it('lets each variable override only its own port', () => {
+    const base = suitePorts({}, roots[0]);
+    const vars: Record<string, keyof typeof base> = {
+      MS_SITE_PORT: 'site',
+      MS_APP_PORT: 'app',
+      MS_EMBED_PORT: 'embedFrame',
+      MS_EMBED_HOST_PORT: 'embedHost',
+      MS_DEPLOY_PORT: 'deploySite',
+      MS_DEPLOY_HOST_PORT: 'deployHost',
+    };
+    for (const [name, key] of Object.entries(vars)) {
+      expect(suitePorts({ [name]: '9999' }, roots[0])).toEqual({ ...base, [key]: 9999 });
+    }
+  });
+
+  it('rejects two overrides on one port, naming both variables', () => {
+    expect(() => suitePorts({ MS_SITE_PORT: '9000', MS_DEPLOY_PORT: '9000' }, roots[0])).toThrow(
+      /MS_SITE_PORT and MS_DEPLOY_PORT both resolve to port 9000/,
+    );
+  });
+
+  it('rejects an override equal to the default of another server, marking the default', () => {
+    const base = suitePorts({}, roots[0]);
+    expect(() => suitePorts({ MS_APP_PORT: String(base.site) }, roots[0])).toThrow(
+      new RegExp(`MS_SITE_PORT \\(default\\) and MS_APP_PORT both resolve to port ${base.site}`),
+    );
+  });
+
+  it('rejects an out-of-range value naming the variable', () => {
+    expect(() => suitePorts({ MS_APP_PORT: '80' }, roots[0])).toThrow(/MS_APP_PORT must be an integer in 1024..65535/);
   });
 });

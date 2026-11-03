@@ -22,7 +22,7 @@ export async function assemble(options: { readonly root: string; readonly out: s
   for (const name of ['app', 'embed']) {
     if (entries.includes(name)) {
       throw new Error(
-        `${DEPLOY_LAYOUT[0]!.source}/${name} exists: it is left over from build:with-app, rebuild the site (pnpm --filter @modelshot/site run build).`,
+        `${DEPLOY_LAYOUT[0]!.source}/${name} exists: it is left over from an older site build that copied the app in (the e2e build now writes dist-e2e), rebuild the site (pnpm --filter @modelshot/site run build).`,
       );
     }
   }

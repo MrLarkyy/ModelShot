@@ -18,7 +18,9 @@
     "build": "vite build && vite build --config vite.element.config.ts",
     "typecheck": "tsc --noEmit",
     "test:browser": "playwright test",
-    "serve:e2e": "pnpm run build && vite preview --strictPort --host 127.0.0.1"
+    "build:e2e": "vite build --outDir dist-e2e && vite build --config vite.element.config.ts --outDir dist-e2e",
+    "preview:e2e": "vite preview --outDir dist-e2e --strictPort --host 127.0.0.1",
+    "serve:e2e": "pnpm run build:e2e && pnpm run preview:e2e"
   },
   "dependencies": {
     "@modelshot/app": "workspace:*",
