@@ -26,7 +26,8 @@ export interface DecodedTextures {
 /**
  * Decides from the image header in the bytes alone (never the size the document declares), before anything is decoded,
  * which textures may be decoded: a PNG or JPEG header of the declared `mimeType`, within `limits`, that agrees with the
- * declared size. The others become placeholders with a warning. Textures are admitted in order until the total pixel budget is spent.
+ * declared size. The others become placeholders with a warning. Textures are admitted in order until the total pixel
+ * budget is spent.
  */
 export function planTextureDecode(textures: readonly SceneTexture[], limits: TextureLimits): TextureDecodePlan {
   const warnings: RendererWarning[] = [];
