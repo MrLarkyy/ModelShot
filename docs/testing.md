@@ -1152,6 +1152,9 @@ shading include:
   offset. Interpolated positions or depths are not precise enough for the 0.001 tie (the rasteriser's error at a
   grazing angle is several times larger), which is why the fixture writes `gl_FragDepth` and gives up early-z: it is a
   reference, not a renderer; `@modelshot/renderer-rt` realises the key its own way (realtime-renderer.md).
+  The camera target is single-sampled (checked at creation), so every shaded fragment has its pixel centre on the
+  face and interpolated normals and positions are never extrapolated; `@modelshot/renderer-rt` is multisampled and
+  uses `centroid` for that reason (MS-54).
 - `raycast`: per pixel centre, a camera ray to the nearest triangle whose texel passes the alpha test
   (single-sided triangles only from the front; the smallest render-order key wins, the same key), shaded with the barycentric vertex normal, then one shadow ray toward the light that an
   alpha-passing

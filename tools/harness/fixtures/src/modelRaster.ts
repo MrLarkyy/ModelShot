@@ -94,7 +94,8 @@ export function renderRaster(
 /**
  * The camera pass draws into its own RGBA8 + DEPTH_COMPONENT24 target: the default framebuffer may have a 16-bit
  * depth buffer (WebGL guarantees only that), whose step over DEPTH_RANGE (about 0.003 units) is coarser than
- * RENDER_ORDER_TIE_DISTANCE; 24 bits give about 1.2e-5 units.
+ * RENDER_ORDER_TIE_DISTANCE; 24 bits give about 1.2e-5 units. The target is single-sampled, so a fragment exists only
+ * where the pixel centre is covered and the fixture shades at a point on the face.
  */
 function createCameraTarget(gl: WebGL2RenderingContext, size: number): WebGLFramebuffer {
   const framebuffer = gl.createFramebuffer();
@@ -110,6 +111,11 @@ function createCameraTarget(gl: WebGL2RenderingContext, size: number): WebGLFram
   }
   if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
     throw new Error('RGBA8 + DEPTH_COMPONENT24 camera target is incomplete');
+  }
+  if (gl.getParameter(gl.SAMPLES) !== 0) {
+    throw new Error(
+      'the camera target must be single-sampled: the fixture shades at the pixel centre, which a single-sampled fragment always has on the face',
+    );
   }
   return framebuffer;
 }
