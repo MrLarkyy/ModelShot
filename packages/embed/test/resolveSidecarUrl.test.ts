@@ -19,6 +19,8 @@ describe('resolveSidecarUrl', () => {
     ['a%20b.png', 'https://models.example/m/a%20b.png', 'a b.png'],
     ['checker tile.png', 'https://models.example/m/checker%20tile.png', 'checker tile.png'],
     ['textures\\a.png', 'https://models.example/m/textures/a.png', 'a.png'],
+    ['a.jpg', 'https://models.example/m/a.jpg', 'a.jpg'],
+    ['../tex/T.JPEG', 'https://models.example/tex/T.JPEG', 'T.JPEG'],
   ])('fetches %s as %s named %s', (reference, href, name) => {
     expect(resolve(reference)).toEqual({ kind: 'download', href, name });
   });
@@ -47,7 +49,7 @@ describe('resolveSidecarUrl', () => {
     expect(expectCpuBelow(100, () => resolve(padded)).kind).toBe('refuse');
   });
 
-  it.each(['a.jpg', 'a.png?v=1', 'a.png#x', 'textures/', 'a.gltf', 'a.webp'])(
+  it.each(['a.webp', 'a.png?v=1', 'a.jpg#x', 'textures/', 'a.gltf', 'a.ktx2'])(
     'skips %s, which the app could not take next to a model',
     (reference) => {
       expect(resolve(reference)).toEqual({ kind: 'skip' });

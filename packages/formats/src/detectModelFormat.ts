@@ -1,8 +1,8 @@
 /** Model files a user can open, lower case with the dot (for a file input's `accept`). */
 export const ACCEPTED_MODEL_EXTENSIONS = ['.bbmodel', '.gltf', '.glb', '.obj'] as const;
 
-/** Files a user can pick next to a model: glTF buffers, PNG textures, OBJ material libraries. */
-export const ACCEPTED_RESOURCE_EXTENSIONS = ['.bin', '.png', '.mtl'] as const;
+/** Files a user can pick next to a model: glTF buffers, PNG and JPEG textures, OBJ material libraries. */
+export const ACCEPTED_RESOURCE_EXTENSIONS = ['.bin', '.png', '.jpg', '.jpeg', '.mtl'] as const;
 
 /** `gltf` and `glb` both load with `loadGltf`. */
 export type ModelFormat = 'bbmodel' | 'gltf' | 'glb' | 'obj';

@@ -88,6 +88,21 @@ test('a .gltf with an external buffer and image loads by URL, its files asked on
   expect(await cspViolations(page)).toEqual([]);
 });
 
+test('a .gltf with an external JPEG texture downloads and draws it', async ({ page, request }) => {
+  await openHost(page);
+  await addViewer(page, { model: `${HOST_ORIGIN}/sidecars/gltf/scene-jpeg.gltf`, loading: 'eager' });
+  await waitForEvent(page, 'load');
+  await expect(viewerFrame(page).locator('#stage')).toHaveAttribute('data-state', 'shown');
+  await expectCheckerDrawn(page);
+  const asked = (await hostRequests(request)).filter((r) => r.path.startsWith('/sidecars/'));
+  expect(asked.map((r) => [r.method, r.path])).toEqual([
+    ['GET', '/sidecars/gltf/scene-jpeg.gltf'],
+    ['GET', '/sidecars/gltf/bin/scene.bin'],
+    ['GET', '/sidecars/textures/checker%20tile.jpg'],
+  ]);
+  expect(await cspViolations(page)).toEqual([]);
+});
+
 test('an .obj with its material library and texture loads by URL, the texture relative to the library', async ({
   page,
   request,

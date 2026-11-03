@@ -40,6 +40,8 @@ const MODEL_TYPES = {
   '.glb': 'model/gltf-binary',
   '.obj': 'text/plain',
   '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
 };
 const SIDECAR_DIR = join(HERE, 'fixtures', 'sidecars');
 const SIDECAR_TYPES = { ...MODEL_TYPES, '.bin': 'application/octet-stream', '.mtl': 'text/plain' };

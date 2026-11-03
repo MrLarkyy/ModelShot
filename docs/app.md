@@ -8,8 +8,9 @@ uploaded ([privacy](#privacy)).
 
 1. Files arrive by drop on the page, the Open button (Ctrl/Cmd+O) or the landing page's handoff ([site.md](site.md)).
 2. `intake/checkIntake.ts` applies the handoff limits to every path. `intake/groupFiles.ts` turns the files into one
-   load request: one model (`.bbmodel .gltf .glb .obj`) with its resources (`.bin .png .mtl`), or a lone `.png`, which
-   is a player skin on the player model. Several models are refused.
+   load request: one model (`.bbmodel .gltf .glb .obj`) with its resources (`.bin .png .jpg .jpeg .mtl`), or a lone
+   `.png`, which is a player skin on the player model (a lone `.jpg` is `NO_MODEL`: skins are PNG). Several models are
+   refused.
 3. A module worker (`intake/loadWorker.ts`) detects the format and parses the bytes with the `formats` loaders; the
    page never parses a model. A 30 s watchdog terminates a worker that does not answer. The previous scene stays on
    any failure.
@@ -35,11 +36,11 @@ the 30 s watchdog counts only the time spent waiting on the worker; `loadModel` 
 
 ## Files and limits
 
-At most 32 files, 256 MiB in total, extensions `.bbmodel .gltf .glb .bin .obj .mtl .png`. Error codes, shown in a
-`role="alert"` element within 5 s: `EMPTY`, `TOO_MANY`, `TOO_LARGE`, `UNSUPPORTED_TYPE` (limits), `MULTIPLE_MODELS`,
-`NO_MODEL`, `LOAD_TIMEOUT` (30 s), `LOAD_FAILED` (worker crash), and the code of the loader that refused the file (its
-own limits: elements, triangles, texture size, nesting). A model never triggers a request; external glTF URIs and OBJ
-`mtllib` resolve only against the files chosen.
+At most 32 files, 256 MiB in total, extensions `.bbmodel .gltf .glb .bin .obj .mtl .png .jpg .jpeg`. Error codes, shown
+in a `role="alert"` element within 5 s: `EMPTY`, `TOO_MANY`, `TOO_LARGE`, `UNSUPPORTED_TYPE` (limits),
+`MULTIPLE_MODELS`, `NO_MODEL`, `LOAD_TIMEOUT` (30 s), `LOAD_FAILED` (worker crash), and the code of the loader that
+refused the file (its own limits: elements, triangles, texture size, nesting). A model never triggers a request;
+external glTF URIs and OBJ `mtllib` resolve only against the files chosen.
 
 ## Panels
 

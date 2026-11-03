@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { ACCEPTED_MODEL_EXTENSIONS, ACCEPTED_RESOURCE_EXTENSIONS, detectModelFormat } from '../src/index';
 
 describe('detectModelFormat', () => {
-  it('accepts exactly bbmodel, gltf, glb and obj models, and bin, png and mtl resources', () => {
+  it('accepts exactly bbmodel, gltf, glb and obj models, and bin, png, jpg, jpeg and mtl resources', () => {
     expect([...ACCEPTED_MODEL_EXTENSIONS]).toEqual(['.bbmodel', '.gltf', '.glb', '.obj']);
-    expect([...ACCEPTED_RESOURCE_EXTENSIONS]).toEqual(['.bin', '.png', '.mtl']);
+    expect([...ACCEPTED_RESOURCE_EXTENSIONS]).toEqual(['.bin', '.png', '.jpg', '.jpeg', '.mtl']);
   });
 
   it('goes by the extension, case-insensitively', () => {

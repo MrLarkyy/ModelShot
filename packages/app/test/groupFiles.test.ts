@@ -32,7 +32,10 @@ describe('groupFiles', () => {
     expect(codeOf(['a.bbmodel', 'b.obj'])).toBe('MULTIPLE_MODELS');
   });
 
-  it.each([[['a.png', 'b.png']], [['a.bin']], [['a.mtl', 'a.png']]])('finds no model in %j', (names) => {
-    expect(codeOf(names)).toBe('NO_MODEL');
-  });
+  it.each([[['a.png', 'b.png']], [['a.bin']], [['a.mtl', 'a.png']], [['steve.jpg']]])(
+    'finds no model in %j',
+    (names) => {
+      expect(codeOf(names)).toBe('NO_MODEL');
+    },
+  );
 });

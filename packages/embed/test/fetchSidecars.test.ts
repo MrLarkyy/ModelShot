@@ -159,7 +159,7 @@ describe('fetchSidecars', () => {
   });
 
   it('counts each URL once and leaves skipped references uncounted', async () => {
-    const images = [...Array.from({ length: 40 }, (_, i) => `t${i}.jpg`), 'a.png', './a.png', 'x/../a.png'];
+    const images = [...Array.from({ length: 40 }, (_, i) => `t${i}.webp`), 'a.png', './a.png', 'x/../a.png'];
     const { fetch, calls } = server({ '/m/a.png': () => text('png') });
     const files = await fetchSidecars(new File([gltfWith({ images })], 'a.gltf'), `${SERVER}/m/a.gltf`, {
       fetch,

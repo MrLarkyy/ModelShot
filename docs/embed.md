@@ -188,8 +188,8 @@ only the model's first 4 bytes (its format): a 63 MiB `.gltf` costs it no task o
   `https://...`), `//host`, a backslash authority or anything leading elsewhere after the browser's URL parsing fails
   the model with `SIDECAR_REFUSED` before any of its files is requested. `data:` URIs of a `.gltf` are decoded by the
   loader, never requested.
-- Only `.bin`, `.png` and `.mtl` files are downloaded, what the app takes next to a model; another reference (a
-  `.jpg`, a path with a query) is left to the loader, which reports it missing as in a local open.
+- Only `.bin`, `.png`, `.jpg`, `.jpeg` and `.mtl` files are downloaded, what the app takes next to a model; another
+  reference (a `.webp`, a path with a query) is left to the loader, which reports it missing as in a local open.
 - A file the server answers an error status for (404, 403, 500, ...) is left out, as if it were not there: the loader
   reports it missing (a `.gltf` buffer fails with `MISSING_BUFFER`; a texture or material library is drawn missing or
   plain with a warning). CORS, size, time and connection failures stay errors.
@@ -279,7 +279,7 @@ solve for every look, no network API outside the download, and that this page's 
 test:browser`): the element and a plain iframe on a host page of another origin (lit preview, looks, camera,
 background, autorotate, reduced motion, attribute changes), lazy loading, the CORS, unreachable and HTTP errors, the
 size and time limits with the host page staying responsive, the requests made, and a `.gltf` and an `.obj` with
-their files on the model server (textures drawn, requests only to the model's origin) beside hostile references,
-too many files and a texture without CORS (`embed.sidecars.spec.ts`, models made by
+their files on the model server (textures drawn, PNG and JPEG, requests only to the model's origin) beside hostile
+references, too many files and a texture without CORS (`embed.sidecars.spec.ts`, models made by
 `e2e/fixtures/sidecars/generate.mjs`, CC0), and the frame's long tasks while a 63 MiB `.gltf`, one with a 60 MiB
 `uri` and one with 100 000 copies of a `uri` are listed (`embed.mainThread.spec.ts`). Described in [Testing](testing.md).

@@ -91,5 +91,5 @@ test('every Open a model control is a button that opens the file picker', async 
     await button.click();
     expect((await chooser).isMultiple()).toBe(true);
   }
-  await expect(page.locator('#model-input')).toHaveAttribute('accept', '.bbmodel,.gltf,.glb,.bin,.obj,.mtl,.png');
+  await expect(page.locator('#model-input')).toHaveAttribute('accept', '.bbmodel,.gltf,.glb,.bin,.obj,.mtl,.png,.jpg,.jpeg');
 });

@@ -5,7 +5,7 @@ export const HandoffLimits = {
   maxTotalBytes: 256 * 1024 * 1024,
   maxAgeMs: 10 * 60 * 1000,
   storageTimeoutMs: 5000,
-  extensions: ['.bbmodel', '.gltf', '.glb', '.bin', '.obj', '.mtl', '.png'],
+  extensions: ['.bbmodel', '.gltf', '.glb', '.bin', '.obj', '.mtl', '.png', '.jpg', '.jpeg'],
 } as const;
 
 export type HandoffLimits = typeof HandoffLimits;
