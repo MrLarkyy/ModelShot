@@ -113,16 +113,21 @@ if (lighting) renderer.setLighting(lighting);
   texel, and when even that fails `setScene` rejects with `RendererError` `SCENE_TOO_LARGE` (path `meshes`) before
   allocating anything. A scene without a world-charted mesh lays out exactly as before world charts existed (same
   `layoutKey`).
-- **Values.** RGBA16F (`BakedLighting`): rgb the fill as a multiple of the unoccluded fill `hemisphereFill(n)`, a the
-  key's visibility. Texels of no chart and vertices of no triangle hold 1, so an anti-aliasing tap outside a face, or
-  a degenerate triangle, never darkens. The shadow catcher's lightmap stores 1 less the fill lost instead (Shadow
+- **Values.** RGBA16F (`BakedLighting`): rgb 1 less the fill lost over the unoccluded fill `hemisphereFill(n)` (MS-87: the
+  path tracer's control variate; a blocked bake ray loses the environment along it, so a texel nothing blocked is
+  exactly 1; a cosine ray under a smooth face's geometric side is mirrored as the trace does, so such a texel is near
+  but not exactly 1 and a mirror that sees more sky may lift it slightly above 1), a the key's visibility. Texels of no chart and vertices of no triangle hold 1, so an anti-aliasing tap outside a face, or
+  a degenerate triangle, never darkens. The shadow catcher's lightmap stores the same form over `hemisphereFill(up)` (Shadow
   catcher, below). `shadeBaked` (`shading.glsl`) is `albedo × (hemisphereFill(n) × rgb +
 u_lookKeyColor × max(n·u_lookKeyDirection, 0) × a + fillLight(n)) + rimLight(n, v, albedo)`, v toward the eye
   (`towardEye(v_worldPosition)`): the accents cast no shadow and stay whole; value 1 gives the unbaked expression
   exactly.
 - **Sampling.** Texel charts are read with the albedo's own seam taps (`seamTaps` of `texelSample.glsl`): the same
   2 × 2 texels and weights, clamped to the chart, so light and albedo change at the same pixels and the bake adds no
-  shimmer of its own. World charts are read bilinearly at their own grid (an untextured face has no texel grid to
+  shimmer of its own. Both blends (texel taps, world charts) are `lerpExact` (`lerpExact.glsl`, a + (b − a) × f, not `mix`, which may
+  round), the chunk the catcher shader includes too: four taps of rgb 1 give exactly 1, so a texel- or world-charted
+  face whose fill lost nothing shades as `hemisphereFill(n)` exactly. Vertex charts (Gouraud interpolation of the
+  corners) are not held to that. World charts are read bilinearly at their own grid (an untextured face has no texel grid to
   keep; seam taps would show its blocks), the 2 × 2 texels clamped to the chart: a world-charted mesh is drawn
   de-indexed, a vertex per triangle corner (`LightmapLayout.cornerData`, composed with the sharp-edge split, so edge
   rounding stays), each corner carrying its point in the lightmap and its chart's rectangle (attribute 11, uploaded
@@ -150,8 +155,8 @@ u_lookKeyColor × max(n·u_lookKeyDirection, 0) × a + fillLight(n)) + rimLight(
 path tracer), covering the footprint, the bounds' shadow along the key and half the largest extent around it, one-sided
 from above. It only darkens the backdrop: pixel = the look's backdrop at the pixel ×
 `catcherShadeOfLoss(hemisphereFill(up) × (1 − rgb), 1 − a, xz, rect)` of the look (`shadowCatcher.glsl`), with its
-own lightmap of 4 texels per finest model texel (at most `MAX_CATCHER_SIDE` 512 per side), read bilinearly as
-a + (b − a) × f (not `mix`, which may round). Its rgb is 1 less the fill its rays lost over the sky fill (MS-63,
+own lightmap of 4 texels per finest model texel (at most `MAX_CATCHER_SIDE` 512 per side), read bilinearly with the
+shared `lerpExact` (a + (b − a) × f, not `mix`, which may round). Its rgb is 1 less the fill its rays lost over the sky fill (MS-63,
 `BakedCatcher`), the path tracer's control variate: where no texel of the four was blocked the loss is exactly 0 and
 the pixel is the bare backdrop, byte for byte, as in the render; `catcherShade` of the same means gives the same
 value up to rounding. Every model point a camera ray meets lies on or above the plane, so drawing the catcher first

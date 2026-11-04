@@ -18,6 +18,8 @@ import alphaRampUri from '../models/rt-alpha-ramp.png?inline';
 import outlineHullSource from '../models/outline-hull.bbmodel?raw';
 import showcaseSource from '../models/rt-showcase.bbmodel?raw';
 import { benchScene } from './benchScene';
+import { convexCube } from './convexCube';
+import { smoothSphere } from './smoothSphere';
 import { cutoutChecker, cutoutGhost } from './cutoutChecker';
 import { cutoutEdge } from './cutoutEdge';
 import { edgesBbmodel, edgesHostileScene, edgesLoadScene, edgesScene, edgesWeldScene } from './edgesScene';
@@ -79,6 +81,8 @@ export const RT_SCENE_NAMES = [
   'grass-field',
   'cutout-checker',
   'cutout-ghost',
+  'convex-cube',
+  'smooth-sphere',
   'cutout-edge',
   'partial-edge',
   'partial-edge-under',
@@ -431,6 +435,10 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return cutoutChecker(load(showcaseSource));
     case 'cutout-ghost':
       return cutoutGhost(load(showcaseSource));
+    case 'convex-cube':
+      return convexCube(load(showcaseSource));
+    case 'smooth-sphere':
+      return smoothSphere(load(showcaseSource));
     case 'cutout-edge':
       return cutoutEdge(load(showcaseSource));
     case 'partial-edge':

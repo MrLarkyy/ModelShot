@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createGlProgram } from '../src/glProgram';
 import { RendererError } from '../src/index';
 import { shaderProgramSource, type ShaderProgramName } from '../src/shaderSources';
+import lerpExactSource from '../src/shaders/lerpExact.glsl?raw';
 
 const NAMES: ShaderProgramName[] = [
   'opaque',
@@ -222,10 +223,23 @@ describe('shader sources', () => {
   it('shades the catcher through the loss form on an exact bilinear, so an unshadowed point is the bare backdrop', () => {
     const { fragment } = shaderProgramSource('catcher');
     const main = fragment.slice(fragment.indexOf('void main()'));
-    expect(fragment).toContain('return a + (b - a) * f;');
+    expect(fragment).toContain('vec4 lerpExact(vec4 a, vec4 b, float f)');
     expect(main).toContain('vec3 fillLost = hemisphereFill(vec3(0.0, 1.0, 0.0)) * (1.0 - light.rgb);');
     expect(main).toContain('catcherShadeOfLoss(fillLost, 1.0 - light.a, v_xz, u_catcherRect)');
     expect(main).not.toMatch(/catcherShade\(|mix\(/);
+  });
+
+  it('blends baked light taps with the one exact lerp, included once per program', () => {
+    expect(lerpExactSource).toContain('return a + (b - a) * f;');
+    for (const name of ['opaque', 'oitAccum', 'fallback', 'catcher'] as const) {
+      const { fragment } = shaderProgramSource(name);
+      if (name !== 'catcher' && !fragment.includes('sampleBakedLight(')) continue;
+      expect(fragment.match(/vec4 lerpExact\(/g), name).toHaveLength(1);
+    }
+    const { fragment } = shaderProgramSource('opaque');
+    const body = fragment.slice(fragment.indexOf('vec4 sampleBakedLight('), fragment.indexOf('vec3 shadeLit('));
+    expect(body).not.toContain('mix(');
+    expect(body.match(/lerpExact\(/g)).toHaveLength(6);
   });
 
   it('surfaces a compile error with the info log as RendererError', () => {
