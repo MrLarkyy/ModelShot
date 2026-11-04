@@ -59,7 +59,7 @@ describe('loadWorker', () => {
     const model = new File(
       [
         JSON.stringify({
-          meta: { format_version: '4.5', model_format: 'free' },
+          meta: { format_version: '5.0', model_format: 'free' },
           textures: [{ name: 'tile.png', relative_path: '../textures/tile.png' }],
         }),
       ],

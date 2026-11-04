@@ -6,13 +6,44 @@ import { fixture, model, pngDataUri } from './fixtures';
 const MAX = { maxReferences: 31 };
 const encode = (value: unknown): string => JSON.stringify(value);
 const withTextures = (textures: unknown): string => encode(model({ textures }));
+const atVersion = (version: unknown, textures: unknown): string =>
+  encode(model({ meta: { format_version: version, model_format: 'free', box_uv: false }, textures }));
 
 describe('listBbmodelReferences', () => {
-  it('lists the relative_path of referenced-texture, never its absolute path, and the name of a source-URL texture', () => {
+  it('lists the relative_path of referenced-texture (4.5: one leading .. dropped) and the name of a source-URL texture', () => {
     expect(listBbmodelReferences(fixture('referenced-texture'), MAX)).toEqual([
-      '../textures/referenced.png',
+      'textures/referenced.png',
       'remote.png',
     ]);
+  });
+
+  it('drops the first leading .. of a relative_path before format 4.10, which Blockbench wrote against the file', () => {
+    const textures = [
+      { relative_path: '..\\tex\\a.png' },
+      { relative_path: '../../b.png' },
+      { relative_path: 'tex/c.png' },
+    ];
+    for (const version of ['4.9', '3.6', 4.9]) {
+      expect(listBbmodelReferences(atVersion(version, textures), MAX), String(version)).toEqual([
+        'tex\\a.png',
+        '../b.png',
+        'tex/c.png',
+      ]);
+    }
+  });
+
+  it('lists a relative_path as written from format 4.10 on, and for a missing or malformed version', () => {
+    const textures = [{ relative_path: '../tex/a.png' }, { relative_path: '..\\b.png' }];
+    for (const version of ['4.10', '4.10.1', '5.0', undefined, 'x', '4.9-beta', '9'.repeat(40)]) {
+      expect(listBbmodelReferences(atVersion(version, textures), MAX), String(version)).toEqual([
+        '../tex/a.png',
+        '..\\b.png',
+      ]);
+    }
+  });
+
+  it('never drops a .. from a name', () => {
+    expect(listBbmodelReferences(atVersion('4.9', [{ name: '../a.png' }]), MAX)).toEqual(['../a.png']);
   });
 
   it('reads bytes as well as text', () => {
@@ -42,7 +73,7 @@ describe('listBbmodelReferences', () => {
         name: 'tile.png',
       },
     ];
-    expect(listBbmodelReferences(withTextures(textures), MAX)).toEqual(['..\\textures\\tile.png']);
+    expect(listBbmodelReferences(atVersion('5.0', textures), MAX)).toEqual(['..\\textures\\tile.png']);
   });
 
   it('leaves an embedded data: texture out', () => {

@@ -510,8 +510,11 @@ refused as `NOT_JSON`. The app's load worker reads a model this way to list its 
 
 `listBbmodelReferences(input, { maxReferences })` lists the texture files a caller may have to supply: per texture
 whose `source` is not a `data:` URI, its `relative_path`, else its `name`, as written (each distinct spelling once, at
-most `maxReferences + 1`). `path` is never listed: Blockbench writes the author's absolute path there next to
-`relative_path` with the same base name. `source` is never listed. A value over `maxStringChars` lists nothing for its
+most `maxReferences + 1`). `relative_path` is relative to the model's directory; before `format_version` 4.10
+Blockbench wrote it relative to the model file itself and drops one `..` on import, so in such a file a leading `../`
+or `..\` is dropped once (`..\..\tex\a.png` lists as `..\tex\a.png`; a missing or malformed version counts as
+current). `path` is never listed: Blockbench writes the author's absolute path there next to `relative_path` with the
+same base name. `source` is never listed. A value over `maxStringChars` lists nothing for its
 texture, and a file whose JSON, root, `meta` or `textures` count the loader refuses lists nothing. The embed uses it
 to download a `.bbmodel`'s textures from the model's own server ([Embed](embed.md#models-with-several-files)); the
 loader finds a downloaded file by the base name of `relative_path`, `path` or `name`, as for picked files.

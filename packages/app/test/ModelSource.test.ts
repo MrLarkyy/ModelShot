@@ -99,7 +99,7 @@ describe('ModelSource', () => {
     const resources = [file('bbmodel/referenced.png')];
     const parse = vi.spyOn(JSON, 'parse');
     const source = await ModelSource.open(file('bbmodel/referenced-texture.bbmodel'));
-    expect(source.references(MAX)).toEqual(['../textures/referenced.png', 'remote.png']);
+    expect(source.references(MAX)).toEqual(['textures/referenced.png', 'remote.png']);
     const loaded = await source.load(resources);
     expect(parse).toHaveBeenCalledOnce();
     parse.mockRestore();
