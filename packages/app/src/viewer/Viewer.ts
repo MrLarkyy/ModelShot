@@ -173,12 +173,16 @@ export class Viewer {
     this.changed();
   }
 
-  /** Draws with `look` and bakes the light under it. */
-  setLook(look: LookPreset): void {
+  /**
+   * Draws with `look` and bakes the light under it; `bake: false` leaves the bake to the caller, who bakes or relights
+   * next (a scene that changes with the look), and drops a bake under way.
+   */
+  setLook(look: LookPreset, options: { readonly bake?: boolean } = {}): void {
     this.look = look;
     this.renderer.setLook(look);
     this.changed();
-    void this.bake();
+    if (options.bake ?? true) void this.bake();
+    else this.bakeGeneration++;
   }
 
   /** Called after something moved the orbit controller from outside (a panel, a shortcut, restored state). */

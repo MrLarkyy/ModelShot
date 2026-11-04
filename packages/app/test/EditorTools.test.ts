@@ -5,6 +5,7 @@ import { EditorTools, RELIGHT_DELAY_MS, type EditorState } from '../src/editor/E
 import { Selection } from '../src/editor/Selection';
 import type { LayoutStore } from '../src/layout/LayoutStore';
 import type { NodeEdit } from '../src/session/NodeEdit';
+import { sceneBakes } from '../src/session/sceneBakes';
 import { withNodeEdits } from '../src/session/withNodeEdits';
 import type { Viewer } from '../src/viewer/Viewer';
 import { boxMesh, doc, node } from './editorDocs';
@@ -33,10 +34,13 @@ class FakeElement {
   }
 }
 
-// The light side of Viewer: setDocument bakes unless told not to, relight bakes the shown document.
+// The light side of Viewer: setDocument and setLook bake unless told not to, relight bakes the shown document.
 class FakeViewer {
   doc: SceneDocument | null = null;
+  look = 'studio';
   readonly bakes: SceneDocument[] = [];
+  /** The look each bake ran under. */
+  readonly bakeLooks: string[] = [];
 
   get document(): SceneDocument | null {
     return this.doc;
@@ -44,8 +48,13 @@ class FakeViewer {
 
   setDocument(next: SceneDocument, _reframe: boolean, options: { bake?: boolean } = {}): Promise<SetSceneResult> {
     this.doc = next;
-    if (options.bake ?? true) this.bakes.push(next);
+    if (options.bake ?? true) this.bake();
     return Promise.resolve({ applied: true, warnings: [] });
+  }
+
+  setLook(look: string, options: { bake?: boolean } = {}): void {
+    this.look = look;
+    if (options.bake ?? true) this.bake();
   }
 
   setPose(next: SceneDocument): Promise<SetSceneResult> {
@@ -54,7 +63,13 @@ class FakeViewer {
   }
 
   relight(): void {
-    if (this.doc) this.bakes.push(this.doc);
+    this.bake();
+  }
+
+  private bake(): void {
+    if (!this.doc) return;
+    this.bakes.push(this.doc);
+    this.bakeLooks.push(this.look);
   }
 
   requestRender(): void {}
@@ -111,14 +126,16 @@ function setup(rest: SceneDocument = animated) {
     commitEdit: () => Promise.resolve(true),
     interacted: () => undefined,
   });
-  // What App.applySetup does with a scene change: set the document (baking it unless the tools re-pose), then tell the
-  // tools.
-  const commit = async (next: Partial<Pick<EditorState, 'rest' | 'edits'>>): Promise<void> => {
+  // What App.applySetup does with a scene change (and the look of an Undo or Redo step): set the document, then the
+  // look, each baking as sceneBakes says, then tell the tools.
+  const commit = async (next: Partial<Pick<EditorState, 'rest' | 'edits'>>, look?: string): Promise<void> => {
     const changed = { ...state, ...next };
+    const bakes = sceneBakes({ sceneChanged: true, lookChanged: look !== undefined, reposes: tools.reposes });
     await viewer.setDocument(withNodeEdits(changed.rest, changed.rest, changed.edits), false, {
-      bake: !tools.reposes,
+      bake: bakes.document,
     });
     state = changed;
+    if (look !== undefined) viewer.setLook(look, { bake: bakes.look });
     tools.documentChanged();
     await settle();
   };
@@ -132,6 +149,7 @@ function setup(rest: SceneDocument = animated) {
     await settle();
     const bakes = viewer.bakes.length - before;
     viewer.bakes.length = 0;
+    viewer.bakeLooks.length = 0;
     return bakes;
   };
   return { viewer, tools, commit, open, state: () => state };
@@ -226,6 +244,24 @@ describe('EditorTools light', () => {
     await settle();
     expect(viewer.bakes).toHaveLength(1);
     expect(viewer.bakes[0]).toBe(viewer.doc);
+  });
+
+  it('an Undo step that changes scene and look bakes once, under the new look, at rest and at a clip pose', async () => {
+    const { viewer, tools, commit, open } = setup();
+    await open();
+    await commit({ edits: [edit] }, 'marketplace');
+    expect(viewer.bakes).toHaveLength(1);
+    expect(viewer.bakeLooks).toEqual(['marketplace']);
+    expect(viewer.bakes[0]?.nodes[1]?.translation).toEqual([3, 0, 0]);
+
+    tools.timeline.seek(0.5);
+    await settle();
+    viewer.bakes.length = 0;
+    viewer.bakeLooks.length = 0;
+    await commit({ edits: [] }, 'rim');
+    expect(viewer.bakes).toHaveLength(1);
+    expect(viewer.bakeLooks).toEqual(['rim']);
+    expect(viewer.bakes[0]?.nodes[0]?.translation).toEqual([0, 2, 0]);
   });
 
   it('opening another model while a clip plays bakes the new model once, no relight of the stopped pose', async () => {

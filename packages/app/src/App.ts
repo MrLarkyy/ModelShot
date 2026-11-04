@@ -28,6 +28,7 @@ import { RenderSession } from './render/RenderSession';
 import { DEFAULT_RENDER_SETTINGS, type RenderSettingsValues } from './render/RenderSettings';
 import { applyLook } from './session/applyLook';
 import { editPose } from './session/editPose';
+import { sceneBakes } from './session/sceneBakes';
 import type { NodeEdit } from './session/NodeEdit';
 import { hiddenIndices, visibilityFromHidden } from './session/visibility';
 import { textureFilters, withTextureFilters } from './session/withTextureFilters';
@@ -657,20 +658,27 @@ export class App {
     return run;
   }
 
-  private async applySetup(change: (state: SetupState) => SetupState, record: boolean): Promise<boolean> {
+  // `look` (a step of Undo or Redo) is shown with the setup; the two together cost one bake (sceneBakes).
+  private async applySetup(
+    change: (state: SetupState) => SetupState,
+    record: boolean,
+    look?: string,
+  ): Promise<boolean> {
     const base = this.base;
     const filteredBase = this.filteredBase;
     const viewer = this.viewer;
     if (!base || !filteredBase || !viewer) return false;
     const current = this.setupState();
     const next = change(current);
-    if (next === current) return true;
+    const lookChanged = look !== undefined && look !== this.look.id;
+    if (next === current && !lookChanged) return true;
     try {
       const sceneChanged =
         next.nodeVisible !== current.nodeVisible ||
         next.meshVisible !== current.meshVisible ||
         next.textureFilter !== current.textureFilter ||
         next.nodeEdits !== current.nodeEdits;
+      const bakes = sceneBakes({ sceneChanged, lookChanged, reposes: this.tools?.reposes ?? false });
       let filtered = filteredBase;
       let rest = this.restDoc;
       if (sceneChanged) {
@@ -678,8 +686,7 @@ export class App {
         filtered =
           next.textureFilter === current.textureFilter ? filteredBase : withTextureFilters(base, next.textureFilter);
         const shown = this.shownDocument(filtered, next);
-        // At a clip pose the tools show the pose next and relight it; a bake of the rest pose would be wasted.
-        const result = await this.setDocument(viewer, shown.shown, false, !this.tools?.reposes);
+        const result = await this.setDocument(viewer, shown.shown, false, bakes.document);
         if (!result.applied || this.base !== base) {
           this.showPanels();
           return false;
@@ -696,6 +703,7 @@ export class App {
       this.lockedMeshes = next.lockedMeshes;
       this.names = next.names;
       this.nodeEdits = next.nodeEdits;
+      if (lookChanged && look !== undefined) this.selectLook(look, false, bakes.look);
       this.syncHistoryButtons();
       this.showPanels();
       if (sceneChanged) this.tools?.documentChanged();
@@ -721,11 +729,7 @@ export class App {
     const run = this.setupQueue.then(async () => {
       if (!this.base || this.loading) return;
       const now: HistoryEntry = { setup: this.setupState(), look: this.look.id };
-      const show = async (entry: HistoryEntry): Promise<boolean> => {
-        const applied = await this.applySetup(() => entry.setup, false);
-        if (applied && entry.look !== this.look.id) this.selectLook(entry.look, false);
-        return applied;
-      };
+      const show = (entry: HistoryEntry): Promise<boolean> => this.applySetup(() => entry.setup, false, entry.look);
       await (direction === 'undo' ? this.history.undo(now, show) : this.history.redo(now, show));
       this.syncHistoryButtons();
     });
@@ -754,14 +758,14 @@ export class App {
     }
   }
 
-  private selectLook(id: string, record = true): void {
+  private selectLook(id: string, record = true, bake = true): void {
     const preset = Object.hasOwn(LOOK_PRESETS, id) ? LOOK_PRESETS[id] : undefined;
     if (!preset || !this.viewer) return;
     if (record && preset.id !== this.look.id && this.base) {
       this.history.record({ setup: this.setupState(), look: this.look.id });
       this.syncHistoryButtons();
     }
-    this.look = applyLook(preset, [this.viewer, this.renderSession.existingTracer()]);
+    this.look = applyLook(preset, [this.viewer, this.renderSession.existingTracer()], { bake });
     this.lookPanel.show(this.look.id);
     this.inspector.update(this.inspectorModel());
     this.tools?.refresh();
