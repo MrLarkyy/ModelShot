@@ -57,8 +57,8 @@ float catcherShadeAt(uint key, uint dimension, vec3 point) {
 
 // An image environment's light at a surface vertex: one direction drawn by the image (environmentMap), seen through
 // shadowTransmittance (cut-out texels pass it, as they pass the key's ray), weighted by the power heuristic against the
-// cosine sampling of the bounce (folded above the surface, foldedCosinePdf), whose escape adds the other share (escapeRadianceMis); at the last vertex no bounce
-// follows, so the light sampling keeps its full weight. Its randoms are the key cone's dimensions in stream 1, so no
+// cosine sampling of the bounce (folded above the surface, foldedCosinePdf), whose escape adds the other share
+// (escapeRadianceMis); at the last vertex no bounce follows, so the light sampling keeps its full weight. Its randoms are the key cone's dimensions in stream 1, so no
 // stream a dome look draws moves.
 vec3 environmentLight(uint key, uint dimension, Surface s, int skip, bool last) {
   float lightPdf;

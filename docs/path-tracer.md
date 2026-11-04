@@ -388,8 +388,8 @@ on texture units 8 and 9 of the trace (after the sums and the scene's 1..5, 6 an
 - At every surface vertex one direction is drawn from the image (`sampleEnvironment`: bisection over the CDFs, its
   density per steradian with it) and seen through `shadowTransmittance`, so cut-out texels pass it as they pass the
   key's ray. Its contribution `albedo · L · foldedCosinePdf / pdf` is weighted by the power heuristic against the cosine
-  sampling; the bounce's escape adds `L(d)` weighted the other way (`escapeRadianceMis`, the cosine density
-  the bounce's density along d, carried from the vertex it left: the cosine lobe plus the share mirrored from under
+  sampling; the bounce's escape adds `L(d)` weighted the other way (`escapeRadianceMis`, with the bounce's
+  density along d, carried from the vertex it left: the cosine lobe plus the share mirrored from under
   the surface, `foldedCosinePdf`; a direction the light sampling cannot draw keeps weight 1).
   Its two randoms are the key cone's dimensions in stream 1 (`unitRandom(key, dimension + 4u / 5u, 1u)`), so no
   dome stream moved. `environmentSampling.ts` mirrors the sampling; its tests check that the density integrates to
@@ -541,6 +541,6 @@ measured on real hardware yet.
 Temporal (video) denoising, emission from the scene format (MS-32), user lights (MS-33; the look's key,
 accents and environment here), a user-supplied environment image (only bundled ones, MS-47), geometric
 bevels (edges are rounded in shading only), a GPU or WASM build of the render's BVH, glossy or
-transmissive materials, textured environments, and WebGPU. The bake has no interreflection and no animated GI;
+transmissive materials, an environment as a visible background (the bundled image is a lighting source only), and WebGPU. The bake has no interreflection and no animated GI;
 untextured and smooth meshes of more than 4096 triangles are still baked per vertex (world-density charts, MS-41,
 stop at that gate).
