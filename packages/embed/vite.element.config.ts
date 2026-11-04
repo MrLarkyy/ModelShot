@@ -1,9 +1,12 @@
+import { shippedGlsl } from '@modelshot/brand/shippedGlsl';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 
 // The element script modelshot-embed.js as one self-contained file next to the frame page: a host page makes one
 // cross-origin request for it, and nothing of the frame's code can end up in it through a shared chunk.
 export default defineConfig({
+  // Builds only: Vitest projects extend this config in serve mode and see full shader sources.
+  plugins: [shippedGlsl()],
   publicDir: false,
   build: {
     emptyOutDir: false,
