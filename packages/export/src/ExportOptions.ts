@@ -1,5 +1,5 @@
 import type { SetSceneOptions } from '@modelshot/pathtracer';
-import type { SceneCamera, SceneAnimationLoop } from '@modelshot/scene';
+import type { SceneCamera, SceneAnimationLoop, SceneDocument } from '@modelshot/scene';
 
 /** File formats of an export: `png` for a still, every other one for a clip. */
 export type ExportFormat = 'png' | 'apng' | 'gif' | 'webp' | 'webm' | 'mp4';
@@ -96,6 +96,12 @@ export interface ExportRunOptions {
   /** Aborting rejects with `ExportError` `CANCELLED` and stops the path tracer within one step. */
   readonly signal?: AbortSignal;
   readonly onProgress?: (progress: ExportProgress) => void;
+  /**
+   * An animation clip only: applied to the pose of every frame, after the clip is sampled (the bounds that place the
+   * shadow catcher and frame the camera include it). The pose must keep the meshes, materials and textures of the
+   * document.
+   */
+  readonly pose?: (pose: SceneDocument) => SceneDocument;
 }
 
 export type ExportWarningCode = 'FORMAT_FALLBACK' | 'ALPHA_DROPPED' | 'SUPERSAMPLE_LOWERED';

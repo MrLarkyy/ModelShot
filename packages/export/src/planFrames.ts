@@ -89,6 +89,7 @@ export async function planFrames(
   doc: SceneDocument,
   options: CheckedExportOptions,
   signal?: AbortSignal,
+  pose?: (pose: SceneDocument) => SceneDocument,
 ): Promise<FramePlan> {
   const aspect = options.width / options.height;
   const camera = options.camera;
@@ -112,7 +113,7 @@ export async function planFrames(
   let bounds: SceneBounds | null = null;
   for (const time of times) {
     throwIfCancelled(signal);
-    bounds = grow(bounds, sceneBounds(framePose(doc, options, time)));
+    bounds = grow(bounds, sceneBounds(framePose(doc, options, time, pose)));
     await yieldToEventLoop();
   }
   throwIfCancelled(signal);
