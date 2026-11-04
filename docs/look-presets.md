@@ -87,7 +87,7 @@ A field added later is optional with a default that reproduces the v1 image, and
 field fills it in. Removing a field, changing a range, a meaning or a default is breaking and raises `version`
 (`LOOK_FORMAT_VERSION`); a file of a higher version fails with `VERSION`. MS-47 adds `environment.kind` `"hdri"` with
 its own fields: every v1 file is a dome and stays valid with its meaning, so the version stays 1 (a reader before MS-47
-fails an `"hdri"` file with `VALUE` at `environment.kind`). Before v1 first shipped the rim changed from
+fails an `"hdri"` file with `UNKNOWN_KEY`). Before v1 first shipped the rim changed from
 a world-space diffuse light to the view-relative grazing one with the required `exponent` and `albedoShare` (MS-19
 round 4); no v1 file existed outside this repository, so the version stayed 1. Shipped presets are files in
 `packages/looks/src/presets/` and go through `parseLookPreset` like any file a user picks.
@@ -151,7 +151,7 @@ ships in `packages/looks/src/environments/`, inlined into the bundle (Vite `?url
 
 `packages/looks/scripts/softboxStudioHdr.mjs` writes it and its preview harmonics (`softbox-studio.sh.json`);
 `softboxAsset.test.ts` checks both committed files equal its output. Every feature is a broad lobe (42° and 46°) and
-every pixel at least 0.02, so the L2 fill stays within 1 % (measured 0.50 %). It is small on purpose: the renderers are
+every pixel at least 0.02, so the L2 fill stays within 1 % (measured 0.63 %). It is small on purpose: the renderers are
 Lambert only, so an environment reaches a surface only through cosine integrals, and the image is never on screen; two
 inlined copies (the path tracer and the bake worker) cost about 2 KB of gzip each, the preview none (it reads only the
 harmonics).

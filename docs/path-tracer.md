@@ -387,14 +387,15 @@ on texture units 8 and 9 of the trace (after the sums and the scene's 1..5, 6 an
 
 - At every surface vertex one direction is drawn from the image (`sampleEnvironment`: bisection over the CDFs, its
   density per steradian with it) and seen through `shadowTransmittance`, so cut-out texels pass it as they pass the
-  key's ray. Its contribution `albedo · L · cos / π / pdf` is weighted by the power heuristic against the cosine
+  key's ray. Its contribution `albedo · L · foldedCosinePdf / pdf` is weighted by the power heuristic against the cosine
   sampling; the bounce's escape adds `L(d)` weighted the other way (`escapeRadianceMis`, the cosine density
-  `max(n · d, 0) / π` carried from the vertex it left; a direction the light sampling cannot draw keeps weight 1).
+  the bounce's density along d, carried from the vertex it left: the cosine lobe plus the share mirrored from under
+  the surface, `foldedCosinePdf`; a direction the light sampling cannot draw keeps weight 1).
   Its two randoms are the key cone's dimensions in stream 1 (`unitRandom(key, dimension + 4u / 5u, 1u)`), so no
   dome stream moved. `environmentSampling.ts` mirrors the sampling; its tests check that the density integrates to
   1, that `environmentPdf` of a drawn direction is the drawn density and the histogram of 64k draws.
 - The catcher's control variate and the bake's loss keep their form with `escapeRadiance`; their reference
-  `hemisphereFill` is the image's L2 irradiance, which the exact cosine mean matches within 1 % (measured 0.50 %
+  `hemisphereFill` is the image's L2 irradiance, which the exact cosine mean matches within 1 % (measured 0.63 %
   for `softbox-studio`), so the catcher's mean is off by at most that share of the blocked fill. The bake keeps its
   cosine rays: the loss form is unbiased, and its normaliser is the preview's own fill.
 
@@ -444,7 +445,7 @@ import.meta.url), { type: 'module' })`); without module workers or OffscreenCanv
   `WORKER_UNAVAILABLE`, as every pending bake rejects when the worker fails, and every later bake with the same error
   (after `dispose()` a bake resolves `applied: false`).
 - `bake(doc, { samples = 64 (1..1024), seed = 1 (0..2^32 − 1), shadowCatcher = true, tileSize = 64 (16..512), look =
-DEFAULT_LOOK, onProgress })` resolves `{ applied, warnings, lighting }`. The look's key and dome shape the light and
+DEFAULT_LOOK, onProgress })` resolves `{ applied, warnings, lighting }`. The look's key and environment shape the light and
   its key places the catcher; the lighting carries `lightingKey(look)`, which `setLighting` of the preview checks
   ([look-presets.md](look-presets.md#baked-light-and-lightingkey)). The call only checks the options (`RangeError`,
   `LookPresetError`) and

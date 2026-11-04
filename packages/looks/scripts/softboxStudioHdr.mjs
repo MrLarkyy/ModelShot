@@ -31,7 +31,7 @@ const LOBES = [
 ];
 
 /**
- * The unit direction of equirect position (u, v), as environmentLighting.ts and environmentMap.glsl map it: v 0 the
+ * The unit direction of equirect position (u, v), as equirect.ts and environmentMap.glsl map it: v 0 the
  * zenith (+y), u 0.5 the front (−z), u 0.75 +x.
  */
 export function equirectDirection(u, v) {
@@ -96,7 +96,7 @@ function shBasis([x, y, z]) {
 
 /**
  * The preview's L2 irradiance over pi of the stored image at intensity 1: 27 float32 values, computed from the pixels
- * as decodeRadianceHdr reads them, in the order and arithmetic of environmentLighting.ts (imageIrradianceSh).
+ * as decodeRadianceHdr reads them, in the order and arithmetic of imageIrradianceSh.ts.
  */
 export function softboxStudioSh() {
   const { rgb } = softboxStudioImage();

@@ -57,7 +57,7 @@ float catcherShadeAt(uint key, uint dimension, vec3 point) {
 
 // An image environment's light at a surface vertex: one direction drawn by the image (environmentMap), seen through
 // shadowTransmittance (cut-out texels pass it, as they pass the key's ray), weighted by the power heuristic against the
-// cosine sampling of the bounce, whose escape adds the other share (escapeRadianceMis); at the last vertex no bounce
+// cosine sampling of the bounce (folded above the surface, foldedCosinePdf), whose escape adds the other share (escapeRadianceMis); at the last vertex no bounce
 // follows, so the light sampling keeps its full weight. Its randoms are the key cone's dimensions in stream 1, so no
 // stream a dome look draws moves.
 vec3 environmentLight(uint key, uint dimension, Surface s, int skip, bool last) {
@@ -65,10 +65,10 @@ vec3 environmentLight(uint key, uint dimension, Surface s, int skip, bool last) 
   vec3 incoming;
   vec3 l = sampleEnvironment(unitRandom(key, dimension + 4u, 1u), unitRandom(key, dimension + 5u, 1u), lightPdf,
     incoming);
-  float cosLight = dot(s.normal, l);
-  if (!(lightPdf > 0.0) || cosLight <= 0.0 || dot(s.side, l) <= 0.0) return vec3(0.0);
+  if (!(lightPdf > 0.0) || dot(s.side, l) <= 0.0) return vec3(0.0);
+  float cosinePdf = foldedCosinePdf(s.normal, s.side, l);
+  if (cosinePdf <= 0.0) return vec3(0.0);
   float visible = shadowTransmittance(leave(s.position, s.side), l, skip);
-  float cosinePdf = cosLight / ENV_PI;
   float weight = last ? 1.0 : powerHeuristic(lightPdf, cosinePdf);
   return s.albedo * incoming * (cosinePdf / lightPdf * weight * visible);
 }
@@ -136,7 +136,7 @@ vec3 tracePath(uint key, vec2 pixel, out float coverage) {
     vec3 next = aboveSurface(
       cosineDirection(s.normal, unitRandom(key, dimension, 0u), unitRandom(key, dimension + 1u, 0u)), s.side);
     if (dot(next, s.side) <= 0.0) break;
-    cosinePdf = max(dot(s.normal, next), 0.0) / ENV_PI;
+    cosinePdf = foldedCosinePdf(s.normal, s.side, next);
     // Lambert with cosine sampling: albedo / pi * cos / (cos / pi).
     throughput *= s.albedo;
     if (pathVertex + 1 >= ROULETTE_FROM) {

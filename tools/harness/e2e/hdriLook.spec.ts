@@ -37,6 +37,14 @@ const HEAD_THROUGH_HAT_HOLE: readonly [number, number, number] = [-1.5, 29.5, -4
  */
 const HEAD_LIMIT = 3.3;
 
+/**
+ * Path-tracer cost of the image (one more shadow ray per vertex): the median of 3 runs of 64 samples at 128 x 128 on the
+ * bench scene, software GL. Measured Softbox 2079 to 2211 ms against Marketplace 1739 to 1911 ms (ratio 1.16 to 1.20);
+ * the limits keep about twice that for a slower runner.
+ */
+const SOFTBOX_SAMPLES_MS = 4500;
+const SOFTBOX_COST_RATIO = 1.6;
+
 async function currentImage(page: Page, info: FixtureInfo): Promise<Image> {
   const now = await page.evaluate(() => {
     const fixture = window.__msFixture;
@@ -86,6 +94,7 @@ test.describe('Softbox: a look lit by the bundled studio image', () => {
   });
 
   test('the image lights the model: Softbox is not Marketplace under the same backdrop and grade', async ({ page }) => {
+    test.setTimeout(120_000);
     const open = async (variant: string) => {
       const info = await openFixture(page, `/rt.html?variant=${variant}`);
       return currentImage(page, info);
@@ -138,4 +147,28 @@ test.describe('Softbox: a look lit by the bundled studio image', () => {
     expect(previewAt, 'the head is lit').toBeGreaterThan(40);
     expect(Math.abs(renderAt - previewAt), line).toBeLessThanOrEqual(HEAD_LIMIT);
   });
+
+  test(
+    'path-tracer time to 64 samples under Softbox stays within a factor of Marketplace',
+    { tag: '@timing' },
+    async ({ page }) => {
+      test.setTimeout(300_000);
+      const timed = async (preset: string) => {
+        await openFixture(page, `/pt.html?scene=bench&size=128&samples=1&preset=${preset}`);
+        const runs = await page.evaluate(() => {
+          const fixture = window.__msFixture;
+          if (!fixture?.timeToSamples) throw new Error('sample bench missing');
+          return [fixture.timeToSamples(64), fixture.timeToSamples(64), fixture.timeToSamples(64)];
+        });
+        return runs.sort((a, b) => a - b)[1] ?? 0;
+      };
+      const marketplace = await timed('marketplace');
+      const softbox = await timed('softbox');
+      console.log(
+        `[softbox probe] 64 samples at 128 x 128 (bench scene): Softbox ${softbox.toFixed(0)} ms, Marketplace ${marketplace.toFixed(0)} ms, ratio ${(softbox / marketplace).toFixed(2)}`,
+      );
+      expect(softbox, 'time to 64 samples under Softbox (ms)').toBeLessThanOrEqual(SOFTBOX_SAMPLES_MS);
+      expect(softbox / marketplace, 'Softbox over Marketplace').toBeLessThanOrEqual(SOFTBOX_COST_RATIO);
+    },
+  );
 });

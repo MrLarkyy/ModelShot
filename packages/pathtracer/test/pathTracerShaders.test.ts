@@ -208,7 +208,7 @@ describe('path tracer shaders', () => {
     expect(trace).toMatch(
       /vec3 escapeRadianceMis\(vec3 d, float cosinePdf\) \{\s*if \(u_lookEnvironmentKind != 1\) return environmentRadiance\(d\);/,
     );
-    expect(trace).toContain('cosinePdf = max(dot(s.normal, next), 0.0) / ENV_PI;');
+    expect(trace).toContain('cosinePdf = foldedCosinePdf(s.normal, s.side, next);');
   });
 
   it('samples an image at every surface vertex in stream 1 of the key cone dimensions, through shadowTransmittance', () => {
@@ -220,6 +220,9 @@ describe('path tracer shaders', () => {
     ]);
     // Cut-out texels pass the light's ray as they pass the key's.
     expect(light).toContain('shadowTransmittance(leave(s.position, s.side), l, skip)');
+    // The density is the bounce's folded one, so a mirrored escape is covered by the light sampling too.
+    expect(light).toContain('float cosinePdf = foldedCosinePdf(s.normal, s.side, l);');
+    expect(light).not.toMatch(/dot\(s\.normal, l\)/);
     expect(light).toContain('float weight = last ? 1.0 : powerHeuristic(lightPdf, cosinePdf);');
     // The last vertex samples no bounce, so its light sampling keeps the whole weight.
     expect(trace).toContain(

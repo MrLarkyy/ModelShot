@@ -1077,7 +1077,9 @@ light passing the hat's cut-out texels, which the render's image shadow rays mus
 preview (baked) vs render within 3.3 levels (measured 92.92 / 95.56, x 1.25; `like the baked preview`, so in `pair`).
 Every dome golden is unchanged: the trace, the bake and the preview take the dome's branch of a uniform kind (checked
 byte for byte on `pt-preset-marketplace`, `pt-cutout-checker`, `pt-turntable-y030`, `rt-preset-marketplace` and
-`rt-bake-cutout-checker`).
+`rt-bake-cutout-checker`). A `@timing` test (project `bench`) times 64 samples at 128 × 128 on the bench scene under
+Softbox and Marketplace (median of 3: 2079 to 2211 ms against 1739 to 1911 ms, ratio 1.16 to 1.20): at most 4500 ms and
+1.6 times Marketplace, constants of `hdriLook.spec.ts`.
 
 The look review page `review.html` (harness only, no build ships it) renders a `.bbmodel` the user picks (read from
 the file input, nothing fetched; none: the harness player with a held cube) under a preset, side by side: the baked

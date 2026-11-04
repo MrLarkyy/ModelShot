@@ -24,8 +24,8 @@ export function shBasis(d: Direction): [number, number, number, number, number, 
 export const SH_COSINE_BANDS: readonly number[] = Object.freeze([1, 2 / 3, 2 / 3, 2 / 3, 0.25, 0.25, 0.25, 0.25, 0.25]);
 
 /**
- * The fill of `sh` (27 floats: nine RGB coefficients of irradiance over π, `EnvironmentLighting.sh`) at the unit
- * normal n of the image's frame, as `hemisphereFill` of the lightRig chunk evaluates it before clamping at 0.
+ * The fill of `sh` (27 floats: nine RGB coefficients of irradiance over π, `imageIrradianceSh`) at the unit
+ * normal n of the image's frame, as `hemisphereFill` (lightRig chunk) evaluates it before clamping at 0.
  */
 export function shIrradiance(sh: ArrayLike<number>, n: Direction): Rgb {
   const basis = shBasis(n);

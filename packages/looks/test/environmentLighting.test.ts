@@ -2,12 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { Rgb } from '../src/agxToneMap';
 import { environmentFill } from '../src/environmentFill';
 import { ENVIRONMENT_IMAGE_IDS } from '../src/environmentImageIds';
-import {
-  environmentImage,
-  environmentLighting,
-  imageIrradianceSh,
-  type EnvironmentLighting,
-} from '../src/environmentLighting';
+import { environmentImage } from '../src/environmentImage';
+import { environmentLighting, type EnvironmentLighting } from '../src/environmentLighting';
+import { imageIrradianceSh } from '../src/imageIrradianceSh';
 import { ENVIRONMENT_SH_IMAGES, environmentSh } from '../src/environmentSh';
 import { environmentPdf, sampleEnvironment } from '../src/environmentSampling';
 import { environmentYaw, equirectDirection, equirectUv, imageDirection, worldDirection } from '../src/equirect';
@@ -39,7 +36,13 @@ function sphere(count: number): Direction[] {
   });
 }
 
-/** Exact irradiance over π of the decoded, piecewise-constant image at the image-frame unit normal n. */
+const SUBSAMPLES = 8;
+
+/**
+ * Irradiance over π of the decoded, piecewise-constant image at the image-frame unit normal n: each pixel's solid angle
+ * integrated on SUBSAMPLES × SUBSAMPLES sub-directions in (θ, φ), weighted by sin θ and scaled to the pixel's exact
+ * solid angle, so the lobe's variation across a pixel counts.
+ */
 function exactFill(lighting: EnvironmentLighting, n: Direction): Rgb {
   const { width, height, table } = lighting;
   const out = [0, 0, 0];
@@ -47,11 +50,20 @@ function exactFill(lighting: EnvironmentLighting, n: Direction): Rgb {
     const solidAngle =
       ((2 * Math.PI) / width) * (Math.cos((Math.PI * y) / height) - Math.cos((Math.PI * (y + 1)) / height));
     for (let x = 0; x < width; x++) {
-      const d = equirectDirection((x + 0.5) / width, (y + 0.5) / height);
-      const cos = d[0] * n[0] + d[1] * n[1] + d[2] * n[2];
-      if (cos <= 0) continue;
-      const i = (y * width + x) * 4;
-      for (let c = 0; c < 3; c++) out[c] = (out[c] ?? 0) + ((table[i + c] ?? 0) * cos * solidAngle) / Math.PI;
+      let cosine = 0;
+      let weights = 0;
+      for (let j = 0; j < SUBSAMPLES; j++) {
+        const v = (y + (j + 0.5) / SUBSAMPLES) / height;
+        for (let i = 0; i < SUBSAMPLES; i++) {
+          const d = equirectDirection((x + (i + 0.5) / SUBSAMPLES) / width, v);
+          const weight = Math.sin(Math.PI * v);
+          weights += weight;
+          cosine += weight * Math.max(0, d[0] * n[0] + d[1] * n[1] + d[2] * n[2]);
+        }
+      }
+      const at = (y * width + x) * 4;
+      const mean = (cosine / weights) * solidAngle;
+      for (let c = 0; c < 3; c++) out[c] = (out[c] ?? 0) + ((table[at + c] ?? 0) * mean) / Math.PI;
     }
   }
   return [out[0] ?? 0, out[1] ?? 0, out[2] ?? 0];

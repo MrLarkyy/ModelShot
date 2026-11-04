@@ -2,7 +2,7 @@
 // realtime preview, the path tracer and the light bake alike; lightRig.ts mirrors the shading.
 // The environment: a sky/ground dome, radiance linear in the direction's y (kind 0), or a bundled image (kind 1),
 // which the preview sees as its L2 irradiance over pi: nine RGB coefficients of the image's frame, which a look turns
-// by the yaw (cos, sin) about +y (environmentLighting.ts, equirect.ts).
+// by the yaw (cos, sin) about +y (equirect.ts).
 uniform int u_lookEnvironmentKind;
 uniform vec3 u_lookSky;
 uniform vec3 u_lookGround;
