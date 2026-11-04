@@ -31,9 +31,14 @@ export function stripGlslComments(source: string): string {
       i += 1;
     }
   }
-  return out
-    .split('\n')
-    .map((line) => line.trim().replace(/\s+/g, ' '))
+  const lines = out.split('\n');
+  return lines
+    .map((line, n) => {
+      const body = line.trim().replace(/\s+/g, ' ');
+      // A continued line joins the previous one without an added space, so its own leading space is meaning.
+      const continued = n > 0 && lines[n - 1]!.trimEnd().endsWith('\\') && /^\s/.test(line);
+      return continued && body !== '' ? ' ' + body : body;
+    })
     .join('\n');
 }
 

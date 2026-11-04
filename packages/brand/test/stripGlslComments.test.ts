@@ -25,6 +25,10 @@ describe('stripGlslComments', () => {
     expect(stripGlslComments('a // x \\\nstill comment\nb')).toBe('a\n\nb');
   });
 
+  it('keeps one leading space on a line that continues a backslash line', () => {
+    expect(stripGlslComments('#define T float\\\n    x\nint y;')).toBe('#define T float\\\n x\nint y;');
+  });
+
   it('reads CRLF and writes LF', () => {
     expect(stripGlslComments('a // x\r\nb\r\n')).toBe('a\nb\n');
   });
@@ -62,7 +66,8 @@ describe('stripGlslComments over the repository shaders', () => {
     if (versionAt >= 0) expect(after[versionAt]).toMatch(/^#version 300 es$/);
     before.forEach((line, n) => {
       if (/\/\/|\/\*|\*\/|\\$/.test(line)) return;
-      expect(after[n]).toBe(line.trim().replace(/\s+/g, ' '));
+      const joined = n > 0 && /\\$/.test(before[n - 1]!.trimEnd()) && /^\s/.test(line) && line.trim() !== '';
+      expect(after[n]).toBe((joined ? ' ' : '') + line.trim().replace(/\s+/g, ' '));
     });
   });
 });

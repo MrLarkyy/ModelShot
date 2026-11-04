@@ -1306,8 +1306,9 @@ every run prints each one against its max (`[budget] <group>.<key>: measured …
 (`tools/harness/src/bundleSize.ts`), and `test/bundleSize.test.ts` fails when that list and the `bundleGzipBytes` rows
 differ, so a new row cannot go unmeasured.
 The builds of `app`, `embed` (frame page and light-bake worker) ship their `*.glsl?raw` shaders without comments and
-redundant whitespace (MS-85, `shippedGlsl` of `@modelshot/brand`); `test/bundleSize.test.ts` fails when a `//` comment
-of any `packages/*/src/**/*.glsl` is left in a bundle, and requires `#version 300 es` in `app`, `app-entry` and
+redundant whitespace (MS-85, `shippedGlsl` of `@modelshot/brand`); `test/bundleSize.test.ts` fails when the text of a `//`
+comment of any `packages/*/src/**/*.glsl` is left in a bundle (comments of 24 characters or more without quotes or
+backslashes), and requires `#version 300 es` in `app`, `app-entry` and
 `embed-frame` so that check cannot pass on an empty bundle.
 
 Measured on the local Windows dev machine (SwiftShader, 3 runs) when the budgets were set: frame time median 0.3, 0.3,

@@ -392,8 +392,9 @@ every shader source at build time (`shippedGlsl` of `@modelshot/brand`, MS-85); 
 dev server keep the full sources. The strip keeps the line count of each source and `linkShader` is unchanged, so the
 linked text of a shipped build has the same line numbers as the linked text of a dev build: a driver message `0:N` in
 a shipped build names line N of `linkShader(source, chunks)` run on the unstripped sources, for the program and stage in
-the `RendererError` label (for example `trace fragment`). The licence credit in `agx.glsl` stays in the source and in
-the Credits of docs/path-tracer.md.
+the error label (`RendererError` of the renderer, `PathTracerError` of the path tracer; it names program and stage, for
+example `trace fragment` of the path tracer). The licence credit in `agx.glsl` stays in the source and in the Credits
+paragraph above (Sobotka, Wrensch).
 
 Node matrices may scale (an animated `SceneNode.scale`, MS-21), so `mesh.vert.glsl` maps normals with
 `u_normalMatrix`, the `mat4NormalMatrix` of the draw's node matrix (the inverse transpose up to a positive factor,
