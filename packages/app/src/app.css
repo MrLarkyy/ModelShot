@@ -13,6 +13,7 @@ body {
   --outliner-w: 260px;
   --inspector-w: 320px;
   --timeline-h: 132px;
+  --messages-h: 5.5rem;
 }
 
 body {
@@ -298,6 +299,20 @@ button:disabled {
   min-width: 8rem;
 }
 
+.timeline-controls .field {
+  margin: 0;
+}
+
+.timeline-controls .field > span {
+  min-width: 0;
+}
+
+/* Wide enough for a clip name, also while the list is empty. */
+.timeline-controls select {
+  min-width: 8rem;
+  max-width: 16rem;
+}
+
 .time-readout {
   font: var(--ms-weight-medium) var(--ms-size-label) var(--ms-font-mono);
   color: var(--ms-color-muted-on-ink);
@@ -429,7 +444,7 @@ button:disabled {
 
 .messages {
   /* A fixed height: a message or the progress bar appearing must not resize the view and stop a render. */
-  height: 5.5rem;
+  height: var(--messages-h);
   overflow: auto;
   padding: var(--ms-space-2) var(--ms-space-4);
   background: var(--ms-color-ink);
@@ -690,12 +705,13 @@ progress {
     grid-column: 1;
   }
 
+  /* A drawer covers the view, never the status and messages below it. */
   #outliner,
   #inspector {
     position: absolute;
     z-index: 10;
     top: 0;
-    bottom: 0;
+    bottom: var(--messages-h);
     width: min(20rem, 85%);
     border: 1px solid var(--ms-color-slate);
     animation: drawer-in var(--ms-motion-ui) var(--ms-motion-ease);
@@ -710,8 +726,9 @@ progress {
     left: auto;
   }
 
+  /* The keyframe markers and their count go; "This model has no animations." stays. */
   .markers,
-  .timeline .hint {
+  .timeline .keyframe-count {
     display: none;
   }
 

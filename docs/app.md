@@ -61,8 +61,9 @@ in the middle, the inspector on the right and the timeline below.
   inspector 260-520, timeline 96-320). A toggle collapses a panel. Sizes, collapsed panels, the overlay toggles and the
   inspector tab are kept in this browser (`localStorage` key `modelshot.layout.v1`, at most 2 KB, parsed defensively;
   an unreadable or blocked store means the defaults). "Forget local data" removes it too.
-- **Below 1024 px** the outliner and the inspector are drawers over the view: the toggles open one at a time, Esc
-  closes it and returns the focus to its toggle, and the timeline shrinks to one row. The view keeps the whole width.
+- **Below 1024 px** the outliner and the inspector are drawers over the view (never over the status line below it):
+  the toggles open one at a time, Esc closes it and returns the focus to its toggle, and the timeline shrinks to one
+  row without the keyframe markers. The view keeps the whole width.
 - **Outliner**: the node tree (at most 500 rows are listed) with, per row, a visibility checkbox, a name button that
   selects and a Lock toggle (`aria-pressed`). F2 or a double click renames (128 characters, Enter keeps, Esc cancels;
   an empty name takes the file's name back). The search field keeps the rows whose label contains the text, with their
@@ -89,7 +90,9 @@ in the middle, the inspector on the right and the timeline below.
 - **Timeline**: the clips of the model, Play / Pause (one button that renames itself), Loop, a scrubber (a labelled range: "1.25 s of 2.00 s") and a
   marker per distinct keyframe time of the clip, from the file. Nothing plays by itself. Frames use the renderer's
   pose-only path (no texture decode, upload or light bake per frame); the light is baked again for a pose that stays (about
-  0.2 s after a pause, the end of a scrub or an edit), so the preview shows the shadows of what it shows; starting a render, opening Export or opening
+  0.2 s after a pause, the end of a scrub or an edit), so the preview shows the shadows of what it shows. Each
+  change of the scene (an edit, visibility, a filter, Undo) bakes once: at rest the scene as changed, at a clip pose
+  that pose, never the rest pose first; starting a render, opening Export or opening
   another model pauses playback, and playing or scrubbing during a render cancels it. A model without animations shows
   "This model has no animations".
 - **Undo and Redo** (Ctrl/Cmd+Z, Ctrl+Shift+Z or Ctrl+Y) step through visibility, locks, names, texture filters, node

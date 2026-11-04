@@ -69,7 +69,7 @@ export class Timeline {
     });
     this.readout = el('span', { className: 'time-readout', attributes: { 'aria-hidden': 'true' } });
     this.markers = el('div', { className: 'markers', attributes: { 'aria-hidden': 'true' } });
-    this.count = el('span', { className: 'hint' });
+    this.count = el('span', { className: 'hint keyframe-count' });
     this.empty = el('p', { className: 'hint', text: 'This model has no animations.' });
     root.replaceChildren(
       el('div', { className: 'timeline-controls' }, [

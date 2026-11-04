@@ -50,12 +50,32 @@ test('below 1024 px the panels are drawers over a usable view', async ({ page },
   await expect(page.locator('#inspector')).toBeHidden();
   const viewport = await box(page, '#viewport');
   expect(viewport.width).toBeGreaterThanOrEqual(900 * 0.5);
+  // The timeline keeps a readable clip choice and says why it is empty; its controls stay inside the page.
+  const clip = await box(page, '#timeline select');
+  expect(clip.width).toBeGreaterThanOrEqual(100);
+  await expect(page.locator('#timeline')).toContainText('This model has no animations.');
+  const controls = await box(page, '.timeline-controls');
+  expect(controls.x).toBeGreaterThanOrEqual(0);
+  expect(controls.x + controls.width).toBeLessThanOrEqual(900);
   await page.screenshot({ animations: 'disabled', path: testInfo.outputPath('editor-900.png') });
 
   const toggle = page.getByRole('button', { name: 'Outliner', exact: true });
   await toggle.click();
   await expect(page.locator('#outliner')).toBeVisible();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  // An open drawer covers the view only: the status line keeps its left edge and stays on top at its start.
+  const drawer = await box(page, '#outliner');
+  const status = await box(page, '#status');
+  expect(status.x).toBeGreaterThanOrEqual(0);
+  expect(drawer.y + drawer.height).toBeLessThanOrEqual(status.y + 1);
+  const statusOnTop = await page.evaluate(
+    ({ x, y }) => {
+      const hit = document.elementFromPoint(x, y);
+      return hit !== null && document.getElementById('status')?.closest('.messages')?.contains(hit) === true;
+    },
+    { x: status.x + 4, y: status.y + 4 },
+  );
+  expect(statusOnTop, 'the start of the status line is not under the drawer').toBe(true);
   await page.screenshot({ animations: 'disabled', path: testInfo.outputPath('editor-900-drawer.png') });
   await page.keyboard.press('Escape');
   await expect(page.locator('#outliner')).toBeHidden();
