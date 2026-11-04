@@ -25,6 +25,18 @@ describe('shortcutAction', () => {
     [key('l'), 'nextLook'],
     [key('h'), 'toggleSelected'],
     [key('?'), 'help'],
+    [key('z', { ctrlKey: true }), 'undo'],
+    [key('Z', { metaKey: true }), 'undo'],
+    [key('z', { ctrlKey: true, shiftKey: true }), 'redo'],
+    [key('y', { ctrlKey: true }), 'redo'],
+    [key(' '), 'playPause'],
+    [key('w'), 'move'],
+    [key('e'), 'rotate'],
+    [key('g'), 'overlays'],
+    [key('F2'), 'rename'],
+    [key('['), 'outliner'],
+    [key(']'), 'inspector'],
+    [key('t'), 'timeline'],
   ])('maps %o to %s', (event, action) => {
     expect(shortcutAction(event)).toBe(action);
   });
@@ -33,11 +45,13 @@ describe('shortcutAction', () => {
     expect(shortcutAction(key('x'))).toBeNull();
     expect(shortcutAction(key('r', { altKey: true }))).toBeNull();
     expect(shortcutAction(key('r', { ctrlKey: true }))).toBeNull();
+    expect(shortcutAction(key('y', { metaKey: true }))).toBeNull();
+    expect(shortcutAction(key('z', { altKey: true, ctrlKey: true }))).toBeNull();
     expect(shortcutAction(key('constructor'))).toBeNull();
   });
 
   it('never takes a key the viewport uses for its orbit controls', () => {
-    for (const k of ['r', 'Escape', '1', '2', '3', '4', 'l', 'h', '?']) {
+    for (const k of ['r', 'Escape', '1', '2', '3', '4', 'l', 'h', '?', ' ', 'w', 'e', 'g', 'F2', '[', ']', 't']) {
       expect(orbitKeyAction(k, false), k).toBeNull();
       expect(orbitKeyAction(k, true), k).toBeNull();
     }
@@ -66,6 +80,7 @@ describe('shortcutAction', () => {
   it('lists every action once for the help dialog', () => {
     const actions = SHORTCUTS.map((s) => s.action);
     expect(new Set(actions).size).toBe(actions.length);
-    expect(actions).toHaveLength(11);
+    expect(actions).toHaveLength(21);
+    expect(SHORTCUTS.every((s) => ['File', 'View', 'Selection', 'Timeline'].includes(s.group))).toBe(true);
   });
 });

@@ -47,6 +47,8 @@ export interface ViewerOptions {
   readonly onBakeStarted?: () => void;
   /** A light bake settled: `lit` when the preview carries its light, false when it shows unbaked light. */
   readonly onBakeSettled?: (lit: boolean) => void;
+  /** A frame was drawn (`renderNow` included) with this camera: what an overlay on top of the canvas projects with. */
+  readonly onFrame?: (camera: SceneCamera) => void;
 }
 
 // The realtime preview of the app: renderer, orbit camera and input, light bake. No panel DOM, so the embed reuses it.
@@ -119,6 +121,19 @@ export class Viewer {
     return result;
   }
 
+  /**
+   * Shows another pose of the shown document (an animation frame, a node drag) on the renderer's pose-only path: nothing
+   * is decoded, uploaded or baked and the camera stays. `doc` must share the shown document's meshes, materials and
+   * textures arrays; await `setDocument` first.
+   */
+  async setPose(doc: SceneDocument): Promise<SetSceneResult> {
+    const result = await this.renderer.setScene(doc);
+    if (!result.applied || this.disposed) return result;
+    this.doc = doc;
+    this.requestRender();
+    return result;
+  }
+
   /** Changes the angles `resetView` and the angles and field of view the next model starts at; the camera stays. */
   setView(view: ViewerView): void {
     this.fovYDeg = view.fovYDeg;
@@ -167,6 +182,7 @@ export class Viewer {
     this.orbit.update(1e9);
     this.renderer.setCamera(this.orbit.camera());
     renderSettled(this.renderer);
+    this.options.onFrame?.(this.orbit.camera());
   }
 
   dispose(): void {
@@ -186,6 +202,7 @@ export class Viewer {
     const moving = this.orbit.update(dt);
     this.renderer.setCamera(this.orbit.camera());
     this.renderer.render();
+    this.options.onFrame?.(this.orbit.camera());
     if (moving) this.options.onChange();
     if (moving || this.renderer.needsRender) this.requestRender();
     else this.lastTime = 0;

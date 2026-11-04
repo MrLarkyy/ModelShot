@@ -17,6 +17,8 @@ export class StatePersistence {
     private readonly store: AppStateStore,
     private readonly notify: (message: string) => void,
     private readonly debounceMs = SAVE_DEBOUNCE_MS,
+    /** Runs once the stored data is gone: the panel layout in localStorage goes with it. */
+    private readonly onForgotten: () => void = () => undefined,
   ) {}
 
   scheduleModel(key: string, snapshot: () => Snapshot): void {
@@ -46,6 +48,7 @@ export class StatePersistence {
     this.forgotten = true;
     try {
       await this.store.forget();
+      this.onForgotten();
     } catch (error) {
       this.forgotten = false;
       this.tell(error);

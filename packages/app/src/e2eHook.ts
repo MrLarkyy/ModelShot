@@ -17,6 +17,12 @@ export interface MsAppHook {
   previewPixels(): Pixels;
   renderPixels(): Promise<Pixels | null>;
   loseContext(): boolean;
+  /** Median milliseconds of the overlay's last draws; null before the editor tools loaded. */
+  overlayMedianMs(): number | null;
+  /** Pixels of the overlay layer that are not transparent. */
+  overlayPixels(): number;
+  /** The gizmo handles in CSS pixels of the viewport: the end points of each handle's first segment. */
+  gizmoHandles(): { axis: number; from: { x: number; y: number }; to: { x: number; y: number } }[];
 }
 
 declare global {
@@ -59,6 +65,20 @@ export function installE2eHook(app: App): void {
       const image = tracer.readImage();
       return image ? { width: image.width, height: image.height, data: base64(image.data) } : null;
     },
+    overlayMedianMs: () => internals.editorTools()?.overlay.medianDrawMs ?? null,
+    overlayPixels: () => {
+      const overlay = document.getElementById('overlay') as HTMLCanvasElement;
+      const data = overlay.getContext('2d')?.getImageData(0, 0, overlay.width, overlay.height).data;
+      let count = 0;
+      for (let i = 3; data && i < data.length; i += 4) if ((data[i] ?? 0) > 0) count += 1;
+      return count;
+    },
+    gizmoHandles: () =>
+      (internals.editorTools()?.overlay.handles ?? []).flatMap((handle) => {
+        const from = handle.polyline[0];
+        const to = handle.polyline[1];
+        return from && to ? [{ axis: handle.axis, from, to }] : [];
+      }),
     loseContext: () => {
       const extension = preview.getContext('webgl2')?.getExtension('WEBGL_lose_context');
       extension?.loseContext();

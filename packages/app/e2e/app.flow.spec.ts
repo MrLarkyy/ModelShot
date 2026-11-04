@@ -9,6 +9,7 @@ import {
   meanColour,
   openApp,
   openFiles,
+  openTab,
   pixelAt,
   previewImage,
   test,
@@ -18,6 +19,7 @@ import {
 const CUBE = fixture('bbmodel', 'single-cube.bbmodel');
 
 async function setSamples(page: Page, samples: number): Promise<void> {
+  await openTab(page, 'Render');
   const field = page.locator('#render-panel').getByLabel('Samples');
   await field.fill(String(samples));
   await field.dispatchEvent('change');
@@ -72,6 +74,7 @@ test('opens a model, switches the look, renders and exports a transparent PNG', 
     Math.abs(centre[0] - corner[0]) + Math.abs(centre[1] - corner[1]) + Math.abs(centre[2] - corner[2]),
   ).toBeGreaterThan(30);
 
+  await openTab(page, 'Look');
   await page.getByRole('radio', { name: 'Marketplace' }).check();
   await page.waitForTimeout(300);
   const marketplace = await previewImage(page);

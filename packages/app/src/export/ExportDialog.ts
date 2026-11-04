@@ -13,7 +13,10 @@ import {
 } from './ExportSettings';
 
 export interface ExportDialogHost {
+  /** The document on show, in the pose the preview has: what a still image and a turntable are made from. */
   readonly document: () => SceneDocument | null;
+  /** The rest pose (node edits included, no animation applied): an animation clip animates from it. Absent: `document`. */
+  readonly restDocument?: () => SceneDocument | null;
   readonly modelName: () => string;
   readonly camera: () => SceneCamera;
   readonly viewportAspect: () => number;
@@ -75,6 +78,9 @@ export class ExportDialog {
 
   private build(doc: SceneDocument, settings: ExportSettings, lib: typeof import('@modelshot/export')): void {
     const animations = doc.animations ?? [];
+    // An animation clip is built from the rest pose: the shown document may already be a pose of the same clip.
+    const documentFor = (s: ExportSettings): SceneDocument =>
+      s.kind === 'animation' ? (this.host.restDocument?.() ?? doc) : doc;
     const number = (value: number, min: number, max: number): HTMLInputElement =>
       el('input', {
         attributes: { type: 'number', min: String(min), max: String(max), step: '1', value: String(value) },
@@ -180,7 +186,7 @@ export class ExportDialog {
       transparent.disabled = video;
       transparentField.title = video ? 'Video formats have no transparency.' : '';
       try {
-        lib.checkExportOptions(doc, options(s));
+        lib.checkExportOptions(documentFor(s), options(s));
         problem.textContent = '';
         exportButton.disabled = this.running;
       } catch (error) {
@@ -226,7 +232,7 @@ export class ExportDialog {
                 signal: controller.signal,
                 onProgress,
               })
-            : await lib.exportClip(tracer, doc, checked as Parameters<typeof lib.exportClip>[2], {
+            : await lib.exportClip(tracer, documentFor(s), checked as Parameters<typeof lib.exportClip>[2], {
                 signal: controller.signal,
                 onProgress,
               });

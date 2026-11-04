@@ -5,6 +5,7 @@ import {
   fixture,
   openApp,
   openFiles,
+  openTab,
   pixelAt,
   previewImage,
   test,
@@ -125,6 +126,7 @@ test('a tampered stored session is ignored and the app starts empty', async ({ p
 
 test('a scene that fails to build keeps the model, the look and the saved session', async ({ page }) => {
   await openApp(page);
+  await openTab(page, 'Look');
   const looks = page.locator('#look-panel input[type="radio"]');
   await openFiles(page, [CUBE], 'single-cube.bbmodel');
   const initial = (await looks.evaluateAll((inputs) => inputs.map((i) => (i as HTMLInputElement).value)))[0] ?? '';

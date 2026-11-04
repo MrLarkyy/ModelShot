@@ -49,6 +49,24 @@ export async function openApp(page: Page, path = '/app/'): Promise<void> {
   await page.waitForFunction(() => window.__msApp !== undefined);
 }
 
+/** Shows an inspector tab; the choice is kept per browser, so a later test step finds the same tab. */
+export async function openTab(page: Page, name: 'Object' | 'Material' | 'Light' | 'Look' | 'Render'): Promise<void> {
+  const tab = page.getByRole('tab', { name, exact: true });
+  await tab.click();
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+}
+
+/** Opens the File menu (Open, Export, Forget local data, Shortcuts). */
+export async function openFileMenu(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'File', exact: true }).click();
+  await expect(page.locator('#file-menu')).toBeVisible();
+}
+
+/** Waits until the editor tools (overlay, picking, gizmo, timeline) are loaded. */
+export async function waitForEditor(page: Page): Promise<void> {
+  await page.waitForFunction(() => document.body.dataset['editor'] === 'ready');
+}
+
 export async function openFiles(page: Page, paths: string[], shown: string): Promise<void> {
   await page.locator('#file-input').setInputFiles(paths);
   await expect(page.getByRole('status')).toContainText(`Opened ${shown}`, { timeout: 30_000 });
