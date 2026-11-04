@@ -102,12 +102,16 @@ const BAKED = [
 const RGB_ONES_SHARE = 0.0685;
 
 /**
- * MS-87: least share of the showcase's 64-sample lightmap texels (studio, seed 1; texels of no chart hold 1 and count)
- * whose baked fill is exactly 1: 0.9317 measured, 0.9298 with the plain estimator.
+ * MS-87: least share of the showcase's chart texels (64 samples, studio, seed 1) whose baked fill is exactly 1,
+ * 0.0263 measured / 1.25; the plain estimator had 0.0002 (2 of 9 200).
  */
-const CHART_ONES_SHARE = 0.9307;
+const CHART_ONES_SHARE = 0.021;
+/** MS-87: least mean rgb of a smooth sphere's chart texels (64 samples): 0.99997 measured, the plain estimator 0.9976, a lost mirrored ray 0.9974. */
+const SMOOTH_MEAN = 0.9995;
+const SMOOTH_MEAN_OLD = 0.9976;
+
 /** MS-87: FNV-1a of the key visibility halves of the 64-sample lightmaps at seed 1, recorded from 84b54d8. */
-const CHART_KEY_HASH = { showcase: 939820550, 'convex-cube': 2696078789 };
+const CHART_KEY_HASH = { showcase: 939820550, 'convex-cube': 2696078789, 'smooth-sphere': 85915365 };
 
 async function render(page: Page, query: string): Promise<{ png: Buffer; image: Image; info: FixtureInfo }> {
   const info = await openFixture(page, `/rt.html?${query}`);
@@ -1524,12 +1528,22 @@ test.describe('baked lighting', () => {
     expect(stats.chartNonFinite).toBe(0);
   });
 
+  test('smooth normals: rays under the geometric side are mirrored as in the render, not lost', async ({ page }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030');
+    const stats = await page.evaluate(() => window.__msFixture!.rt!.bakeCatcherStats('smooth-sphere', 64));
+    console.log(`[rt probe] smooth-sphere: ${JSON.stringify(stats)}`);
+    expect(stats.chartTexels).toBeGreaterThan(0);
+    expect(stats.chartNonFinite).toBe(0);
+    expect(stats.chartMean, `plain estimator ${SMOOTH_MEAN_OLD}`).toBeGreaterThanOrEqual(SMOOTH_MEAN);
+  });
+
   test('the lit model is exact where nothing blocks', async ({ page }) => {
     await openFixture(page, '/rt.html?variant=turntable-y030');
     const stats = await page.evaluate(() => window.__msFixture!.rt!.bakeCatcherStats('showcase', 64));
     const share = stats.chartRgbOnes / stats.chartTexels;
     console.log(`[rt probe] showcase lightmap: ${JSON.stringify(stats)}, fill exactly 1 on ${share.toFixed(4)}`);
-    expect(share).toBeGreaterThanOrEqual(CHART_ONES_SHARE);
+    expect(stats.chartTexels).toBeGreaterThan(0);
+    expect(share, 'the plain estimator had 0.0002').toBeGreaterThanOrEqual(CHART_ONES_SHARE);
   });
 
   test('the chart control variate keeps the key bytes of the bake', async ({ page }) => {
@@ -1539,6 +1553,7 @@ test.describe('baked lighting', () => {
       return {
         showcase: (await rt.bakeCatcherStats('showcase', 64)).chartKeyHash,
         'convex-cube': (await rt.bakeCatcherStats('convex-cube', 64)).chartKeyHash,
+        'smooth-sphere': (await rt.bakeCatcherStats('smooth-sphere', 64)).chartKeyHash,
       };
     });
     console.log(`[rt probe] key hashes: ${JSON.stringify(hashes)}`);

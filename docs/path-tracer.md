@@ -447,16 +447,20 @@ DEFAULT_LOOK, onProgress })` resolves `{ applied, warnings, lighting }`. The loo
   that holds it (else the one it is nearest to inside), `surfaceAt`, one key ray in the cone (`shadowTransmittance`, skipping the texel's triangle, only where its
   side faces the key) and one cosine-weighted fill ray around the shading normal. No interreflection. Model texels (MS-87) store the path
   tracer's control variate, as catcher texels do (MS-63): rgb = 1 − the `environmentRadiance` the fill ray lost, over
-  `hemisphereFill(n)`; a ray pointing below the surface (the geometric side) or stopped by a blocker is lost, an escaped
-  one is not. Catcher texels trace the same key ray and fill ray on the plane, normal up, and store the same:
+  `hemisphereFill(n)`, with the trace's own rule for a cosine ray under the geometric side of a smooth or bent normal:
+  it is mirrored (`aboveSurface`, `pathSampling.glsl`), so the mirrored ray, not the original, is cast. One that escapes
+  loses `environmentRadiance(d) − environmentRadiance(mirrored)` (0 for a ray above the side, so a flat face is
+  exactly 1; it may be negative where the mirror sees more sky); one a blocker stops loses `environmentRadiance(d)`. No
+  random dimension is added, the key bytes did not move. Catcher texels trace the same key ray and fill ray on the plane, normal up, and store the same:
   rgb = 1 − the `environmentRadiance` a blocked fill ray would have brought, over `hemisphereFill(up)` (no side test: a
   cosine direction about up never points below the plane), a = key visibility. The model texel keeps the rays and random
   dimensions of the plain estimate, so its key bytes did not move (pinned by hash). A texel none of whose fill rays was lost
   is exactly 1 per channel, so the preview's lit catcher is the bare backdrop as in the render and a flat unoccluded
   model face shades as `hemisphereFill(n)` exactly; the mean is the plain estimator's (the cosine mean of
   `environmentRadiance` about n is `hemisphereFill(n)`), unclamped, so a fully blocked texel averages near 0 and may
-  dip below it (the showcase's 64-sample lightmap reaches about −0.16). A smooth-normal face loses the cosine rays that
-  fall under its geometric side, so it is not exactly 1. A colour channel a look's dome leaves at 0 (sky and ground
+  dip below it (the showcase's 64-sample lightmap reaches about −0.16). A smooth-normal face is not exactly 1 where a ray
+  was mirrored (a smooth sphere of 24 x 12 facets: 94 % of its texels are still exactly 1, the mean over all 0.99997; counting a mirrored
+  ray as lost, as the first MS-87 form did, gave 0.9974 and the plain estimator 0.9976). A colour channel a look's dome leaves at 0 (sky and ground
   both 0 in it, which `checkLookPreset` allows) divides by nothing: its share is fixed (loss 0, so rgb 1) for model and
   catcher texels instead of 0 / 0,
   and a non-finite component that still occurs is replaced by 1 alone, so the key's visibility survives.

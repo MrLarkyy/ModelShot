@@ -1,4 +1,4 @@
-import type { BakedLighting } from '@modelshot/renderer-rt';
+import type { BakedLighting, LightmapLayout } from '@modelshot/renderer-rt';
 
 /** IEEE half 1.0. */
 const HALF_ONE = 0x3c00;
@@ -20,10 +20,12 @@ export interface BakedCatcherStats {
   readonly chartKeyShadowed: number;
   /** Model lightmap texels with a NaN or infinite channel. */
   readonly chartNonFinite: number;
-  /** Model lightmap texels (unbaked ones included, which hold 1). */
+  /** Lightmap texels inside a chart of the layout (texels of no chart hold 1 and are left out). */
   readonly chartTexels: number;
-  /** Model lightmap texels whose rgb is exactly 1: no fill ray was lost. */
+  /** Chart texels whose rgb is exactly 1: no fill ray was lost. */
   readonly chartRgbOnes: number;
+  /** Mean of the finite rgb channels over the chart texels. */
+  readonly chartMean: number;
   /** Model lightmap texels with a negative non-zero rgb channel (the control variate is unclamped). */
   readonly chartNegative: number;
   /** The least rgb channel of any finite model lightmap texel. */
@@ -47,7 +49,18 @@ const finite = (half: number): boolean => (half & HALF_EXPONENT) !== HALF_EXPONE
 // Key visibility is 0..1, never negative: below 1 is any half other than 1.0 itself.
 const shadowed = (half: number): boolean => half !== HALF_ONE;
 
-export function bakedCatcherStats(lighting: BakedLighting): BakedCatcherStats {
+/** Per lightmap texel whether a chart of the layout covers it (a double-sided chart's back side follows its front). */
+function chartMask(lighting: BakedLighting, layout: LightmapLayout): Uint8Array {
+  const mask = new Uint8Array(lighting.width * lighting.height);
+  for (const chart of layout.charts) {
+    const width = chart.back ? chart.width * 2 : chart.width;
+    for (let y = chart.y; y < chart.y + chart.height; y++)
+      mask.fill(1, y * lighting.width + chart.x, y * lighting.width + chart.x + width);
+  }
+  return mask;
+}
+
+export function bakedCatcherStats(lighting: BakedLighting, layout: LightmapLayout): BakedCatcherStats {
   let exactOnes = 0;
   let rgbOnes = 0;
   let keyShadowed = 0;
@@ -64,6 +77,10 @@ export function bakedCatcherStats(lighting: BakedLighting): BakedCatcherStats {
   let chartKeyShadowed = 0;
   let chartNonFinite = 0;
   let chartRgbOnes = 0;
+  let chartTexels = 0;
+  let meanSum = 0;
+  let meanCount = 0;
+  const inChart = chartMask(lighting, layout);
   let chartNegative = 0;
   let chartMin = Infinity;
   let chartKeyHash = 0x811c9dc5;
@@ -72,7 +89,16 @@ export function bakedCatcherStats(lighting: BakedLighting): BakedCatcherStats {
     if (shadowed(texel[3] ?? 0)) chartKeyShadowed++;
     if (!texel.every(finite)) chartNonFinite++;
     const rgb = texel.slice(0, 3);
-    if (rgb.every((h) => h === HALF_ONE)) chartRgbOnes++;
+    if (inChart[i / 4]) {
+      chartTexels++;
+      if (rgb.every((h) => h === HALF_ONE)) chartRgbOnes++;
+      for (const h of rgb) {
+        if (finite(h)) {
+          meanSum += halfToNumber(h);
+          meanCount++;
+        }
+      }
+    }
     if (rgb.every(finite)) {
       if (rgb.some((h) => h & NEGATIVE && (h & 0x7fff) !== 0)) chartNegative++;
       for (const h of rgb) chartMin = Math.min(chartMin, halfToNumber(h));
@@ -89,7 +115,8 @@ export function bakedCatcherStats(lighting: BakedLighting): BakedCatcherStats {
     nonFinite,
     chartKeyShadowed,
     chartNonFinite,
-    chartTexels: lighting.data.length / 4,
+    chartTexels,
+    chartMean: meanCount ? meanSum / meanCount : 0,
     chartRgbOnes,
     chartNegative,
     chartMin: Number.isFinite(chartMin) ? chartMin : 0,

@@ -1,5 +1,5 @@
 import type { SceneDocument } from '@modelshot/scene';
-import { quads, texture, type Face } from './cutoutChecker';
+import { quads, texture, type Face } from './quadMesh';
 
 const TEXELS = 16;
 const H = 4;

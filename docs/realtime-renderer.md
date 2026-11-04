@@ -114,8 +114,9 @@ if (lighting) renderer.setLighting(lighting);
   allocating anything. A scene without a world-charted mesh lays out exactly as before world charts existed (same
   `layoutKey`).
 - **Values.** RGBA16F (`BakedLighting`): rgb 1 less the fill lost over the unoccluded fill `hemisphereFill(n)` (MS-87: the
-  path tracer's control variate; a bake ray under the surface or blocked loses the environment along it, so a texel
-  nothing blocked is exactly 1), a the key's visibility. Texels of no chart and vertices of no triangle hold 1, so an anti-aliasing tap outside a face, or
+  path tracer's control variate; a blocked bake ray loses the environment along it, so a texel nothing blocked is
+  exactly 1; a cosine ray under a smooth face's geometric side is mirrored as the trace does, so such a texel is near
+  but not exactly 1 and a mirror that sees more sky may lift it slightly above 1), a the key's visibility. Texels of no chart and vertices of no triangle hold 1, so an anti-aliasing tap outside a face, or
   a degenerate triangle, never darkens. The shadow catcher's lightmap stores the same form over `hemisphereFill(up)` (Shadow
   catcher, below). `shadeBaked` (`shading.glsl`) is `albedo × (hemisphereFill(n) × rgb +
 u_lookKeyColor × max(n·u_lookKeyDirection, 0) × a + fillLight(n)) + rimLight(n, v, albedo)`, v toward the eye

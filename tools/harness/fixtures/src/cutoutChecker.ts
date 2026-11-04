@@ -1,8 +1,6 @@
 import { LIGHT_RIG_V0 } from '@modelshot/looks';
 import type { SceneDocument, SceneMesh, SceneTexture } from '@modelshot/scene';
-import { encodeRgbaPng } from './encodeRgbaPng';
-
-type Point = [number, number, number];
+import { quads, texture, type Face, type Point } from './quadMesh';
 
 const KEY = LIGHT_RIG_V0.lights.key.direction;
 const KEY_XZ = Math.hypot(KEY[0], KEY[2]);
@@ -21,19 +19,6 @@ export function checkerPoint(s: number, d: number, y: number): Point {
   return [s * CHECKER_TANGENT[0] - d * CHECKER_NORMAL[0], y, s * CHECKER_TANGENT[2] - d * CHECKER_NORMAL[2]];
 }
 
-export function texture(name: string, width: number, rgba: Uint8Array): SceneTexture {
-  return {
-    name,
-    mimeType: 'image/png',
-    bytes: encodeRgbaPng(width, width, rgba),
-    width,
-    height: width,
-    uvWidth: width,
-    uvHeight: width,
-    missing: false,
-  };
-}
-
 /** 8 x 8 texels: (column + row) even opaque orange, odd cut out (alpha 0). */
 function checkerTexture(): SceneTexture {
   const rgba = new Uint8Array(8 * 8 * 4);
@@ -50,49 +35,6 @@ function ghostTexture(): SceneTexture {
 
 function greyTexture(): SceneTexture {
   return texture('cutout-checker-grey.png', CUBE_TEXELS, new Uint8Array(CUBE_TEXELS * CUBE_TEXELS * 4).fill(200));
-}
-
-export interface Face {
-  readonly corners: readonly Point[];
-  readonly outward: Point;
-}
-
-/** Quads (corners top-left, top-right, bottom-right, bottom-left as seen from outside) as one mesh with own vertices. */
-export function quads(name: string, faces: readonly Face[], material: number, doubleSided: boolean): SceneMesh {
-  const positions: number[] = [];
-  const normals: number[] = [];
-  const uvs: number[] = [];
-  const indices: number[] = [];
-  for (const { corners, outward } of faces) {
-    const base = positions.length / 3;
-    corners.forEach((corner, i) => {
-      positions.push(...corner);
-      normals.push(...outward);
-      uvs.push(
-        ...([
-          [0, 0],
-          [1, 0],
-          [1, 1],
-          [0, 1],
-        ][i] ?? [0, 0]),
-      );
-    });
-    // Counter-clockwise seen from outside: top-left, bottom-left, bottom-right, then top-left, bottom-right, top-right.
-    indices.push(base, base + 3, base + 2, base, base + 2, base + 1);
-  }
-  const vertices = positions.length / 3;
-  return {
-    name,
-    sourceId: '',
-    node: -1,
-    visible: true,
-    positions: new Float32Array(positions),
-    normals: new Float32Array(normals),
-    uvs: new Float32Array(uvs),
-    uvRects: new Float32Array(Array.from({ length: vertices }, () => [0, 0, 1, 1]).flat()),
-    indices: new Uint32Array(indices),
-    groups: [{ material, start: 0, count: indices.length, doubleSided }],
-  };
 }
 
 /** An opaque box over s in [s0, s1], d in [d0, d1], y in [0, h], in the plane's frame. */

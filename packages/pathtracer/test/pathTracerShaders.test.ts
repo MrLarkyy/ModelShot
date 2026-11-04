@@ -160,9 +160,14 @@ describe('path tracer shaders', () => {
     expect(bake).not.toContain('fillShare');
     // A model point: the same form, a ray under the surface losing the environment along it, an escaped one nothing.
     const point = bake.slice(bake.indexOf('vec4 bakePoint('), bake.indexOf('vec4 bakeCatcher('));
+    // The trace mirrors a ray under the surface (aboveSurface): one that escapes loses the difference of the two sky
+    // values, a blocked one what it carried, and the random dimensions are the plain estimate's.
+    expect(point).toContain('vec3 mirrored = aboveSurface(d, side);');
     expect(point).toContain('vec3 lost = environmentRadiance(d);');
-    expect(point).toContain('if (dot(d, side) > 0.0) {');
-    expect(point).toMatch(/if \(!closestHit\([^)]*blocker\)\) lost = vec3\(0\.0\);/);
+    expect(point).toContain('if (dot(mirrored, side) > 0.0) {');
+    expect(point).toMatch(
+      /if \(!closestHit\(origin, mirrored, [^)]*blocker\)\) \{\s*lost = lost - environmentRadiance\(mirrored\);/,
+    );
     expect(point).toContain('return vec4(1.0 - lostShare(lost, hemisphereFill(normal)), keyT);');
     // A non-finite component is replaced alone, the key's visibility kept.
     expect(bake).toContain('if (isnan(value[c]) || isinf(value[c])) value[c] = 1.0;');

@@ -15,9 +15,9 @@ precision highp sampler2DArray;
 // key's visibility through shadowTransmittance in the key cone, the fill as the environment along one cosine-weighted
 // direction that escapes. No interreflection: the bake is what the preview's lighting lacks, occlusion. Pass sums:
 // rgb 1 less the fill the ray lost over hemisphereFill(n), a the key visibility; texels of no chart add 1 (unbaked). The
-// loss is the environment along a ray under the surface or stopped by a blocker: the path tracer's control variate
-// (trace.frag.glsl catcherShadeAt), exactly 1 where nothing is lost, unclamped, so a fully blocked texel's mean may dip
-// below 0, as the trace's own mean does.
+// loss is what a blocker took of the environment along the ray, a ray under the surface counting as the trace does
+// (mirrored, bakePoint): the path tracer's control variate (trace.frag.glsl catcherShadeAt), exactly 1 where nothing is
+// lost, unclamped, so a texel's mean may dip below 0 (fully blocked) or above 1 (mirrored rays see a brighter sky).
 
 // The running sum of earlier samples (AccumulationTargets).
 uniform highp sampler2D u_previous;
@@ -99,15 +99,20 @@ float bakeKey(vec3 origin, vec3 side, int skip, uint key) {
 }
 
 // The light of one model surface point: rgb 1 less the fill lost over hemisphereFill(normal), a the key visibility. The
-// cosine ray lost the environment along it when it points under the surface or a blocker stops it.
+// trace mirrors a cosine ray under the surface (aboveSurface), so one that escapes after the mirror loses only the
+// difference of the environment along the two, and a ray a blocker stops loses what it carried: exactly 0 lost for a
+// ray above the surface that escapes, so a flat face nothing blocks is exactly 1.
 vec4 bakePoint(vec3 position, vec3 normal, vec3 side, int skip, uint key) {
   vec3 origin = leave(position, side);
   float keyT = bakeKey(origin, side, skip, key);
   vec3 d = cosineDirection(normal, unitRandom(key, FILL_DIMENSION, 0u), unitRandom(key, FILL_DIMENSION + 1u, 0u));
+  vec3 mirrored = aboveSurface(d, side);
   vec3 lost = environmentRadiance(d);
-  if (dot(d, side) > 0.0) {
+  if (dot(mirrored, side) > 0.0) {
     Hit blocker;
-    if (!closestHit(origin, d, 0.0, 3.0e38, 1.0, skip, key, ALPHA_DIMENSION, blocker)) lost = vec3(0.0);
+    if (!closestHit(origin, mirrored, 0.0, 3.0e38, 1.0, skip, key, ALPHA_DIMENSION, blocker)) {
+      lost = lost - environmentRadiance(mirrored);
+    }
   }
   return vec4(1.0 - lostShare(lost, hemisphereFill(normal)), keyT);
 }
