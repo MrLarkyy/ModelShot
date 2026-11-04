@@ -498,8 +498,8 @@ Against their limits (threshold 0.1: `maxDiffRatio` 0.001, `maxMeanDelta` 1), ra
 0.011, `rt-bake-turntable-y030` 0.00020 / 0.027, `rt-texture-wrap` 0 / 0.023; the largest use is a fifth of the ratio
 (`rt-bake-turntable-y030`) and under 4 % of the mean, none more than half its tolerance, so none was regenerated.
 
-MS-89 re-checked those drifted goldens against the live render on the MS-63 main (seed 1, bake 64, `build golden
---update`, the same bytes in a second run) and regenerated them, so every rt golden equals the current output again;
+MS-89 re-checked those drifted goldens against the live render on main at 30acf6e, after MS-83 (seed 1, bake 64,
+`build golden --update`, the same bytes in a second run) and regenerated them, so every rt golden equals the current output again;
 only `rt-bake-turntable-y030` was already rewritten (MS-63) and stays. Pixels with any channel changed (largest
 change in levels) against the committed file match MS-60's numbers one for one: `rt-turntable-y000` 470 (44), `-y030`
 381 (79), `-y060` 251 (43), `-y090` 166 (34), `rt-iso` 343 (82), `rt-closeup` 1 065 (79), `rt-far` 100 (62),
