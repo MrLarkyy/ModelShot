@@ -456,7 +456,7 @@ DEFAULT_LOOK, onProgress })` resolves `{ applied, warnings, lighting }`. The loo
   cosine direction about up never points below the plane), a = key visibility. The model texel keeps the rays and random
   dimensions of the plain estimate, so its key bytes did not move (pinned by hash). A texel none of whose fill rays was lost
   is exactly 1 per channel, so the preview's lit catcher is the bare backdrop as in the render and a flat unoccluded
-  model face shades as `hemisphereFill(n)` exactly; the mean is the plain estimator's (the cosine mean of
+  texel- or world-charted model face shades as `hemisphereFill(n)` exactly (not a vertex chart); the mean is the plain estimator's (the cosine mean of
   `environmentRadiance` about n is `hemisphereFill(n)`), unclamped, so a fully blocked texel averages near 0 and may
   dip below it (the showcase's 64-sample lightmap reaches about −0.16). A smooth-normal face is not exactly 1 where a ray
   was mirrored (a smooth sphere of 24 x 12 facets: 94 % of its texels are still exactly 1, the mean over all 0.99997; counting a mirrored

@@ -106,7 +106,10 @@ const RGB_ONES_SHARE = 0.0685;
  * 0.0263 measured / 1.25; the plain estimator had 0.0002 (2 of 9 200).
  */
 const CHART_ONES_SHARE = 0.021;
-/** MS-87: least mean rgb of a smooth sphere's chart texels (64 samples): 0.99997 measured, the plain estimator 0.9976, a lost mirrored ray 0.9974. */
+/**
+ * MS-87: least mean rgb of a smooth sphere's chart texels (64 samples): 0.99997 measured, the plain estimator 0.9976,
+ * a lost mirrored ray 0.9974.
+ */
 const SMOOTH_MEAN = 0.9995;
 const SMOOTH_MEAN_OLD = 0.9976;
 

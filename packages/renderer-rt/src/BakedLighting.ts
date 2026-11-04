@@ -1,9 +1,9 @@
 /**
  * Light baked for one lightmap layout (`lightmapLayout`), as `LightBaker` of `@modelshot/pathtracer` produces it and
  * `RealtimeRenderer.setLighting` takes it. Texel (x, y) is element `(y × width + x) × 4` of `data`, RGBA as IEEE half
- * floats: rgb 1 less the fill the texel's ray lost over the unoccluded fill `hemisphereFill(n)` (the path tracer's control
- * variate: exactly 1 where nothing blocks the sky; a ray under a smooth face's geometric side counts as the trace
- * mirrors it; unclamped, so values can lie below 0 where fully blocked and slightly above 1), a the key light's
+ * floats: rgb 1 less the fill the texel's ray lost over the unoccluded fill `hemisphereFill(n)` (the path tracer's
+ * control variate: exactly 1 where nothing blocks the sky; a ray under a smooth face's geometric side counts as the
+ * trace mirrors it; unclamped, so values can lie below 0 where fully blocked and slightly above 1), a the key light's
  * visibility 0..1. Texels of no chart hold 1; a channel the look's dome leaves at 0 holds 1. Valid
  * only under looks of the same `lightingKey`.
  */

@@ -676,7 +676,8 @@ within 10 levels, and 0.3 texel off each side of the block the mask is no darker
 column 7, u 8 lies between them (the blend crosses the wrap seam); 0 `sentinelPixels`. Far view: the minified quad's
 inner 60 % stays within 5.3 levels of its mean in every channel (measured 4.2, x 1.25) and 0 sentinel pixels. Its
 preview-vs-render pair (limit kept in the spec, as for texture wrap): framing 0 mismatches (2 600), radiance 6 px,
-0.00009, 0.390, limit 0.00011, 0.488 (measured x 1.25; MS-38's 7 px, 0.00011, 0.396, limit 0.00014, 0.495).
+0.00009, 0.390, limit 0.00011, 0.488 (measured x 1.25; MS-38's 7 px, 0.00011, 0.396, limit 0.00014, 0.495); after
+MS-87 6 px, 0.00009, 0.353, limit unchanged.
 
 Seam regression (same spec): the linear quad is 2 x 2 cells with alternating diagonals, so some triangles' last-vertex
 face rects end at the cell border u = 4 or v = 4. 16 probes sit 0.1 texel either side of those borders (u 3.9 / 4.1
@@ -854,9 +855,9 @@ lost form miss), "the lit model is exact where nothing blocks" (share of the sho
 0.0263 / 1.25; the plain estimator 0.0002), "the chart control variate keeps the key bytes of the bake" (`chartKeyHash`
 939820550 for the showcase, 2696078789 for the cube, 85915365 for the sphere, identical at 84b54d8), the zero-channel
 test extended (the cube stays exactly 1 under a zero blue channel, no non-finite model texel), and source pins of
-`bakePoint` and the `lerpExact` chunk (included once, six calls in `sampleBakedLight`, no `mix`). The bake's ray count
-is unchanged (the mirrored ray replaces the original in the one `closestHit`), so the bench bake time budget is
-untouched.
+`bakePoint` and the `lerpExact` chunk (included once, six calls in `sampleBakedLight`, no `mix`). A sample casts at most one `closestHit`,
+as before (below-side rays on smooth faces are now traced, mirrored, where they used to be skipped), so the bench bake
+time budget is not expected to move.
 
 - Tolerance: an override of `threshold 0` only (its reason in the spec); `maxDiffRatio 0.001` and `maxMeanDelta 1`
   stay the defaults. The tracer converges, so at the default threshold 0.1 another seed or one sample more or less
@@ -932,7 +933,7 @@ Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with r
 | `obj-jpeg-y030`            | 0 (1 476)                           | 70, 0.00107, 0.350 (MS-87; 71, 0.00108, 0.420 MS-83, new)                         | 0.00135, 0.525                             |
 | `texture-wrap`             | 0 (3 444)                           | 58, 0.00089, 0.594 (MS-87; 46, 0.00070, 0.671 MS-52, new; textureWrap.spec.ts)    | 0.00111, 0.839 (MS-87; was 0.00088, 0.839) |
 | `partial-edge`             | 0 (3 844)                           | 3, 0.00005, 1.102 (MS-87; 3, 0.00005, 1.120 MS-63; MS-60 2, 0.00003, 1.124)       | 0.00006, 1.4 (MS-63; was 0.00004, 1.405)   |
-| `texture-filter`           | 0 (2 600)                           | 6, 0.00009, 0.390 (MS-60; MS-38 7, 0.00011, 0.396)                                | 0.00011, 0.488 (MS-60; was 0.00014, 0.495) |
+| `texture-filter`           | 0 (2 600)                           | 6, 0.00009, 0.353 (MS-87; MS-60 0.390; MS-38 7, 0.00011, 0.396)                   | 0.00011, 0.488 (MS-60; was 0.00014, 0.495) |
 
 MS-60 (anti-aliased partial seams, opaque|partial seams and partial outlines in the preview's raster frames)
 re-measured every pair: `turntable-y030`, `iso`, `cutout-checker`, `edges`, `outline-hull`, `obj-shapes-y030` and
@@ -956,7 +957,7 @@ docs/realtime-renderer.md) re-measured every pair. `turntable-y030`, `iso`, `alp
 `obj-shapes-y030` and `gltf-nodes-y030` moved by a pixel or two and up to 0.004 levels (rows above), so their limits
 are min(previous, measured x 1.25); `player-hold-34`, the three `preset-*` views (exact depth key: each pass
 single-sampled, the centroid is the centre), `cutout-checker` and `gltf-contact` measured exactly as before and keep
-theirs. The denoised 2x turntable pair: 113 px, 0.00172, 0.618 under the turntable's limits.
+theirs. The denoised 2x turntable pair: 113 px, 0.00172, 0.618 under the turntable's limits (MS-87: 102 px, 0.00156, 0.569).
 
 MS-35 (a still exact-key frame converges to the mean of 4 rotated-grid passes, docs/realtime-renderer.md; every
 fixture frame is converged) re-measured the four exact-key views, `player-hold-34` and the three `preset-*` (the

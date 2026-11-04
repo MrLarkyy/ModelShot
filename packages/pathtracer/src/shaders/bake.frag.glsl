@@ -14,8 +14,8 @@ precision highp sampler2DArray;
 // One sample of the light bake per lightmap texel, with the path tracer's own rules for every ray (bvhTraverse): the
 // key's visibility through shadowTransmittance in the key cone, the fill as the environment along one cosine-weighted
 // direction that escapes. No interreflection: the bake is what the preview's lighting lacks, occlusion. Pass sums:
-// rgb 1 less the fill the ray lost over hemisphereFill(n), a the key visibility; texels of no chart add 1 (unbaked). The
-// loss is what a blocker took of the environment along the ray, a ray under the surface counting as the trace does
+// rgb 1 less the fill the ray lost over hemisphereFill(n), a the key visibility; texels of no chart add 1 (unbaked).
+// The loss is what a blocker took of the environment along the ray, a ray under the surface counting as the trace does
 // (mirrored, bakePoint): the path tracer's control variate (trace.frag.glsl catcherShadeAt), exactly 1 where nothing is
 // lost, unclamped, so a texel's mean may dip below 0 (fully blocked) or above 1 (mirrored rays see a brighter sky).
 

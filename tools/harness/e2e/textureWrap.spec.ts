@@ -42,7 +42,9 @@ const PT_WRAP: GoldenSpec = {
 
 /**
  * Preview (baked, 64 samples) vs render (seed 1, 64 samples), as the pair table of src/ptPairTolerance.ts: measured
- * 0.00089 / 0.594, x 1.25 (MS-87; 0.00070 / 0.671 before the chart control variate, MS-52). Kept here, not in that table, whose every entry pathtracer.spec.ts pairs.
+ * 0.00089 / 0.594 (MS-87; 0.00070 / 0.671 before the chart control variate, MS-52). Only the pixel-ratio limit was
+ * re-measured, x 1.25; maxMeanDelta stays 0.839. Kept here, not in that table, whose every entry pathtracer.spec.ts
+ * pairs.
  */
 const PAIR_TOLERANCE: CompareOptions = { threshold: 0.1, maxDiffRatio: 0.00111, maxMeanDelta: 0.839 };
 
