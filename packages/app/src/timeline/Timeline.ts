@@ -1,6 +1,6 @@
 import type { SceneAnimation } from '@modelshot/scene';
 import { el, uniqueId } from '../ui/dom';
-import { describeTime } from './formatTime';
+import { describeTime } from './describeTime';
 import { keyframeTimes } from './keyframeTimes';
 import { BROWSER_CLOCK, Playback, type PlaybackClock } from './Playback';
 
@@ -9,6 +9,8 @@ export interface TimelineHost {
   readonly frame: (clip: number, time: number, loop: boolean) => Promise<void>;
   /** The user started or moved the playback: a render in progress no longer matches. */
   readonly interacted: () => void;
+  /** Playback started or stopped. */
+  readonly playingChanged?: (playing: boolean) => void;
 }
 
 const SCRUB_STEP = 0.01;
@@ -27,6 +29,7 @@ export class Timeline {
   private readonly empty: HTMLParagraphElement;
   private readonly playback: Playback;
   private animations: readonly SceneAnimation[] = [];
+  private wasPlaying = false;
 
   constructor(
     root: HTMLElement,
@@ -46,7 +49,7 @@ export class Timeline {
       this.playback.selectClip(Number(this.clip.value));
       this.drawMarkers();
     });
-    this.play = el('button', { text: 'Play', attributes: { type: 'button', 'aria-pressed': 'false' } });
+    this.play = el('button', { text: 'Play', attributes: { type: 'button' } });
     this.play.addEventListener('click', () => {
       this.host.interacted();
       if (this.playback.playing) this.playback.pause();
@@ -87,6 +90,11 @@ export class Timeline {
 
   get playing(): boolean {
     return this.playback.playing;
+  }
+
+  /** A clip pose is shown (a frame was sent since the model was set), also at 0 s. */
+  get posed(): boolean {
+    return this.playback.posed;
   }
 
   get time(): number {
@@ -157,6 +165,9 @@ export class Timeline {
     this.scrub.setAttribute('aria-valuetext', describeTime(this.playback.time, length));
     this.readout.textContent = has ? describeTime(this.playback.time, length) : '';
     this.play.textContent = this.playback.playing ? 'Pause' : 'Play';
-    this.play.setAttribute('aria-pressed', String(this.playback.playing));
+    if (this.wasPlaying !== this.playback.playing) {
+      this.wasPlaying = this.playback.playing;
+      this.host.playingChanged?.(this.wasPlaying);
+    }
   }
 }

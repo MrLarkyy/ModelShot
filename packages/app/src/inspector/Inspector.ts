@@ -17,6 +17,13 @@ export interface InspectorHost extends ObjectTabHost, MaterialTabHost {
   readonly tabChanged: (tab: InspectorTabId) => void;
 }
 
+const CONTROLS = 'input, select, textarea, button';
+
+const controlsOf = (panel: HTMLElement): HTMLElement[] => [...panel.querySelectorAll<HTMLElement>(CONTROLS)];
+
+const controlKind = (control: HTMLElement): string =>
+  `${control.tagName}:${control instanceof HTMLInputElement ? control.type : ''}`;
+
 // The right panel: WAI-ARIA tabs (Arrow, Home and End move between them) over the Object, Material, Light, Look and
 // Render panels. The Look and Render panels are mounted by the caller into `look` and `render`.
 export class Inspector {
@@ -28,6 +35,7 @@ export class Inspector {
   private model: InspectorModel | null = null;
   private lightFocus: 'key' | 'rim' | null = null;
   private current: InspectorTabId;
+  private pending: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     root: HTMLElement,
@@ -83,19 +91,36 @@ export class Inspector {
   /** Shows the Light tab with `light` first. */
   showLight(light: 'key' | 'rim'): void {
     this.lightFocus = light;
-    this.refresh();
+    this.refreshNow();
     this.select('light', true);
     this.tabs.get('light')?.focus();
   }
 
+  // The panels follow in the next task: a field committed by Tab sends its change event before the focus has reached
+  // the next field, and a panel rebuilt in between would remove the field the focus is going to.
   update(model: InspectorModel | null): void {
     this.model = model;
+    this.pending ??= setTimeout(() => this.refreshNow(), 0);
+  }
+
+  private refreshNow(): void {
+    if (this.pending !== null) clearTimeout(this.pending);
+    this.pending = null;
     this.refresh();
   }
 
+  // A rebuilt panel keeps the keyboard focus: the control that had it is found again by its place among the panel's
+  // controls (same element and type), so Tab through the fields of an edit goes on from where it was.
   private refresh(): void {
     const set = (id: InspectorTabId, parts: readonly HTMLElement[]): void => {
-      this.panels.get(id)?.replaceChildren(el('h2', { text: TITLES[id] }), ...parts);
+      const panel = this.panels.get(id);
+      if (!panel) return;
+      const active = document.activeElement;
+      const at = active instanceof HTMLElement && panel.contains(active) ? controlsOf(panel).indexOf(active) : -1;
+      const kind = active instanceof HTMLElement ? controlKind(active) : '';
+      panel.replaceChildren(el('h2', { text: TITLES[id] }), ...parts);
+      const again = at >= 0 ? controlsOf(panel)[at] : undefined;
+      if (again && controlKind(again) === kind) again.focus();
     };
     set('object', buildObjectTab(this.model, this.host));
     set('material', buildMaterialTab(this.model, this.host));

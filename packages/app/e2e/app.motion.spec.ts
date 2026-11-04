@@ -50,6 +50,6 @@ test('the overlay draws within 2 ms and nothing plays by itself', async ({ page 
   const median = await page.evaluate(() => window.__msApp!.overlayMedianMs());
   expect(median).not.toBeNull();
   expect(median ?? Infinity).toBeLessThanOrEqual(2);
-  await expect(page.getByRole('button', { name: 'Play' })).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByRole('button', { name: 'Play' })).toBeVisible();
   await expect(page.getByRole('slider', { name: 'Playhead' })).toHaveValue('0');
 });

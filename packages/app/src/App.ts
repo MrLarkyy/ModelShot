@@ -30,7 +30,7 @@ import { applyLook } from './session/applyLook';
 import type { NodeEdit } from './session/NodeEdit';
 import { hiddenIndices, visibilityFromHidden } from './session/visibility';
 import { textureFilters, withTextureFilters } from './session/withTextureFilters';
-import { bakeNodeEdits, setNodeEdit, withNodeEdits } from './session/withNodeEdits';
+import { setNodeEdit, withNodeEdits } from './session/withNodeEdits';
 import { withVisibility } from './session/withVisibility';
 import { bindShortcuts } from './shortcuts/bindShortcuts';
 import { HelpDialog } from './shortcuts/HelpDialog';
@@ -117,6 +117,8 @@ export class App {
   private filteredBase: SceneDocument | null = null;
   /** The document with the visibility and filters but not the node edits: what edits and animation are applied to. */
   private restDoc: SceneDocument | null = null;
+  // The finished render as a PNG file, encoded when the render is done so Share runs inside the click's activation.
+  private shareFile: File | null = null;
   private setupQueue: Promise<unknown> = Promise.resolve();
   private look: LookPreset = DEFAULT_LOOK;
   private arms: PlayerArmsChoice = 'classic';
@@ -223,7 +225,12 @@ export class App {
     );
     this.exportDialog = new ExportDialog(byId('export-dialog', HTMLDialogElement), {
       document: () => this.viewer?.document ?? null,
-      restDocument: () => (this.restDoc ? bakeNodeEdits(this.restDoc, this.nodeEdits) : null),
+      restDocument: () => this.restDoc,
+      editPose: () => {
+        const rest = this.restDoc;
+        const edits = this.nodeEdits;
+        return rest && edits.length > 0 ? (pose) => withNodeEdits(pose, rest, edits) : undefined;
+      },
       modelName: () => this.open?.loaded.name ?? 'model',
       camera: () => this.requireViewer().settledCamera(),
       viewportAspect: () => (this.cssSize ? this.cssSize.cssWidth / Math.max(1, this.cssSize.cssHeight) : 1),
@@ -817,6 +824,7 @@ export class App {
     this.tools?.pausePlayback();
     // The canvas keeps the previous render (preserveDrawingBuffer): shown again once this one has its first sample.
     this.resultCanvas.hidden = true;
+    this.shareFile = null;
     this.progressBox.hidden = false;
     this.progress.value = 0;
     this.notices.status('Rendering: preparing the scene…');
@@ -839,6 +847,20 @@ export class App {
     this.progressBox.hidden = true;
     this.notices.status(warnings.length > 0 ? `Render done. ${warnings.join(' ')}` : 'Render done.');
     this.setActionsEnabled();
+    this.encodeShareFile();
+  }
+
+  private encodeShareFile(): void {
+    this.shareFile = null;
+    if (!canShareFiles()) return;
+    const renders = this.resultCanvas.dataset['renders'];
+    const name = this.open?.loaded.name ?? 'model';
+    this.resultCanvas.toBlob((blob) => {
+      // A newer render or a changed view since: this image is not the one on show.
+      if (!blob || this.resultCanvas.dataset['renders'] !== renders || this.resultCanvas.hidden) return;
+      this.shareFile = new File([blob], `${name.replace(/\.[^.]+$/, '')}-modelshot.png`, { type: 'image/png' });
+      this.syncMode();
+    }, 'image/png');
   }
 
   private renderStopped(message: string): void {
@@ -863,6 +885,7 @@ export class App {
       return;
     }
     this.resultCanvas.hidden = true;
+    this.shareFile = null;
     this.syncMode();
   }
 
@@ -871,7 +894,10 @@ export class App {
     const showing = !this.resultCanvas.hidden;
     this.modePreview.checked = !showing;
     this.modeRender.checked = showing;
-    this.shareButton.hidden = !(showing && !this.renderSession.busy && canShareFiles());
+    // Where sharing exists the button keeps its place and only disappears: showing it must not re-wrap the bar, which
+    // would resize the view and discard the render it is about to share.
+    this.shareButton.hidden = !canShareFiles();
+    this.shareButton.style.visibility = showing && !this.renderSession.busy && this.shareFile !== null ? '' : 'hidden';
   }
 
   private beginExport(): boolean {
@@ -904,15 +930,12 @@ export class App {
   }
 
   private share(): void {
-    const name = this.open?.loaded.name ?? 'model';
-    this.resultCanvas.toBlob((blob) => {
-      if (!blob) return;
-      const file = new File([blob], `${name.replace(/\.[^.]+$/, '')}-modelshot.png`, { type: 'image/png' });
-      navigator.share({ files: [file] }).catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === 'AbortError') return;
-        this.notices.alert(`Could not share the image: ${error instanceof Error ? error.message : String(error)}`);
-      });
-    }, 'image/png');
+    const file = this.shareFile;
+    if (!file) return;
+    navigator.share({ files: [file] }).catch((error: unknown) => {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      this.notices.alert(`Could not share the image: ${error instanceof Error ? error.message : String(error)}`);
+    });
   }
 
   private async forget(): Promise<void> {

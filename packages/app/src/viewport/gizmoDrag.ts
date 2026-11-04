@@ -1,6 +1,6 @@
 import type { Vec3 } from '@modelshot/scene';
 import type { GizmoFrame, GizmoMode } from './gizmoFrame';
-import type { Projector, ScreenPoint } from './projectPoints';
+import type { Projector, ScreenPoint } from './Projector';
 
 export interface GizmoHandle {
   /** 0 = x, 1 = y, 2 = z. */

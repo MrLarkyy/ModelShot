@@ -11,7 +11,7 @@ import { gizmoHandles, type GizmoHandle } from './gizmoDrag';
 import { gizmoFrame, type GizmoFrame } from './gizmoFrame';
 import { BOX_EDGES, MAX_OUTLINE_BOXES, enclosingBox, placedBoxes, subtreeMeshes } from './meshBoxes';
 import type { OverlayScene } from './OverlayScene';
-import { Projector, type ScreenPoint } from './projectPoints';
+import { Projector, type ScreenPoint } from './Projector';
 
 const TIMING_WINDOW = 60;
 const MAX_GRID_LINES = 40;

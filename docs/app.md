@@ -86,9 +86,10 @@ in the middle, the inspector on the right and the timeline below.
   projected with the camera the renderer just drew with. The "Overlays" menu (or G for all) switches each; none of
   them is in the preview's WebGL canvas, the render or an export (`test/overlayIsolation.test.ts`,
   `e2e/app.overlay.spec.ts`).
-- **Timeline**: the clips of the model, Play / Pause, Loop, a scrubber (a labelled range: "1.25 s of 2.00 s") and a
+- **Timeline**: the clips of the model, Play / Pause (one button that renames itself), Loop, a scrubber (a labelled range: "1.25 s of 2.00 s") and a
   marker per distinct keyframe time of the clip, from the file. Nothing plays by itself. Frames use the renderer's
-  pose-only path (no texture decode, upload or light bake per frame); starting a render, opening Export or opening
+  pose-only path (no texture decode, upload or light bake per frame); the light is baked again for a pose that stays (about
+  0.2 s after a pause, the end of a scrub or an edit), so the preview shows the shadows of what it shows; starting a render, opening Export or opening
   another model pauses playback, and playing or scrubbing during a render cancels it. A model without animations shows
   "This model has no animations".
 - **Undo and Redo** (Ctrl/Cmd+Z, Ctrl+Shift+Z or Ctrl+Y) step through visibility, locks, names, texture filters, node
@@ -96,7 +97,7 @@ in the middle, the inspector on the right and the timeline below.
 - **Share** appears only where the browser can share files (`navigator.canShare`) and a render is shown: it hands the
   PNG of the render to the operating system's share sheet when clicked. Nothing is sent by the app.
 - **Export** of a still or a turntable uses the pose the preview shows; an animation clip is built from the rest pose
-  with the node edits, so exporting with the playhead at 0.5 s equals exporting at 0.
+  with the node edits applied on every sampled frame, so exporting with the playhead at 0.5 s equals exporting at 0.
 - **Motion** (panel and tab fades, drawer slides) uses the brand motion tokens and only opacity and transform; with
   `prefers-reduced-motion: reduce` every transition and animation is off, live.
 

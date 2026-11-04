@@ -2,7 +2,7 @@ import type { SceneCamera } from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
 import { GIZMO_SCREEN_PX, gizmoHandles, hitHandle, moveDelta, rotateDelta } from '../src/viewport/gizmoDrag';
 import { gizmoFrame } from '../src/viewport/gizmoFrame';
-import { Projector } from '../src/viewport/projectPoints';
+import { Projector } from '../src/viewport/Projector';
 import { boxMesh, doc, node } from './editorDocs';
 
 const camera: SceneCamera = {

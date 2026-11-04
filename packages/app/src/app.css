@@ -387,6 +387,8 @@ button:disabled {
 }
 
 .chips button {
+  min-width: 1.5rem;
+  min-height: 1.5rem;
   padding: 0 var(--ms-space-2);
   font-size: var(--ms-size-label);
   background: var(--ms-color-ink);

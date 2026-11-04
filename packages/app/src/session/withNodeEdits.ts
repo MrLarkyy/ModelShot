@@ -40,26 +40,6 @@ export function withNodeEdits(doc: SceneDocument, rest: SceneDocument, edits: re
   return changed ? { ...doc, nodes } : doc;
 }
 
-function omitRestRotation(node: SceneNode): SceneNode {
-  const copy: Partial<Record<keyof SceneNode, unknown>> = { ...node };
-  delete copy.restRotation;
-  return copy as unknown as SceneNode;
-}
-
-/** The rest pose with the edits as the rest itself: what an animation export animates from. */
-export function bakeNodeEdits(rest: SceneDocument, edits: readonly NodeEdit[]): SceneDocument {
-  if (edits.length === 0) return rest;
-  const edit = byNode(edits);
-  const nodes = rest.nodes.map((node, i) => {
-    const e = edit.get(i);
-    if (!e) return node;
-    // The edit is the rest itself: no separate rest rotation, so an animation starts from the edited angles.
-    const edited: SceneNode = { ...node, rotation: e.rotation, translation: e.translation };
-    return Object.hasOwn(edited, 'restRotation') ? omitRestRotation(edited) : edited;
-  });
-  return { ...rest, nodes };
-}
-
 /** `edits` with `edit` set for its node (replacing an earlier one); an edit equal to the rest is dropped. */
 export function setNodeEdit(rest: SceneDocument, edits: readonly NodeEdit[], edit: NodeEdit): NodeEdit[] {
   const base = rest.nodes[edit.node];

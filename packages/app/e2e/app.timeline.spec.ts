@@ -1,6 +1,22 @@
 import { readFile } from 'node:fs/promises';
 import type { Page } from '@playwright/test';
-import { expect, fixture, openApp, openFiles, test, waitForEditor, waitForModel } from './appTest';
+import { PNG } from 'pngjs';
+import { compareImages } from '../../../tools/harness/src/compareImages';
+import { PT_PAIR_TOLERANCE } from '../../../tools/harness/src/ptPairTolerance';
+import {
+  expect,
+  fixture,
+  openApp,
+  openFiles,
+  openTab,
+  previewImage,
+  renderImage,
+  storedModels,
+  test,
+  waitForEditor,
+  waitForModel,
+  type Rgba,
+} from './appTest';
 
 const ANIMATED = fixture('bbmodel', 'animated.bbmodel');
 const timeline = (page: Page) => page.locator('#timeline');
@@ -34,12 +50,11 @@ test('the timeline lists the clips and draws one marker per keyframe time of the
 test('nothing plays by itself; Play advances the playhead and Pause stops it', async ({ page }) => {
   await openAnimated(page);
   const play = timeline(page).getByRole('button', { name: 'Play' });
-  await expect(play).toHaveAttribute('aria-pressed', 'false');
   await expect(playhead(page)).toHaveValue('0');
   await page.waitForTimeout(400);
   await expect(playhead(page)).toHaveValue('0');
   await play.click();
-  await expect(timeline(page).getByRole('button', { name: 'Pause' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(timeline(page).getByRole('button', { name: 'Pause' })).not.toHaveAttribute('aria-pressed');
   await expect.poll(async () => Number(await playhead(page).inputValue())).toBeGreaterThan(0);
   await timeline(page).getByRole('button', { name: 'Pause' }).click();
   const stopped = await playhead(page).inputValue();
@@ -109,4 +124,76 @@ test('an animation clip export from a paused playhead equals the export from the
   const atRest = await exportClipAt(page, '0');
   const posed = await exportClipAt(page, '0.5');
   expect(posed.equals(atRest)).toBe(true);
+});
+
+test('a node hidden while a clip plays stays hidden', async ({ page }) => {
+  await openAnimated(page);
+  await timeline(page).getByRole('button', { name: 'Play' }).click();
+  await expect.poll(async () => Number(await playhead(page).inputValue())).toBeGreaterThan(0);
+  await page.locator('#scene-panel input[type="checkbox"]').first().uncheck();
+  await page.waitForTimeout(800);
+  await expect(page.locator('#scene-panel input[type="checkbox"]').first()).not.toBeChecked();
+  await expect
+    .poll(async () => ((await storedModels(page))[0]?.['hiddenNodes'] as unknown[] | undefined)?.length)
+    .toBe(1);
+});
+
+test('opening Export pauses the playback', async ({ page }) => {
+  await openAnimated(page);
+  await timeline(page).getByRole('button', { name: 'Play' }).click();
+  await expect(timeline(page).getByRole('button', { name: 'Pause' })).toBeVisible();
+  await page.getByRole('button', { name: 'Export…' }).click();
+  await expect(page.getByRole('dialog', { name: 'Export' })).toBeVisible();
+  await expect(timeline(page).locator('button', { hasText: 'Play' })).toHaveCount(1);
+  await expect(timeline(page).locator('button', { hasText: 'Pause' })).toHaveCount(0);
+});
+
+test('scrubbing during a render cancels it', async ({ page }) => {
+  await openAnimated(page);
+  await openTab(page, 'Render');
+  const samples = page.locator('#render-panel').getByLabel('Samples');
+  await samples.fill('4096');
+  await samples.dispatchEvent('change');
+  await page.locator('#preview').focus();
+  await page.keyboard.press('r');
+  await expect(page.getByRole('status')).toContainText('Rendering', { timeout: 30_000 });
+  await playhead(page).fill('0.3');
+  await expect(page.getByRole('status')).toContainText('Render cancelled', { timeout: 30_000 });
+});
+
+function toPng(image: Rgba): Buffer {
+  const png = new PNG({ width: image.width, height: image.height });
+  image.data.copy(png.data);
+  return PNG.sync.write(png);
+}
+
+test('a pose that stays is lit for that pose: preview and render at 0.5 s agree within the pair tolerance', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1100, height: 600 });
+  await openAnimated(page);
+  await openTab(page, 'Look');
+  await page.getByRole('radio', { name: 'Marketplace' }).check();
+  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
+  await page.waitForTimeout(500);
+  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
+  await playhead(page).fill('0.5');
+  // The scrub ended: the light is baked again for this pose (once, not per frame), then the preview is lit.
+  await expect(page.getByRole('status')).toContainText('Lighting the preview', { timeout: 30_000 });
+  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
+  await waitForModel(page);
+  const preview = await previewImage(page);
+
+  await openTab(page, 'Render');
+  const samples = page.locator('#render-panel').getByLabel('Samples');
+  await samples.fill('64');
+  await samples.dispatchEvent('change');
+  await page.getByRole('button', { name: 'Render', exact: true }).click();
+  await expect(page.locator('#result')).toHaveAttribute('data-renders', '1', { timeout: 180_000 });
+  const render = await renderImage(page);
+  const limits = PT_PAIR_TOLERANCE['preset-marketplace'];
+  const result = compareImages(toPng(render), toPng(preview), limits);
+  console.log(`[parity posed] ratio ${result.ratio.toFixed(5)} meanDelta ${result.meanDelta.toFixed(3)}`);
+  expect(result.ratio, 'differing pixels').toBeLessThanOrEqual(limits?.maxDiffRatio ?? 0);
+  expect(result.meanDelta, 'mean difference').toBeLessThanOrEqual(limits?.maxMeanDelta ?? 0);
 });

@@ -37,7 +37,7 @@ for (const [width, height] of [
     expect(viewport.height).toBeGreaterThan(height * 0.4);
     // The page itself never scrolls: the panels do.
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await page.screenshot({ path: testInfo.outputPath(`editor-${width}.png`) });
+    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`editor-${width}.png`) });
   });
 }
 
@@ -50,13 +50,13 @@ test('below 1024 px the panels are drawers over a usable view', async ({ page },
   await expect(page.locator('#inspector')).toBeHidden();
   const viewport = await box(page, '#viewport');
   expect(viewport.width).toBeGreaterThanOrEqual(900 * 0.5);
-  await page.screenshot({ path: testInfo.outputPath('editor-900.png') });
+  await page.screenshot({ animations: 'disabled', path: testInfo.outputPath('editor-900.png') });
 
   const toggle = page.getByRole('button', { name: 'Outliner', exact: true });
   await toggle.click();
   await expect(page.locator('#outliner')).toBeVisible();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-  await page.screenshot({ path: testInfo.outputPath('editor-900-drawer.png') });
+  await page.screenshot({ animations: 'disabled', path: testInfo.outputPath('editor-900-drawer.png') });
   await page.keyboard.press('Escape');
   await expect(page.locator('#outliner')).toBeHidden();
   await expect(toggle).toBeFocused();

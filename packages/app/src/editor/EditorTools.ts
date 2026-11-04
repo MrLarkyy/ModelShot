@@ -18,6 +18,8 @@ import type { Selection } from './Selection';
 /** A pointer that moves less than this between press and release is a click, not an orbit. */
 export const CLICK_SLOP_PX = 4;
 const HANDLE_TOLERANCE_PX = 10;
+/** A pose that stays this long is lit again; frames of a playing clip or a drag never are. */
+export const RELIGHT_DELAY_MS = 200;
 
 export interface EditorState {
   /** The rest pose with visibility and filters, before the node edits. */
@@ -61,6 +63,7 @@ export class EditorTools {
   } | null = null;
   private press: { readonly x: number; readonly y: number; readonly id: number } | null = null;
   private readonly cleanups: (() => void)[] = [];
+  private relightTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly host: EditorToolsHost) {
     this.overlay = new OverlayRenderer(host.overlay);
@@ -68,6 +71,10 @@ export class EditorTools {
     this.timeline = new Timeline(host.timeline, {
       frame: (clip, time, loop) => this.playFrame(clip, time, loop),
       interacted: () => host.interacted(),
+      playingChanged: (playing) => {
+        if (playing) this.cancelRelight();
+        else if (this.timeline.posed) this.scheduleRelight();
+      },
     });
     const { viewport } = host;
     viewport.addEventListener('pointerdown', this.onDown, true);
@@ -113,11 +120,12 @@ export class EditorTools {
   documentChanged(): void {
     const state = this.host.state();
     if (!state) return;
-    if (this.timeline.time > 0 && state.rest.animations?.length) {
+    if (this.timeline.posed && state.rest.animations?.length) {
       void this.playFrame(this.timeline.clipIndex, this.timeline.time, this.timeline.looping);
     } else {
       void this.showPose(withNodeEdits(state.rest, state.rest, state.edits));
     }
+    if (!this.timeline.playing && (this.timeline.posed || state.edits.length > 0)) this.scheduleRelight();
   }
 
   togglePlay(): void {
@@ -162,6 +170,7 @@ export class EditorTools {
 
   dispose(): void {
     for (const cleanup of this.cleanups) cleanup();
+    this.cancelRelight();
     this.timeline.pause();
   }
 
@@ -171,6 +180,24 @@ export class EditorTools {
     if (!state) return;
     const posed = animateScene(state.rest, { animation: clip, time, loop: loop ? 'loop' : 'hold' }).document;
     await this.showPose(withNodeEdits(posed, state.rest, state.edits));
+    if (this.timeline.playing) this.cancelRelight();
+    else this.scheduleRelight();
+  }
+
+  // The baked light belongs to the pose it was baked for: when a pose stays (a pause, the end of a scrub, an edit) the
+  // preview is lit again for it, once.
+  private scheduleRelight(): void {
+    this.cancelRelight();
+    this.relightTimer = setTimeout(() => {
+      this.relightTimer = null;
+      if (!this.timeline.playing && this.drag === null) this.host.viewer.relight();
+    }, RELIGHT_DELAY_MS);
+  }
+
+  private cancelRelight(): void {
+    if (this.relightTimer === null) return;
+    clearTimeout(this.relightTimer);
+    this.relightTimer = null;
   }
 
   private async showPose(doc: SceneDocument): Promise<void> {
@@ -230,7 +257,7 @@ export class EditorTools {
         ? { ...drag.start, translation: set(drag.start.translation) }
         : { ...drag.start, rotation: set(drag.start.rotation) };
     const live = setNodeEdit(state.rest, state.edits, drag.live);
-    const posed = this.timeline.time > 0 ? this.animated(state) : state.rest;
+    const posed = this.timeline.posed ? this.animated(state) : state.rest;
     void this.showPose(withNodeEdits(posed, state.rest, live));
   };
 

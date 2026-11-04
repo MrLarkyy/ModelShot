@@ -63,6 +63,7 @@ export class Viewer {
   private frame = 0;
   private lastTime = 0;
   private disposed = false;
+  private documentsPending = 0;
   private readonly cleanups: (() => void)[] = [];
 
   private constructor(
@@ -107,7 +108,13 @@ export class Viewer {
    * it the camera stays (a visibility change). The renderer keeps the previous scene when this rejects.
    */
   async setDocument(doc: SceneDocument, reframe: boolean): Promise<SetSceneResult> {
-    const result = await this.renderer.setScene(doc);
+    this.documentsPending++;
+    let result: SetSceneResult;
+    try {
+      result = await this.renderer.setScene(doc);
+    } finally {
+      this.documentsPending--;
+    }
     if (!result.applied || this.disposed) return result;
     this.doc = doc;
     if (reframe) {
@@ -124,14 +131,21 @@ export class Viewer {
   /**
    * Shows another pose of the shown document (an animation frame, a node drag) on the renderer's pose-only path: nothing
    * is decoded, uploaded or baked and the camera stays. `doc` must share the shown document's meshes, materials and
-   * textures arrays; await `setDocument` first.
+   * textures arrays; await `setDocument` first. While a `setDocument` is under way the pose is not taken (`applied:
+   * false`, the renderer untouched): it would supersede the decode of that document.
    */
   async setPose(doc: SceneDocument): Promise<SetSceneResult> {
+    if (this.documentsPending > 0) return { applied: false, warnings: [] };
     const result = await this.renderer.setScene(doc);
     if (!result.applied || this.disposed) return result;
     this.doc = doc;
     this.requestRender();
     return result;
+  }
+
+  /** Bakes the light again for the document as shown, a pose included: the preview carries the shadows of what it shows. */
+  relight(): void {
+    void this.bake();
   }
 
   /** Changes the angles `resetView` and the angles and field of view the next model starts at; the camera stays. */

@@ -1,6 +1,6 @@
 import type { SceneCamera } from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
-import { Projector } from '../src/viewport/projectPoints';
+import { Projector } from '../src/viewport/Projector';
 
 const perspective: SceneCamera = {
   position: [0, 0, 10],

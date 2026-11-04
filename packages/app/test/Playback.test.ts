@@ -102,4 +102,16 @@ describe('Playback', () => {
     playback.selectClip(9);
     expect(playback.clipIndex).toBe(1);
   });
+
+  it('is posed once a frame went out, also at 0 s, until a new clip list', () => {
+    const { playback } = setup();
+    expect(playback.posed).toBe(false);
+    playback.selectClip(0);
+    expect(playback.time).toBe(0);
+    expect(playback.posed).toBe(true);
+    playback.setAnimations([clip]);
+    expect(playback.posed).toBe(false);
+    playback.seek(0);
+    expect(playback.posed).toBe(true);
+  });
 });

@@ -31,6 +31,7 @@ export class Playback {
   private handle = 0;
   private pending = false;
   private stale = false;
+  private shown = false;
 
   constructor(
     private readonly host: PlaybackHost,
@@ -40,6 +41,11 @@ export class Playback {
 
   get playing(): boolean {
     return this.running;
+  }
+
+  /** A frame of a clip was sent since the clips were set: the preview shows a pose, also at 0 s. */
+  get posed(): boolean {
+    return this.shown;
   }
 
   get time(): number {
@@ -63,6 +69,7 @@ export class Playback {
     this.animations = animations;
     this.clip = 0;
     this.position = 0;
+    this.shown = false;
   }
 
   selectClip(clip: number): void {
@@ -129,6 +136,7 @@ export class Playback {
   }
 
   private send(): void {
+    this.shown = true;
     if (this.pending) {
       // The latest position goes out as soon as the frame in flight is taken.
       this.stale = true;

@@ -1,6 +1,6 @@
 import { animateScene, type SceneAnimation } from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
-import { bakeNodeEdits, nodeTransform, setNodeEdit, withNodeEdits } from '../src/session/withNodeEdits';
+import { nodeTransform, setNodeEdit, withNodeEdits } from '../src/session/withNodeEdits';
 import { boxMesh, doc, node } from './editorDocs';
 
 const d = doc([node(-1, { rotation: [0, 10, 0], meshes: [0] }), node(0)], [boxMesh(0)]);
@@ -48,12 +48,38 @@ describe('withNodeEdits', () => {
     expect(withNodeEdits(posed, animated, [edit]).nodes[0]?.rotation[1]).toBeCloseTo(85);
   });
 
-  it('bakes the edit into the rest for an animation export', () => {
-    const baked = bakeNodeEdits(d, [edit]);
-    expect(baked.nodes[0]?.rotation).toEqual([0, 40, 0]);
-    expect(baked.nodes[0]?.restRotation).toBeUndefined();
-    expect(bakeNodeEdits(d, [])).toBe(d);
-  });
+  it.each([0, 0.5])(
+    'puts the translation edit on a clip frame at %s s, with and without a translation channel',
+    (time) => {
+      const clip: SceneAnimation = {
+        name: 'walk',
+        loop: 'loop',
+        length: 1,
+        channels: [
+          {
+            node: 0,
+            property: 'translation',
+            keyframes: [
+              { time: 0, value: [0, 0, 0], interpolation: 'linear' },
+              { time: 1, value: [2, 0, 0], interpolation: 'linear' },
+            ],
+          },
+        ],
+      };
+      const animated = doc(d.nodes, d.meshes, [clip]);
+      const move = {
+        node: 1,
+        translation: [0, 5, 0] as [number, number, number],
+        rotation: [0, 0, 0] as [number, number, number],
+      };
+      const frame = withNodeEdits(animateScene(animated, { animation: 0, time, loop: 'loop' }).document, animated, [
+        edit,
+        move,
+      ]);
+      expect(frame.nodes[0]?.translation).toEqual([time * 2 + 1, 2, 3]);
+      expect(frame.nodes[1]?.translation).toEqual([0, 5, 0]);
+    },
+  );
 
   it('replaces an edit for the same node and drops one equal to the rest', () => {
     const first = setNodeEdit(d, [], edit);

@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import {
   expect,
   fixture,
@@ -154,6 +154,29 @@ test('typing a position in the Object tab edits the node', async ({ page }) => {
   await field.dispatchEvent('change');
   await expect(page.locator('#tabpanel-object').getByLabel('Position Y')).toHaveValue('3');
   await expect.poll(async () => JSON.stringify((await storedModels(page))[0]?.['nodeEdits'])).toContain('3');
+});
+
+test('Tab from a committed position field lands on the next field', async ({ page }) => {
+  await openNested(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  const panel = page.locator('#tabpanel-object');
+  await panel.getByLabel('Position X').fill('2');
+  await page.keyboard.press('Tab');
+  await expect.poll(async () => JSON.stringify((await storedModels(page))[0]?.['nodeEdits'])).toContain('2');
+  await expect(panel.getByLabel('Position X')).toHaveValue('2');
+  await expect(panel.getByLabel('Position Y')).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(panel.getByLabel('Position Z')).toBeFocused();
+});
+
+test('the Visible checkbox of the Object tab keeps the focus after the change', async ({ page }) => {
+  await openNested(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  const visible = (): Locator => page.locator('#tabpanel-object').getByLabel('Visible', { exact: true });
+  await visible().focus();
+  await page.keyboard.press('Space');
+  await expect(visible()).not.toBeChecked();
+  await expect(visible()).toBeFocused();
 });
 
 test('a locked node shows no gizmo and cannot be picked', async ({ page }) => {
