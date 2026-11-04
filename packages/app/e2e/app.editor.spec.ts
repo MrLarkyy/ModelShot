@@ -100,6 +100,20 @@ test('rename, hide, lock and search work from the outliner and survive a reload'
   await expect(page.getByRole('button', { name: 'Lock Pelvis' })).toHaveAttribute('aria-pressed', 'true');
 });
 
+test('the keyboard focus stays on a row control after it changes the outliner', async ({ page }) => {
+  await openNested(page);
+  const box = page.locator('#scene-panel input[type="checkbox"]').first();
+  await box.focus();
+  await page.keyboard.press('Space');
+  await expect(page.locator('#scene-panel input[type="checkbox"]').first()).not.toBeChecked();
+  await expect(page.locator('#scene-panel input[type="checkbox"]').first()).toBeFocused();
+  const lock = page.locator('#scene-panel button.lock').first();
+  await lock.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#scene-panel button.lock').first()).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#scene-panel button.lock').first()).toBeFocused();
+});
+
 test('the gizmo moves the node, Undo and Redo step through it, and it is remembered', async ({ page }) => {
   await openNested(page);
   await page.locator('#scene-panel [data-row^="node:"]').first().click();

@@ -96,6 +96,9 @@ export class ScenePanel {
 
   private rebuild(): void {
     const model = this.model;
+    // The list is rebuilt for every change: the focus goes back to the control it was on.
+    const active = document.activeElement;
+    const focused = active instanceof HTMLElement && this.list.contains(active) ? active.dataset['focus'] : undefined;
     this.checkboxes.clear();
     this.lastChecked = null;
     this.rows = 0;
@@ -117,6 +120,7 @@ export class ScenePanel {
     const left = doc.nodes.length + doc.meshes.length - this.rows;
     if (left > 0 && !matching) parts.push(el('p', { className: 'hint', text: `${left} more rows are not listed.` }));
     this.list.replaceChildren(...parts);
+    if (focused) this.list.querySelector<HTMLElement>(`[data-focus="${focused}"]`)?.focus();
     this.matches.textContent = matching ? `${matching.count} match${matching.count === 1 ? '' : 'es'}` : '';
     this.lights.replaceChildren(
       el('h3', { text: 'Lights' }),
@@ -190,7 +194,9 @@ export class ScenePanel {
     const name = displayName(model.doc, model.names, kind, index);
     const visible = (kind === 'node' ? model.nodeVisible : model.meshVisible)[index] === true;
     const locked = (kind === 'node' ? model.lockedNodes : model.lockedMeshes)[index] === true;
-    const box = el('input', { attributes: { type: 'checkbox', 'aria-label': `Visible: ${name}` } });
+    const box = el('input', {
+      attributes: { type: 'checkbox', 'aria-label': `Visible: ${name}`, 'data-focus': `box:${kind}:${index}` },
+    });
     box.checked = visible;
     box.addEventListener('change', () => {
       if (kind === 'node') this.host.setNodeVisible(index, box.checked);
@@ -202,7 +208,12 @@ export class ScenePanel {
     const select = el('button', {
       className: 'name',
       text: name,
-      attributes: { type: 'button', 'data-row': `${kind}:${index}`, title: 'Select (F2 renames)' },
+      attributes: {
+        type: 'button',
+        'data-row': `${kind}:${index}`,
+        'data-focus': `name:${kind}:${index}`,
+        title: 'Select (F2 renames)',
+      },
     });
     select.addEventListener('click', () => this.host.selectRow(kind, index));
     select.addEventListener('dblclick', () => this.startRename(kind, index));
@@ -216,7 +227,12 @@ export class ScenePanel {
     const lock = el('button', {
       className: 'lock',
       text: locked ? 'Locked' : 'Lock',
-      attributes: { type: 'button', 'aria-pressed': String(locked), 'aria-label': `Lock ${name}` },
+      attributes: {
+        type: 'button',
+        'aria-pressed': String(locked),
+        'aria-label': `Lock ${name}`,
+        'data-focus': `lock:${kind}:${index}`,
+      },
     });
     lock.addEventListener('click', () => this.host.setLocked(kind, index, !locked));
     return el('li', {}, [el('div', { className: 'outliner-row' }, [box, select, lock])]);
