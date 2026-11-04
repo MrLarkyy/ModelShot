@@ -1,4 +1,6 @@
 import {
+  BbmodelError,
+  DEFAULT_BBMODEL_LIMITS,
   DEFAULT_GLTF_LIMITS,
   DEFAULT_OBJ_LIMITS,
   GltfError,
@@ -6,12 +8,15 @@ import {
   SkinError,
   decodeObjText,
   detectModelFormat,
+  listBbmodelReferences,
   listGltfReferences,
   listObjReferences,
   loadBbmodel,
   loadGltf,
   loadObj,
+  readBbmodelJson,
   readGltfContainer,
+  type BbmodelJson,
   type DecodedObjText,
   type GltfContainer,
 } from '@modelshot/formats';
@@ -23,9 +28,10 @@ import { sha256Hex } from './sha256Hex';
 type Parsed =
   | { readonly format: 'gltf'; readonly container: GltfContainer }
   | { readonly format: 'obj'; readonly text: DecodedObjText }
-  | { readonly format: 'bbmodel' | 'other' }
+  | { readonly format: 'bbmodel'; readonly json: BbmodelJson }
+  | { readonly format: 'other' }
   // The loader's refusal, kept for the load to report: a file it refuses lists nothing.
-  | { readonly format: 'refused'; readonly error: GltfError | ObjError };
+  | { readonly format: 'refused'; readonly error: GltfError | ObjError | BbmodelError };
 
 async function readFileBytes(file: File): Promise<Uint8Array<ArrayBuffer>> {
   return new Uint8Array(await file.arrayBuffer());
@@ -39,12 +45,15 @@ function parse(file: File, bytes: Uint8Array): Parsed {
     }
     if (format === 'obj')
       return { format: 'obj', text: decodeObjText(bytes, file.name, DEFAULT_OBJ_LIMITS.maxFileBytes) };
+    if (format === 'bbmodel')
+      return { format: 'bbmodel', json: readBbmodelJson(bytes, DEFAULT_BBMODEL_LIMITS.maxFileBytes) };
   } catch (error) {
-    if (error instanceof GltfError || error instanceof ObjError) return { format: 'refused', error };
+    if (error instanceof GltfError || error instanceof ObjError || error instanceof BbmodelError) {
+      return { format: 'refused', error };
+    }
     throw error;
   }
-  // MS-82 adds the .bbmodel texture references here.
-  return { format: format === 'bbmodel' ? 'bbmodel' : 'other' };
+  return { format: 'other' };
 }
 
 /**
@@ -68,6 +77,7 @@ export class ModelSource {
     const limit = { maxReferences };
     if (this.parsed.format === 'gltf') return listGltfReferences(this.parsed.container, limit);
     if (this.parsed.format === 'obj') return listObjReferences(this.parsed.text, limit);
+    if (this.parsed.format === 'bbmodel') return listBbmodelReferences(this.parsed.json, limit);
     return [];
   }
 
@@ -79,7 +89,7 @@ export class ModelSource {
     let doc: SceneDocument;
     let warnings: readonly { readonly message: string }[];
     if (parsed.format === 'refused') throw parsed.error;
-    if (parsed.format === 'bbmodel') ({ scene: doc, warnings } = loadBbmodel(bytes, { textureFiles: files }));
+    if (parsed.format === 'bbmodel') ({ scene: doc, warnings } = loadBbmodel(parsed.json, { textureFiles: files }));
     else if (parsed.format === 'gltf') ({ scene: doc, warnings } = loadGltf(parsed.container, { files }));
     else if (parsed.format === 'obj') ({ scene: doc, warnings } = loadObj(parsed.text, { files, fileName: file.name }));
     else throw new SkinError('NOT_PNG', 'not a model file');

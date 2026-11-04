@@ -5,6 +5,8 @@ export { DEFAULT_BBMODEL_LIMITS, type BbmodelLimits, type BbmodelLoadOptions } f
 export type { BbmodelLoadResult } from './bbmodel/BbmodelLoadResult';
 export { MAX_BBMODEL_WARNINGS, type BbmodelWarning, type BbmodelWarningCode } from './bbmodel/BbmodelWarning';
 export { loadBbmodel } from './bbmodel/loadBbmodel';
+export { listBbmodelReferences } from './bbmodel/listBbmodelReferences';
+export { readBbmodelJson, type BbmodelJson } from './bbmodel/readBbmodelJson';
 export { GltfError, type GltfErrorCode } from './gltf/GltfError';
 export {
   DEFAULT_GLTF_LIMITS,
