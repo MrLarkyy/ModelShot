@@ -1,6 +1,7 @@
 {
   "name": "@modelshot/wiki",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "check": "node build.mjs --check"

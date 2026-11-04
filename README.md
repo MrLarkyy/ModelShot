@@ -47,3 +47,8 @@ Docs: [scene format](https://github.com/MrLarkyy/ModelShot/wiki/Scene-format) (w
 [testing](https://github.com/MrLarkyy/ModelShot/wiki/Testing) (unit and browser layers, goldens, budgets, CI).
 
 The [wiki](https://github.com/MrLarkyy/ModelShot/wiki) is generated from `docs/` on every push to `main` (`tools/wiki`); edit the pages there.
+
+## Licence
+
+ModelShot is released under the [MIT licence](LICENSE). The ModelShot name, logo, icons and illustrations are not covered by it
+(see `packages/brand/assets/LICENSE`); the bundled fonts keep their SIL Open Font License.
