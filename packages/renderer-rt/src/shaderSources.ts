@@ -11,6 +11,7 @@ import depthKeyRaster from './shaders/depthKeyRaster.glsl?raw';
 import fallbackFrag from './shaders/fallback.frag.glsl?raw';
 import fullscreenVert from './shaders/fullscreen.vert.glsl?raw';
 import hashAlpha from './shaders/hashAlpha.glsl?raw';
+import lerpExact from './shaders/lerpExact.glsl?raw';
 import meshVert from './shaders/mesh.vert.glsl?raw';
 import oitAccumFrag from './shaders/oitAccum.frag.glsl?raw';
 import oitCompositeFrag from './shaders/oitComposite.frag.glsl?raw';
@@ -37,6 +38,7 @@ export const RENDERER_SHADER_CHUNKS: ShaderChunks = Object.freeze({
   viewport,
   hashAlpha,
   bakedLight,
+  lerpExact,
 });
 
 /** `#include "depthKey"` (fragment) and `#include "depthKeyVertex"` per depth-key variant of the mesh passes. */

@@ -1,5 +1,11 @@
 import { LightBaker, PathTracerError, type BakeResult } from '@modelshot/pathtracer';
-import { observeCanvasSize, RealtimeRenderer, type BakedLighting, type RendererWarning } from '@modelshot/renderer-rt';
+import {
+  lightmapLayout,
+  observeCanvasSize,
+  RealtimeRenderer,
+  type BakedLighting,
+  type RendererWarning,
+} from '@modelshot/renderer-rt';
 import {
   cameraProjection,
   cameraView,
@@ -402,9 +408,10 @@ async function start(): Promise<void> {
     bakeCatcherStats: async (name, samples, look) => {
       if (!isRtSceneName(name)) throw new Error(`unknown scene "${name}"`);
       baker ??= LightBaker.create({ testHooks: true });
-      const { lighting } = await baker.bake(rtScene(name), { samples, seed: 1, ...(look ? { look } : {}) });
+      const doc = rtScene(name);
+      const { lighting } = await baker.bake(doc, { samples, seed: 1, ...(look ? { look } : {}) });
       if (!lighting) throw new Error('bake not applied');
-      return bakedCatcherStats(lighting);
+      return bakedCatcherStats(lighting, lightmapLayout(doc));
     },
     uploadStates: async () => {
       baker ??= LightBaker.create({ testHooks: true });

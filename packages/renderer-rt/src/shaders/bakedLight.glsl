@@ -1,7 +1,9 @@
-// Baked light of the surface (lightmapLayout.ts, BakedLighting.ts): rgb the fill as a multiple of hemisphereFill(n),
+// Baked light of the surface (lightmapLayout.ts, BakedLighting.ts): rgb 1 less the fill lost over hemisphereFill(n),
 // a the key's visibility. Texel charts are read with the albedo's seam taps (texelSample), clamped to the chart, so
 // light changes per texel and at the same pixels as the albedo; world charts bilinearly at their own grid (an
-// untextured face has no texel grid to keep); vertex charts come interpolated from mesh.vert.
+// untextured face has no texel grid to keep); vertex charts come interpolated from mesh.vert. Both blends are exact
+// (lerpExact): four taps of rgb 1 give exactly 1, so a chart whose fill lost nothing shades as hemisphereFill(n).
+#include "lerpExact"
 #include "texelSample"
 #include "faceTexels"
 #include "shading"
@@ -46,7 +48,7 @@ vec4 sampleBakedLight(vec2 uv, vec4 uvRect) {
     vec4 w10 = lightmapTexel(worldOrigin, base + ivec2(1, 0), worldSize);
     vec4 w01 = lightmapTexel(worldOrigin, base + ivec2(0, 1), worldSize);
     vec4 w11 = lightmapTexel(worldOrigin, base + ivec2(1, 1), worldSize);
-    return mix(mix(w00, w10, f.x), mix(w01, w11, f.x), f.y);
+    return lerpExact(lerpExact(w00, w10, f.x), lerpExact(w01, w11, f.x), f.y);
   }
   float k = chart.z;
   ivec4 range = faceTexelRange(uvRect, u_lightmapTextureSize);
@@ -57,7 +59,7 @@ vec4 sampleBakedLight(vec2 uv, vec4 uvRect) {
   vec4 c10 = lightmapTexel(origin, taps.base + ivec2(1, 0), size);
   vec4 c01 = lightmapTexel(origin, taps.base + ivec2(0, 1), size);
   vec4 c11 = lightmapTexel(origin, taps.base + ivec2(1, 1), size);
-  return mix(mix(c00, c10, taps.f.x), mix(c01, c11, taps.f.x), taps.f.y);
+  return lerpExact(lerpExact(c00, c10, taps.f.x), lerpExact(c01, c11, taps.f.x), taps.f.y);
 }
 
 // The preview's shading: with baked light when the renderer has it, else exactly the unbaked expression.

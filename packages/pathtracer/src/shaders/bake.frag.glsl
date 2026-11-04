@@ -14,10 +14,10 @@ precision highp sampler2DArray;
 // One sample of the light bake per lightmap texel, with the path tracer's own rules for every ray (bvhTraverse): the
 // key's visibility through shadowTransmittance in the key cone, the fill as the environment along one cosine-weighted
 // direction that escapes. No interreflection: the bake is what the preview's lighting lacks, occlusion. Pass sums:
-// rgb the fill as a multiple of hemisphereFill(n), a the key visibility; texels of no chart add 1 (unbaked). The
-// catcher's rgb is instead 1 less the fill its ray lost to a blocker over hemisphereFill(up), the path tracer's control
-// variate (trace.frag.glsl catcherShadeAt): exactly 1 where nothing blocks, unclamped, so a fully blocked texel's mean
-// may dip below 0, as the trace's own mean does.
+// rgb 1 less the fill the ray lost over hemisphereFill(n), a the key visibility; texels of no chart add 1 (unbaked).
+// The loss is what a blocker took of the environment along the ray, a ray under the surface counting as the trace does
+// (mirrored, bakePoint): the path tracer's control variate (trace.frag.glsl catcherShadeAt), exactly 1 where nothing is
+// lost, unclamped, so a texel's mean may dip below 0 (fully blocked) or above 1 (mirrored rays see a brighter sky).
 
 // The running sum of earlier samples (AccumulationTargets).
 uniform highp sampler2D u_previous;
@@ -83,14 +83,6 @@ int chartTriangle(int entry) {
   return int(four[entry % 4]);
 }
 
-// Per channel, light over its unoccluded value; a channel the look leaves dark (0 / 0) has nothing to lose: 1.
-vec3 fillShare(vec3 light, vec3 full) {
-  return vec3(
-    full.r > 0.0 ? light.r / full.r : 1.0,
-    full.g > 0.0 ? light.g / full.g : 1.0,
-    full.b > 0.0 ? light.b / full.b : 1.0);
-}
-
 // Per channel, what blockers took over the unoccluded value; a dark channel loses nothing: 0.
 vec3 lostShare(vec3 lost, vec3 full) {
   return vec3(
@@ -106,17 +98,23 @@ float bakeKey(vec3 origin, vec3 side, int skip, uint key) {
   return shadowTransmittance(origin, cone, skip);
 }
 
-// The light of one model surface point: rgb the fill over hemisphereFill(normal), a the key visibility.
+// The light of one model surface point: rgb 1 less the fill lost over hemisphereFill(normal), a the key visibility. The
+// trace mirrors a cosine ray under the surface (aboveSurface), so one that escapes after the mirror loses only the
+// difference of the environment along the two, and a ray a blocker stops loses what it carried: exactly 0 lost for a
+// ray above the surface that escapes, so a flat face nothing blocks is exactly 1.
 vec4 bakePoint(vec3 position, vec3 normal, vec3 side, int skip, uint key) {
   vec3 origin = leave(position, side);
   float keyT = bakeKey(origin, side, skip, key);
   vec3 d = cosineDirection(normal, unitRandom(key, FILL_DIMENSION, 0u), unitRandom(key, FILL_DIMENSION + 1u, 0u));
-  vec3 fill = vec3(0.0);
-  if (dot(d, side) > 0.0) {
+  vec3 mirrored = aboveSurface(d, side);
+  vec3 lost = environmentRadiance(d);
+  if (dot(mirrored, side) > 0.0) {
     Hit blocker;
-    if (!closestHit(origin, d, 0.0, 3.0e38, 1.0, skip, key, ALPHA_DIMENSION, blocker)) fill = environmentRadiance(d);
+    if (!closestHit(origin, mirrored, 0.0, 3.0e38, 1.0, skip, key, ALPHA_DIMENSION, blocker)) {
+      lost = lost - environmentRadiance(mirrored);
+    }
   }
-  return vec4(fillShare(fill, hemisphereFill(normal)), keyT);
+  return vec4(1.0 - lostShare(lost, hemisphereFill(normal)), keyT);
 }
 
 // A catcher point: rgb 1 less the fill lost over hemisphereFill(up), a the key visibility. No side test, as in the
