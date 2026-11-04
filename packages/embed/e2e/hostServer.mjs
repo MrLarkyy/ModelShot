@@ -13,7 +13,9 @@
 //   /sidecars-partial/<path> the same, the .png files without Access-Control-Allow-Origin
 //   /hostile/<case>          a model referring to a file the embed must refuse, after one it may download:
 //                            absolute.gltf (another origin), protocol-relative.gltf, backslash.gltf, javascript.gltf,
-//                            file.gltf, data-mtllib.obj; many.gltf refers to 32 images;
+//                            file.gltf, data-mtllib.obj; many.gltf refers to 32 images; absolute.bbmodel,
+//                            protocol-relative.bbmodel, javascript.bbmodel (a texture `name` without `relative_path`);
+//                            many.bbmodel refers to 32 more textures;
 //                            missing-mtllib.obj refers to a material library that answers 404 (it still shows)
 //   /mainthread/<case>       large glTF models made in memory on first request, for the frame's main-thread budget:
 //                            big.gltf (63 MiB of JSON with the fixture's buffer and image), long-uri.gltf (an image uri
@@ -62,9 +64,18 @@ if (portIndex < 0 || !Number.isInteger(port)) throw new Error('usage: node e2e/h
 
 const log = [];
 
-/** The models of `/hostile/<case>`: the fixture glTF with its buffer kept and its image replaced. */
+/**
+ * The models of `/hostile/<case>`: the fixture glTF with its buffer kept and its image replaced, and the fixture bbmodel
+ * with its texture kept and `textures` added after it.
+ */
 function hostileModels() {
   const scene = JSON.parse(readFileSync(join(SIDECAR_DIR, 'gltf', 'scene.gltf'), 'utf8'));
+  const cube = JSON.parse(readFileSync(join(SIDECAR_DIR, 'bbmodel', 'scene.bbmodel'), 'utf8'));
+  const bbmodel = (textures) =>
+    JSON.stringify({
+      ...cube,
+      textures: [{ ...cube.textures[0], relative_path: '../sidecars/textures/checker tile.png' }, ...textures],
+    });
   const gltf = (images) =>
     JSON.stringify({
       ...scene,
@@ -89,6 +100,16 @@ function hostileModels() {
       ['mtllib ../sidecars/obj/gone.mtl', 'usemtl a', 'v 0 0 0', 'v 1 0 0', 'v 0 1 0', 'f 1 2 3'].join('\n'),
     ],
     ['many.gltf', gltf(Array.from({ length: 32 }, (_, i) => `../sidecars/t${i}.png`))],
+    ['absolute.bbmodel', bbmodel([{ name: 'a.png', relative_path: other }])],
+    [
+      'protocol-relative.bbmodel',
+      bbmodel([{ name: 'a.png', relative_path: `//localhost:${port}/sidecars/textures/checker%20tile.png` }]),
+    ],
+    ['javascript.bbmodel', bbmodel([{ name: 'javascript:alert(1)//a.png' }])],
+    [
+      'many.bbmodel',
+      bbmodel(Array.from({ length: 32 }, (_, i) => ({ name: `t${i}.png`, relative_path: `../sidecars/t${i}.png` }))),
+    ],
   ]);
 }
 const hostile = hostileModels();

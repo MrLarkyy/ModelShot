@@ -47,8 +47,8 @@ The element is a small loader (about 3 kB gzip, budget row `embed`). It checks i
 1. reads the parameters from `location.hash` (never the query string);
 2. checks the file name of the model URL with the app's intake rules (extension; one model or one skin PNG);
 3. starts the WebGL2 viewer (`WEBGL2_UNAVAILABLE` without it);
-4. downloads the model (limits below); for a `.gltf`, `.glb` or `.obj` the app's load worker reads and parses it
-   once and lists the files it refers to, which the frame downloads from the same server (see
+4. downloads the model (limits below); for a `.gltf`, `.glb`, `.obj` or `.bbmodel` the app's load worker reads and
+   parses it once and lists the files it refers to, which the frame downloads from the same server (see
    [Models with several files](#models-with-several-files)); the frame checks them again with the intake limits and
    the same worker loads the model from what it parsed with its files, as if they had been picked together (30 s
    watchdog over the worker's listing and loading together, the loaders' own limits);
@@ -66,17 +66,17 @@ worker is stopped after 30 s.
 Version 1. In the fragment of the frame page URL, `name=value` pairs joined by `&`, each value encoded with
 `encodeURIComponent` (a `+` left raw reads as a space). At most 8192 characters after the `#`.
 
-| name         | value                                                                                                                                                     | default             |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
-| `v`          | `1`, the contract version; absent reads as 1                                                                                                              | 1                   |
-| `model`      | absolute `http` or `https` URL of a `.bbmodel`, `.glb`, `.gltf` (embedded data), `.obj` or skin `.png`, at most 2048 characters, no user name or password | required            |
-| `look`       | `studio`, `marketplace` or `rim` (the [look presets](look-presets.md))                                                                                    | `studio`            |
-| `yaw`        | camera yaw in degrees, a decimal in -360..360                                                                                                             | 210                 |
-| `pitch`      | camera pitch in degrees, a decimal in -89.5..89.5                                                                                                         | 20                  |
-| `fov`        | vertical field of view in degrees, a decimal in 10..100                                                                                                   | 35                  |
-| `autorotate` | empty, `true` or `1` turns the model; `false` or `0` does not                                                                                             | off                 |
-| `background` | `#rgb` or `#rrggbb`, the colour shown behind the model (see below)                                                                                        | the look's backdrop |
-| `arms`       | `classic` or `slim`, the arm width of a skin PNG                                                                                                          | `classic`           |
+| name         | value                                                                                                                                                                         | default             |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| `v`          | `1`, the contract version; absent reads as 1                                                                                                                                  | 1                   |
+| `model`      | absolute `http` or `https` URL of a `.bbmodel` (embedded or external PNG textures), `.glb`, `.gltf`, `.obj` or skin `.png`, at most 2048 characters, no user name or password | required            |
+| `look`       | `studio`, `marketplace` or `rim` (the [look presets](look-presets.md))                                                                                                        | `studio`            |
+| `yaw`        | camera yaw in degrees, a decimal in -360..360                                                                                                                                 | 210                 |
+| `pitch`      | camera pitch in degrees, a decimal in -89.5..89.5                                                                                                                             | 20                  |
+| `fov`        | vertical field of view in degrees, a decimal in 10..100                                                                                                                       | 35                  |
+| `autorotate` | empty, `true` or `1` turns the model; `false` or `0` does not                                                                                                                 | off                 |
+| `background` | `#rgb` or `#rrggbb`, the colour shown behind the model (see below)                                                                                                            | the look's backdrop |
+| `arms`       | `classic` or `slim`, the arm width of a skin PNG                                                                                                                              | `classic`           |
 
 Decimals are written plainly: `-12.5`, `30`; no exponent, plus sign, spaces, `NaN` or `Infinity`. The model is framed
 to fit from the given angles.
@@ -175,32 +175,44 @@ library is drawn missing or plain with the loader's warning.
 
 ## Models with several files
 
-A `.gltf` with external buffers and images, or an `.obj` with `mtllib` material libraries and their `map_Kd`
-textures, loads by URL like the same files picked together in the app. After the model, the load worker lists its
-references with the loaders' own parsers (`listGltfReferences`, `listObjReferences`, `listMtlReferences` of
-`@modelshot/formats`), keeping the parsed model for its load, and the frame resolves each against the model URL (an
-OBJ texture against its `.mtl` file's URL, as exporters write them) and downloads them. The frame's thread reads
-only the model's first 4 bytes (its format): a 63 MiB `.gltf` costs it no task of 100 ms or more
-(`embed.mainThread.spec.ts`):
+A `.gltf` with external buffers and images, an `.obj` with `mtllib` material libraries and their `map_Kd`
+textures, or a `.bbmodel` with textures that are not embedded, loads by URL like the same files picked together in the
+app. After the model, the load worker lists its references with the loaders' own parsers (`listGltfReferences`,
+`listObjReferences`, `listMtlReferences`, `listBbmodelReferences` of `@modelshot/formats`), keeping the parsed model
+for its load, and the frame resolves each against the model URL (an OBJ texture against its `.mtl` file's URL, as
+exporters write them) and downloads them. The frame's thread reads only the model's first 4 bytes (its format): a
+63 MiB `.gltf` costs it no task of 100 ms or more (`embed.mainThread.spec.ts`):
 
 - Only a relative path is downloaded (`model.bin`, `textures/skin%20A.png`, `../textures/a.png`, `/models/a.png`),
   at most 2048 characters, and only when it lands on the model's own origin over http(s). A URL with a scheme (even the model's own
   `https://...`), `//host`, a backslash authority or anything leading elsewhere after the browser's URL parsing fails
   the model with `SIDECAR_REFUSED` before any of its files is requested. `data:` URIs of a `.gltf` are decoded by the
   loader, never requested.
-- Only `.bin`, `.png`, `.jpg`, `.jpeg` and `.mtl` files are downloaded, what the app takes next to a model; another
-  reference (a `.webp`, a path with a query) is left to the loader, which reports it missing as in a local open.
-- A file the server answers an error status for (404, 403, 500, ...) is left out, as if it were not there: the loader
-  reports it missing (a `.gltf` buffer fails with `MISSING_BUFFER`; a texture or material library is drawn missing or
-  plain with a warning). CORS, size, time and connection failures stay errors.
+- A `.bbmodel` texture without an embedded (`data:`) image is downloaded by its `relative_path`, else by its `name`,
+  next to the model. `relative_path` is relative to the model's directory (`../textures/a.png`, backslashes read as
+  slashes); in a file before format 4.10 Blockbench wrote it relative to the model file itself, so its first leading
+  `../` or `..\` is dropped, as Blockbench does on import (`..\..\textures\a.png` is `../textures/a.png`). Its `path`
+  (the author's absolute path) and its `source` are never requested; a `source` URL is reported by the loader as not
+  fetched. Only a `.png` is downloaded (the loader takes PNG only; a `.jpg` texture is reported missing). The download
+  is named by the base name as written, the name the loader matches, without percent-decoding: `skin%20A.png` is
+  requested as the URL `skin%20A.png` (the server's `skin A.png`) and kept as `skin%20A.png`. The same policy applies:
+  a URL, `//host` or another origin in `relative_path` or `name` fails the model with `SIDECAR_REFUSED`, and a model
+  whose textures are all embedded makes no request but its own.
+- Only `.bin`, `.png`, `.jpg`, `.jpeg` and `.mtl` files are downloaded (for a `.bbmodel` only `.png`), what the app
+  takes next to a model; another reference (a `.webp`, a path whose URL has a query or fragment such as `a?b.png` or
+  `tex#1.png`) is left to the loader, which reports it missing as in a local open.
+- A file the server answers an error status for (404, 403, 500, ...) or a web page for (`Content-Type: text/html`, a
+  single-page app's fallback for a missing file) is left out, as if it were not there: the loader reports it missing (a
+  `.gltf` buffer fails with `MISSING_BUFFER`; a texture or material library is drawn missing or plain with a warning).
+  CORS, size, time and connection failures stay errors.
 - A drive path (`C:\tex\a.png`) is a file of the author's machine: it is never requested, and the loader reports it
   missing.
 - Each URL is downloaded once, one after another in the model's order. The loader finds a file by its name, so two
   URLs ending in the same file name (`a/skin.png`, `b/skin.png`, case ignored) are refused with `SIDECAR_REFUSED`.
 - At most 31 files (32 with the model, the app's limit), checked before the first request (`TOO_MANY_SIDECARS`); the
   model and its files share the 64 MiB, and the files share one 30 s limit from their first request.
-- A `.bbmodel`, a `.glb` with its BIN chunk and a `.gltf` or `.obj` that refers to nothing make no request but the
-  model's.
+- A `.bbmodel` with only embedded textures, a `.glb` with its BIN chunk and a `.gltf` or `.obj` that refers to nothing
+  make no request but the model's.
 
 The files need the same CORS header as the model (below).
 
@@ -278,8 +290,10 @@ solve for every look, no network API outside the download, and that this page's 
 (`contractDocs.test.ts`). `packages/embed/e2e` (Playwright, SwiftShader, `pnpm --filter @modelshot/embed run
 test:browser`): the element and a plain iframe on a host page of another origin (lit preview, looks, camera,
 background, autorotate, reduced motion, attribute changes), lazy loading, the CORS, unreachable and HTTP errors, the
-size and time limits with the host page staying responsive, the requests made, and a `.gltf` and an `.obj` with
-their files on the model server (textures drawn, PNG and JPEG, requests only to the model's origin) beside hostile
-references, too many files and a texture without CORS (`embed.sidecars.spec.ts`, models made by
-`e2e/fixtures/sidecars/generate.mjs`, CC0), and the frame's long tasks while a 63 MiB `.gltf`, one with a 60 MiB
+size and time limits with the host page staying responsive, the requests made, and a `.gltf`, an `.obj` and a
+`.bbmodel` (format 5.0, and 4.9 with its file-relative backslash `relative_path`, each beside an absolute `path`)
+with their files on the model server
+(textures drawn, PNG and JPEG, requests only to the model's origin) beside hostile references, too many files and a
+texture without CORS (`embed.sidecars.spec.ts`, models made by `e2e/fixtures/sidecars/generate.mjs`, CC0), and the
+frame's long tasks while a 63 MiB `.gltf`, one with a 60 MiB
 `uri` and one with 100 000 copies of a `uri` are listed (`embed.mainThread.spec.ts`). Described in [Testing](testing.md).

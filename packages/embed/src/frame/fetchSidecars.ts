@@ -1,14 +1,21 @@
-import { detectModelFormat, listGltfReferences, listMtlReferences, listObjReferences } from '@modelshot/formats';
+import {
+  detectModelFormat,
+  listBbmodelReferences,
+  listGltfReferences,
+  listMtlReferences,
+  listObjReferences,
+} from '@modelshot/formats';
 import { EmbedError } from '../EmbedError';
 import { MAX_EMBED_MODEL_BYTES, MODEL_FETCH_TIMEOUT_MS, fetchSidecar } from './fetchModel';
 import { resolveSidecarUrl } from './resolveSidecarUrl';
+import { BBMODEL_SIDECARS, MODEL_SIDECARS, type SidecarPolicy } from './SidecarPolicy';
 
 /** The model and its files together stay within the app intake's 32 files. */
 export const MAX_EMBED_SIDECARS = 31;
 
 /**
  * More references than any model the loaders take can hold (glTF: 256 buffers and 64 images; OBJ: 256 libraries or
- * materials), so a full list means the model is refused either way, and nothing past it goes unchecked.
+ * materials; bbmodel: 64 textures), so a full list means the model is refused either way, and nothing past it goes unchecked.
  */
 const MAX_LISTED_REFERENCES = 512;
 
@@ -46,7 +53,9 @@ async function listHere(file: File, of: 'model' | 'library', maxReferences: numb
   const limit = { maxReferences };
   if (of === 'library') return listMtlReferences(bytes, limit);
   const format = detectModelFormat(file.name, bytes.subarray(0, 4));
-  return format === 'obj' ? listObjReferences(bytes, limit) : listGltfReferences(bytes, limit);
+  if (format === 'obj') return listObjReferences(bytes, limit);
+  if (format === 'bbmodel') return listBbmodelReferences(bytes, limit);
+  return listGltfReferences(bytes, limit);
 }
 
 function tooMany(): EmbedError {
@@ -62,14 +71,17 @@ class SidecarList {
   readonly planned: Sidecar[] = [];
   private readonly byName = new Map<string, string>();
 
-  constructor(private readonly modelOrigin: string) {}
+  constructor(
+    private readonly modelOrigin: string,
+    private readonly policy: SidecarPolicy,
+  ) {}
 
   /** Resolves every reference against `baseUrl`; a refused one or a name clash throws, before any request. */
   add(references: readonly string[], baseUrl: string): Sidecar[] {
     if (references.length > MAX_LISTED_REFERENCES) throw tooMany();
     const added: Sidecar[] = [];
     for (const reference of references) {
-      const resolved = resolveSidecarUrl(reference, baseUrl, this.modelOrigin);
+      const resolved = resolveSidecarUrl(reference, baseUrl, this.modelOrigin, this.policy);
       if (resolved.kind === 'refuse') throw resolved.error;
       if (resolved.kind === 'skip') continue;
       const key = resolved.name.toLowerCase();
@@ -93,13 +105,14 @@ class SidecarList {
 }
 
 /**
- * Downloads the files a glTF or OBJ model refers to (buffers, images, material libraries and their textures) from the
- * model's own server, as the app would read them picked next to the model. Every reference is checked
- * (`resolveSidecarUrl`), counted and named before the first request; OBJ textures resolve against their MTL's URL and
- * are checked before any texture request. The downloads run one after another, with `fetchModel`'s request options,
- * within one byte budget shared with the model and one time limit for them all. A file the server answers an error
- * status for (404, 403, 500) is left out, for the loader to report missing. A `.bbmodel` or a self-contained model
- * makes no request, and a `.bbmodel` or a skin is not even read.
+ * Downloads the files a glTF, OBJ or `.bbmodel` model refers to (buffers, images, material libraries and their
+ * textures, bbmodel textures without an embedded image) from the model's own server, as the app would read them picked
+ * next to the model. Every reference is checked (`resolveSidecarUrl`), counted and named before the first request; OBJ
+ * textures resolve against their MTL's URL and are checked before any texture request. The downloads run one after
+ * another, with `fetchModel`'s request options, within one byte budget shared with the model and one time limit for
+ * them all. A file the server answers an error status (404, 403, 500) or a web page (`text/html`, a server's fallback
+ * for a missing file) for is left out, for the loader to report missing. A self-contained model makes no request, and
+ * a skin is not even read; with `listReferences` given, this thread reads no more of the model than its first 4 bytes.
  */
 export async function fetchSidecars(model: File, modelUrl: string, options: FetchSidecarsOptions): Promise<File[]> {
   const totalBytes = options.maxBytes ?? MAX_EMBED_MODEL_BYTES;
@@ -108,11 +121,11 @@ export async function fetchSidecars(model: File, modelUrl: string, options: Fetc
   const head = new Uint8Array(await model.slice(0, 4).arrayBuffer());
   options.signal?.throwIfAborted();
   const format = detectModelFormat(model.name, head);
-  if (format !== 'gltf' && format !== 'glb' && format !== 'obj') return [];
+  if (format !== 'gltf' && format !== 'glb' && format !== 'obj' && format !== 'bbmodel') return [];
   const listReferences = options.listReferences ?? listHere;
   const references = await listReferences(model, 'model', MAX_LISTED_REFERENCES);
   options.signal?.throwIfAborted();
-  const list = new SidecarList(new URL(modelUrl).origin);
+  const list = new SidecarList(new URL(modelUrl).origin, format === 'bbmodel' ? BBMODEL_SIDECARS : MODEL_SIDECARS);
   const first = list.add(references, modelUrl);
   if (first.length === 0) return [];
 

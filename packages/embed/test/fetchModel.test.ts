@@ -50,6 +50,13 @@ async function failure(promise: Promise<unknown>): Promise<EmbedError> {
 }
 
 describe('fetchModel', () => {
+  it('downloads a model whatever content type the server names, text/html included', async () => {
+    const { fetch } = fakeFetch(() =>
+      Promise.resolve(new Response('{"meta":{}}', { headers: { 'content-type': 'text/html' } })),
+    );
+    expect(await (await fetchModel(URL_HTTPS, { fetch, frameOrigin: FRAME })).text()).toBe('{"meta":{}}');
+  });
+
   it('downloads the model as a file named after the URL, without credentials or referrer', async () => {
     const { fetch, calls } = fakeFetch(() => Promise.resolve(new Response('{"meta":{}}')));
     const file = await fetchModel(URL_HTTPS, { fetch, frameOrigin: FRAME });

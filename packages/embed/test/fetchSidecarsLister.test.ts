@@ -35,6 +35,9 @@ const gltfWith = (uris: { buffers?: string[]; images?: string[] }): string =>
     images: (uris.images ?? []).map((uri) => ({ uri })),
   });
 
+const bbmodelWith = (textures: readonly Record<string, unknown>[]): string =>
+  JSON.stringify({ meta: { format_version: '5.0', model_format: 'free' }, textures });
+
 interface Case {
   readonly model: () => File;
   readonly path: string;
@@ -123,6 +126,30 @@ const CASES: Record<string, Case> = {
     },
   },
   'a malformed glTF': { model: () => new File(['{"asset":'], 'a.gltf'), path: '/m/a.gltf' },
+  'the fixture bbmodel': {
+    model: () => new File([fixture('bbmodel/scene.bbmodel')], 'scene.bbmodel'),
+    path: '/sidecars/bbmodel/scene.bbmodel',
+    served: { '/sidecars/textures/checker%20tile.png': () => fixture('textures/checker tile.png') },
+  },
+  'the format 4.9 fixture bbmodel': {
+    model: () => new File([fixture('bbmodel/scene-4.9.bbmodel')], 'scene-4.9.bbmodel'),
+    path: '/sidecars/bbmodel/scene-4.9.bbmodel',
+    served: { '/sidecars/textures/checker%20tile.png': () => fixture('textures/checker tile.png') },
+  },
+  'a bbmodel with a JPEG and a percent-escaped texture': {
+    model: () => new File([bbmodelWith([{ name: 'a.jpg' }, { name: 'skin%20A.png' }])], 'a.bbmodel'),
+    path: '/m/a.bbmodel',
+    served: { '/m/skin%20A.png': () => text('png') },
+  },
+  'a bbmodel with a hostile texture name': {
+    model: () => new File([bbmodelWith([{ name: 'a.png' }, { name: '//evil.example/b.png' }])], 'a.bbmodel'),
+    path: '/m/a.bbmodel',
+  },
+  [`a bbmodel of ${MAX_EMBED_SIDECARS + 1} textures`]: {
+    model: () => new File([bbmodelWith(names(MAX_EMBED_SIDECARS + 1).map((name) => ({ name })))], 'a.bbmodel'),
+    path: '/m/a.bbmodel',
+  },
+  'a malformed bbmodel': { model: () => new File(['{"meta":'], 'a.bbmodel'), path: '/m/a.bbmodel' },
   'a GLB over the loader limit': {
     model: () => new File([new Uint8Array([0x67, 0x6c, 0x54, 0x46, 2, 0, 0, 0])], 'a.glb'),
     path: '/m/a.glb',
@@ -204,14 +231,22 @@ describe('fetchSidecars with the load worker listing the references', () => {
     expect(libraries).toHaveLength(1);
   });
 
-  it('asks nothing of the lister for a .bbmodel', async () => {
+  it('lists a .bbmodel in the worker, never reading it in the frame beyond 4 bytes', async () => {
     const { lister, asked } = workerLister();
-    const fetch = vi.fn() as unknown as typeof globalThis.fetch;
-    const model = new File(['{"meta":{}}'], 'a.bbmodel');
-    expect(
-      await fetchSidecars(model, `${SERVER}/m/a.bbmodel`, { fetch, frameOrigin: FRAME, listReferences: lister }),
-    ).toEqual([]);
-    expect(asked).toEqual([]);
+    const model = new File([fixture('bbmodel/scene.bbmodel')], 'scene.bbmodel');
+    const whole = vi.spyOn(model, 'arrayBuffer').mockRejectedValue(new Error('read in the frame'));
+    const slice = vi.spyOn(model, 'slice');
+    const fetch = (() =>
+      Promise.resolve(new Response(fixture('textures/checker tile.png')))) as typeof globalThis.fetch;
+    const files = await fetchSidecars(model, `${SERVER}/sidecars/bbmodel/scene.bbmodel`, {
+      fetch,
+      frameOrigin: FRAME,
+      listReferences: lister,
+    });
+    expect(files.map((f) => f.name)).toEqual(['checker tile.png']);
+    expect(whole).not.toHaveBeenCalled();
+    expect(slice).toHaveBeenCalledExactlyOnceWith(0, 4);
+    expect(asked).toEqual(['model scene.bbmodel']);
   });
 
   it('rejects with the abort reason when the frame moves on while the worker lists', async () => {

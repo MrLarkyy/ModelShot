@@ -119,6 +119,40 @@ test('an .obj with its material library and texture loads by URL, the texture re
   ]);
 });
 
+for (const [model, what] of [
+  ['scene.bbmodel', 'format 5.0, relative to its directory'],
+  ['scene-4.9.bbmodel', 'format 4.9, relative to the file with backslashes'],
+] as const) {
+  test(`a .bbmodel with an external texture (${what}) loads by URL, its texture asked only of the model server`, async ({
+    page,
+    seen,
+    request,
+  }) => {
+    await openHost(page);
+    await addViewer(page, { model: `${HOST_ORIGIN}/sidecars/bbmodel/${model}`, loading: 'eager' });
+    await waitForEvent(page, 'load');
+    await expect(viewerFrame(page).locator('#stage')).toHaveAttribute('data-state', 'shown');
+    await expectCheckerDrawn(page);
+    const asked = (await hostRequests(request)).filter((r) => !['/host.html', '/__requests'].includes(r.path));
+    expect(asked).toEqual(
+      [`/sidecars/bbmodel/${model}`, '/sidecars/textures/checker%20tile.png'].map((path) => ({
+        method: 'GET',
+        path,
+        cookie: null,
+        referer: null,
+        origin: FRAME_ORIGIN,
+      })),
+    );
+    expect(seen.filter((r) => /C:|%5C|author/i.test(r.url)).map((r) => r.url)).toEqual([]);
+    for (const r of seen) {
+      const url = new URL(r.url);
+      if (url.protocol === 'blob:' || url.protocol === 'data:') continue;
+      expect([HOST_ORIGIN, FRAME_ORIGIN], `${r.url}: no third origin`).toContain(url.origin);
+    }
+    expect(await cspViolations(page)).toEqual([]);
+  });
+}
+
 for (const [model, code] of [
   ['absolute.gltf', 'SIDECAR_REFUSED'],
   ['protocol-relative.gltf', 'SIDECAR_REFUSED'],
@@ -127,6 +161,10 @@ for (const [model, code] of [
   ['file.gltf', 'SIDECAR_REFUSED'],
   ['data-mtllib.obj', 'SIDECAR_REFUSED'],
   ['many.gltf', 'TOO_MANY_SIDECARS'],
+  ['absolute.bbmodel', 'SIDECAR_REFUSED'],
+  ['protocol-relative.bbmodel', 'SIDECAR_REFUSED'],
+  ['javascript.bbmodel', 'SIDECAR_REFUSED'],
+  ['many.bbmodel', 'TOO_MANY_SIDECARS'],
 ] as const) {
   test(`hostile/${model} fails with ${code} before any request but the model's`, async ({ page, request, seen }) => {
     await openHost(page);
@@ -135,7 +173,9 @@ for (const [model, code] of [
     expect((await waitForEvent(page, 'error', 60_000)).detail.code).toBe(code);
     const asked = (await hostRequests(request)).filter((r) => !['/host.html', '/__requests'].includes(r.path));
     expect(asked.map((r) => [r.method, r.path])).toEqual([['GET', `/hostile/${model}`]]);
-    expect(seen.filter((r) => /localhost|passwd|t\d+\.png|scene\.(bin|mtl)/.test(r.url)).map((r) => r.url)).toEqual([]);
+    expect(
+      seen.filter((r) => /localhost|passwd|t\d+\.png|scene\.(bin|mtl)|checker/.test(r.url)).map((r) => r.url),
+    ).toEqual([]);
   });
 }
 

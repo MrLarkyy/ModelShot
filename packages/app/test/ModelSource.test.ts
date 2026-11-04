@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { GltfError, SkinError, loadBbmodel, loadGltf, loadObj, type ObjError } from '@modelshot/formats';
+import { BbmodelError, GltfError, SkinError, loadBbmodel, loadGltf, loadObj, type ObjError } from '@modelshot/formats';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ModelSource } from '../src/intake/ModelSource';
 import { sha256Hex } from '../src/intake/sha256Hex';
@@ -95,11 +95,48 @@ describe('ModelSource', () => {
     expect([error.code, error.path]).toEqual(['FILE_TOO_LARGE', 'big.obj']);
   });
 
-  it('loads a .bbmodel as a whole-file load does, listing nothing', async () => {
+  it("lists a .bbmodel's external textures and loads it with them from one JSON parse", async () => {
+    const resources = [file('bbmodel/referenced.png')];
+    const parse = vi.spyOn(JSON, 'parse');
+    const source = await ModelSource.open(file('bbmodel/referenced-texture.bbmodel'));
+    expect(source.references(MAX)).toEqual(['textures/referenced.png', 'remote.png']);
+    const loaded = await source.load(resources);
+    expect(parse).toHaveBeenCalledOnce();
+    parse.mockRestore();
+    const whole = loadBbmodel(fixture('bbmodel/referenced-texture.bbmodel'), {
+      textureFiles: await bytesOf(resources),
+    });
+    expect(loaded).toEqual({
+      doc: whole.scene,
+      warnings: whole.warnings.map((w) => w.message),
+      name: 'referenced-texture.bbmodel',
+      kind: 'model',
+      key: await sha256Hex(fixture('bbmodel/referenced-texture.bbmodel')),
+    });
+  });
+
+  it('loads a .bbmodel with embedded textures as a whole-file load does, listing nothing', async () => {
     const source = await ModelSource.open(file('bbmodel/single-cube.bbmodel'));
     expect(source.references(MAX)).toEqual([]);
     const loaded = await source.load([]);
     expect(loaded.doc).toEqual(loadBbmodel(fixture('bbmodel/single-cube.bbmodel')).scene);
+  });
+
+  it('lists nothing for a .bbmodel of broken JSON and fails the load as a whole-file load does', async () => {
+    const text = '{"meta":';
+    const source = await ModelSource.open(new File([text], 'a.bbmodel'));
+    expect(source.references(MAX)).toEqual([]);
+    const error = (await rejection(source.load([]))) as BbmodelError;
+    const whole = (() => {
+      try {
+        loadBbmodel(new TextEncoder().encode(text));
+      } catch (e) {
+        return e as BbmodelError;
+      }
+      throw new Error('expected loadBbmodel to fail');
+    })();
+    expect(error).toBeInstanceOf(BbmodelError);
+    expect([error.code, error.message]).toEqual(['NOT_JSON', whole.message]);
   });
 
   it('refuses a file of no model format as the worker did', async () => {

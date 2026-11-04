@@ -1,0 +1,103 @@
+{
+  "meta": {
+    "format_version": "5.0",
+    "model_format": "free",
+    "box_uv": false
+  },
+  "name": "checker cube",
+  "resolution": {
+    "width": 16,
+    "height": 16
+  },
+  "elements": [
+    {
+      "name": "checker cube",
+      "type": "cube",
+      "uuid": "c-checker",
+      "from": [
+        -8,
+        -8,
+        -8
+      ],
+      "to": [
+        8,
+        8,
+        8
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 0
+        },
+        "down": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": 0
+        }
+      }
+    }
+  ],
+  "outliner": [
+    "c-checker"
+  ],
+  "textures": [
+    {
+      "name": "checker tile.png",
+      "path": "C:\\Users\\author\\models\\textures\\checker tile.png",
+      "relative_path": "../textures/checker tile.png",
+      "uv_width": 16,
+      "uv_height": 16,
+      "uuid": "t-checker"
+    }
+  ]
+}

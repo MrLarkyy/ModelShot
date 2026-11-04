@@ -22,7 +22,7 @@ import {
 import { parseAnimations } from './parseAnimations';
 import { readTextureEntries, resolveTextures, textureIdIndex, type UvSize } from './parseTextures';
 import { quoteValue } from '../text/quoteValue';
-import { readJson } from './readJson';
+import { readBbmodelJson, type BbmodelJson } from './readBbmodelJson';
 import { formatDoubleSided, isDoubleSided } from './RenderSides';
 import {
   defaultTexture,
@@ -46,12 +46,16 @@ interface PlacedElement {
  * Loads a Blockbench `.bbmodel` (format 3.x–5.x): cubes, meshes, groups, PNG textures and bone animations. Synchronous and bounded: every
  * count, size and depth is checked against `limits` before anything proportional to it is allocated or decoded, and
  * the result does not depend on the clock or randomness. A bad file throws only `BbmodelError`; recoverable problems
- * are warnings. Invalid `options.limits` throw a `RangeError`.
+ * are warnings. Invalid `options.limits` throw a `RangeError`. A file `readBbmodelJson` already parsed (e.g. for
+ * `listBbmodelReferences`) is loaded without parsing it again.
  */
-export function loadBbmodel(input: string | Uint8Array, options: BbmodelLoadOptions = {}): BbmodelLoadResult {
+export function loadBbmodel(
+  input: string | Uint8Array | BbmodelJson,
+  options: BbmodelLoadOptions = {},
+): BbmodelLoadResult {
   const limits = resolveBbmodelLimits(options.limits);
   const warnings = new BbmodelWarningList();
-  const root = readJson(input, limits.maxFileBytes);
+  const { root } = readBbmodelJson(input, limits.maxFileBytes);
   if (!isJsonObject(root)) throw new BbmodelError('NOT_BBMODEL', '$', `expected an object, got ${quoteValue(root)}`);
   const meta = field(root, 'meta');
   if (!isJsonObject(meta))

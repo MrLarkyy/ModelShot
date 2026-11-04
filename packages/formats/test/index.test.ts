@@ -20,6 +20,8 @@ describe('@modelshot/formats', () => {
     expect(formats.DEFAULT_OBJ_UNIT_SCALE).toBe(16);
     expect(formats.BLEND_ALPHA_CUTOFF).toBe(0.5 / 255);
     expect(typeof formats.detectModelFormat).toBe('function');
+    expect(typeof formats.readBbmodelJson).toBe('function');
+    expect(typeof formats.listBbmodelReferences).toBe('function');
   });
 
   it('freezes the default limits', () => {

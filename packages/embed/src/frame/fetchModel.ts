@@ -45,6 +45,8 @@ interface DownloadOptions {
   readonly subject: string;
   readonly tooLarge: () => EmbedError;
   readonly timedOut: () => EmbedError;
+  /** A `text/html` answer fails as an error status does: a server's fallback page for a file it does not have. */
+  readonly htmlIsMissing?: boolean;
 }
 
 function tooLarge(maxBytes: number): EmbedError {
@@ -98,7 +100,9 @@ export async function fetchModel(url: string, options: FetchModelOptions): Promi
 /**
  * Downloads one file a model refers to (`href`, already checked to be on the model's origin) as a `File` called
  * `name`, as `fetchModel` does: GET, CORS, no credentials, no referrer. The errors are `fetchModel`'s, with the file
- * named; `null` for an error status, the file then being missing for the loader; `MODEL_TOO_LARGE` counts the model and its files together, `MODEL_FETCH_TIMEOUT` their shared time.
+ * named; `null` for an error status or a web page (`text/html`, e.g. a single-page app's fallback for a missing
+ * file), the file then being missing for the loader; `MODEL_TOO_LARGE` counts the model and its files together,
+ * `MODEL_FETCH_TIMEOUT` their shared time.
  */
 export async function fetchSidecar(href: string, name: string, options: FetchSidecarOptions): Promise<File | null> {
   options.signal?.throwIfAborted();
@@ -111,6 +115,7 @@ export async function fetchSidecar(href: string, name: string, options: FetchSid
     probeTimeoutMs: options.probeTimeoutMs,
     signal: options.signal,
     subject: `the model's file ${target.href}`,
+    htmlIsMissing: true,
     tooLarge: () =>
       new EmbedError(
         'MODEL_TOO_LARGE',
@@ -177,6 +182,11 @@ async function download(target: URL, options: DownloadOptions): Promise<Uint8Arr
         'MODEL_HTTP_ERROR',
         `The model server answered ${response.status}${response.statusText ? ` ${response.statusText}` : ''} for ${target.href}.`,
       );
+    }
+    const type = response.headers.get('content-type') ?? '';
+    if (options.htmlIsMissing && type.toLowerCase().startsWith('text/html')) {
+      void response.body?.cancel().catch(() => undefined);
+      throw new EmbedError('MODEL_HTTP_ERROR', `The model server answered a web page for ${target.href}.`);
     }
     const declared = Number(response.headers.get('content-length') ?? Number.NaN);
     if (declared > maxBytes) {

@@ -9,9 +9,10 @@ const { scene, warnings } = loadBbmodel(fileBytesOrText, {
 });
 ```
 
-`loadBbmodel(input: string | Uint8Array, options?)` returns a [scene format v1](scene-format.md) document and a list of
-warnings. It is synchronous and bounded: every count, size and depth is checked against a limit before anything
-proportional to it is allocated or decoded, so a hostile file fails fast instead of hanging the tab. It throws only
+`loadBbmodel(input: string | Uint8Array | BbmodelJson, options?)` returns a [scene format v1](scene-format.md)
+document and a list of warnings. It is synchronous and bounded: every count, size and depth is checked against a
+limit before anything proportional to it is allocated or decoded, so a hostile file fails fast instead of hanging the
+tab. It throws only
 `BbmodelError`.
 
 ## Supported
@@ -53,6 +54,8 @@ proportional to it is allocated or decoded, so a hostile file fails fast instead
   format 3.2 stored the z rotation of groups with the opposite sign; it is negated on load, as Blockbench does.
 - **Textures**: PNG only. Embedded `data:image/png;base64,…` sources are decoded; any other texture is matched by the
   case-insensitive base name of its `relative_path`, then `path`, then `name` against `options.textureFiles`.
+  `listBbmodelReferences` lists the file each such texture needs (its `relative_path`, else its `name`; see
+  [Local-first](#local-first)), which the embed downloads from the model's server.
   In the formats with per-texture UV size (Blockbench `Format.per_texture_uv_size`: `free`, `image`,
   `optifine_entity`, `optifine_part`, and the plugin formats `figura`, `hytale_character` and `hytale_prop`)
   `uv_width`/`uv_height` set a texture's UV space; in every other format, and when absent, the project `resolution`
@@ -499,3 +502,19 @@ that loaded before fails. Reload affected models; scene documents need no migrat
 
 A model never causes a network request or a file read: texture URLs and paths in the file are only used as names to
 match against the files the caller passed in `textureFiles`.
+
+`readBbmodelJson(input, maxFileBytes)` reads a file once (size check, strict UTF-8, JSON) into a `BbmodelJson` that
+`loadBbmodel` and `listBbmodelReferences` take in place of the file, without parsing it again (`loadBbmodel` checks its
+`byteLength` against its own `maxFileBytes`); only a container this function returned is taken, any other object is
+refused as `NOT_JSON`. The app's load worker reads a model this way to list its textures and then load it.
+
+`listBbmodelReferences(input, { maxReferences })` lists the texture files a caller may have to supply: per texture
+whose `source` is not a `data:` URI, its `relative_path`, else its `name`, as written (each distinct spelling once, at
+most `maxReferences + 1`). `relative_path` is relative to the model's directory; before `format_version` 4.10
+Blockbench wrote it relative to the model file itself and drops one `..` on import, so in such a file a leading `../`
+or `..\` is dropped once (`..\..\tex\a.png` lists as `..\tex\a.png`; a missing or malformed version counts as
+current). `path` is never listed: Blockbench writes the author's absolute path there next to `relative_path` with the
+same base name. `source` is never listed. A value over `maxStringChars` lists nothing for its
+texture, and a file whose JSON, root, `meta` or `textures` count the loader refuses lists nothing. The embed uses it
+to download a `.bbmodel`'s textures from the model's own server ([Embed](embed.md#models-with-several-files)); the
+loader finds a downloaded file by the base name of `relative_path`, `path` or `name`, as for picked files.

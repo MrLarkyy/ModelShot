@@ -55,6 +55,24 @@ describe('loadWorker', () => {
     expect(parse).toHaveBeenCalledOnce();
   });
 
+  it('loads a listed .bbmodel from what its list parsed', async () => {
+    const model = new File(
+      [
+        JSON.stringify({
+          meta: { format_version: '5.0', model_format: 'free' },
+          textures: [{ name: 'tile.png', relative_path: '../textures/tile.png' }],
+        }),
+      ],
+      'a.bbmodel',
+      { lastModified: LAST_MODIFIED },
+    );
+    const parse = vi.spyOn(JSON, 'parse');
+    expect(await ask(list(model))).toEqual({ ok: true, references: ['../textures/tile.png'] });
+    const reply = await ask(load(new File([model], model.name, { lastModified: LAST_MODIFIED }), true));
+    expect(reply).toMatchObject({ ok: true, name: 'a.bbmodel', key: await keyOf(model) });
+    expect(parse).toHaveBeenCalledOnce();
+  });
+
   it('reads the model again for a load not marked listed, never the kept one', async () => {
     const listed = gltf('aaaa');
     const other = gltf('bbbb');
