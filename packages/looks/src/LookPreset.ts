@@ -52,14 +52,31 @@ export interface LookLights {
 }
 
 /**
- * The environment: an analytic sky/ground dome, radiance linear in the direction's y. Each channel of `sky` and
- * `ground` stays within five times the other, so the dome is nowhere negative (`docs/look-presets.md`).
+ * An analytic sky/ground dome, radiance linear in the direction's y. Each channel of `sky` and `ground` stays within
+ * five times the other, so the dome is nowhere negative (`docs/look-presets.md`).
  */
-export interface LookEnvironment {
+export interface LookDomeEnvironment {
   readonly kind: 'dome';
   readonly sky: Rgb;
   readonly ground: Rgb;
 }
+
+/**
+ * An equirectangular image bundled with the package (`ENVIRONMENT_IMAGE_IDS`), never a URL or a path: the preview
+ * fills with its L2 spherical-harmonic irradiance, the path tracer and the light bake sample the image itself.
+ */
+export interface LookHdriEnvironment {
+  readonly kind: 'hdri';
+  /** Id of a bundled environment image, `[a-z0-9-]{1,32}`. */
+  readonly image: string;
+  /** Factor on the image's scene-linear radiance, 0..16. */
+  readonly intensity: number;
+  /** Yaw about +y in degrees, −180..180, right-handed: 90 turns what the image shows at +x toward −z. */
+  readonly rotationDeg: number;
+}
+
+/** The light that reaches a surface from every direction: a dome or an image (`docs/look-presets.md`). */
+export type LookEnvironment = LookDomeEnvironment | LookHdriEnvironment;
 
 /** Scene-linear backdrop behind the model, interpolated in screen y from `bottom` (lowest row) to `top`. */
 export interface LookBackdrop {

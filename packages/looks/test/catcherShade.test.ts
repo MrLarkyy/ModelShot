@@ -3,13 +3,20 @@ import type { Rgb } from '../src/agxToneMap';
 import { catcherShade, catcherShadeOfLoss } from '../src/catcherShade';
 import lightRigSource from '../src/glsl/lightRig.glsl?raw';
 import shadowCatcherSource from '../src/glsl/shadowCatcher.glsl?raw';
+import { environmentFill } from '../src/environmentFill';
 import { LIGHT_RIG_V0, type LightRig } from '../src/lightRig';
+import type { LookDomeEnvironment } from '../src/LookPreset';
 import { LOOK_PRESETS } from '../src/lookPresets';
 import { lookShaderChunks } from '../src/lookShaderChunks';
 import { linkShader } from '../src/linkShader';
 
 const RECT = [-10, -10, 10, 10] as const;
-const rig = LIGHT_RIG_V0;
+type DomeRig = LightRig & { readonly environment: LookDomeEnvironment };
+const rig = LIGHT_RIG_V0 as DomeRig;
+const isDome = (look: LightRig): look is DomeRig => look.environment.kind === 'dome';
+/** hemisphereFill(up), the catcher's unoccluded fill: a dome's sky, an image's L2 irradiance. */
+const upFill = (look: LightRig): Rgb =>
+  isDome(look) ? look.environment.sky : environmentFill(look.environment, [0, 1, 0]);
 const shade = (fill: readonly [number, number, number], keyT: number, xz: readonly [number, number] = [0, 0]) =>
   catcherShade(rig, fill, keyT, xz, RECT);
 
@@ -80,10 +87,10 @@ describe('catcherShadeOfLoss', () => {
     });
   }
 
-  it('equals catcherShade of fill = sky - fillLost and keyT = 1 - keyLost', () => {
+  it('equals catcherShade of fill = hemisphereFill(up) - fillLost and keyT = 1 - keyLost', () => {
     const next = lcg(59);
     for (const look of [rig, ...Object.values(LOOK_PRESETS)]) {
-      const { sky } = look.environment;
+      const sky = upFill(look);
       for (let i = 0; i < 200; i++) {
         const fill: Rgb = [next() * 2, next() * 2, next() * 2];
         const keyT = next();
@@ -97,10 +104,10 @@ describe('catcherShadeOfLoss', () => {
     }
   });
 
-  it('shades the baked catcher as the preview does: lost = sky x (1 - rgb), exactly 1 where the texels are all 1', () => {
+  it('shades the baked catcher as the preview does: lost = fill(up) x (1 - rgb), exactly 1 where the texels are all 1', () => {
     const next = lcg(63);
     for (const look of [rig, ...Object.values(LOOK_PRESETS)]) {
-      const { sky } = look.environment;
+      const sky = upFill(look);
       const lostOf = (rgb: Rgb): Rgb => [sky[0] * (1 - rgb[0]), sky[1] * (1 - rgb[1]), sky[2] * (1 - rgb[2])];
       for (const xz of POINTS) expect(catcherShadeOfLoss(look, lostOf([1, 1, 1]), 1 - 1, xz, RECT)).toBe(1);
       // A fully blocked texel's unclamped mean may dip below 0: the baked rgb range is [-0.25, 1].
@@ -146,9 +153,9 @@ describe('catcherShadeOfLoss', () => {
  * The GLSL dome as lightRig.glsl writes it (the source assertions pin the text): hemisphereFill(n) and
  * environmentRadiance(d), per channel.
  */
-const hemisphereFill = (look: LightRig, ny: number, c: 0 | 1 | 2): number =>
+const hemisphereFill = (look: DomeRig, ny: number, c: 0 | 1 | 2): number =>
   look.environment.ground[c] + (look.environment.sky[c] - look.environment.ground[c]) * (ny * 0.5 + 0.5);
-const environmentRadiance = (look: LightRig, dy: number, c: 0 | 1 | 2): number =>
+const environmentRadiance = (look: DomeRig, dy: number, c: 0 | 1 | 2): number =>
   look.environment.ground[c] + (look.environment.sky[c] - look.environment.ground[c]) * (dy * 0.75 + 0.5);
 
 describe('the control variate of the path-traced catcher', () => {
@@ -158,8 +165,9 @@ describe('the control variate of the path-traced catcher', () => {
   });
 
   // The trace subtracts only the blocked fill from hemisphereFill(up): unbiased only while the cosine-weighted mean of
-  // environmentRadiance over the up hemisphere is exactly hemisphereFill(up), whatever a look sets.
-  for (const [id, look] of Object.entries(LOOK_PRESETS)) {
+  // environmentRadiance over the up hemisphere is exactly hemisphereFill(up), whatever a dome look sets (an image's
+  // reference is its L2 irradiance, within 1 % of the exact mean: environmentLighting.test.ts).
+  for (const [id, look] of Object.entries(LOOK_PRESETS).flatMap(([i, l]) => (isDome(l) ? [[i, l] as const] : []))) {
     it(`${id}: the cosine-weighted mean of environmentRadiance over the up hemisphere is hemisphereFill(up)`, () => {
       // Stratified cosine sampling (cosineDirection: d.y = sqrt(1 - u1)); the azimuth does not enter.
       const strata = 4096;

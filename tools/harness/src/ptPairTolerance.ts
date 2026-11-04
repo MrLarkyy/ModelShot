@@ -32,6 +32,9 @@ export const PT_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions>> = {
   // 0.704 and 0.01103 / 0.856, x 1.25.
   'preset-marketplace': { threshold: 0.1, maxDiffRatio: 0.01141, maxMeanDelta: 0.992 },
   'preset-rim': { threshold: 0.1, maxDiffRatio: 0.01641, maxMeanDelta: 0.881 },
+  // MS-47: Softbox, lit by the bundled studio image (the preview's L2 irradiance against the render's sampled image),
+  // measured 0.01398 / 1.000, x 1.25.
+  'preset-softbox': { threshold: 0.1, maxDiffRatio: 0.01748, maxMeanDelta: 1.25 },
   // The app's default yaw: the rim follows the camera to the screen-left silhouettes.
   'preset-marketplace-yaw30': { threshold: 0.1, maxDiffRatio: 0.0138, maxMeanDelta: 1.071 },
   // MS-50: measured ratio 0.01642, mean delta 0.912; MS-39: 0.00266 / 0.438 once the catcher stopped covering the shell's

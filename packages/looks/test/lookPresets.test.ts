@@ -6,8 +6,8 @@ import type { LookKeyLight } from '../src/LookPreset';
 import { DEFAULT_LOOK, LOOK_PRESETS } from '../src/lookPresets';
 
 describe('shipped look presets', () => {
-  it('ship Studio, Marketplace and Rim, Studio the default', () => {
-    expect(Object.keys(LOOK_PRESETS)).toEqual(['studio', 'marketplace', 'rim']);
+  it('ship Studio, Marketplace, Rim and Softbox, Studio the default', () => {
+    expect(Object.keys(LOOK_PRESETS)).toEqual(['studio', 'marketplace', 'rim', 'softbox']);
     expect(LOOK_PRESETS['studio']).toBe(DEFAULT_LOOK);
     expect(Object.isFrozen(LOOK_PRESETS)).toBe(true);
   });

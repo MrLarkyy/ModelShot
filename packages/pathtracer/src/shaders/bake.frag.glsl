@@ -7,6 +7,7 @@ precision highp sampler2DArray;
 
 #include "rng"
 #include "lightRig"
+#include "environmentMap"
 #include "pathSampling"
 #include "keyLight"
 #include "bvhTraverse"
@@ -107,11 +108,11 @@ vec4 bakePoint(vec3 position, vec3 normal, vec3 side, int skip, uint key) {
   float keyT = bakeKey(origin, side, skip, key);
   vec3 d = cosineDirection(normal, unitRandom(key, FILL_DIMENSION, 0u), unitRandom(key, FILL_DIMENSION + 1u, 0u));
   vec3 mirrored = aboveSurface(d, side);
-  vec3 lost = environmentRadiance(d);
+  vec3 lost = escapeRadiance(d);
   if (dot(mirrored, side) > 0.0) {
     Hit blocker;
     if (!closestHit(origin, mirrored, 0.0, 3.0e38, 1.0, skip, key, ALPHA_DIMENSION, blocker)) {
-      lost = lost - environmentRadiance(mirrored);
+      lost = lost - escapeRadiance(mirrored);
     }
   }
   return vec4(1.0 - lostShare(lost, hemisphereFill(normal)), keyT);
@@ -127,7 +128,7 @@ vec4 bakeCatcher(ivec2 texel, uint key) {
   float keyT = bakeKey(origin, up, -1, key);
   vec3 d = cosineDirection(up, unitRandom(key, FILL_DIMENSION, 0u), unitRandom(key, FILL_DIMENSION + 1u, 0u));
   Hit blocker;
-  vec3 lost = closestHit(origin, d, 0.0, 3.0e38, 1.0, -1, key, ALPHA_DIMENSION, blocker) ? environmentRadiance(d)
+  vec3 lost = closestHit(origin, d, 0.0, 3.0e38, 1.0, -1, key, ALPHA_DIMENSION, blocker) ? escapeRadiance(d)
                                                                                       : vec3(0.0);
   return vec4(1.0 - lostShare(lost, hemisphereFill(up)), keyT);
 }

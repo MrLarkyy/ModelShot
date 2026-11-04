@@ -205,7 +205,11 @@ describe('LightBaker', () => {
     await flush();
     void b.bake(doc, { look: marketplace });
     await flush();
-    expect(bakes(worker).map((m) => m.look)).toEqual([DEFAULT_LOOK, marketplace]);
+    const softbox = LOOK_PRESETS['softbox'];
+    if (!softbox) throw new Error('no softbox preset');
+    void b.bake(doc, { look: softbox });
+    await flush();
+    expect(bakes(worker).map((m) => m.look)).toEqual([DEFAULT_LOOK, marketplace, softbox]);
     const posted = worker.posted.length;
     await expect(b.bake(doc, { look: { ...marketplace, version: 2 as 1 } })).rejects.toBeInstanceOf(LookPresetError);
     await flush();

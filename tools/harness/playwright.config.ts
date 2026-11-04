@@ -54,7 +54,7 @@ export default defineConfig({
     {
       name: 'pair',
       fullyParallel: true,
-      testMatch: ['pathtracer.spec.ts', 'textureFilter.spec.ts', 'textureWrap.spec.ts'],
+      testMatch: ['hdriLook.spec.ts', 'pathtracer.spec.ts', 'textureFilter.spec.ts', 'textureWrap.spec.ts'],
       grep: /like the baked preview/,
       grepInvert: /@timing/,
     },
@@ -73,6 +73,7 @@ export default defineConfig({
         'environment.spec.ts',
         'export.spec.ts',
         'golden*.spec.ts',
+        'hdriLook.spec.ts',
         'modelView.spec.ts',
         'realtime.spec.ts',
         'textureFilter.spec.ts',

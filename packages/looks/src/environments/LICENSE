@@ -1,0 +1,10 @@
+The environment image in this directory (softbox-studio.hdr, a 32x16 equirectangular Radiance RGBE file) and its
+preview harmonics (softbox-studio.sh.json, 27 numbers derived from it) were made for ModelShot and are dedicated to the
+public domain under CC0-1.0.
+
+To the extent possible under law, the ModelShot authors have waived all copyright and related or neighboring rights
+to these files. See https://creativecommons.org/publicdomain/zero/1.0/
+
+They are procedural, written by packages/looks/scripts/softboxStudioHdr.mjs (no photograph, no third-party image);
+regenerate them with `node packages/looks/scripts/softboxStudioHdr.mjs`. packages/looks/test/softboxAsset.test.ts checks
+the committed files equal the generator's output.

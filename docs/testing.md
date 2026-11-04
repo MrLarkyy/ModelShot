@@ -84,10 +84,10 @@ no state; with one worker nothing runs at once, it only lets a shard take part o
 depends on `golden` (a dependency put every golden test into the bench's shard: shard 1 had all 219 tests, 2-4
 none). Playwright shards a project into contiguous ranges by test count, not by time, so a block of slow tests
 lands in one or two shards; each block is its own project with its own shards. `golden` runs `environment`, `export`,
-`golden*`, `modelView`, `realtime.spec.ts`, `textureFilter.spec.ts` and `textureWrap.spec.ts` without the tests titled `baked lighting`
+`golden*`, `hdriLook.spec.ts`, `modelView`, `realtime.spec.ts`, `textureFilter.spec.ts` and `textureWrap.spec.ts` without the tests titled `baked lighting`
 (`grepInvert`), which `bake` runs, apart from the three `@timing` ones, which `bench` runs, and without the one titled
 `like the baked preview`; `golden-pt` runs `pathtracer.spec.ts` without the tests titled `like the baked preview`,
-which `pair` runs (the 16 preview-vs-render pairing tests of `pathtracer.spec.ts`, `textureFilter.spec.ts` and `textureWrap.spec.ts`). Each test is in exactly one project, and the plain `playwright test` runs every project, while `pnpm test` runs them in the two phases above (`bench` last, alone).
+which `pair` runs (the 18 preview-vs-render pairing tests of `hdriLook.spec.ts`, `pathtracer.spec.ts`, `textureFilter.spec.ts` and `textureWrap.spec.ts`). Each test is in exactly one project, and the plain `playwright test` runs every project, while `pnpm test` runs them in the two phases above (`bench` last, alone).
 
 Shard sizes (MS-39, `--list --project <p> --shard <k>/<n>`), each with the sum of its tests' CI times: the per-test
 times of main's run 39878163371 (MS-30's merge, so its three cut-out seam tests are counted), MS-22's 31 export tests
@@ -716,6 +716,7 @@ golden says them (`-x2-denoised`).
 | `pt-edges.s1.n128`                     | generated `edges` scene (MS-15)                       | golden; rounded-edge probes; pair                |
 | `pt-preset-marketplace.s1.n64`         | `player-hold-34` under Marketplace (MS-19)            | golden; tile/batch determinism; pair             |
 | `pt-preset-rim.s1.n64`                 | `player-hold-34` under Rim (MS-19)                    | golden; pair                                     |
+| `pt-preset-softbox.s1.n64`             | `player-hold-34` under Softbox, its image (MS-47)     | golden; pair; `hdriLook.spec.ts`                 |
 | `pt-outline-hull.s1.n64`               | outline-hull.bbmodel, board in an inverted hull       | golden; board and rim probes; pair (MS-50)       |
 | `pt-closeup-reference.s1.n2048`        | `closeup`, 2048 samples, no denoiser (MS-18)          | rendered on golden update only; AC1, AC2, drift  |
 | `pt-closeup-denoised.s1.n64`           | `closeup`, `denoise` (MS-18)                          | golden; AC1; AC2                                 |
@@ -924,6 +925,7 @@ Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with r
 | `edges`                    | 0 (1 971)                           | 46, 0.00070, 0.349 (MS-87; 41, 0.00063, 0.373 MS-60; MS-54 41, 0.00063, 0.386)    | 0.00079, 0.466 (MS-60; was 0.00079, 0.483) |
 | `preset-marketplace`       | 0 (1 322)                           | 600, 0.00916, 0.787 (MS-87; 598, 0.00912, 0.793 MS-35; 1 269, 0.01936, 1.237)     | 0.01141, 0.992 (MS-35; was 0.0223, 1.43)   |
 | `preset-rim`               | 0 (1 322)                           | 851, 0.01299, 0.701 (MS-87; 860, 0.01312, 0.704 MS-35; 1 407, 0.02147, 1.109)     | 0.01641, 0.881 (MS-35; was 0.0241, 1.13)   |
+| `preset-softbox`           | 0 (1 322)                           | 916, 0.01398, 1.000 (MS-47, new)                                                  | 0.01748, 1.25                              |
 | `preset-marketplace-yaw30` | 0 (1 304)                           | 747, 0.01140, 0.837 (MS-87; 723, 0.01103, 0.856 MS-35; 1 387, 0.02116, 1.281)     | 0.0138, 1.071 (MS-35; was 0.0265, 1.52)    |
 | `outline-hull`             | 0 (1 448)                           | 170, 0.00259, 0.395 (MS-87; 172, 0.00262, 0.423 MS-60; MS-54 172, 0.00262, 0.437) | 0.00329, 0.529 (MS-60; was 0.00329, 0.547) |
 | `gltf-contact`             | 0 (629)                             | 6 330, 0.09659, 4.971 (MS-87; 6 987, 0.10661, 5.627 MS-41, new, no catcher)       | 0.133, 7.03                                |
@@ -1064,6 +1066,18 @@ and `pathtracer.spec.ts`, `golden` and `golden-pt` projects):
   (95, 83, 83) and (117, 69, 69) and was held at 94 levels);
 - a lost preview context comes back with the look, byte-identical;
 - (bake project) light baked under Marketplace is refused by a Studio renderer and taken once it shows Marketplace.
+
+Softbox (MS-47, `e2e/hdriLook.spec.ts`, projects `golden` and `pair`): the variant `preset-softbox` is the same view
+under the look lit by the bundled `softbox-studio` image. New goldens `rt-preset-softbox` (baked, default tolerance)
+and `pt-preset-softbox.s1.n64` (path-tracer tolerance); its radiance pair is the table's `preset-softbox`. Probes: the
+image lights the model (mean difference to `preset-marketplace`, the same backdrop and grade, above 2 levels:
+measured 7.13); `setLook` to Softbox and back gives Marketplace's bytes again in the preview and the render (the
+render's environment textures are made and dropped); the head front through a hat hole (`HEAD_THROUGH_HAT_HOLE`, its
+light passing the hat's cut-out texels, which the render's image shadow rays must pass too), 5 x 5 mean luminance,
+preview (baked) vs render within 3.3 levels (measured 92.92 / 95.56, x 1.25; `like the baked preview`, so in `pair`).
+Every dome golden is unchanged: the trace, the bake and the preview take the dome's branch of a uniform kind (checked
+byte for byte on `pt-preset-marketplace`, `pt-cutout-checker`, `pt-turntable-y030`, `rt-preset-marketplace` and
+`rt-bake-cutout-checker`).
 
 The look review page `review.html` (harness only, no build ships it) renders a `.bbmodel` the user picks (read from
 the file input, nothing fetched; none: the harness player with a held cube) under a preset, side by side: the baked

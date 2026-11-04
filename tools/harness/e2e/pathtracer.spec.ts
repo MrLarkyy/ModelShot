@@ -101,6 +101,7 @@ const VARIANT_PRESET: Readonly<Record<string, string>> = {
   'preset-marketplace': 'marketplace',
   'preset-marketplace-yaw30': 'marketplace',
   'preset-rim': 'rim',
+  'preset-softbox': 'softbox',
 };
 
 /** The display colour (0..255) of the look's backdrop in image row y (top 0): its TS mirror. */

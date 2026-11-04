@@ -45,7 +45,7 @@ function bakedFor(renderer: RealtimeRenderer, look: LookPreset): BakedLighting {
 }
 
 const lastValue = (fake: FakeWebGl, method: string, uniform: string): unknown =>
-  fake.calls(method).findLast(([location]) => (location as { name: string }).name === uniform)?.[1];
+  fake.calls(method).findLast(([location]) => (location as { name: string } | null)?.name === uniform)?.[1];
 
 describe('RealtimeRenderer look', () => {
   let fake: FakeWebGl;
@@ -150,6 +150,23 @@ describe('RealtimeRenderer look', () => {
     renderer.setLook(preset('marketplace'));
     expect(renderer.setLighting(bakedFor(renderer, preset('marketplace')))).toBe(true);
     expect(renderer.setLighting(bakedFor(renderer, DEFAULT_LOOK))).toBe(false);
+    renderer.dispose();
+  });
+
+  it('an image look (softbox): refuses a marketplace bake, applies its own, uploads kind 1 and its harmonics', async () => {
+    const renderer = RealtimeRenderer.create(fake.canvas);
+    renderer.setCamera(camera);
+    await renderer.setScene(quadScene());
+    expect(renderer.setLighting(bakedFor(renderer, preset('marketplace')))).toBe(false);
+    renderer.setLook(preset('softbox'));
+    expect(renderer.setLighting(bakedFor(renderer, preset('marketplace')))).toBe(false);
+    expect(renderer.setLighting(bakedFor(renderer, preset('softbox')))).toBe(true);
+    renderer.render();
+    expect(lastValue(fake, 'uniform1i', 'u_lookEnvironmentKind')).toBe(1);
+    renderer.setLook(preset('marketplace'));
+    expect(renderer.lightingPending).toBe(false);
+    renderer.render();
+    expect(lastValue(fake, 'uniform1i', 'u_lookEnvironmentKind')).toBe(0);
     renderer.dispose();
   });
 });

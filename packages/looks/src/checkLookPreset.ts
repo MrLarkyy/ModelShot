@@ -1,10 +1,12 @@
 import type { Rgb } from './agxToneMap';
 import { checkEdgeLook, type EdgeLook } from './EdgeLook';
+import { ENVIRONMENT_IMAGE_IDS } from './environmentImageIds';
 import {
   LOOK_FORMAT,
   LOOK_FORMAT_VERSION,
   type Direction,
   type LookDirectionalLight,
+  type LookEnvironment,
   type LookPreset,
   type LookRimLight,
 } from './LookPreset';
@@ -107,6 +109,46 @@ function edges(value: unknown, path: string): EdgeLook {
   }
 }
 
+/** A dome (`kind` "dome", the v1 form before MS-47) or a bundled image (`kind` "hdri"); fields checked per kind. */
+function environment(value: unknown, path: string): LookEnvironment {
+  const kind =
+    typeof value === 'object' && value !== null && !Array.isArray(value) && Object.hasOwn(value, 'kind')
+      ? (value as Record<string, unknown>).kind
+      : undefined;
+  if (kind === 'hdri') {
+    const f = fields(value, path, ['kind', 'image', 'intensity', 'rotationDeg']);
+    if (typeof f.image !== 'string') fail('TYPE', child(path, 'image'), 'must be a string');
+    // Only bundled ids: never a URL or a path, so a look never makes a request.
+    if (!ID.test(f.image) || !ENVIRONMENT_IMAGE_IDS.includes(f.image)) {
+      fail(
+        'VALUE',
+        child(path, 'image'),
+        `is not a bundled environment image (one of ${ENVIRONMENT_IMAGE_IDS.join(', ')})`,
+      );
+    }
+    return {
+      kind,
+      image: f.image,
+      intensity: ranged(f.intensity, child(path, 'intensity'), 0, MAX_LOOK_COLOR),
+      rotationDeg: ranged(f.rotationDeg, child(path, 'rotationDeg'), -180, 180),
+    };
+  }
+  if (kind !== undefined && kind !== 'dome') {
+    fail('VALUE', child(path, 'kind'), `must be "dome" or "hdri", got ${JSON.stringify(kind) ?? 'undefined'}`);
+  }
+  const env = fields(value, path, ['kind', 'sky', 'ground']);
+  const dome = literal(env.kind, child(path, 'kind'), 'dome', 'VALUE');
+  const sky = color(env.sky, child(path, 'sky'));
+  const ground = color(env.ground, child(path, 'ground'));
+  // The dome's radiance runs from 1.25 ground − 0.25 sky straight down to 1.25 sky − 0.25 ground straight up.
+  for (const c of [0, 1, 2] as const) {
+    const dark = 1.25 * ground[c] - 0.25 * sky[c] < 0 ? 'ground' : 1.25 * sky[c] - 0.25 * ground[c] < 0 ? 'sky' : null;
+    if (dark)
+      fail('DOME', `${path}.${dark}[${c}]`, 'is under a fifth of the other dome colour: the dome goes negative');
+  }
+  return { kind: dome, sky, ground };
+}
+
 function deepFreeze<T>(value: T): T {
   if (typeof value === 'object' && value !== null) {
     for (const item of Object.values(value)) deepFreeze(item);
@@ -165,16 +207,7 @@ export function checkLookPreset(value: unknown): LookPreset {
     angularRadius: ranged(keyFields.angularRadius, 'lights.key.angularRadius', 0, 0.1),
   };
 
-  const env = fields(root.environment, 'environment', ['kind', 'sky', 'ground']);
-  const kind = literal(env.kind, 'environment.kind', 'dome', 'VALUE');
-  const sky = color(env.sky, 'environment.sky');
-  const ground = color(env.ground, 'environment.ground');
-  // The dome's radiance runs from 1.25 ground − 0.25 sky straight down to 1.25 sky − 0.25 ground straight up.
-  for (const c of [0, 1, 2] as const) {
-    const dark = 1.25 * ground[c] - 0.25 * sky[c] < 0 ? 'ground' : 1.25 * sky[c] - 0.25 * ground[c] < 0 ? 'sky' : null;
-    if (dark)
-      fail('DOME', `environment.${dark}[${c}]`, 'is under a fifth of the other dome colour: the dome goes negative');
-  }
+  const env = environment(root.environment, 'environment');
 
   const backdrop = fields(root.backdrop, 'backdrop', ['top', 'bottom']);
   const catcher = fields(root.catcher, 'catcher', ['strength']);
@@ -187,7 +220,7 @@ export function checkLookPreset(value: unknown): LookPreset {
     id: root.id,
     name,
     lights: { key, fill: directional(lights.fill, 'lights.fill'), rim: rimLight(lights.rim, 'lights.rim') },
-    environment: { kind, sky, ground },
+    environment: env,
     backdrop: { top: color(backdrop.top, 'backdrop.top'), bottom: color(backdrop.bottom, 'backdrop.bottom') },
     catcher: { strength: ranged(catcher.strength, 'catcher.strength', 0, 1) },
     edges: edges(root.edges, 'edges'),

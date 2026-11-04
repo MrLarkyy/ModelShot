@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import lightRigSource from '../src/glsl/lightRig.glsl?raw';
 import type { Rgb } from '../src/agxToneMap';
 import { LIGHT_RIG_V0, rimLight, rimWorldDirection, unoccludedRadiance, type LightRig } from '../src/lightRig';
-import type { LookRimLight } from '../src/LookPreset';
+import type { LookDomeEnvironment, LookRimLight } from '../src/LookPreset';
 import { DEFAULT_LOOK, LOOK_PRESETS } from '../src/lookPresets';
 import { LOOK_UNIFORM_NAMES } from '../src/lookUniforms';
 import { LOOK_VIEW_NONE, lookView, towardEye, type LookView } from '../src/LookView';
@@ -32,6 +32,14 @@ function orbitView(yawDeg: number, pitchDeg: number, orthographic: boolean, dist
     orthographic,
   });
 }
+
+type DomeRig = LightRig & { readonly environment: LookDomeEnvironment };
+const isDome = (rig: LightRig): rig is DomeRig => rig.environment.kind === 'dome';
+/** The shipped presets lit by a dome (Softbox's image has its own tests: environmentLighting.test.ts). */
+const DOME_PRESETS: readonly (readonly [string, DomeRig])[] = Object.entries(LOOK_PRESETS).flatMap(([id, look]) =>
+  isDome(look) ? [[id, look] as const] : [],
+);
+const STUDIO: DomeRig = isDome(DEFAULT_LOOK) ? DEFAULT_LOOK : (LIGHT_RIG_V0 as DomeRig);
 
 const rim = (change: Partial<LookRimLight> = {}): LookRimLight => ({
   direction: [0, 1, 0],
@@ -95,6 +103,23 @@ describe('light rig', () => {
     expect(lightRigSource).toContain('vec3 towardEye(vec3 p)');
   });
 
+  it('fills from an image by its harmonics, selected by the kind, the dome expression untouched (MS-47)', () => {
+    expect(lightRigSource).toMatch(/^uniform int u_lookEnvironmentKind;$/m);
+    expect(lightRigSource).toMatch(/^uniform vec3 u_lookEnvironmentSh\[9\];$/m);
+    expect(lightRigSource).toMatch(/^uniform vec2 u_lookEnvironmentYaw;$/m);
+    expect(lightRigSource).toMatch(
+      /vec3 hemisphereFill\(vec3 n\) \{\s*if \(u_lookEnvironmentKind == 1\) return max\(environmentSh\(environmentImageDirection\(n\)\), vec3\(0\.0\)\);\s*return mix\(u_lookGround, u_lookSky, n\.y \* 0\.5 \+ 0\.5\);\s*\}/,
+    );
+    // The dome's escape radiance stays the one function of the dome; an image's escapes read the image.
+    expect(lightRigSource).toMatch(
+      /vec3 environmentRadiance\(vec3 d\) \{\s*return mix\(u_lookGround, u_lookSky, d\.y \* 0\.75 \+ 0\.5\);\s*\}/,
+    );
+    // The GLSL harmonics are shIrradiance.ts's basis constants.
+    for (const constant of ['0.282095', '0.488603', '1.092548', '0.315392', '0.546274']) {
+      expect(lightRigSource).toContain(constant);
+    }
+  });
+
   it('v0 is a unit key above the horizon with black accents', () => {
     expect(Math.hypot(...LIGHT_RIG_V0.lights.key.direction)).toBeCloseTo(1, 4);
     expect(LIGHT_RIG_V0.lights.fill.color).toEqual([0, 0, 0]);
@@ -139,7 +164,7 @@ describe('light rig', () => {
   it('Studio with a camera: bit-equal to the shading before the rim was view-relative (its rim is black)', () => {
     const view = orbitView(30, 20, false);
     const { key, fill, rim: black } = DEFAULT_LOOK.lights;
-    const { sky, ground } = DEFAULT_LOOK.environment;
+    const { sky, ground } = STUDIO.environment;
     const normals: V3[] = [[0, 1, 0], unit([0.3, -0.2, 0.9]), unit([-1, 0.1, 0.2])];
     const albedos: Rgb[] = [
       [1, 1, 1],
@@ -165,7 +190,7 @@ describe('light rig', () => {
   });
 
   // The identity that makes the path tracer converge to the preview on an unoccluded surface (lightRig.glsl).
-  for (const [name, rig] of [['v0', LIGHT_RIG_V0] as const, ...Object.entries(LOOK_PRESETS)]) {
+  for (const [name, rig] of [['v0', LIGHT_RIG_V0 as DomeRig] as const, ...DOME_PRESETS]) {
     it(`${name}: the environment radiance integrates to the hemisphere fill for any normal`, () => {
       const { sky, ground } = rig.environment;
       for (const n of [

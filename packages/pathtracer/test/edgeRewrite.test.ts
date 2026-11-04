@@ -39,6 +39,7 @@ function make(options: PathTracerOptions) {
     targets: null,
     resolve: null,
     targetLimits: { maxWidth: 4096, maxHeight: 4096 },
+    environment: { bind: () => undefined, dispose: () => undefined },
   }));
   const tracer = PathTracer.create(canvas, options);
   return { tracer, calls, recorder, internals: tracer as unknown as Internals };

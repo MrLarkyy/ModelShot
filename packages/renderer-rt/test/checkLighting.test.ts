@@ -33,6 +33,17 @@ describe('checkLighting', () => {
     );
   });
 
+  it('an image look (softbox) refuses a dome bake and accepts its own (MS-47)', () => {
+    const softbox = LOOK_PRESETS['softbox'];
+    const marketplace = LOOK_PRESETS['marketplace'];
+    if (!softbox || !marketplace) throw new Error('no softbox or marketplace preset');
+    expect(checkLighting(layout, lighting({ lightingKey: lightingKey(marketplace) }), lightingKey(softbox))).toBe(
+      false,
+    );
+    expect(checkLighting(layout, lighting(), lightingKey(softbox))).toBe(false);
+    expect(checkLighting(layout, lighting({ lightingKey: lightingKey(softbox) }), lightingKey(softbox))).toBe(true);
+  });
+
   it('rejects another layout key, size or data length', () => {
     expect(checkLighting(layout, lighting({ layoutKey: 'other' }), KEY)).toBe(false);
     expect(checkLighting(layout, lighting({ height: layout.height + 1 }), KEY)).toBe(false);

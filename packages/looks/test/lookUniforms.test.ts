@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { environmentSh } from '../src/environmentSh';
 import agxSource from '../src/glsl/agx.glsl?raw';
 import backdropSource from '../src/glsl/backdrop.glsl?raw';
 import lightRigSource from '../src/glsl/lightRig.glsl?raw';
@@ -24,6 +25,7 @@ function fakeGl(): { gl: LookUniformTarget; calls: [string, string, unknown][] }
   const gl = {
     uniform1f: record('uniform1f'),
     uniform1i: record('uniform1i'),
+    uniform2fv: record('uniform2fv'),
     uniform3fv: record('uniform3fv'),
     uniform4fv: record('uniform4fv'),
   };
@@ -37,7 +39,7 @@ describe('uploadLookUniforms', () => {
     const declared = [agxSource, backdropSource, lightRigSource, shadowCatcherSource]
       .join('\n')
       .split('\n')
-      .flatMap((line) => /^uniform \w+ (u_look\w+);$/.exec(line)?.[1] ?? []);
+      .flatMap((line) => /^uniform \w+ (u_look\w+)(?:\[\d+\])?;$/.exec(line)?.[1] ?? []);
     expect([...declared].sort()).toEqual([...LOOK_UNIFORM_NAMES].sort());
   });
 
@@ -66,6 +68,31 @@ describe('uploadLookUniforms', () => {
     uploadLookUniforms(gl, everywhere, DEFAULT_LOOK, 256, LOOK_VIEW_NONE);
     expect(calls.find(([, n]) => n === 'u_lookExposureScale')?.[2]).toBe(1);
     expect(calls.find(([, n]) => n === 'u_lookGraded')?.[2]).toBe(0);
+  });
+
+  it('a dome look: environment kind 0, no harmonics, no turn (its branch is the dome expression)', () => {
+    const { gl, calls } = fakeGl();
+    uploadLookUniforms(gl, everywhere, DEFAULT_LOOK, 256, LOOK_VIEW_NONE);
+    const value = (name: string) => calls.find(([, n]) => n === name);
+    expect(value('u_lookEnvironmentKind')).toEqual(['uniform1i', 'u_lookEnvironmentKind', 0]);
+    expect(value('u_lookEnvironmentSh')).toEqual(['uniform3fv', 'u_lookEnvironmentSh', new Array(27).fill(0)]);
+    expect(value('u_lookEnvironmentYaw')).toEqual(['uniform2fv', 'u_lookEnvironmentYaw', [1, 0]]);
+    expect(value('u_lookSky')?.[2]).toEqual([...new Float32Array([0.5, 0.52, 0.55])]);
+  });
+
+  it('an image look: kind 1, its 27 harmonics coefficients and the yaw of its rotation', () => {
+    const softbox = LOOK_PRESETS['softbox'];
+    if (!softbox || softbox.environment.kind !== 'hdri') throw new Error('softbox is lit by an image');
+    const look = { ...softbox, environment: { ...softbox.environment, rotationDeg: 90 } };
+    const { gl, calls } = fakeGl();
+    uploadLookUniforms(gl, everywhere, look, 256, LOOK_VIEW_NONE);
+    const value = (name: string) => calls.find(([, n]) => n === name)?.[2];
+    expect(value('u_lookEnvironmentKind')).toBe(1);
+    expect(value('u_lookEnvironmentSh')).toEqual([...environmentSh(look.environment)]);
+    const yaw = value('u_lookEnvironmentYaw') as number[];
+    expect(yaw[0]).toBeCloseTo(0, 6);
+    expect(yaw[1]).toBeCloseTo(1, 6);
+    expect(value('u_lookSky')).toEqual([0, 0, 0]);
   });
 
   it('skips uniforms the program has no location for', () => {

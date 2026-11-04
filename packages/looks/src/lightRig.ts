@@ -1,5 +1,5 @@
 import type { Rgb } from './agxToneMap';
-import type { Direction, LookPreset, LookRimLight } from './LookPreset';
+import type { Direction, LookDomeEnvironment, LookEnvironment, LookPreset, LookRimLight } from './LookPreset';
 import type { LookView } from './LookView';
 
 /** The lighting part of a look: what `glsl/lightRig.glsl` reads from the look's uniforms. */
@@ -54,27 +54,46 @@ export function rimLight(rim: LookRimLight, l: Direction, n: Direction, v: Direc
   return [channel(0), channel(1), channel(2)];
 }
 
+/** `hemisphereFill` of the lightRig chunk under a dome: its sky/ground mix at the unit normal n. */
+export function domeFill(environment: LookDomeEnvironment, n: Direction): Rgb {
+  const { sky, ground } = environment;
+  const t = n[1] * 0.5 + 0.5;
+  return [
+    ground[0] + (sky[0] - ground[0]) * t,
+    ground[1] + (sky[1] - ground[1]) * t,
+    ground[2] + (sky[2] - ground[2]) * t,
+  ];
+}
+
+function domeOnly(environment: LookEnvironment, n: Direction): Rgb {
+  if (environment.kind !== 'dome') {
+    throw new TypeError('unoccludedRadiance under an image environment needs its fill: pass environmentFill');
+  }
+  return domeFill(environment, n);
+}
+
 /**
  * Linear radiance a diffuse surface of linear `albedo` with unit normal `n` reflects under `rig` when nothing occludes
- * it: the preview's shading, and the value the path tracer converges to (the dome's `hemisphereFill`, the key, and the
- * unshadowed fill accent; with `camera`, `v` the unit vector toward its eye, also the rim, which exists only where a
- * camera sees the surface).
+ * it: the preview's shading, and the value the path tracer converges to (the environment's `hemisphereFill`, the key,
+ * and the unshadowed fill accent; with `camera`, `v` the unit vector toward its eye, also the rim, which exists only
+ * where a camera sees the surface). `fill` gives `hemisphereFill`: a dome's by default; a rig with an image needs
+ * `environmentFill`, which this module does not import, so it stays free of the bundled image (Node-side tests import
+ * it directly).
  */
 export function unoccludedRadiance(
   rig: LightRig,
   albedo: Rgb,
   n: Direction,
   camera?: { readonly v: Direction; readonly view: LookView },
+  fill: (environment: LookEnvironment, n: Direction) => Rgb = domeOnly,
 ): Rgb {
-  const { key, fill, rim } = rig.lights;
-  const { sky, ground } = rig.environment;
-  const t = n[1] * 0.5 + 0.5;
+  const { key, fill: accent, rim } = rig.lights;
+  const ambient = fill(rig.environment, n);
   const k = lambert(n, key.direction);
-  const f = lambert(n, fill.direction);
-  const channel = (c: 0 | 1 | 2): number =>
-    albedo[c] * (ground[c] + (sky[c] - ground[c]) * t + key.color[c] * k + fill.color[c] * f);
+  const f = lambert(n, accent.direction);
+  const channel = (c: 0 | 1 | 2): number => albedo[c] * (ambient[c] + key.color[c] * k + accent.color[c] * f);
   const diffuse: Rgb = [channel(0), channel(1), channel(2)];
   if (!camera) return diffuse;
-  const accent = rimLight(rim, rimWorldDirection(rim.direction, camera.view), n, camera.v, albedo);
-  return [diffuse[0] + accent[0], diffuse[1] + accent[1], diffuse[2] + accent[2]];
+  const rimRadiance = rimLight(rim, rimWorldDirection(rim.direction, camera.view), n, camera.v, albedo);
+  return [diffuse[0] + rimRadiance[0], diffuse[1] + rimRadiance[1], diffuse[2] + rimRadiance[2]];
 }

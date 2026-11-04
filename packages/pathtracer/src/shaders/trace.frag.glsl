@@ -6,6 +6,7 @@ precision highp sampler2DArray;
 
 #include "rng"
 #include "lightRig"
+#include "environmentMap"
 #include "pathSampling"
 #include "keyLight"
 #include "shadowCatcher"
@@ -37,7 +38,8 @@ const int ROULETTE_FROM = 3;
 
 // The catcher point's shade of the backdrop: one key ray in the cone and one cosine-weighted fill ray, as a control
 // variate: the analytic unoccluded fill hemisphereFill(up), less what the fill ray would have brought had nothing
-// blocked it. Unbiased, since environmentRadiance's cosine mean is exactly hemisphereFill(up), and catcherShadeOfLoss
+// blocked it. Unbiased, since the dome's cosine mean is exactly hemisphereFill(up) (an image's is within 1 % of its
+// harmonics, the preview's reference too), and catcherShadeOfLoss
 // is affine, so the mean over samples is the shade of the preview's baked means; where neither ray is blocked every
 // sample is exactly 1 (the bare backdrop, coverage 0), so the noise sits only where something blocks. The catcher is
 // invisible to every other ray.
@@ -48,15 +50,34 @@ float catcherShadeAt(uint key, uint dimension, vec3 point) {
   float keyT = shadowTransmittance(origin, cone, -1);
   vec3 d = cosineDirection(up, unitRandom(key, dimension, 0u), unitRandom(key, dimension + 1u, 0u));
   Hit blocker;
-  vec3 fillLost = closestHit(origin, d, 0.0, 3.0e38, 1.0, -1, key, dimension + 2u, blocker) ? environmentRadiance(d)
+  vec3 fillLost = closestHit(origin, d, 0.0, 3.0e38, 1.0, -1, key, dimension + 2u, blocker) ? escapeRadiance(d)
                                                                                             : vec3(0.0);
   return catcherShadeOfLoss(fillLost, 1.0 - keyT, point.xz, u_catcherRect);
+}
+
+// An image environment's light at a surface vertex: one direction drawn by the image (environmentMap), seen through
+// shadowTransmittance (cut-out texels pass it, as they pass the key's ray), weighted by the power heuristic against the
+// cosine sampling of the bounce, whose escape adds the other share (escapeRadianceMis); at the last vertex no bounce
+// follows, so the light sampling keeps its full weight. Its randoms are the key cone's dimensions in stream 1, so no
+// stream a dome look draws moves.
+vec3 environmentLight(uint key, uint dimension, Surface s, int skip, bool last) {
+  float lightPdf;
+  vec3 incoming;
+  vec3 l = sampleEnvironment(unitRandom(key, dimension + 4u, 1u), unitRandom(key, dimension + 5u, 1u), lightPdf,
+    incoming);
+  float cosLight = dot(s.normal, l);
+  if (!(lightPdf > 0.0) || cosLight <= 0.0 || dot(s.side, l) <= 0.0) return vec3(0.0);
+  float visible = shadowTransmittance(leave(s.position, s.side), l, skip);
+  float cosinePdf = cosLight / ENV_PI;
+  float weight = last ? 1.0 : powerHeuristic(lightPdf, cosinePdf);
+  return s.albedo * incoming * (cosinePdf / lightPdf * weight * visible);
 }
 
 // One path: the camera ray through a jittered point of the pixel (a box filter: texel edges come out area-averaged),
 // then Lambert bounces. At every hit: emission and the key light through a shadow ray in its cone; at the camera hit also
 // the unshadowed fill and rim accents, the rim seen back along the camera ray (no ray, so no random dimension of their
-// own); on escape the environment (lightRig), whose cosine integral is the preview's fill. A camera ray that escapes
+// own); on escape the environment (lightRig, environmentMap), whose cosine integral is the preview's fill; an image is
+// also sampled at every vertex (environmentLight), each strategy weighted against the other. A camera ray that escapes
 // shows the backdrop at its pixel, or the shadow catcher. Transparent: such a ray adds no radiance, and coverage is 0
 // there, 1 - shade on the catcher (never negative, exactly 0 where nothing blocks; unclamped, so the mean stays affine:
 // radiance + backdrop x (1 - coverage) is the opaque mean) and 1 where it met a texel it accepted.
@@ -71,6 +92,8 @@ vec3 tracePath(uint key, vec2 pixel, out float coverage) {
   int skip = -1;
   vec3 radiance = vec3(0.0);
   vec3 throughput = vec3(1.0);
+  // Density of the latest bounce's cosine sampling along its direction (escapeRadianceMis weighs an image by it).
+  float cosinePdf = 0.0;
   coverage = 1.0;
   for (int pathVertex = 0; pathVertex <= MAX_BOUNCES; pathVertex++) {
     uint dimension = FIRST_VERTEX_DIMENSION + uint(pathVertex) * DIMENSIONS_PER_VERTEX;
@@ -90,7 +113,7 @@ vec3 tracePath(uint key, vec2 pixel, out float coverage) {
       }
     }
     if (!found) {
-      radiance += throughput * (pathVertex == 0 ? backdropHere() : environmentRadiance(direction));
+      radiance += throughput * (pathVertex == 0 ? backdropHere() : escapeRadianceMis(direction, cosinePdf));
       break;
     }
     Surface s = surfaceAt(hit);
@@ -103,6 +126,9 @@ vec3 tracePath(uint key, vec2 pixel, out float coverage) {
       float visible = shadowTransmittance(leave(s.position, s.side), cone, hit.triangle);
       radiance += throughput * s.albedo * u_lookKeyColor * (cosKey * visible);
     }
+    if (u_lookEnvironmentKind == 1) {
+      radiance += throughput * environmentLight(key, dimension, s, hit.triangle, pathVertex >= u_maxBounces);
+    }
     // Only where the camera sees the surface: unshadowed, it would light faces the rig hides and bounce out of them; the
     // preview has no accent bounce either.
     if (pathVertex == 0) radiance += s.albedo * fillLight(s.normal) + rimLight(s.normal, -direction, s.albedo);
@@ -110,6 +136,7 @@ vec3 tracePath(uint key, vec2 pixel, out float coverage) {
     vec3 next = aboveSurface(
       cosineDirection(s.normal, unitRandom(key, dimension, 0u), unitRandom(key, dimension + 1u, 0u)), s.side);
     if (dot(next, s.side) <= 0.0) break;
+    cosinePdf = max(dot(s.normal, next), 0.0) / ENV_PI;
     // Lambert with cosine sampling: albedo / pi * cos / (cos / pi).
     throughput *= s.albedo;
     if (pathVertex + 1 >= ROULETTE_FROM) {

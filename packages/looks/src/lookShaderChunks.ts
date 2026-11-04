@@ -19,7 +19,9 @@ import type { ShaderChunks } from './linkShader';
  * linearTaps(vec2 p)`, the four texels around p and their weights, and `vec3 bilinearColor(vec4 c00, vec4 c10, vec4 c01,
  * vec4 c11, vec2 f, int mode, int cutoffByte, vec3 fallback)`, their coverage-weighted bilinear colour; the caller
  * addresses every tap through faceTexel),
- * `#include "lightRig"` (the look's rig as `u_look*` uniforms, `vec3 hemisphereFill(vec3 n)`, `vec3 environmentRadiance(vec3 d)`, `vec3 fillLight(vec3 n)`,
+ * `#include "lightRig"` (the look's rig as `u_look*` uniforms, `vec3 hemisphereFill(vec3 n)` (a dome's mix or an
+ * environment image's harmonics, `vec3 environmentSh(vec3 n)` of `vec3 environmentImageDirection(vec3 d)`),
+ * `vec3 environmentRadiance(vec3 d)` (the dome's), `vec3 fillLight(vec3 n)`,
  * `vec3 towardEye(vec3 p)`, `vec3 rimLight(vec3 n, vec3 v, vec3 albedo)`),
  * `#include "backdrop"` (`vec3 backdropAt(float yNorm)`, `vec3 backdropHere()`), `#include "shadowCatcher"`
  * (`float catcherShade(vec3 fill, float keyT, vec2 xz, vec4 rect)`, the reference form, and
