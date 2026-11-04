@@ -71,8 +71,8 @@ CPU ms per converted test, the maximum of 3 runs on an idle machine (Windows, No
   `--project=golden-pt --shard=<k>/6`, pair 1-3 of `--project=pair --shard=<k>/3`, bake 1-3 of
   `--project=bake --shard=<k>/3`) (`fail-fast: false`), each on its own VM: install, the pinned Chromium, `pnpm -r build`,
   then `playwright test --project=<project> --shard=<k>/<n>`, then on golden shard 1 only `pnpm --filter @modelshot/site run test:browser` and `pnpm --filter @modelshot/app run test:browser` (each runs even when an earlier step failed), uploading `tools/harness/test-results/`, `packages/site/test-results/` and `packages/app/test-results/` as `browser-test-results-<golden-k|golden-pt-k|pair-k|bake-k>`.
-- `bench`: its own VM, same install and build, `playwright test --project=bench` (six section tests of `bench.spec.ts`: frames, loads, pathTracer, export, bundle and bake, and the three `@timing` measure tests of `realtime.spec.ts`), uploading
-  `browser-test-results-bench` (its measurements are in `serial/`); the budgets are measured on a machine that runs nothing else. Each section is a test with its own timeout, so a slow runner fails one section with its numbers and the others still report (MS-81). Job time: 8.5 minutes on a fast runner and 14.6-16.1 on a slow one before MS-81, whose slowest run (41057545063) hit the single test's 966 s timeout in the bakes; estimated after it, 7.5 minutes fast and about 17 slow (setup 0.75, frames 2.8, loads and path tracer up to 5.9, export and bundle 0.6, bakes up to 6.2 minutes for the whole section (page load and trace included; the three bakes of run 40883379594 took 100.1, 99.9 and 99.6 s), realtime 0.5); four runs hit 966 s (40926195066, 41025764238, 41057545063, 40883379594). The job limit is 20 minutes and a cancelled job uploads nothing, so `playwright.config.ts` sets `globalTimeout` to 17 minutes on CI: a hang or a slow bake fails the run with every finished section reported and the artefact uploaded, and each bake run logs `[bench] bake run <i>: <ms> ms` as it completes. The largest e2e shard is 6.4 minutes of tests, far from 17. The estimate is replaced by the measured run after the merge.
+- `bench`: a matrix of 2 shards (`fail-fast: false`), each on its own VM, same install and build, `playwright test --project=bench --shard=<k>/2` (the project is `fullyParallel`, so the shards split it per test: shard 1 the five section tests frames, loads, pathTracer, export and bundle of `bench.spec.ts`, shard 2 its bake section and the three `@timing` measure tests of `realtime.spec.ts`), uploading
+  `browser-test-results-bench-<k>` (its measurements are in `serial/`); the budgets are measured on machines that run nothing else, and each shard runs one worker, so its measures run one at a time. Each section is a test with its own timeout, so a slow runner fails one section with its numbers and the others still report (MS-81). Test time on one VM: 8.5 minutes on a fast runner and 14.6-16.1 on a slow one before MS-81, whose slowest run (41057545063) hit the single test's 966 s timeout in the bakes; four runs hit 966 s (40926195066, 41025764238, 41057545063, 40883379594). Measured after the section split, still on one VM: 16.4 minutes (run 41115750426, bakes 99.8-100.2 s: frames 3.3, loads 0.4, path tracer 5.1, export 0.5, bundle 0.02, bakes 6.4, realtime 0.5) and 12.8 minutes (41122837420, bakes 71.9-72.5 s: 3.1, 0.4, 3.7, 0.4, 0.01, 4.7, 0.5), 16.4 of the 17-minute `globalTimeout`. With the 2 shards the sums of those test times are 9.4 (shard 1) and 6.9 minutes (shard 2) on the slow runner and 7.6 and 5.2 on the other, each shard also loading the page server and browser once. The job limit is 20 minutes and a cancelled job uploads nothing, so `playwright.config.ts` sets `globalTimeout` to 17 minutes on CI, per Playwright process and so per shard: a hang or a slow bake fails the run with every finished section reported and the artefact uploaded, and each bake run logs `[bench] bake run <i>: <ms> ms` as it completes. The largest e2e shard is 6.4 minutes of tests, far from 17.
 
 `.github/workflows/wiki.yml` builds the GitHub wiki from `docs/` (`tools/wiki`, with a link check) and publishes it on a push to `main` that touches `docs/` or `tools/wiki/` (`contents: write` on that job only). A new docs page needs its row in `tools/wiki/pages.mjs`, or the check fails.
 
@@ -93,7 +93,7 @@ Shard sizes (MS-39, `--list --project <p> --shard <k>/<n>`), each with the sum o
 times of main's run 39878163371 (MS-30's merge, so its three cut-out seam tests are counted), MS-22's 31 export tests
 from main's run 39928740239 (MS-22's merge, job golden-1: 1.4 minutes together, 1.3-8.7 s each), plus local times for
 MS-39's six new tests (four path-tracer tests, 29 s, and two pairs, 47 s). These are sums of test times, not job times; a job adds the install and build, and the VMs
-differ by up to 2x (about 3x on the realtime frame benches, see Budgets). The build takes about 6 s (`bake-2` in run 39878163371: a 14.4-minute job for 4.4 minutes of tests, mostly the install, see Playwright install).
+differ by up to about 2x (the realtime frame benches grew about 1.5-1.8x on top of that, a regression, see Budgets). The build takes about 6 s (`bake-2` in run 39878163371: a 14.4-minute job for 4.4 minutes of tests, mostly the install, see Playwright install).
 
 | Project     | Tests | Shards | Tests per shard             | Minutes per shard (sum)           |
 | ----------- | ----: | -----: | --------------------------- | --------------------------------- |
@@ -101,9 +101,9 @@ differ by up to 2x (about 3x on the realtime frame benches, see Budgets). The bu
 | `golden-pt` |    93 |      6 | 16 / 16 / 16 / 15 / 15 / 15 | 2.6 / 4.3 / 6.3 / 3.7 / 1.0 / 1.5 |
 | `pair`      |    16 |      3 | 6 / 5 / 5                   | 5.3 / 2.8 / 2.5                   |
 | `bake`      |    22 |      3 | 8 / 7 / 7                   | 6.4 / 4.3 / 3.5                   |
-| `bench`     |     9 |      1 | 9, per test (`--shard=k/n`) | its own job                       |
+| `bench`     |     9 |      2 | 5 / 4, per test             | 9.4 / 6.9 (run 41115750426)       |
 
-The test counts are MS-60's (after MS-38); the minutes are MS-39's sums, without the tests added since.
+The test counts are MS-60's (after MS-38); the minutes are MS-39's sums, without the tests added since, except the `bench` row (MS-81, see `bench` above).
 
 Playwright install: `playwright install --with-deps` took 12-15 s on most jobs but 4.5 to 9.4 minutes on some (main run
 40368207797: `bake-3`, `golden-2`, `golden-pt-5`; run 39878163371: 13 s to 9.7 minutes). The browser download is not the slow part:
@@ -126,7 +126,7 @@ run 39878163371's).
 
 Why: the shard holding the baked tests ran into the 20-minute job limit with 4 shards (cancelled in runs 39612706830 and
 39624802150; the 23 baked lighting tests alone took 13-15 minutes on the slow VM of the second), and the 6 pairing tests
-alone are about 11 minutes together on a normal VM. The VMs differ in speed by up to about 2x on the same image (3x on the realtime frame benches: `rt-bench-512` 1070 and 1348 ms on fast runners, 2105 on a middle one and 3140 on the slowest, runs 40918637235, 40960128489, 40945330892 and 41064336939) (the
+alone are about 11 minutes together on a normal VM. The VMs differ in speed by up to about 2x on the same image (the bench's bakes, the same work every run, took 48.5-51.7 s a bake in runs 40918637235 and 40960128489, 70.8-72.5 s in 40945330892, 41064336939, 41097803096 and 41122837420, 99.6-100.2 s in 40883379594 and 41115750426: 2.0x, all eight on runner image ubuntu-26 version 20261021.618; the two runs with the bench's runner line logged `AMD EPYC 7763 64-Core Processor x4` and `AMD EPYC 9V74 80-Core Processor x4`, so a slow number can be told from a slow CPU model. The realtime frame benches read more than that spread, `rt-bench-512` 1070 to 4140 ms, because they also grew about 1.5-1.8x on runners of equal speed, a regression, see Budgets) (the
 cut-out checker bake took 1.3 minutes on one, 39 s on another), so a shard needs room for the slow case; the bench no
 longer shares a VM with the bakes.
 
@@ -137,7 +137,7 @@ the path-tracer determinism batches test 35.0 s (over 30 s), its same-seed test 
 transparency tests up to 22.5 s, the lifetime tests 14.9-18.6 s, the 10 000 coincident cubes test 10.0 s. A suite or
 test whose CI time reaches a third of the default carries a timeout: 180 s for the baked goldens (bakes took 33-42 s in run 39624802150), 300 s for the baked lighting describe, 720 s for its determinism test (1.6 minutes on a normal runner, over 3 on a slow one, 5.2 at six local workers), 300 s for the baked-preview pairing tests (up to 1.3 minutes, about 2.6 on a slow VM; MS-38's texture-filter pairing test 53.8 s at six local workers), 120 s for the texture-filter render golden (3.1 s at six local workers), 120 s for the path-tracer goldens, determinism and lifetime describes and the coincident cubes test, 180 s for the
 transparency describe (66 s at six local workers), 300 s for the exact-key silhouette test (29.5 s serial), 600 s for the
-exact-key catcher test (49 s serial) and the preset rim probes (42.6 s serial), 180 s for the bench's export and bundle sections, 360 s for its loads, 600 s for its path-tracer section, 15 x (the three frame maxima) + 120 s for its frames (345 s) and 3 x the bake max + 120 s for its bakes (786 s). The bench sections are hang backstops, bounded as a whole by the 17-minute `globalTimeout`: the loads' 360 s are 1.0x the 5.9 minutes the slowest run (41025764238, before the sections were split) needed for the loads plus every path-tracer run, the path-tracer's 600 s hold its maxima, the bakes' 786 s are 2.1x the slowest bake series (372 s, the whole bake section of run 40883379594 with page load and trace; its three bakes took 100 s each), the frames' 345 s are 2.1x the 2.8 minutes' worth of frames. A section hitting its timeout fails with its numbers; the sections together are cut by the global limit, 120 s for the realtime shimmer test (`texel anti-aliasing halves shimmer`, eight renders: 22-35 s alone locally, 30.3 and 31.1 s in the full serial suite, 24.1 s at six local workers), 180 s for the partial-alpha seam describe (MS-60: 5.4-11.8 s a test at six local workers, 6.9-15.4 s serial), 600 s for the partial-edge per-row pairing test (MS-60: 96 s serial, 3.5 minutes at six local workers); apart from the bench sections, each is at least 3x the worst CI time and twice the worst local time. A
+exact-key catcher test (49 s serial) and the preset rim probes (42.6 s serial), 180 s for the bench's export and bundle sections, 360 s for its loads, 600 s for its path-tracer section, 15 x (the three frame maxima) + 120 s for its frames (382.5 s) and 3 x the bake max + 120 s for its bakes (786 s). The bench sections are hang backstops, bounded as a whole by the 17-minute `globalTimeout`: the loads' 360 s are 1.0x the 5.9 minutes the slowest run (41025764238, before the sections were split) needed for the loads plus every path-tracer run, the path-tracer's 600 s hold its maxima, the bakes' 786 s are 2.1x the slowest bake series (372 s, the whole bake section of run 40883379594 with page load and trace; its three bakes took 100 s each), the frames' 382.5 s are 1.9x the 3.3 minutes the frame section took on the slowest runner (41115750426). A section hitting its timeout fails with its numbers; the sections together are cut by the global limit, 120 s for the realtime shimmer test (`texel anti-aliasing halves shimmer`, eight renders: 22-35 s alone locally, 30.3 and 31.1 s in the full serial suite, 24.1 s at six local workers), 180 s for the partial-alpha seam describe (MS-60: 5.4-11.8 s a test at six local workers, 6.9-15.4 s serial), 600 s for the partial-edge per-row pairing test (MS-60: 96 s serial, 3.5 minutes at six local workers); apart from the bench sections, each is at least 3x the worst CI time and twice the worst local time. A
 hang now fails after that time, not after the 60 s default; several hangs in one
 shard can reach the 20-minute job limit, and the job is then cancelled instead of reporting the failures.
 
@@ -1313,10 +1313,21 @@ Measured on the local Windows dev machine (SwiftShader, 3 runs) when the budgets
 textured cubes, 2,048 cubes, 24,576 triangles, one mesh per cube in 128 group nodes of 4 x 4 cubes as the Blockbench
 loader produces a grouped model, so 512 draw calls per frame after batching per node (checked by the spec), every
 seventh with a partial-alpha face; 512 x 512, 4x MSAA, front and back face passes, opaque and transparency passes),
-median of 11 frames after 4 warm-up frames (MS-81: 4 warm frames are one cycle of an exact frame's sample history, 11 is an exact odd median; it was 30 after 5, which took 6.1 minutes on the slowest runner; `gradient-256` keeps 30 after 5, its 0.1 ms timer ticks need them). Max 4500 ms (MS-81; 2000 ms from MS-44 failed runs 40945330892 and 41064336939, medians 2105 and 3140). The 2000 ms derivation, from the CI medians of the `bench` job: 608.5 ms on
+median of 11 frames after 4 warm-up frames (MS-81: 4 warm frames are one cycle of an exact frame's sample history, 11 is an exact odd median; it was 30 after 5, which took 6.1 minutes on the slowest runner; `gradient-256` keeps 30 after 5, its 0.1 ms timer ticks need them). Max 6000 ms (MS-81: 2000 ms from MS-44 failed runs 40945330892 and 41064336939, medians 2105 and 3140; 4500 ms then held 4140 in run 41115750426 at 1.09x). The 2000 ms derivation, from the CI medians of the `bench` job: 608.5 ms on
 a normal runner (run 39594658979) and 944.4 ms on a runner about 1.55x slower on this bench (1.71x on the other rt-bench row; 1.33-1.46x on the remaining benches) (run 39650722835,
 where the earlier max of 750 ms failed). 2000 ms was 3.3x the normal CI median and 2.1x the slow one, the 3-4x-CI-median
-rule of `timeToSamplesMs`; MS-81: runner speed varies about 3x between VMs of the same image on this bench, and 4500 ms is 4.2x and 3.3x the fast medians of 1070.2 and 1347.95 ms (runs 40918637235 and 40960128489), 2.1x the mid median 2104.95 (40945330892) and 1.43x the slowest seen, 3139.6 ms (41064336939). It is a deliberate exception to the 3-4x rule: runner spread is now about 3x, and a max within 4x of the fast medians would leave under 1.3x over the slowest. The 2000 ms ratios above are MS-44 history. The last local
+rule of `timeToSamplesMs`. MS-81: the medians grew more than the runners differ, a regression, not runner spread.
+Runner speed, read from the bench's bake time (the same work every run), spans about 2.0x (48.5-100.2 s a bake, see
+CI). At equal bake time `rt-bench-512` grew from 2104.95 ms (40945330892, bakes 71.1-71.2 s) to 3139.6, 3855.65 and
+3838.6 ms (41064336939, 41097803096, 41122837420, bakes 70.8-72.5 s), 1.49-1.83x; locally from 401.95-409.75 ms (full
+tests of 2026-10-29, bakes 17.2-18.0 s) to 741.55-828.55 ms (2026-10-30, bakes 17.8-20.9 s), about 1.9x, with MS-38's
+branch at 641.25-665.95 ms (bakes 18.7-21.9 s, about 1.6x) and MS-60's at 748.5-769.55 ms (bakes 18.0-19.7 s, about
+1.2x more). MS-90 bisects it (a3a1144..ab09aae, MS-38 and MS-60) and re-derives this max and `rt-bench-order-512`'s.
+Until then 6000 ms is a documented temporary acceptance, a deliberate exception to the 3-4x rule: 5.6x and 4.5x the
+fast medians of 1070.2 and 1347.95 ms (runs 40918637235 and 40960128489, bakes 48.5-51.7 s, before the growth), 2.9x
+the mid median 2104.95 (40945330892), 1.9x 3139.6 (41064336939), 1.56x 3855.65 (41097803096) and 1.45x the slowest
+seen, 4140 ms (41115750426, bakes 99.8-100.2 s). Against the medians before the growth it fails only at 2.9x and
+above, so the 1.5-2x growth passed it and a 2x regression is not detected on a fast or mid runner until MS-90. The 4500 ms of MS-81's first round (4.2x and 3.3x the fast medians, 1.43x the 3139.6 then slowest) and the 2000 ms ratios above are history. The last local
 SwiftShader median is 375.2 ms (`budgets-measured.json` of the full build test of 2026-10-21). History: the first
 local medians were 68.9, 70.2 and 80.7 ms (3 runs, 128 group nodes batched per node) and the max of 750 ms was 10x the
 middle run, rounded up; renderer work since (MS-12's double-sided cubes and coverage per texel tap, MS-15's rounded
@@ -1328,8 +1339,11 @@ stand in for a laptop GPU: the 60 fps criterion is evidenced by a manual run of 
 quad filling most of the frame, so the transparency pass runs per sample into its multisampled targets with the seam
 ramp, plus their two resolve blits; median of 11 frames after 4 (MS-81). Local SwiftShader medians 128.1 (the bench run),
 142.8 and 165.2 ms against 80.5 ms with origin/main's renderer in the same session (SwiftShader blends and resolves
-every sample; on GPU hardware that is the MSAA resolve's cost); max 1500 ms, 10x the middle run, rounded up, until a
-CI artefact allows 3-4x the CI median. `rt-bench-512` in the same session: 926.6 and 931.1 ms against 899.9 ms on
+every sample; on GPU hardware that is the MSAA resolve's cost); max 1500 ms, 10x the middle run, rounded up. Its CI medians: 280.65 ms (run 41097803096, bakes 72.2-72.5 s), 339.9
+(41115750426, the slowest runner, bakes 99.8-100.2 s) and 277.3 (41122837420, bakes 71.9-72.5 s); 1500 ms is 5.3x,
+4.4x and 5.4x them and, at the about 2.0x runner spread by bake time (1.4x between the mid and the fast bakes), about
+8x the 170-200 ms a fast runner would read. Kept until a fast runner's median is measured: a max from mid and slow
+runners only would guess the spread. `rt-bench-512` in the same session: 926.6 and 931.1 ms against 899.9 ms on
 origin/main (+3 %, the run-to-run spread; the machine was loaded, `rt-bench-order-512` 666.5 and 684.8 against 637.8).
 The bundle grew by 687 B (`app`) and 689 B (`app-entry`) gzip against origin/main 03a9a9d (`test/bundleSize.test.ts`);
 the bench's bundle check measures 205 004 / 205 300 and 66 571 / 66 800.
@@ -1337,10 +1351,21 @@ the bench's bundle check measures 205 004 / 205 300 and 66 571 / 66 800.
 `frameTimeMs.rt-load-first-frame-200k-order` times `setScene` plus the first frame of a generated scene at the
 loader's limits (100 000 quads, 200 000 triangles, 400 000 vertices) at render order 1, which builds the exact key's
 de-indexed geometry and its shared-edge flags at upload: local SwiftShader 348, 344 and 354 ms before the flags, 506
-and 527 ms with them; since round 7 436 and 447 ms; max 3500 ms (10x of the first measurement).
+and 527 ms with them; since round 7 436 and 447 ms; max 3500 ms (10x of the first measurement) until MS-81, which
+failed it in run 41115750426 (`edges-200k` 3651.5 ms, `large-order` 3493). MS-81 re-derived the five load rows from the
+CI medians (ms, `large-order` / `edges-200k` / `edges-hostile` / `edges-weld` / `world-200k`): fast runs 40918637235
+2145.3 / 2143.8 / 1963.9 / 1539.5 / 1606.4 and 40960128489 2132.2 / 2238.4 / 2084.8 / 1764.2 / 1870.5, mid
+40945330892 2344.1 / 2507.1 / 2337.1 / 1735.7 / 2039.9, slow 41064336939 2808.6 / 3121.2 / 2798.1 / 2097.7 / 2488.4,
+slowest 41115750426 3493 / 3651.5 / 3336.5 / 2440.4 / 3197.8 (local 1500-2900). The loads spread about 1.6-2.0x
+between runners, the runner spread by bake time; the frame benches read more because they also regressed (above). Each max is 3-4x the fast medians, the `timeToSamplesMs` rule, and at
+least 1.8x the slowest: `large-order` 7000 ms (3.3x and 3.3x, 2.0x the slowest), `edges-200k` 7000 (3.3x and 3.1x,
+1.9x), `edges-hostile` 7000 (3.6x and 3.4x, 2.1x), `edges-weld` 6000 (3.9x and 3.4x, 2.5x), `world-200k` 6000 (3.7x
+and 3.2x, 1.9x). A return of the first detection (2 s more on `edges-200k`, below) no longer fails the bench (about
+4240 ms on the slower fast runner): a load row now catches about 3x and above over a fast runner's median, and the
+detection's work cap and sorted matching are pinned by `sharpEdges.test.ts`.
 
 `frameTimeMs.rt-bench-order-512` is the same scene with one mesh at render order 1, so every frame uses the exact
-depth key (fragment depth, de-indexed geometry); max 4500 ms like the raster bench (MS-81, from 2000 ms of MS-44): CI medians 936.85 and 1170.3 ms fast, 1878.5 mid, 2715-2924 slow, so 3.85-4.8x the fast medians and 1.54x the slowest (a deliberate exception to the 3-4x rule, see the raster bench); MS-44's 537.9 and 919.5 ms (runs 39594658979, 39650722835, 3.7x and 2.2x of 2000 ms) are history; last local
+depth key (fragment depth, de-indexed geometry); max 5000 ms (MS-81, from 2000 ms of MS-44, then 4500): CI medians 936.85 and 1170.3 ms fast (runs 40918637235, 40960128489), 1878.5 mid (40945330892), 2714.95 and 2924.3 slow (41064336939, 41057545063) and 2962.6 on the slowest runner (41115750426), so 5.3x and 4.3x the fast medians, 2.7x the mid and 1.69x the slowest, the raster bench's documented temporary acceptance until MS-90: at equal bake time this bench grew 1.45-1.52x (1878.5 in 40945330892 against 2714.95, 2855.6 and 2849.6 in 41064336939, 41097803096 and 41122837420, bakes 70.8-72.5 s; 2180.6 in 40883379594 against 2962.6 in 41115750426, bakes 99.6-100.2 s, 1.36x; locally 342.35-347.4 against 518.35-592.2 ms, see the raster bench), the same regression, not runner spread, and against the medians before the growth 5000 ms fails only at 2.7x and above, so a 2x regression is not detected on a fast or mid runner until MS-90 re-derives it; MS-44's 537.9 and 919.5 ms (runs 39594658979, 39650722835, 3.7x and 2.2x of 2000 ms) are history; last local
 median 326.8 ms (`budgets-measured.json`, 2026-10-21). MS-35: a still exact frame draws one rotated-grid pass of its
 sample history per `render()`, so the bench pins its draws to those of the single-sampled frame (`msaa=0`, 519 both)
 and its median to at most 1.25x that frame's, measured alongside: local 349.3 ms against 340.0 ms (2026-10-27; the
@@ -1405,9 +1430,10 @@ round 7); its max was 750 ms then.
 - `bakeTimeMs.bake-bench-n16` (MS-16): `LightBaker.bake` of the benchmark scene in its worker, 16 samples with the
   shadow catcher (lightmap 2048 wide, catcher 512 x 512), from the call to the final lighting, median of 3. Local
   SwiftShader 22 873, 22 113 and 22 141 ms; max 222 000 ms (10x the middle run, rounded up). Each run is asserted
-  against the max as it completes, and the bake section's timeout is 3 x that max + 120 s (MS-81), a backstop; on CI the 17-minute
-  `globalTimeout` bounds the run, and bakes of over ~130 s each (inside the budget) are stopped by it on a slow runner,
-  the per-bake log lines showing the finished bakes.
+  against the max as it completes, and the bake section's timeout is 3 x that max + 120 s (MS-81), a backstop; on CI the bake
+  section runs on shard 2 beside only the three realtime tests, so bakes of over about 220 s each (inside the budget) are
+  stopped by the section timeout on a slow runner, the per-bake log lines showing the finished bakes; the 17-minute
+  `globalTimeout` (per shard process) only matters for a hang beyond that.
 - `mainThreadBlockMs.bake-bench` and `mainThreadBlockMs.bake-post-200k` (MS-16): **the most one task of the page's
   main thread blocked**: its CPU time plus the time it waited synchronously for the GPU process, from a Chrome trace
   over the bake window (`src/mainThreadTrace.ts`: CDP categories `toplevel,gpu`; top-level tasks `RunTask` with their
@@ -1487,7 +1513,8 @@ all 404 sharp edges of its patch: about 5 · 10⁷ work units per plate, so the 
 the slot search in the third plate (round 2: the earlier cap counted checks per mesh, so one such plate at that cell
 size took 10 s and nine about 30 s; unit-tested in `sharpEdges.test.ts`). Local SwiftShader 997, 1215 and 913 ms;
 hostile (one 300 x 300 plate, round 1) 891 and 938 ms, the nine plates 951 ms; the large-order load beside them 1254,
-1149 and 797 ms. Max 3500 ms each, the limit of the load budget they extend: about 3x the measurement, so a return of
+1149 and 797 ms. Max 3500 ms each (until MS-81, see `rt-load-first-frame-200k-order` for the CI derivation, now 7000
+ms each), the limit of the load budget they extend: about 3x the measurement, so a return of
 the first detection (2 s more on `edges-200k`) or an unbudgeted hostile document fails it, while the CI runner keeps
 its margin as for the sibling.
 
@@ -1496,7 +1523,8 @@ triangles, 400 000 vertices) on a grid of 65 536-unit steps, each quad with its 
 coordinate is a multiple of 2^20 and every edge is shared, the worst case of the multiplicative hash with linear
 probing that matching used before (about two minutes at this size; `sharpEdges` alone took 2.0 s for 60 000 such
 vertices). Matching sorts now: 752 ms local SwiftShader for the whole load (`sharpEdges` alone 0.15 s for 400 000
-vertices), max 3500 ms as for the other load budgets. The same run: `edges-200k` 1158 ms, `edges-hostile` 1194 ms,
+vertices), max 3500 ms as for the other load budgets (6000 ms since MS-81, derived from the CI medians with
+`rt-load-first-frame-200k-order`). The same run: `edges-200k` 1158 ms, `edges-hostile` 1194 ms,
 `large-order` 896 ms.
 
 `frameTimeMs.export-turntable-64-f4-n16` (MS-22): `bench.spec.ts` times `window.__msExport.turntable()` of
@@ -1524,7 +1552,8 @@ chart search walked every triangle of a shared edge: quadratic on a fan (230 ms 
 `setScene`, again in the bake worker); it now joins only across an edge of exactly two triangles, pinned in
 `worldCharts.test.ts` (49 fans: about 0.5 s in Node; the bound is thread CPU time via `expectCpuBelow`, 3000 ms). Local SwiftShader 1335, 1433 and 1448 ms
 (`large-order` 1572 ms and `edges-200k` 1700 ms in the same run; round 1, height fields only: 1111-1224 ms; the layout
-alone 0.6-0.9 s in Node); max 3500 ms as for the other load budgets.
+alone 0.6-0.9 s in Node); max 3500 ms as for the other load budgets, 6000 ms since MS-81 (derived from the CI
+medians with `rt-load-first-frame-200k-order`).
 
 Memory of detection at the loaders' vertex limit (MS-15 round 4): `sharpEdges` of the `edges-weld` mesh (400 000
 vertices, 200 000 triangles, input 11.4 MB) in Node 22 with `--expose-gc`, a fresh Vitest worker, collected before:
@@ -1534,7 +1563,7 @@ about 143 MB), in 264-419 ms. Of that the result kept with the mesh is 16.0 MB (
 buffers +38 MB before collection). The renderers keep one result per document (`sceneSharpEdges`, latest options).
 
 First CI run (2026-10-20, ubuntu-latest): frame time 0.9 ms (max 5, 5.5x), time to 64 samples 80.6 ms (max 300), gzip app 437 B, embed 115 B.
-Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact (the merge of the per-section files) (`test-results/serial/` in `browser-test-results-bench`,
-uploaded by the CI `bench` job), with the numbers in the commit.
+Limits derive from the CI numbers: re-derive from the `budgets-measured.json` artefact (the merge of the per-section files) (`test-results/serial/` in `browser-test-results-bench-1` and `-2`,
+uploaded by the 2 shards of the CI `bench` job, each with the rows of its sections), with the numbers in the commit.
 Changing a `max` is a reviewed change: explain it in the commit with the measured numbers, never raise it to hide a
 regression.
