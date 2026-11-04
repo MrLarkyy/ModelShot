@@ -1,6 +1,7 @@
-import { ACCEPTED_RESOURCE_EXTENSIONS, normaliseReference, referenceBaseName } from '@modelshot/formats';
+import { normalisePath, normaliseReference, referenceBaseName } from '@modelshot/formats';
 import { EmbedError } from '../EmbedError';
 import { MAX_MODEL_URL_CHARS } from '../EmbedParams';
+import { MODEL_SIDECARS, type SidecarPolicy } from './SidecarPolicy';
 
 /**
  * What to do with one file a model refers to: download `href` as a file called `name` (the name the loader looks the
@@ -32,12 +33,18 @@ function shown(reference: string): string {
  * policy: only a relative path, landing on `modelOrigin` over http(s), at most 2048 characters, is downloaded. A
  * scheme (`data:`, `javascript:`, `file:`, even a same-origin `https:`), a protocol-relative or backslash authority, or
  * anything the URL parser lands elsewhere is refused before any request. A drive path (`C:\tex\a.png`) is skipped: it
- * names a file of the author's machine, never requested. A file the app could not take next to a model
- * (not `.bin`, `.png`, `.jpg`, `.jpeg` or `.mtl`) is skipped: the loader reports it missing, as for a local open. So is
- * a reference whose URL has a query or fragment (`a?b.png`, `tex#1.png`): it would download another URL than the file
- * name the loader looks it up by.
+ * names a file of the author's machine, never requested. A file the model's loader does not take next to it
+ * (`policy.extensions`: for glTF and OBJ `.bin`, `.png`, `.jpg`, `.jpeg` or `.mtl`, for a `.bbmodel` `.png`) is
+ * skipped: the loader reports it missing, as for a local open. So is a reference whose URL has a query or fragment
+ * (`a?b.png`, `tex#1.png`): it would download another URL than the file name the loader looks it up by. The file is
+ * named as the loader looks the reference up: its base name, percent-decoded unless `policy.decodedName` is false.
  */
-export function resolveSidecarUrl(reference: string, baseUrl: string, modelOrigin: string): SidecarUrl {
+export function resolveSidecarUrl(
+  reference: string,
+  baseUrl: string,
+  modelOrigin: string,
+  policy: SidecarPolicy = MODEL_SIDECARS,
+): SidecarUrl {
   const refuse = (why: string): SidecarUrl => ({
     kind: 'refuse',
     error: new EmbedError(
@@ -62,8 +69,8 @@ export function resolveSidecarUrl(reference: string, baseUrl: string, modelOrigi
   }
   if (url.href.length > MAX_MODEL_URL_CHARS) return refuse(`its URL is longer than ${MAX_MODEL_URL_CHARS} characters.`);
   if (url.search !== '' || url.hash !== '') return { kind: 'skip' };
-  const name = referenceBaseName(normaliseReference(reference));
+  const name = referenceBaseName(policy.decodedName ? normaliseReference(reference) : normalisePath(reference));
   const lower = name.toLowerCase();
-  if (!ACCEPTED_RESOURCE_EXTENSIONS.some((extension) => lower.endsWith(extension))) return { kind: 'skip' };
+  if (!policy.extensions.some((extension) => lower.endsWith(extension))) return { kind: 'skip' };
   return { kind: 'download', href: url.href, name };
 }

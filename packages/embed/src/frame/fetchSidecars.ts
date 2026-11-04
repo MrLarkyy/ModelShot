@@ -8,6 +8,7 @@ import {
 import { EmbedError } from '../EmbedError';
 import { MAX_EMBED_MODEL_BYTES, MODEL_FETCH_TIMEOUT_MS, fetchSidecar } from './fetchModel';
 import { resolveSidecarUrl } from './resolveSidecarUrl';
+import { BBMODEL_SIDECARS, MODEL_SIDECARS, type SidecarPolicy } from './SidecarPolicy';
 
 /** The model and its files together stay within the app intake's 32 files. */
 export const MAX_EMBED_SIDECARS = 31;
@@ -70,14 +71,17 @@ class SidecarList {
   readonly planned: Sidecar[] = [];
   private readonly byName = new Map<string, string>();
 
-  constructor(private readonly modelOrigin: string) {}
+  constructor(
+    private readonly modelOrigin: string,
+    private readonly policy: SidecarPolicy,
+  ) {}
 
   /** Resolves every reference against `baseUrl`; a refused one or a name clash throws, before any request. */
   add(references: readonly string[], baseUrl: string): Sidecar[] {
     if (references.length > MAX_LISTED_REFERENCES) throw tooMany();
     const added: Sidecar[] = [];
     for (const reference of references) {
-      const resolved = resolveSidecarUrl(reference, baseUrl, this.modelOrigin);
+      const resolved = resolveSidecarUrl(reference, baseUrl, this.modelOrigin, this.policy);
       if (resolved.kind === 'refuse') throw resolved.error;
       if (resolved.kind === 'skip') continue;
       const key = resolved.name.toLowerCase();
@@ -121,7 +125,7 @@ export async function fetchSidecars(model: File, modelUrl: string, options: Fetc
   const listReferences = options.listReferences ?? listHere;
   const references = await listReferences(model, 'model', MAX_LISTED_REFERENCES);
   options.signal?.throwIfAborted();
-  const list = new SidecarList(new URL(modelUrl).origin);
+  const list = new SidecarList(new URL(modelUrl).origin, format === 'bbmodel' ? BBMODEL_SIDECARS : MODEL_SIDECARS);
   const first = list.add(references, modelUrl);
   if (first.length === 0) return [];
 

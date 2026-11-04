@@ -68,8 +68,8 @@ const gltfWith = (uris: { buffers?: string[]; images?: string[] }): string =>
     buffers: (uris.buffers ?? []).map((uri) => ({ uri, byteLength: 4 })),
     images: (uris.images ?? []).map((uri) => ({ uri })),
   });
-const bbmodelWith = (textures: readonly Record<string, unknown>[]): string =>
-  JSON.stringify({ meta: { format_version: '4.5', model_format: 'free' }, textures });
+const bbmodelWith = (textures: readonly Record<string, unknown>[], version = '5.0'): string =>
+  JSON.stringify({ meta: { format_version: version, model_format: 'free' }, textures });
 const html = (): Response =>
   new Response('<!doctype html><title>app</title>', { headers: { 'content-type': 'Text/HTML; charset=utf-8' } });
 
@@ -126,15 +126,74 @@ describe('fetchSidecars', () => {
     expect(scene.textures.map((t) => t.missing)).toEqual([false]);
   });
 
-  it('downloads a bbmodel texture by its relative_path (backslashes, climbing a directory) once, never its path', async () => {
+  it.each(['scene.bbmodel', 'scene-4.9.bbmodel'])(
+    'downloads the texture of %s by its relative_path once, never its absolute path',
+    async (name) => {
+      const { fetch, calls } = server();
+      const model = new File([fixture(`bbmodel/${name}`)], name);
+      const files = await fetchSidecars(model, `${SERVER}/sidecars/bbmodel/${name}`, { fetch, frameOrigin: FRAME });
+      expect(calls.map((c) => c.url)).toEqual([`${SERVER}/sidecars/textures/checker%20tile.png`]);
+      expect(files.map((f) => f.name)).toEqual(['checker tile.png']);
+      const { scene, warnings } = loadBbmodel(fixture(`bbmodel/${name}`), { textureFiles: await bytesOf(files) });
+      expect(warnings.map((w) => w.code)).toEqual([]);
+      expect(scene.textures.map((t) => t.missing)).toEqual([false]);
+    },
+  );
+
+  it.each([
+    ['4.9', `${SERVER}/sidecars/bbmodel/tex/a.png`],
+    ['4.10', `${SERVER}/sidecars/tex/a.png`],
+    ['5.0', `${SERVER}/sidecars/tex/a.png`],
+  ])('resolves the relative_path ../tex/a.png of a format %s bbmodel to %s', async (version, url) => {
     const { fetch, calls } = server();
-    const model = new File([fixture('bbmodel/scene.bbmodel')], 'scene.bbmodel');
-    const files = await fetchSidecars(model, BBMODEL_URL, { fetch, frameOrigin: FRAME });
-    expect(calls.map((c) => c.url)).toEqual([`${SERVER}/sidecars/textures/checker%20tile.png`]);
-    expect(files.map((f) => f.name)).toEqual(['checker tile.png']);
-    const { scene, warnings } = loadBbmodel(fixture('bbmodel/scene.bbmodel'), { textureFiles: await bytesOf(files) });
+    const model = new File([bbmodelWith([{ relative_path: '../tex/a.png' }], version)], 'scene.bbmodel');
+    await fetchSidecars(model, BBMODEL_URL, { fetch, frameOrigin: FRAME });
+    expect(calls.map((c) => c.url)).toEqual([url]);
+  });
+
+  it('names a percent-escaped bbmodel texture as written, the name its loader matches', async () => {
+    const { fetch, calls } = server({ '/sidecars/bbmodel/skin%20A.png': () => fixture('textures/checker tile.png') });
+    const body = bbmodelWith([{ relative_path: 'skin%20A.png' }]);
+    const files = await fetchSidecars(new File([body], 'scene.bbmodel'), BBMODEL_URL, { fetch, frameOrigin: FRAME });
+    expect(calls.map((c) => c.url)).toEqual([`${SERVER}/sidecars/bbmodel/skin%20A.png`]);
+    expect(files.map((f) => f.name)).toEqual(['skin%20A.png']);
+    const { scene, warnings } = loadBbmodel(body, { textureFiles: await bytesOf(files) });
     expect(warnings.map((w) => w.code)).toEqual([]);
     expect(scene.textures.map((t) => t.missing)).toEqual([false]);
+  });
+
+  it('refuses two bbmodel textures whose names as written differ only in case, before any request', async () => {
+    const { fetch, calls } = server();
+    const model = new File(
+      [bbmodelWith([{ relative_path: 'a/T%20x.png' }, { relative_path: 'b/t%20X.png' }])],
+      'a.bbmodel',
+    );
+    const error = await failure(fetchSidecars(model, BBMODEL_URL, { fetch, frameOrigin: FRAME }));
+    expect(error.code).toBe('SIDECAR_REFUSED');
+    expect(error.message).toContain('T%20x.png');
+    expect(calls).toEqual([]);
+  });
+
+  it('downloads two bbmodel textures whose names differ only once percent-decoded: the loader tells them apart', async () => {
+    const png = () => fixture('textures/checker tile.png');
+    const { fetch, calls } = server({ '/sidecars/bbmodel/a/x%20y.png': png, '/sidecars/bbmodel/b/x%20y.png': png });
+    const body = bbmodelWith([{ relative_path: 'a/x%20y.png' }, { relative_path: 'b/x y.png' }]);
+    const files = await fetchSidecars(new File([body], 'scene.bbmodel'), BBMODEL_URL, { fetch, frameOrigin: FRAME });
+    expect(files.map((f) => f.name)).toEqual(['x%20y.png', 'x y.png']);
+    expect(calls).toHaveLength(2);
+    const { scene } = loadBbmodel(body, { textureFiles: await bytesOf(files) });
+    expect(scene.textures.map((t) => t.missing)).toEqual([false, false]);
+  });
+
+  it('requests no JPEG for a bbmodel, whose loader takes PNG only: the model loads with the texture missing', async () => {
+    const { fetch, calls } = server({ '/sidecars/bbmodel/a.jpg': () => fixture('textures/checker tile.jpg') });
+    const body = bbmodelWith([{ relative_path: 'a.jpg' }, { name: 'b.JPEG' }]);
+    const files = await fetchSidecars(new File([body], 'scene.bbmodel'), BBMODEL_URL, { fetch, frameOrigin: FRAME });
+    expect(files).toEqual([]);
+    expect(calls).toEqual([]);
+    const { scene, warnings } = loadBbmodel(body, { textureFiles: await bytesOf(files) });
+    expect(warnings.map((w) => w.code)).toEqual(['MISSING_TEXTURE', 'MISSING_TEXTURE']);
+    expect(scene.textures.map((t) => t.missing)).toEqual([true, true]);
   });
 
   it.each([

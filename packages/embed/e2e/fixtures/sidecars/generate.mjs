@@ -3,8 +3,10 @@
 // saturated colours no look's backdrop has, as a .gltf with an external buffer and image and as an .obj with an .mtl.
 // The texture's name has a space and the references climb a directory, as exported models often do. scene-jpeg.gltf
 // is the same cube with the checker as a JPEG (2x2 flat 8x8 blocks, packages/formats/test/fixtures/jpeg).
-// bbmodel/scene.bbmodel is a Blockbench cube whose texture is not embedded: its `relative_path` climbs with
-// backslashes and its absolute `path` names the author's machine, as Blockbench on Windows writes them.
+// bbmodel/scene.bbmodel is a Blockbench cube whose texture is not embedded, its absolute `path` naming the author's
+// machine: format 5.0 with `relative_path` against the model's directory and `/`, as Blockbench 4.10+ writes it.
+// bbmodel/scene-4.9.bbmodel is the same cube as Blockbench 4.0-4.9 on Windows wrote it: `relative_path` against the
+// model file itself (one `..` more) with backslashes.
 // Usage: node packages/embed/e2e/fixtures/sidecars/generate.mjs
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -136,10 +138,10 @@ function obj(mesh) {
 }
 
 /** A 16-unit Blockbench cube, every face over the whole external texture. */
-function bbmodel() {
+function bbmodel(formatVersion, relativePath) {
   const face = { uv: [0, 0, 16, 16], texture: 0 };
   const doc = {
-    meta: { format_version: '4.5', model_format: 'free', box_uv: false },
+    meta: { format_version: formatVersion, model_format: 'free', box_uv: false },
     name: 'checker cube',
     resolution: { width: 16, height: 16 },
     elements: [
@@ -157,8 +159,8 @@ function bbmodel() {
     textures: [
       {
         name: 'checker tile.png',
-        path: 'C:\\Users\\author\\checker tile.png',
-        relative_path: '..\\textures\\checker tile.png',
+        path: 'C:\\Users\\author\\models\\textures\\checker tile.png',
+        relative_path: relativePath,
         uv_width: 16,
         uv_height: 16,
         uuid: 't-checker',
@@ -185,4 +187,5 @@ write('gltf/scene-jpeg.gltf', gltf(mesh, '../textures/checker%20tile.jpg').json)
 write('gltf/bin/scene.bin', model.bin);
 write('obj/scene.obj', obj(mesh));
 write('obj/scene.mtl', MTL);
-write('bbmodel/scene.bbmodel', bbmodel());
+write('bbmodel/scene.bbmodel', bbmodel('5.0', '../textures/checker tile.png'));
+write('bbmodel/scene-4.9.bbmodel', bbmodel('4.9', '..\\..\\textures\\checker tile.png'));

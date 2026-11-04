@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { expectCpuBelow } from '../../formats/test/support/expectCpuBelow';
 import { resolveSidecarUrl } from '../src/frame/resolveSidecarUrl';
+import { BBMODEL_SIDECARS, type SidecarPolicy } from '../src/frame/SidecarPolicy';
 
 const MODEL = 'https://models.example/m/a.gltf';
 const ORIGIN = 'https://models.example';
 
-const resolve = (reference: string, base = MODEL, origin = ORIGIN) => resolveSidecarUrl(reference, base, origin);
+const resolve = (reference: string, base = MODEL, origin = ORIGIN, policy?: SidecarPolicy) =>
+  resolveSidecarUrl(reference, base, origin, policy);
 
 describe('resolveSidecarUrl', () => {
   it.each([
@@ -95,6 +97,24 @@ describe('resolveSidecarUrl', () => {
     expect(result.error.message).toContain(JSON.stringify(reference.slice(0, 20)).slice(0, -1));
     expect(result.error.message).toContain('relative to the model');
     expect(result.error.message.length).toBeLessThan(400);
+  });
+
+  it('takes only a PNG for a bbmodel, named as written', () => {
+    const bbmodel = (reference: string) => resolve(reference, MODEL, ORIGIN, BBMODEL_SIDECARS);
+    expect(bbmodel('skin%20A.png')).toEqual({
+      kind: 'download',
+      href: 'https://models.example/m/skin%20A.png',
+      name: 'skin%20A.png',
+    });
+    expect(bbmodel('..\\tex\\B.PNG')).toEqual({
+      kind: 'download',
+      href: 'https://models.example/tex/B.PNG',
+      name: 'B.PNG',
+    });
+    for (const reference of ['a.jpg', 'a.jpeg', 'a.bin', 'a.mtl', 'a%2Epng', 'tex#1.png']) {
+      expect(bbmodel(reference), reference).toEqual({ kind: 'skip' });
+    }
+    expect(bbmodel('https://evil.example/a.png').kind).toBe('refuse');
   });
 
   it('resolves against the base given, an MTL for its textures', () => {

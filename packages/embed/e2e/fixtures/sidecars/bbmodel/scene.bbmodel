@@ -1,6 +1,6 @@
 {
   "meta": {
-    "format_version": "4.5",
+    "format_version": "5.0",
     "model_format": "free",
     "box_uv": false
   },
@@ -93,8 +93,8 @@
   "textures": [
     {
       "name": "checker tile.png",
-      "path": "C:\\Users\\author\\checker tile.png",
-      "relative_path": "..\\textures\\checker tile.png",
+      "path": "C:\\Users\\author\\models\\textures\\checker tile.png",
+      "relative_path": "../textures/checker tile.png",
       "uv_width": 16,
       "uv_height": 16,
       "uuid": "t-checker"

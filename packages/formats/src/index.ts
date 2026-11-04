@@ -43,4 +43,4 @@ export { listGltfReferences } from './gltf/listGltfReferences';
 export { listObjReferences } from './obj/listObjReferences';
 export { listMtlReferences } from './obj/listMtlReferences';
 export type { ReferenceListOptions } from './resources/ReferenceListOptions';
-export { isUrlReference, normaliseReference, referenceBaseName } from './resources/normaliseReference';
+export { isUrlReference, normalisePath, normaliseReference, referenceBaseName } from './resources/normaliseReference';

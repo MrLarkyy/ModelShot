@@ -36,7 +36,7 @@ const gltfWith = (uris: { buffers?: string[]; images?: string[] }): string =>
   });
 
 const bbmodelWith = (textures: readonly Record<string, unknown>[]): string =>
-  JSON.stringify({ meta: { format_version: '4.5', model_format: 'free' }, textures });
+  JSON.stringify({ meta: { format_version: '5.0', model_format: 'free' }, textures });
 
 interface Case {
   readonly model: () => File;
@@ -130,6 +130,16 @@ const CASES: Record<string, Case> = {
     model: () => new File([fixture('bbmodel/scene.bbmodel')], 'scene.bbmodel'),
     path: '/sidecars/bbmodel/scene.bbmodel',
     served: { '/sidecars/textures/checker%20tile.png': () => fixture('textures/checker tile.png') },
+  },
+  'the format 4.9 fixture bbmodel': {
+    model: () => new File([fixture('bbmodel/scene-4.9.bbmodel')], 'scene-4.9.bbmodel'),
+    path: '/sidecars/bbmodel/scene-4.9.bbmodel',
+    served: { '/sidecars/textures/checker%20tile.png': () => fixture('textures/checker tile.png') },
+  },
+  'a bbmodel with a JPEG and a percent-escaped texture': {
+    model: () => new File([bbmodelWith([{ name: 'a.jpg' }, { name: 'skin%20A.png' }])], 'a.bbmodel'),
+    path: '/m/a.bbmodel',
+    served: { '/m/skin%20A.png': () => text('png') },
   },
   'a bbmodel with a hostile texture name': {
     model: () => new File([bbmodelWith([{ name: 'a.png' }, { name: '//evil.example/b.png' }])], 'a.bbmodel'),
