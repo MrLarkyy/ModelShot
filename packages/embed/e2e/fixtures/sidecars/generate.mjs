@@ -3,6 +3,8 @@
 // saturated colours no look's backdrop has, as a .gltf with an external buffer and image and as an .obj with an .mtl.
 // The texture's name has a space and the references climb a directory, as exported models often do. scene-jpeg.gltf
 // is the same cube with the checker as a JPEG (2x2 flat 8x8 blocks, packages/formats/test/fixtures/jpeg).
+// bbmodel/scene.bbmodel is a Blockbench cube whose texture is not embedded: its `relative_path` climbs with
+// backslashes and its absolute `path` names the author's machine, as Blockbench on Windows writes them.
 // Usage: node packages/embed/e2e/fixtures/sidecars/generate.mjs
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -133,6 +135,39 @@ function obj(mesh) {
   return `${out.join('\n')}\n`;
 }
 
+/** A 16-unit Blockbench cube, every face over the whole external texture. */
+function bbmodel() {
+  const face = { uv: [0, 0, 16, 16], texture: 0 };
+  const doc = {
+    meta: { format_version: '4.5', model_format: 'free', box_uv: false },
+    name: 'checker cube',
+    resolution: { width: 16, height: 16 },
+    elements: [
+      {
+        name: 'checker cube',
+        type: 'cube',
+        uuid: 'c-checker',
+        from: [-8, -8, -8],
+        to: [8, 8, 8],
+        origin: [0, 0, 0],
+        faces: { north: face, east: face, south: face, west: face, up: face, down: face },
+      },
+    ],
+    outliner: ['c-checker'],
+    textures: [
+      {
+        name: 'checker tile.png',
+        path: 'C:\\Users\\author\\checker tile.png',
+        relative_path: '..\\textures\\checker tile.png',
+        uv_width: 16,
+        uv_height: 16,
+        uuid: 't-checker',
+      },
+    ],
+  };
+  return `${JSON.stringify(doc, null, 2)}\n`;
+}
+
 const MTL = [
   '# ModelShot embed test fixture (generate.mjs)',
   'newmtl checker',
@@ -150,3 +185,4 @@ write('gltf/scene-jpeg.gltf', gltf(mesh, '../textures/checker%20tile.jpg').json)
 write('gltf/bin/scene.bin', model.bin);
 write('obj/scene.obj', obj(mesh));
 write('obj/scene.mtl', MTL);
+write('bbmodel/scene.bbmodel', bbmodel());

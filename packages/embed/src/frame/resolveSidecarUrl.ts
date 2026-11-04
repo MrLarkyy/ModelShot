@@ -33,7 +33,9 @@ function shown(reference: string): string {
  * scheme (`data:`, `javascript:`, `file:`, even a same-origin `https:`), a protocol-relative or backslash authority, or
  * anything the URL parser lands elsewhere is refused before any request. A drive path (`C:\tex\a.png`) is skipped: it
  * names a file of the author's machine, never requested. A file the app could not take next to a model
- * (not `.bin`, `.png`, `.jpg`, `.jpeg` or `.mtl`, a query) is skipped: the loader reports it missing, as for a local open.
+ * (not `.bin`, `.png`, `.jpg`, `.jpeg` or `.mtl`) is skipped: the loader reports it missing, as for a local open. So is
+ * a reference whose URL has a query or fragment (`a?b.png`, `tex#1.png`): it would download another URL than the file
+ * name the loader looks it up by.
  */
 export function resolveSidecarUrl(reference: string, baseUrl: string, modelOrigin: string): SidecarUrl {
   const refuse = (why: string): SidecarUrl => ({
@@ -59,6 +61,7 @@ export function resolveSidecarUrl(reference: string, baseUrl: string, modelOrigi
     return refuse(`it leads off the model's server ${modelOrigin}.`);
   }
   if (url.href.length > MAX_MODEL_URL_CHARS) return refuse(`its URL is longer than ${MAX_MODEL_URL_CHARS} characters.`);
+  if (url.search !== '' || url.hash !== '') return { kind: 'skip' };
   const name = referenceBaseName(normaliseReference(reference));
   const lower = name.toLowerCase();
   if (!ACCEPTED_RESOURCE_EXTENSIONS.some((extension) => lower.endsWith(extension))) return { kind: 'skip' };

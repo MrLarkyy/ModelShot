@@ -56,6 +56,22 @@ describe('resolveSidecarUrl', () => {
     },
   );
 
+  it.each(['a?b.png', 'tex#1.png', 'a.png#x', 'a.png?', 'a.png#', '../t/a.png?v=1.png'])(
+    'skips %s, whose URL has a query or fragment: it would download another file than the name the loader matches',
+    (reference) => {
+      expect(resolve(reference)).toEqual({ kind: 'skip' });
+    },
+  );
+
+  it('still downloads the same name without a query or fragment', () => {
+    expect(resolve('a.png')).toEqual({ kind: 'download', href: 'https://models.example/m/a.png', name: 'a.png' });
+    expect(resolve('a%23b.png')).toEqual({
+      kind: 'download',
+      href: 'https://models.example/m/a%23b.png',
+      name: 'a#b.png',
+    });
+  });
+
   it.each([
     ['data:', 'data:application/octet-stream;base64,AAAA'],
     ['javascript:', 'javascript:alert(1)'],

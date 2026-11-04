@@ -1,6 +1,6 @@
-The glTF and OBJ models (*.gltf, *.obj), their buffer (*.bin), material library (*.mtl) and images (*.png, *.jpg) in
-this directory and its subdirectories were made for ModelShot tests from our own geometry and pixel data by
-generate.mjs, and are dedicated to the public domain under CC0-1.0.
+The glTF, OBJ and Blockbench models (*.gltf, *.obj, *.bbmodel), their buffer (*.bin), material library (*.mtl) and
+images (*.png, *.jpg) in this directory and its subdirectories were made for ModelShot tests from our own geometry and
+pixel data by generate.mjs, and are dedicated to the public domain under CC0-1.0.
 
 To the extent possible under law, the ModelShot authors have waived all copyright and related or neighboring rights
 to these files. See https://creativecommons.org/publicdomain/zero/1.0/
