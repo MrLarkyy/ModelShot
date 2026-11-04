@@ -39,7 +39,10 @@ export interface EditorToolsHost {
   readonly stats: HTMLElement;
   /** The model on show, or null while there is none. */
   readonly state: () => EditorState | null;
-  /** Commits an edit of one node (an undoable step); resolves false when the scene could not show it. */
+  /**
+   * Commits an edit of one node (an undoable step) and calls `documentChanged` once it is shown; resolves false when the
+   * scene could not show it.
+   */
   readonly commitEdit: (edit: NodeEdit) => Promise<boolean>;
   /** The user acted on the preview: a render in progress or a finished one no longer matches. */
   readonly interacted: () => void;
@@ -64,6 +67,7 @@ export class EditorTools {
   private press: { readonly x: number; readonly y: number; readonly id: number } | null = null;
   private readonly cleanups: (() => void)[] = [];
   private relightTimer: ReturnType<typeof setTimeout> | null = null;
+  private relightOwed = false;
 
   constructor(private readonly host: EditorToolsHost) {
     this.overlay = new OverlayRenderer(host.overlay);
@@ -116,16 +120,20 @@ export class EditorTools {
     this.refresh();
   }
 
-  /** The shown document changed (an edit, visibility, undo): the overlay follows and a paused playhead keeps its pose. */
+  /**
+   * `documentChanged` shows a clip pose instead of the committed document and relights it, so the commit's
+   * `setDocument` leaves out its own bake; at rest that bake is the only one.
+   */
+  get reposes(): boolean {
+    return this.timeline.posed && (this.host.state()?.rest.animations?.length ?? 0) > 0;
+  }
+
+  /**
+   * The shown document changed (an edit, visibility, undo) and was set with a bake unless `reposes`: the overlay
+   * follows and a paused clip pose is shown again and lit once for it.
+   */
   documentChanged(): void {
-    const state = this.host.state();
-    if (!state) return;
-    if (this.timeline.posed && state.rest.animations?.length) {
-      void this.playFrame(this.timeline.clipIndex, this.timeline.time, this.timeline.looping);
-    } else {
-      void this.showPose(withNodeEdits(state.rest, state.rest, state.edits));
-    }
-    if (!this.timeline.playing && (this.timeline.posed || state.edits.length > 0)) this.scheduleRelight();
+    this.showCommitted(true);
   }
 
   togglePlay(): void {
@@ -174,30 +182,54 @@ export class EditorTools {
     this.timeline.pause();
   }
 
+  // The committed document in the pose the timeline shows: the clip pose when one is shown (relit when `relight`), else
+  // the rest pose, whose light the commit baked.
+  private showCommitted(relight: boolean): void {
+    const state = this.host.state();
+    if (!state) return;
+    if (this.reposes) {
+      void this.playFrame(this.timeline.clipIndex, this.timeline.time, this.timeline.looping, relight);
+    } else {
+      void this.showPose(withNodeEdits(state.rest, state.rest, state.edits));
+    }
+  }
+
   // The pose of the clip at `time` with the node edits on top, handed to the renderer's pose-only path.
-  private async playFrame(clip: number, time: number, loop: boolean): Promise<void> {
+  private async playFrame(clip: number, time: number, loop: boolean, relight = true): Promise<void> {
     const state = this.host.state();
     if (!state) return;
     const posed = animateScene(state.rest, { animation: clip, time, loop: loop ? 'loop' : 'hold' }).document;
     await this.showPose(withNodeEdits(posed, state.rest, state.edits));
     if (this.timeline.playing) this.cancelRelight();
-    else this.scheduleRelight();
+    else if (relight) this.scheduleRelight();
   }
 
   // The baked light belongs to the pose it was baked for: when a pose stays (a pause, the end of a scrub, an edit) the
-  // preview is lit again for it, once.
+  // preview is lit again for it, once. One due during a gizmo drag waits for its end.
   private scheduleRelight(): void {
     this.cancelRelight();
     this.relightTimer = setTimeout(() => {
       this.relightTimer = null;
-      if (!this.timeline.playing && this.drag === null) this.host.viewer.relight();
+      if (this.timeline.playing) return;
+      if (this.drag === null) this.host.viewer.relight();
+      else this.relightOwed = true;
     }, RELIGHT_DELAY_MS);
   }
 
   private cancelRelight(): void {
+    this.relightOwed = false;
     if (this.relightTimer === null) return;
     clearTimeout(this.relightTimer);
     this.relightTimer = null;
+  }
+
+  // A drag that ends without a commit shows the pose from before it again; that pose keeps its light unless a relight
+  // fell due during the drag.
+  private endDragWithoutCommit(): void {
+    const owed = this.relightOwed;
+    this.relightOwed = false;
+    this.showCommitted(false);
+    if (owed) this.scheduleRelight();
   }
 
   private async showPose(doc: SceneDocument): Promise<void> {
@@ -271,10 +303,13 @@ export class EditorTools {
         drag.live.translation.some((v, i) => v !== drag.start.translation[i]) ||
         drag.live.rotation.some((v, i) => v !== drag.start.rotation[i]);
       if (!changed) {
-        this.documentChanged();
+        this.endDragWithoutCommit();
         return;
       }
-      void this.host.commitEdit(drag.live).then(() => this.documentChanged());
+      // An applied commit calls documentChanged, which lights the pose it shows; showing the committed pose again
+      // afterwards (no light) keeps a refused commit from leaving the drag's last pose on show.
+      this.relightOwed = false;
+      void this.host.commitEdit(drag.live).then(() => this.showCommitted(false));
       return;
     }
     const press = this.press;
@@ -290,7 +325,7 @@ export class EditorTools {
     if (this.drag) {
       this.drag = null;
       this.activeAxis = null;
-      this.documentChanged();
+      this.endDragWithoutCommit();
     }
   };
 

@@ -42,7 +42,7 @@ export interface ViewerOptions {
   readonly view?: ViewerView;
   /**
    * A light bake of the shown document started (a new document or look); `onBakeSettled` follows unless another bake
-   * starts first. Both are called for the latest bake only.
+   * starts first or a `setDocument` with `bake: false` drops it. Both are called for the latest bake only.
    */
   readonly onBakeStarted?: () => void;
   /** A light bake settled: `lit` when the preview carries its light, false when it shows unbaked light. */
@@ -105,9 +105,15 @@ export class Viewer {
 
   /**
    * Shows `doc`. `reframe` takes its bounds as the camera's reference and frames them from the default angles; without
-   * it the camera stays (a visibility change). The renderer keeps the previous scene when this rejects.
+   * it the camera stays (a visibility change). The renderer keeps the previous scene when this rejects. `bake: false`
+   * leaves the light to the caller, who bakes next anyway (a look) or shows another pose and relights that: a bake of
+   * `doc` would only be superseded, and a bake under way is dropped with it.
    */
-  async setDocument(doc: SceneDocument, reframe: boolean): Promise<SetSceneResult> {
+  async setDocument(
+    doc: SceneDocument,
+    reframe: boolean,
+    options: { readonly bake?: boolean } = {},
+  ): Promise<SetSceneResult> {
     this.documentsPending++;
     let result: SetSceneResult;
     try {
@@ -124,7 +130,8 @@ export class Viewer {
       this.orbit.reset(this.bounds);
     }
     this.changed();
-    void this.bake();
+    if (options.bake ?? true) void this.bake();
+    else this.bakeGeneration++;
     return result;
   }
 

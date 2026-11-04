@@ -65,11 +65,12 @@ export class Playback {
   }
 
   setAnimations(animations: readonly SceneAnimation[]): void {
+    // No pose before the pause reports: the pose that stops belongs to the clips that go.
+    this.shown = false;
     this.pause();
     this.animations = animations;
     this.clip = 0;
     this.position = 0;
-    this.shown = false;
   }
 
   selectClip(clip: number): void {

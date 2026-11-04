@@ -27,6 +27,7 @@ import { ScenePanel } from './panels/ScenePanel';
 import { RenderSession } from './render/RenderSession';
 import { DEFAULT_RENDER_SETTINGS, type RenderSettingsValues } from './render/RenderSettings';
 import { applyLook } from './session/applyLook';
+import { editPose } from './session/editPose';
 import type { NodeEdit } from './session/NodeEdit';
 import { hiddenIndices, visibilityFromHidden } from './session/visibility';
 import { textureFilters, withTextureFilters } from './session/withTextureFilters';
@@ -226,11 +227,7 @@ export class App {
     this.exportDialog = new ExportDialog(byId('export-dialog', HTMLDialogElement), {
       document: () => this.viewer?.document ?? null,
       restDocument: () => this.restDoc,
-      editPose: () => {
-        const rest = this.restDoc;
-        const edits = this.nodeEdits;
-        return rest && edits.length > 0 ? (pose) => withNodeEdits(pose, rest, edits) : undefined;
-      },
+      editPose: () => editPose(this.restDoc, this.nodeEdits),
       modelName: () => this.open?.loaded.name ?? 'model',
       camera: () => this.requireViewer().settledCamera(),
       viewportAspect: () => (this.cssSize ? this.cssSize.cssWidth / Math.max(1, this.cssSize.cssHeight) : 1),
@@ -343,10 +340,17 @@ export class App {
     return loadModel(request, { arms, timeoutMs: this.watchdogMs, hang });
   }
 
-  private setDocument(viewer: Viewer, doc: SceneDocument, reframe: boolean): ReturnType<Viewer['setDocument']> {
+  private setDocument(
+    viewer: Viewer,
+    doc: SceneDocument,
+    reframe: boolean,
+    bake: boolean,
+  ): ReturnType<Viewer['setDocument']> {
     const fail = import.meta.env.MODE === 'e2e' && this.failNext;
     this.failNext = false;
-    return fail ? Promise.reject(new Error('The scene could not be built (e2e).')) : viewer.setDocument(doc, reframe);
+    return fail
+      ? Promise.reject(new Error('The scene could not be built (e2e).'))
+      : viewer.setDocument(doc, reframe, { bake });
   }
 
   private async readSaved(key: string): Promise<ModelState | null> {
@@ -433,7 +437,8 @@ export class App {
     this.committing = true;
     let result;
     try {
-      result = await this.setDocument(viewer, shown, reframe);
+      // No bake here: applyLook bakes the shown document right after, and a second bake would only supersede the first.
+      result = await this.setDocument(viewer, shown, reframe, false);
       if (!result.applied) return false;
       this.look = applyLook(look, [viewer, this.renderSession.existingTracer()]);
       if (this.open?.loaded.key !== open.loaded.key) this.selection.set(null);
@@ -673,7 +678,8 @@ export class App {
         filtered =
           next.textureFilter === current.textureFilter ? filteredBase : withTextureFilters(base, next.textureFilter);
         const shown = this.shownDocument(filtered, next);
-        const result = await this.setDocument(viewer, shown.shown, false);
+        // At a clip pose the tools show the pose next and relight it; a bake of the rest pose would be wasted.
+        const result = await this.setDocument(viewer, shown.shown, false, !this.tools?.reposes);
         if (!result.applied || this.base !== base) {
           this.showPanels();
           return false;
