@@ -8,6 +8,7 @@
 *.woff2 binary
 *.glb binary
 *.bin binary
+*.hdr binary
 *.bbmodel text eol=lf
 *.jpg binary
 *.jpeg binary

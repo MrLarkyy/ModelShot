@@ -33,6 +33,10 @@ export {
   detectModelFormat,
   type ModelFormat,
 } from './detectModelFormat';
+export { decodeRadianceHdr } from './hdr/decodeRadianceHdr';
+export { HdrError, type HdrErrorCode } from './hdr/HdrError';
+export { DEFAULT_HDR_LIMITS, type HdrLimits } from './hdr/HdrLimits';
+export type { RadianceImage } from './hdr/RadianceImage';
 export { SkinError, type SkinErrorCode } from './player/SkinError';
 export { DEFAULT_SKIN_LIMITS, type SkinLimits } from './player/SkinLimits';
 export type { SkinLayout, SkinLoadResult } from './player/SkinLoadResult';
