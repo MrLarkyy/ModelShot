@@ -52,8 +52,8 @@ file picker should accept.
 - **Images**: PNG or JPEG (baseline, extended or progressive Huffman, 8-bit, greyscale, YCbCr or CMYK) from a `data:`
   URI, a buffer view (GLB) or a picked file. The kind is read from the bytes, never from `mimeType` or the file name:
   JPEG bytes declared `image/png` load as JPEG. The size comes from the header (PNG IHDR, JPEG frame header) before
-  anything is decoded; the browser decodes the bytes later in the renderers. A JPEG's Exif orientation and any ICC
-  profile are ignored (pixels in stored order, as for PNG), and a JPEG has no alpha: under `MASK` or `BLEND` every
+  anything is decoded; the browser decodes the bytes later in the renderers. A JPEG's Exif orientation and a PNG's eXIf orientation, and any ICC
+  profile, are ignored (pixels in stored order: the renderers decode a copy of the bytes with the orientation reset or the eXIf chunk dropped, since browsers apply it), and a JPEG has no alpha: under `MASK` or `BLEND` every
   texel is opaque.
 
 ## Not supported (reported)

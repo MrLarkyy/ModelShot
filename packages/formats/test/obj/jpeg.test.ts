@@ -46,13 +46,25 @@ describe('OBJ JPEG textures', () => {
   });
 
   it.each([
-    ['WebP bytes named .jpg', 'a.jpg', encode('RIFF\x10\0\0\0WEBPVP8 '), 'a WebP image'],
-    ['a lossless JPEG', 'l.jpg', jpegWith(jpegFrame(0xc3, 8, 8)), 'JPEG UNSUPPORTED_CODING lossless'],
+    [
+      'WebP bytes named .jpg',
+      'a.jpg',
+      encode('RIFF\x10\0\0\0WEBPVP8 '),
+      'not a PNG or JPEG image (WebP is not supported)',
+    ],
+    [
+      'a lossless JPEG',
+      'l.jpg',
+      jpegWith(jpegFrame(0xc3, 8, 8)),
+      'a JPEG that is lossless (only 8-bit Huffman JPEG is drawn)',
+    ],
   ])('draws %s missing with UNSUPPORTED_IMAGE naming why', (_name, file, bytes, reason) => {
     const { scene, warnings } = loadObj(OBJ, { files: withMap(file, bytes) });
     expect(scene.textures[0]!.missing).toBe(true);
     expect(warnings.map((w) => w.code)).toEqual(['UNSUPPORTED_IMAGE']);
-    expect(warnings[0]!.message).toContain(`map_Kd "${file}" is not a PNG or JPEG (${reason}); drawn missing`);
+    expect(warnings[0]!.message).toContain(
+      `map_Kd "${file}" is ${reason}; only PNG and JPEG images are drawn, this one is drawn missing`,
+    );
   });
 
   it('counts a JPEG map_Kd toward maxTextures as a PNG', () => {

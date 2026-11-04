@@ -79,7 +79,7 @@ export interface RtControls {
   setScenes: (names: string[]) => Promise<boolean[]>;
   /** Starts a setScene, disposes the renderer before it finishes; resolves with whether it was applied. */
   disposeDuringDecode: () => Promise<boolean>;
-  /** The renderers' `decodeTextures` on a JPEG fixture scene's textures or `wide-exif6.jpg` (decodeProbe.ts). */
+  /** The renderers' `decodeTextures` on a JPEG fixture scene's textures or a `wide-exif6` variant (decodeProbe.ts). */
   decodeProbe: (source: string) => Promise<DecodedTextureProbe>;
   /** Depth-key variant (`raster` or `exact`) of the last frame, `none` before one. */
   depthKeyMode: () => string;

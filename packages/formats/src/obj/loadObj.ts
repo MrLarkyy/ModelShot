@@ -208,7 +208,7 @@ function readMapTexture(
     warnings.add(
       'UNSUPPORTED_IMAGE',
       material.path,
-      `map_Kd ${quoteValue(name)} is not a PNG or JPEG (${size.reason}); drawn missing`,
+      `map_Kd ${quoteValue(name)} is ${size.reason}; only PNG and JPEG images are drawn, this one is drawn missing`,
     );
     return missing;
   }

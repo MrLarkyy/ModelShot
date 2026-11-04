@@ -103,6 +103,8 @@ describe('planTextureDecode admits JPEG by its frame header', () => {
     expect(plan.decode).toEqual([false, false, false]);
     expect(plan.warnings.map((w) => w.code)).toEqual(Array(3).fill('TEXTURE_DECODE_FAILED'));
     expect(plan.warnings[0]?.message).toBe('texture 0 holds image/jpeg bytes, the scene says image/png');
-    expect(plan.warnings[2]?.message).toBe('texture 2 is not a PNG or JPEG (no readable header)');
+    expect(plan.warnings[2]?.message).toBe(
+      'texture 2 is a JPEG whose header is cut short or is not an 8-bit Huffman coding browsers decode',
+    );
   });
 });

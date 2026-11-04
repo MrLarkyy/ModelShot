@@ -1,3 +1,5 @@
+import { walkJpegSegments } from './walkJpegSegments';
+
 const EXIF_HEADER = [0x45, 0x78, 0x69, 0x66, 0, 0];
 const ORIENTATION_TAG = 0x0112;
 
@@ -5,29 +7,14 @@ const ORIENTATION_TAG = 0x0112;
  * A copy of JPEG bytes whose Exif Orientation tags (IFD0 of every APP1 Exif segment before the first scan) read 1, so
  * the image decodes in stored order. Browsers now apply the orientation even under `imageOrientation: 'none'`, which
  * would turn a texture against its UVs (a non-square one would fail the decoded-size check). Walks the marker
- * segments by their lengths and stops at anything unexpected; every step moves forward, so it ends within
- * `bytes.length` steps, and it never reads or writes outside a segment.
+ * segments with libjpeg's rules (`walkJpegSegments`: stray bytes and fill between segments are skipped), the same the
+ * decoder follows, so an Exif segment the decoder reads is found; it never reads or writes outside a segment.
  */
 export function jpegWithStoredOrientation(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
   const copy = new Uint8Array(bytes);
-  let at = 2;
-  while (at + 3 < copy.length && copy[at] === 0xff) {
-    const marker = copy[at + 1]!;
-    if (marker === 0xff) {
-      at++;
-      continue;
-    }
-    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
-      at += 2;
-      continue;
-    }
-    if (marker === 0xda || marker === 0xd9) break;
-    const length = (copy[at + 2]! << 8) | copy[at + 3]!;
-    if (length < 2) break;
-    const end = Math.min(copy.length, at + 2 + length);
-    if (marker === 0xe1) resetOrientation(copy, at + 4, end);
-    at += 2 + length;
-  }
+  walkJpegSegments(copy, (segment) => {
+    if (segment.marker === 0xe1) resetOrientation(copy, segment.start, segment.end);
+  });
   return copy;
 }
 

@@ -41,7 +41,11 @@ import type {
   RtBakeRequest,
 } from '../fixtures/src/fixtureApi';
 import type { LookPreset } from '../../../packages/looks/src/LookPreset';
-import { CRATE_COLOURS, WIDE_COLOURS } from '../../../packages/formats/test/fixtures/jpeg/generate.mjs';
+import {
+  CRATE_COLOURS,
+  WIDE_COLOURS,
+  WIDE_PNG_COLOURS,
+} from '../../../packages/formats/test/fixtures/jpeg/generate.mjs';
 
 const spec = (name: string, variant: string): RasterGoldenSpec => ({
   kind: 'raster',
@@ -195,17 +199,24 @@ test.describe('JPEG textures decode as the generator wrote them (MS-83)', () => 
     });
   }
 
-  test('wide-exif6.jpg keeps its stored 16 x 8, the Exif orientation ignored', async ({ page }) => {
-    const probe = await decodeProbe(page, 'wide-exif6.jpg');
-    expect(probe.warnings).toEqual([]);
-    const image = probe.images[0];
-    expect(image).toMatchObject({ width: 16, height: 8 });
-    if (!image) return;
-    blockColours(image, 2).forEach((rgba, b) => {
-      const want = WIDE_COLOURS[b]!;
-      expect(Math.max(...want.map((v, c) => Math.abs(v - rgba[c]!))), `block ${b}`).toBeLessThanOrEqual(2);
+  // The Exif orientation is 6 in each: the pinned Chromium turns a tagged image 8 x 16 unless the tag is removed.
+  for (const [source, colours, tolerance] of [
+    ['wide-exif6.jpg', WIDE_COLOURS, 2],
+    ['wide-exif6-padded.jpg', WIDE_COLOURS, 2],
+    ['wide-exif6.png', WIDE_PNG_COLOURS, 0],
+  ] as const) {
+    test(`${source} keeps its stored 16 x 8, the Exif orientation ignored`, async ({ page }) => {
+      const probe = await decodeProbe(page, source);
+      expect(probe.warnings).toEqual([]);
+      const image = probe.images[0];
+      expect(image).toMatchObject({ width: 16, height: 8 });
+      if (!image) return;
+      blockColours(image, 2).forEach((rgba, b) => {
+        const want = colours[b]!;
+        expect(Math.max(...want.map((v, c) => Math.abs(v - rgba[c]!))), `block ${b}`).toBeLessThanOrEqual(tolerance);
+      });
     });
-  });
+  }
 });
 
 test('the float path uses MSAA and the fallback reports itself', async ({ page }) => {

@@ -365,8 +365,12 @@ function readImage(images: readonly unknown[], index: number, sources: MaterialS
   const size = readImageSize(bytes);
   if (!size.ok) {
     const declared = mimeType !== '' && mimeType !== 'image/png' && mimeType !== 'image/jpeg';
-    const what = declared ? `${quoteValue(mimeType)} (${size.reason})` : `not a PNG or JPEG (${size.reason})`;
-    warnings.add('UNSUPPORTED_IMAGE', path, `${what}; only PNG and JPEG images are drawn, this one is drawn missing`);
+    const what = declared ? `the image (declared ${quoteValue(mimeType)})` : 'the image';
+    warnings.add(
+      'UNSUPPORTED_IMAGE',
+      path,
+      `${what} is ${size.reason}; only PNG and JPEG images are drawn, this one is drawn missing`,
+    );
     return missingTexture(name);
   }
   if (size.width > limits.maxTextureSide || size.height > limits.maxTextureSide) {

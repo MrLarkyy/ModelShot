@@ -1,6 +1,7 @@
 import type { SceneTexture } from '@modelshot/scene';
 import { imageHeaderSize } from './imageHeaderSize';
-import { jpegWithStoredOrientation } from './jpegStoredOrientation';
+import { jpegWithStoredOrientation } from './jpegWithStoredOrientation';
+import { pngWithoutExif } from './pngWithoutExif';
 import type { RendererWarning } from './RendererWarning';
 
 export interface TextureLimits {
@@ -49,7 +50,7 @@ export function planTextureDecode(textures: readonly SceneTexture[], limits: Tex
         texture: index,
         message: header
           ? `texture ${index} holds ${header.mimeType} bytes, the scene says ${texture.mimeType}`
-          : `texture ${index} is not a PNG or JPEG (no readable header)`,
+          : `texture ${index} is ${unreadableKind(texture.bytes)}`,
       });
       return false;
     }
@@ -84,10 +85,18 @@ export function planTextureDecode(textures: readonly SceneTexture[], limits: Tex
   return { decode, warnings };
 }
 
+function unreadableKind(bytes: Uint8Array): string {
+  if (bytes[0] === 0xff && bytes[1] === 0xd8) {
+    return 'a JPEG whose header is cut short or is not an 8-bit Huffman coding browsers decode';
+  }
+  if (bytes[0] === 0x89 && bytes[1] === 0x50) return 'a PNG whose header is cut short or damaged';
+  return 'not a PNG or JPEG image';
+}
+
 async function decodeOne(texture: SceneTexture): Promise<ImageBitmap> {
   // A copy into a plain ArrayBuffer: the scene's bytes may be a view into a larger or shared buffer.
   const bytes = texture.bytes ?? new Uint8Array(0);
-  const copy = texture.mimeType === 'image/jpeg' ? jpegWithStoredOrientation(bytes) : new Uint8Array(bytes);
+  const copy = texture.mimeType === 'image/jpeg' ? jpegWithStoredOrientation(bytes) : pngWithoutExif(bytes);
   const blob = new Blob([copy], { type: texture.mimeType });
   return createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none', imageOrientation: 'none' });
 }

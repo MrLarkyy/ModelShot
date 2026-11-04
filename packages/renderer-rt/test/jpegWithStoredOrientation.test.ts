@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { encodeFlatJpeg } from '../../formats/test/fixtures/jpeg/encodeFlatJpeg.mjs';
 import { jpegSegment } from '../../formats/test/jpeg/jpegHeaderCases';
-import { jpegWithStoredOrientation } from '../src/jpegStoredOrientation';
+import { jpegWithStoredOrientation } from '../src/jpegWithStoredOrientation';
 
 const BLOCKS: [number, number, number][] = [
   [100, 120, 140],
@@ -81,5 +81,26 @@ describe('jpegWithStoredOrientation', () => {
       bytes.set([0xff, 0xd8, 0xff, 0xe1]);
       expect(() => jpegWithStoredOrientation(bytes)).not.toThrow();
     }
+  });
+});
+
+describe('jpegWithStoredOrientation, bytes libjpeg skips', () => {
+  const plain = encodeFlatJpeg(16, 8, BLOCKS);
+  const exif = littleEndianExif(6);
+  const cases: [string, number[]][] = [
+    ['padding right after SOI', [0x00, 0x12, 0x34]],
+    ['an FF00 pair and fill bytes before the segment', [0xff, 0x00, 0xff, 0xff, 0xff]],
+    ['stray bytes between a segment and the Exif segment', [...jpegSegment(0xe0, [1, 2]), 0x55, 0xff, 0x00, 0x66]],
+  ];
+  it.each(cases)('resets an Exif orientation after %s', (_name, before) => {
+    const bytes = Uint8Array.from([...plain.subarray(0, 2), ...before, ...exif, ...plain.subarray(2)]);
+    expect(orientationOf(bytes)).toBe(6);
+    expect(orientationOf(jpegWithStoredOrientation(bytes))).toBe(1);
+  });
+
+  it('does not read an FF00 pair as a segment with a length', () => {
+    // Were FF00 read as a segment, 0x00 0x45 would be its length and the walk would jump over the Exif segment.
+    const bytes = Uint8Array.from([...plain.subarray(0, 2), 0xff, 0x00, 0x00, 0x45, ...exif, ...plain.subarray(2)]);
+    expect(orientationOf(jpegWithStoredOrientation(bytes))).toBe(1);
   });
 });

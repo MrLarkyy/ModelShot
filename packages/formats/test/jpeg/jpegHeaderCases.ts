@@ -59,6 +59,15 @@ export const JPEG_HEADER_CASES: readonly JpegHeaderCase[] = [
     width: 2,
     height: 3,
   },
+  {
+    name: 'stray bytes and FF00 between segments',
+    bytes: jpegWith(
+      [0x12, 0xff, 0x00, 0x34, 0xff, 0xff, ...jpegFrame(0xc0, 6, 7)],
+      [...jpegSegment(0xe0, [1]), 0x00, 0x00, 0xff, 0x00, 0x99],
+    ),
+    width: 6,
+    height: 7,
+  },
   { name: 'empty', bytes: new Uint8Array(0), reason: 'TRUNCATED' },
   { name: 'SOI only', bytes: Uint8Array.from(SOI), reason: 'TRUNCATED' },
   { name: 'not a JPEG', bytes: new TextEncoder().encode('GIF89a and more'), reason: 'NOT_JPEG' },

@@ -27,7 +27,7 @@ only `ObjError` (and a `RangeError` for invalid `options`).
   picked file parse it once); `#` comments, blank lines, CRLF line ends, a byte-order
   mark, and lines continued with a trailing backslash. The text is decoded as UTF-8 with invalid bytes replaced.
 - MTL: `newmtl`, `Kd` (r g b, or one grey value), `d`, `Tr` (when there is no `d`), `map_Kd` (PNG or JPEG, decided by
-  the bytes and sized from the header as in [glTF](gltf.md#supported); Exif orientation and ICC profiles ignored).
+  the bytes and sized from the header as in [glTF](gltf.md#supported); Exif / eXIf orientation and ICC profiles ignored).
 
 ## Not supported (reported)
 

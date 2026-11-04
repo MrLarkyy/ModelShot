@@ -65,10 +65,20 @@ describe('glTF JPEG images', () => {
   });
 
   it.each([
-    ['a truncated JPEG', CRATE.slice(0, 40), 'image/jpeg', 'not a PNG or JPEG (JPEG TRUNCATED)'],
-    ['an arithmetic JPEG', jpegWith(jpegFrame(0xc9, 8, 8)), 'image/jpeg', 'JPEG UNSUPPORTED_CODING arithmetic'],
-    ['a zero-height JPEG', jpegWith(jpegFrame(0xc0, 8, 0)), 'image/jpeg', 'JPEG ZERO_SIZE'],
-    ['WebP', new TextEncoder().encode('RIFF\x10\0\0\0WEBPVP8 '), 'image/webp', '"image/webp" (a WebP image)'],
+    ['a truncated JPEG', CRATE.slice(0, 40), 'image/jpeg', 'the image is a JPEG whose header is cut short'],
+    ['an arithmetic JPEG', jpegWith(jpegFrame(0xc9, 8, 8)), 'image/jpeg', 'the image is a JPEG that is arithmetic'],
+    [
+      'a zero-height JPEG',
+      jpegWith(jpegFrame(0xc0, 8, 0)),
+      'image/jpeg',
+      'the image is a JPEG with a width or height of 0',
+    ],
+    [
+      'WebP',
+      new TextEncoder().encode('RIFF\x10\0\0\0WEBPVP8 '),
+      'image/webp',
+      'the image (declared "image/webp") is not a PNG or JPEG image (WebP is not supported)',
+    ],
   ])('draws %s missing with UNSUPPORTED_IMAGE naming why', (_name, bytes, mime, reason) => {
     const { scene, warnings } = loadGltf(texturedDoc({ uri: dataUri(bytes, mime), mimeType: mime }));
     expect(scene.textures[0]!.missing).toBe(true);

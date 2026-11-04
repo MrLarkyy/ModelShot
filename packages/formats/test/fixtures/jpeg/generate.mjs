@@ -4,12 +4,14 @@
 // unit cube standing on y = 0 whose every face maps the whole image: crate.gltf + crate.bin (external crate.jpg),
 // crate.glb (the JPEG in a buffer view; faces +y, -y and +z under a MASK material, as a JPEG has no alpha every texel
 // is opaque) and crate.obj + crate.mtl. wide-exif6.jpg is 16x8 (left block red, right blue) tagged Exif orientation 6,
-// drawn in stored order. big-sof.jpg is headers only, a frame of 4097x16: over the side limit, never decodable.
+// drawn in stored order; wide-exif6.png is the same image as a PNG with an eXIf chunk tagging orientation 6
+// (encodeFlatPng.mjs). big-sof.jpg is headers only, a frame of 4097x16: over the side limit, never decodable.
 import { writeFileSync } from 'node:fs';
 import { argv } from 'node:process';
 import { URL, fileURLToPath } from 'node:url';
 import { TextEncoder } from 'node:util';
 import { encodeFlatJpeg, rgbToYcc, yccToRgb } from './encodeFlatJpeg.mjs';
+import { encodeFlatPng } from './encodeFlatPng.mjs';
 
 function hsv(hueDeg, s, v) {
   const f = (n) => {
@@ -25,6 +27,12 @@ const CRATE_YCC = Array.from({ length: 16 }, (_, i) => rgbToYcc(hsv(i * 22.5, 0.
 export const CRATE_COLOURS = CRATE_YCC.map(yccToRgb);
 
 const WIDE_YCC = [rgbToYcc([220, 40, 40]), rgbToYcc([40, 60, 220])];
+
+/** The RGB of wide-exif6.png's left and right block. */
+export const WIDE_PNG_COLOURS = [
+  [220, 40, 40],
+  [40, 60, 220],
+];
 
 /** The RGB of wide-exif6.jpg's left and right block. */
 export const WIDE_COLOURS = WIDE_YCC.map(yccToRgb);
@@ -175,9 +183,9 @@ const MTL = ['# ModelShot test fixture (jpeg/generate.mjs)', 'newmtl crate', 'Kd
   '\n',
 );
 
-const LICENSE = `The JPEG images (*.jpg), glTF models (*.gltf, *.glb), buffers (*.bin), OBJ models (*.obj) and material libraries
+const LICENSE = `The JPEG and PNG images (*.jpg, *.png), glTF models (*.gltf, *.glb), buffers (*.bin), OBJ models (*.obj) and material libraries
 (*.mtl) in this directory, including the images embedded in them, were made for ModelShot tests from our own geometry
-and pixel data by generate.mjs and encodeFlatJpeg.mjs, and are dedicated to the public domain under CC0-1.0.
+and pixel data by generate.mjs, encodeFlatJpeg.mjs and encodeFlatPng.mjs, and are dedicated to the public domain under CC0-1.0.
 
 To the extent possible under law, the ModelShot authors have waived all copyright and related or neighboring rights
 to these files. See https://creativecommons.org/publicdomain/zero/1.0/
@@ -199,6 +207,7 @@ export function buildJpegFixtures() {
     ['crate.obj', encoder.encode(obj(mesh))],
     ['crate.mtl', encoder.encode(MTL)],
     ['wide-exif6.jpg', encodeFlatJpeg(16, 8, WIDE_YCC, { exifOrientation: 6 })],
+    ['wide-exif6.png', encodeFlatPng(16, 8, WIDE_PNG_COLOURS, { exifOrientation: 6 })],
     ['big-sof.jpg', encodeFlatJpeg(4097, 16, [], { headerOnly: true })],
     ['LICENSE', encoder.encode(LICENSE)],
   ]);
