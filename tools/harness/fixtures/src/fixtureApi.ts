@@ -12,7 +12,7 @@ export interface MsFixture {
   samplesDone: number;
   readRGBA: () => string;
   renderFrames?: (count: number) => number[];
-  /** Realtime fixture: playback frames (clip pose, pose-only `setScene`, render) in ms each; see `poseBench.ts`. */
+  /** Realtime fixture: playback frames (clip pose, pose-only `setScene`, render) in ms each; see `installPoseBench` in `bench.ts`. */
   renderPoseFrames?: (count: number) => Promise<number[]>;
   timeToSamples?: (samples: number) => number;
   /** Draws a request of `samples` by `step(1)`; the longest step in ms, each timed until the GPU finished. */

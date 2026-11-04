@@ -1517,8 +1517,9 @@ round 7); its max was 750 ms then.
   old max plus the measured growth plus 10 %, rounded up to 100. `embed-frame` 165 081 to 165 115 B, within its max.)
 - `frameTimeMs.rt-pose-step-512` (MS-34): one playback frame of the editor on the bench scene (128 group nodes, a
   rotation channel per node): `animateScene`, the renderer's pose-only `setScene` (no decode, upload or bake) and the
-  render at 512 x 512, each timed until the GPU finished; median of 11 frames after 4 (`renderPoseFrames` in
-  `fixtures/src/poseBench.ts`). Local SwiftShader medians 849.9, 1060.2 and 1017.5 ms against 947 to 983 ms for
+  render at 512 x 512, each timed until the GPU finished; median of 11 frames after 4 (`renderPoseFrames`, installed by
+  `installPoseBench` in `fixtures/src/bench.ts`, which also throws when the renderer's `lightmapLayout` changes, so a
+  frame that left the pose-only path fails whatever its time). Local SwiftShader medians 849.9, 1060.2 and 1017.5 ms against 947 to 983 ms for
   `rt-bench-512` in the same sessions (the pose step costs no more than the frame, so playback is not a load or an
   upload); max 10 200 ms, 10x the middle run, rounded up. The app's own frame cost is asserted in
   `e2e/app.motion.spec.ts`: the overlay's median draw time at most 2 ms.

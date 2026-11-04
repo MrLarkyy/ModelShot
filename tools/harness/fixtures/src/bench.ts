@@ -154,11 +154,15 @@ export function installPoseBench(
   api.renderPoseFrames = async (count) => {
     const animated = withSpinClip(current());
     const times: number[] = [];
+    // A frame that stopped being pose-only builds a new layout summary; a timing band cannot tell that apart.
+    const layout = renderer.lightmapLayout;
     for (let i = 0; i < count; i++) {
       const start = performance.now();
       const posed = animateScene(animated, { animation: 0, time: (i % 100) / 100 }).document;
       const result = await renderer.setScene(posed);
       if (!result.applied) throw new Error('the pose frame was not applied');
+      if (renderer.lightmapLayout !== layout)
+        throw new Error('the pose frame took the full scene path (the layout changed)');
       renderer.render();
       finish(gl);
       times.push(performance.now() - start);
