@@ -21,7 +21,7 @@ export function checkerPoint(s: number, d: number, y: number): Point {
   return [s * CHECKER_TANGENT[0] - d * CHECKER_NORMAL[0], y, s * CHECKER_TANGENT[2] - d * CHECKER_NORMAL[2]];
 }
 
-function texture(name: string, width: number, rgba: Uint8Array): SceneTexture {
+export function texture(name: string, width: number, rgba: Uint8Array): SceneTexture {
   return {
     name,
     mimeType: 'image/png',
@@ -52,13 +52,13 @@ function greyTexture(): SceneTexture {
   return texture('cutout-checker-grey.png', CUBE_TEXELS, new Uint8Array(CUBE_TEXELS * CUBE_TEXELS * 4).fill(200));
 }
 
-interface Face {
+export interface Face {
   readonly corners: readonly Point[];
   readonly outward: Point;
 }
 
 /** Quads (corners top-left, top-right, bottom-right, bottom-left as seen from outside) as one mesh with own vertices. */
-function quads(name: string, faces: readonly Face[], material: number, doubleSided: boolean): SceneMesh {
+export function quads(name: string, faces: readonly Face[], material: number, doubleSided: boolean): SceneMesh {
   const positions: number[] = [];
   const normals: number[] = [];
   const uvs: number[] = [];

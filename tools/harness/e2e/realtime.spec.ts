@@ -101,6 +101,14 @@ const BAKED = [
 /** MS-63: share of the showcase's 64-sample catcher texels (studio, seed 1) whose baked fill is exactly 1. */
 const RGB_ONES_SHARE = 0.0685;
 
+/**
+ * MS-87: least share of the showcase's 64-sample lightmap texels (studio, seed 1; texels of no chart hold 1 and count)
+ * whose baked fill is exactly 1: 0.9317 measured, 0.9298 with the plain estimator.
+ */
+const CHART_ONES_SHARE = 0.9307;
+/** MS-87: FNV-1a of the key visibility halves of the 64-sample lightmaps at seed 1, recorded from 84b54d8. */
+const CHART_KEY_HASH = { showcase: 939820550, 'convex-cube': 2696078789 };
+
 async function render(page: Page, query: string): Promise<{ png: Buffer; image: Image; info: FixtureInfo }> {
   const info = await openFixture(page, `/rt.html?${query}`);
   const png = encodeFlipped(info);
@@ -1507,6 +1515,36 @@ test.describe('baked lighting', () => {
     expect(share).toBeGreaterThanOrEqual(RGB_ONES_SHARE / 1.25);
   });
 
+  test('nothing blocks a convex model: every baked lightmap texel has fill exactly 1', async ({ page }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030');
+    const stats = await page.evaluate(() => window.__msFixture!.rt!.bakeCatcherStats('convex-cube', 64));
+    console.log(`[rt probe] convex-cube: ${JSON.stringify(stats)}`);
+    expect(stats.chartTexels).toBeGreaterThan(0);
+    expect(stats.chartRgbOnes, 'lightmap texels with rgb exactly 1').toBe(stats.chartTexels);
+    expect(stats.chartNonFinite).toBe(0);
+  });
+
+  test('the lit model is exact where nothing blocks', async ({ page }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030');
+    const stats = await page.evaluate(() => window.__msFixture!.rt!.bakeCatcherStats('showcase', 64));
+    const share = stats.chartRgbOnes / stats.chartTexels;
+    console.log(`[rt probe] showcase lightmap: ${JSON.stringify(stats)}, fill exactly 1 on ${share.toFixed(4)}`);
+    expect(share).toBeGreaterThanOrEqual(CHART_ONES_SHARE);
+  });
+
+  test('the chart control variate keeps the key bytes of the bake', async ({ page }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030');
+    const hashes = await page.evaluate(async () => {
+      const rt = window.__msFixture!.rt!;
+      return {
+        showcase: (await rt.bakeCatcherStats('showcase', 64)).chartKeyHash,
+        'convex-cube': (await rt.bakeCatcherStats('convex-cube', 64)).chartKeyHash,
+      };
+    });
+    console.log(`[rt probe] key hashes: ${JSON.stringify(hashes)}`);
+    expect(hashes).toEqual(CHART_KEY_HASH);
+  });
+
   test('a look with a zero channel keeps its baked key shadow', async ({ page }) => {
     await openFixture(page, '/rt.html?variant=turntable-y030');
     const studio = lookPresetFile('studio');
@@ -1518,16 +1556,19 @@ test.describe('baked lighting', () => {
         ground: [studio.environment.ground[0], studio.environment.ground[1], 0],
       },
     };
-    const { plain, dark } = await page.evaluate(async (look) => {
+    const { plain, dark, cube } = await page.evaluate(async (look) => {
       const rt = window.__msFixture!.rt!;
       return {
         plain: await rt.bakeCatcherStats('showcase', 64),
         dark: await rt.bakeCatcherStats('showcase', 64, look),
+        cube: await rt.bakeCatcherStats('convex-cube', 64, look),
       };
     }, zero);
     console.log(`[rt probe] zero blue channel: ${JSON.stringify(dark)} against studio ${JSON.stringify(plain)}`);
     expect(dark.nonFinite).toBe(0);
     expect(dark.chartNonFinite).toBe(0);
+    expect(cube.chartNonFinite).toBe(0);
+    expect(cube.chartRgbOnes, 'a dark channel loses nothing: the convex cube stays exactly 1').toBe(cube.chartTexels);
     expect(dark.keyShadowed).toBeGreaterThan(0);
     expect(Math.abs(dark.keyShadowed - plain.keyShadowed)).toBeLessThanOrEqual(0.1 * plain.keyShadowed);
     expect(dark.chartKeyShadowed).toBeGreaterThan(0);

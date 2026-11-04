@@ -6,6 +6,7 @@ precision highp int;
 #include "shadowCatcher"
 #include "backdrop"
 #include "agx"
+#include "lerpExact"
 
 // The shadow catcher's baked light (BakedCatcher), its rectangle and lightmap size.
 uniform highp sampler2D u_catcherLight;
@@ -20,11 +21,6 @@ out vec4 outColor;
 
 vec4 catcherTexel(ivec2 texel) {
   return texelFetch(u_catcherLight, clamp(texel, ivec2(0), ivec2(u_catcherSize) - 1), 0);
-}
-
-// a + (b - a) f rather than mix(), which GLSL ES lets round: equal ends come back exactly.
-vec4 lerpExact(vec4 a, vec4 b, float f) {
-  return a + (b - a) * f;
 }
 
 // The backdrop as the catcher darkens it; bilinear between texel centres, the catcher being finer than any model texel.

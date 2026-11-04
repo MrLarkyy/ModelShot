@@ -157,8 +157,13 @@ describe('path tracer shaders', () => {
     expect(catcher).not.toMatch(/fill \/|hemisphereFill\(normal\)|bakePoint\(/);
     // A channel the look leaves at 0 divides by nothing: its share is fixed, never 0 / 0.
     expect(bake).toContain('full.r > 0.0 ? lost.r / full.r : 0.0');
-    expect(bake).toContain('full.b > 0.0 ? light.b / full.b : 1.0');
-    expect(bake).toContain('return vec4(fillShare(fill, hemisphereFill(normal)), keyT);');
+    expect(bake).not.toContain('fillShare');
+    // A model point: the same form, a ray under the surface losing the environment along it, an escaped one nothing.
+    const point = bake.slice(bake.indexOf('vec4 bakePoint('), bake.indexOf('vec4 bakeCatcher('));
+    expect(point).toContain('vec3 lost = environmentRadiance(d);');
+    expect(point).toContain('if (dot(d, side) > 0.0) {');
+    expect(point).toMatch(/if \(!closestHit\([^)]*blocker\)\) lost = vec3\(0\.0\);/);
+    expect(point).toContain('return vec4(1.0 - lostShare(lost, hemisphereFill(normal)), keyT);');
     // A non-finite component is replaced alone, the key's visibility kept.
     expect(bake).toContain('if (isnan(value[c]) || isinf(value[c])) value[c] = 1.0;');
     expect(bake).not.toContain('value = vec4(1.0);');

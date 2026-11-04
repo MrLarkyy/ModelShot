@@ -42,9 +42,9 @@ const PT_WRAP: GoldenSpec = {
 
 /**
  * Preview (baked, 64 samples) vs render (seed 1, 64 samples), as the pair table of src/ptPairTolerance.ts: measured
- * 0.00070 / 0.671 with the strip boxes, x 1.25 (MS-52). Kept here, not in that table, whose every entry pathtracer.spec.ts pairs.
+ * 0.00089 / 0.594, x 1.25 (MS-87; 0.00070 / 0.671 before the chart control variate, MS-52). Kept here, not in that table, whose every entry pathtracer.spec.ts pairs.
  */
-const PAIR_TOLERANCE: CompareOptions = { threshold: 0.1, maxDiffRatio: 0.00088, maxMeanDelta: 0.839 };
+const PAIR_TOLERANCE: CompareOptions = { threshold: 0.1, maxDiffRatio: 0.00111, maxMeanDelta: 0.839 };
 
 /** A texel coordinate (u, v) on a box's south face; v absent: half way up (the still textures' rows are alike). */
 type At = readonly [number, number?];
