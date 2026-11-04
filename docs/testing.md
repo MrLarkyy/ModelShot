@@ -498,6 +498,23 @@ Against their limits (threshold 0.1: `maxDiffRatio` 0.001, `maxMeanDelta` 1), ra
 0.011, `rt-bake-turntable-y030` 0.00020 / 0.027, `rt-texture-wrap` 0 / 0.023; the largest use is a fifth of the ratio
 (`rt-bake-turntable-y030`) and under 4 % of the mean, none more than half its tolerance, so none was regenerated.
 
+MS-89 re-checked those drifted goldens against the live render on main at 30acf6e, after MS-83 (seed 1, bake 64,
+`build golden --update`, the same bytes in a second run) and regenerated them, so every rt golden equals the current output again;
+only `rt-bake-turntable-y030` was already rewritten (MS-63) and stays. Pixels with any channel changed (largest
+change in levels) against the committed file match MS-60's numbers one for one: `rt-turntable-y000` 470 (44), `-y030`
+381 (79), `-y060` 251 (43), `-y090` 166 (34), `rt-iso` 343 (82), `rt-closeup` 1 065 (79), `rt-far` 100 (62),
+`rt-gltf-nodes-y030` 210 (20), `rt-obj-shapes-y030` 138 (49), with the mean delta 0.012, 0.024, 0.015, 0.008, 0.017,
+0.035, 0.007, 0.007 and 0.011 levels; most pixels move by at most 16 levels (`rt-iso` 25 pixels by 17 to 48, 5 by
+more than 48). Judged as images (old, new and the diff times four, cropped to the changed area): every difference lies
+on the one-pixel borders of glass panes, 50 % texels and the star and flower seams, where MS-60's anti-aliased partial
+seams replace the old hard step by a mix, so the live render is right and no defect was filed. `rt-texture-wrap`
+(2 531 pixels, up to 17 levels, 2 109 of them by 1 level; opaque textures, rounded cube edges only) was not an MS-60
+effect, as MS-60 noted: renderer-rt at the MS-52 branch tip (f95af86, where the golden was written) reproduces the old
+file, renderer-rt at the MS-54 merge (centroid normal, edge distances: it moves shading along every rounded edge) does
+not, so the drift is MS-54's, never regenerated because it passed in tolerance. `pt-alpha-plane.s1.n128` (not a
+realtime golden) was rewritten with them: 29 pixels, one channel by 1 level, on the backdrop band at rows 63-69
+(rounding of the radiance, the same file in a second run), 0 pixels over the comparison threshold.
+
 Goldens regenerated on purpose in MS-30 (anti-aliased cut-out seams on the MSAA path; same views, bake seed and
 samples), the ones that failed their comparison, each set by its own `build golden --update --filter`:
 `rt-turntable-y060`, `rt-iso`, `rt-closeup`, `rt-gltf-nodes-y030`, `rt-obj-shapes-y030`, `rt-bake-cutout-checker`,
