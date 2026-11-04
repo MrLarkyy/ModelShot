@@ -91,6 +91,18 @@ describe('planTextureDecode admits JPEG by its frame header', () => {
     expect(plan.warnings[1]?.message).toContain('32x32 image header');
   });
 
+  it('names a cut-off PNG and other bytes by kind', () => {
+    const gif = Uint8Array.from([...'GIF89a......'].map((c) => c.charCodeAt(0)));
+    const plan = planTextureDecode(
+      [testTexture({ bytes: pngHeader(16, 16).subarray(0, 20) }), testTexture({ bytes: gif })],
+      limits,
+    );
+    expect(plan.warnings.map((w) => w.message)).toEqual([
+      'texture 0 is a PNG whose header is cut short or damaged',
+      'texture 1 is not a PNG or JPEG image',
+    ]);
+  });
+
   it('rejects bytes of another kind than the declared mimeType', () => {
     const plan = planTextureDecode(
       [
