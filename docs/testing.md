@@ -1305,6 +1305,10 @@ every run prints each one against its max (`[budget] <group>.<key>: measured …
 `test/bundleSize.test.ts`; Vitest runs with `silent: false` so passing tests print too). Both measure every target in `BUNDLE_TARGETS`
 (`tools/harness/src/bundleSize.ts`), and `test/bundleSize.test.ts` fails when that list and the `bundleGzipBytes` rows
 differ, so a new row cannot go unmeasured.
+The builds of `app`, `embed` (frame page and light-bake worker) ship their `*.glsl?raw` shaders without comments and
+redundant whitespace (MS-85, `shippedGlsl` of `@modelshot/brand`); `test/bundleSize.test.ts` fails when a `//` comment
+of any `packages/*/src/**/*.glsl` is left in a bundle, and requires `#version 300 es` in `app`, `app-entry` and
+`embed-frame` so that check cannot pass on an empty bundle.
 
 Measured on the local Windows dev machine (SwiftShader, 3 runs) when the budgets were set: frame time median 0.3, 0.3,
 0.4 ms; time to 64 samples median 23.8, 23, 25.8 ms; gzip app 437 B, embed 115 B.
@@ -1427,6 +1431,9 @@ round 7); its max was 750 ms then.
   `site` 11 600 (MS-31: the landing page's js, css and html, gzip level 9; measured 9595, 9595, 9595 bytes, plus about
   2 kB) and `site-assets` 110 400 (its woff2 fonts and svg, each gzipped; measured 100 311 three times, times 1.1
   rounded up). The landing page's browser tests are described in docs/site.md.
+- `bundleGzipBytes` `app` 204 000, `app-entry` 66 100 and `embed-frame` 180 400 (MS-85: the shipped builds strip GLSL
+  comments and redundant whitespace; measured before 215 145, 70 139 and 193 867 B, after 185 394, 60 087 and 163 921 B,
+  gzip level 9, plus 10 %, rounded up to 100; the other rows are unchanged).
 - `bakeTimeMs.bake-bench-n16` (MS-16): `LightBaker.bake` of the benchmark scene in its worker, 16 samples with the
   shadow catcher (lightmap 2048 wide, catcher 512 x 512), from the call to the final lighting, median of 3. Local
   SwiftShader 22 873, 22 113 and 22 141 ms; max 222 000 ms (10x the middle run, rounded up). Each run is asserted
