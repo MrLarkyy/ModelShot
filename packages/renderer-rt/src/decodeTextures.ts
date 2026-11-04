@@ -1,5 +1,7 @@
 import type { SceneTexture } from '@modelshot/scene';
-import { pngHeaderSize } from './pngHeaderSize';
+import { imageHeaderSize } from './imageHeaderSize';
+import { jpegWithStoredOrientation } from './jpegWithStoredOrientation';
+import { pngWithoutExif } from './pngWithoutExif';
 import type { RendererWarning } from './RendererWarning';
 
 export interface TextureLimits {
@@ -24,9 +26,10 @@ export interface DecodedTextures {
 }
 
 /**
- * Decides from the PNG header in the bytes alone (never the size the document declares), before anything is decoded,
- * which textures may be decoded: a PNG header within `limits` that agrees with the declared size. The others become
- * placeholders with a warning. Textures are admitted in order until the total pixel budget is spent.
+ * Decides from the image header in the bytes alone (never the size the document declares), before anything is decoded,
+ * which textures may be decoded: a PNG or JPEG header of the declared `mimeType`, within `limits`, that agrees with the
+ * declared size. The others become placeholders with a warning. Textures are admitted in order until the total pixel
+ * budget is spent.
  */
 export function planTextureDecode(textures: readonly SceneTexture[], limits: TextureLimits): TextureDecodePlan {
   const warnings: RendererWarning[] = [];
@@ -40,12 +43,14 @@ export function planTextureDecode(textures: readonly SceneTexture[], limits: Tex
       });
       return false;
     }
-    const header = pngHeaderSize(texture.bytes);
-    if (!header) {
+    const header = imageHeaderSize(texture.bytes);
+    if (!header || header.mimeType !== texture.mimeType) {
       warnings.push({
         code: 'TEXTURE_DECODE_FAILED',
         texture: index,
-        message: `texture ${index} is not a PNG (no signature and IHDR header)`,
+        message: header
+          ? `texture ${index} holds ${header.mimeType} bytes, the scene says ${texture.mimeType}`
+          : `texture ${index} is ${unreadableKind(texture.bytes)}`,
       });
       return false;
     }
@@ -62,7 +67,7 @@ export function planTextureDecode(textures: readonly SceneTexture[], limits: Tex
       warnings.push({
         code: 'TEXTURE_SIZE_MISMATCH',
         texture: index,
-        message: `texture ${index} has a ${width}x${height} PNG header, the scene says ${texture.width}x${texture.height}`,
+        message: `texture ${index} has a ${width}x${height} image header, the scene says ${texture.width}x${texture.height}`,
       });
       return false;
     }
@@ -80,9 +85,19 @@ export function planTextureDecode(textures: readonly SceneTexture[], limits: Tex
   return { decode, warnings };
 }
 
+function unreadableKind(bytes: Uint8Array): string {
+  if (bytes[0] === 0xff && bytes[1] === 0xd8) {
+    return 'a JPEG whose header is cut short or is not an 8-bit Huffman coding browsers decode';
+  }
+  if (bytes[0] === 0x89 && bytes[1] === 0x50) return 'a PNG whose header is cut short or damaged';
+  return 'not a PNG or JPEG image';
+}
+
 async function decodeOne(texture: SceneTexture): Promise<ImageBitmap> {
   // A copy into a plain ArrayBuffer: the scene's bytes may be a view into a larger or shared buffer.
-  const blob = new Blob([new Uint8Array(texture.bytes ?? new Uint8Array(0))], { type: texture.mimeType });
+  const bytes = texture.bytes ?? new Uint8Array(0);
+  const copy = texture.mimeType === 'image/jpeg' ? jpegWithStoredOrientation(bytes) : pngWithoutExif(bytes);
+  const blob = new Blob([copy], { type: texture.mimeType });
   return createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none', imageOrientation: 'none' });
 }
 

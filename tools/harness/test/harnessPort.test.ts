@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { harnessPort, portForDirectory, suitePorts } from '../src/harnessPort';
+import { harnessPort, portForDirectory, safeOffset, suitePorts } from '../src/harnessPort';
 
 describe('harnessPort', () => {
   it('uses MS_HARNESS_PORT when set and rejects a bad value', () => {
@@ -33,6 +33,32 @@ describe('suitePorts', () => {
         expect(port).toBeLessThan(49152);
       });
     }
+  });
+
+  it('never lands a band port on a port Chrome blocks, moving a checkout to the next safe offset', () => {
+    const unsafe = [5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6679, 6697];
+    const hit = Array.from({ length: 20000 }, (_, i) => `/work/probe-${i}`).filter((root) =>
+      unsafe.some((port) => Object.values(suitePorts({}, root)).includes(port)),
+    );
+    expect(hit).toEqual([]);
+    // 6667 is the embed host band's port at offset 257: offsets 255..259 are skipped, as are 150 and 151 (5060, 5061).
+    expect(safeOffset(257)).toBe(260);
+    expect(safeOffset(150)).toBe(152);
+    expect(safeOffset(0)).toBe(0);
+    expect(safeOffset(499)).toBe(499);
+  });
+
+  it('keeps the hashed offset where its ports are safe, and a moved offset shared across all six bands', () => {
+    let moved = 0;
+    for (let i = 0; i < 20000 && moved < 3; i++) {
+      const root = `/work/probe-${i}`;
+      const hashed = portForDirectory(root) - 4410;
+      if (safeOffset(hashed) === hashed) continue;
+      moved++;
+      const ports = Object.values(suitePorts({}, root));
+      expect(ports.map((port, index) => port - bands[index]!)).toEqual(Array(6).fill(safeOffset(hashed)));
+    }
+    expect(moved).toBeGreaterThan(0);
   });
 
   it('is stable per root', () => {

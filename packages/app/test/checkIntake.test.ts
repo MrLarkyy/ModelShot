@@ -9,6 +9,13 @@ describe('checkIntake', () => {
     expect(checkIntake([file('a.gltf'), file('a.bin'), file('a.png')])).toBeNull();
   });
 
+  it('accepts JPEG textures next to a model and refuses a WebP, listing the extensions', () => {
+    expect(checkIntake([file('a.obj'), file('a.mtl'), file('a.jpg'), file('b.JPEG')])).toBeNull();
+    const webp = checkIntake([file('a.gltf'), file('a.webp')]);
+    expect(webp?.code).toBe('UNSUPPORTED_TYPE');
+    expect(webp?.message).toContain('.png .jpg .jpeg');
+  });
+
   it('refuses nothing, too many files, other extensions and too many bytes with the handoff codes', () => {
     expect(checkIntake([])?.code).toBe('EMPTY');
     const many = Array.from({ length: HandoffLimits.maxFiles + 1 }, (_, i) => file(`m${i}.bbmodel`));

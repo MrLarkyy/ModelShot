@@ -31,9 +31,9 @@ file picker should accept.
   `TEXCOORD_n` as float or normalized unsigned byte/short `VEC2`; interleaved buffer views (`byteStride`).
 - **Nodes** of the active scene (`scene`, else scene 0): `children`, `matrix` or `translation` / `rotation` /
   `scale`, `mesh`, `name`. A mesh used by several nodes is loaded once per node.
-- **Materials**: `pbrMetallicRoughness.baseColorTexture` (PNG) or `baseColorFactor`, `alphaMode` (`OPAQUE`, `MASK`
-  with `alphaCutoff`, `BLEND`), `doubleSided`; `KHR_texture_transform` (offset, rotation, scale, texCoord) on the base
-  colour texture.
+- **Materials**: `pbrMetallicRoughness.baseColorTexture` (PNG or JPEG) or `baseColorFactor`, `alphaMode` (`OPAQUE`,
+  `MASK` with `alphaCutoff`, `BLEND`), `doubleSided`; `KHR_texture_transform` (offset, rotation, scale, texCoord) on the
+  base colour texture.
 - **Texture filter** (MS-38) from the texture's sampler: `magFilter` `LINEAR` (9729), or no `magFilter` and a linear
   `minFilter` (`LINEAR`, `LINEAR_MIPMAP_NEAREST`, `NEAREST_MIPMAP_LINEAR`, `LINEAR_MIPMAP_LINEAR`), gives the scene
   texture `filter: "linear"`: both renderers blend the colour of the four texels around a point, its alpha coverage
@@ -49,7 +49,12 @@ file picker should accept.
   `$.samplers[k].wrapS` / `wrapT`. One image used through a clamping and a repeating sampler becomes two scene
   textures sharing its bytes. A missing image has no wrap. Where the drawn wrap differs from the asked one and the
   UVs reach the wrap on that axis (outside 0..1; for a LINEAR texture also within half a texel of the edge, since its taps read one texel past), the loader warns `UV_WRAP_APPROXIMATED`, once per material and axis.
-- **Images**: PNG from a `data:` URI, a buffer view (GLB) or a picked file.
+- **Images**: PNG or JPEG (baseline, extended or progressive Huffman, 8-bit, greyscale, YCbCr or CMYK) from a `data:`
+  URI, a buffer view (GLB) or a picked file. The kind is read from the bytes, never from `mimeType` or the file name:
+  JPEG bytes declared `image/png` load as JPEG. The size comes from the header (PNG IHDR, JPEG frame header) before
+  anything is decoded; the browser decodes the bytes later in the renderers. A JPEG's Exif orientation and a PNG's eXIf orientation, and any ICC
+  profile, are ignored (pixels in stored order: the renderers decode a copy of the bytes with the orientation reset or the eXIf chunk dropped, since browsers apply it), and a JPEG has no alpha: under `MASK` or `BLEND` every
+  texel is opaque.
 
 ## Not supported (reported)
 
@@ -74,7 +79,7 @@ against the full schema key list and that each reported property has a test row.
 | no scene                                                                                                                                              | warning `NO_SCENE`; every root node is drawn                                  |
 | `magFilter` `NEAREST` with a linear `minFilter`                                                                                                       | warning `TEXTURE_FILTER_NEAREST`, once per sampler; drawn nearest             |
 | `MIRRORED_REPEAT` wrapping, or `CLAMP_TO_EDGE` beside a repeating axis, with UVs in reach of the wrap                                                 | warning `UV_WRAP_APPROXIMATED` only when drawn differently (see Texture wrap) |
-| an image that is not PNG (JPEG, WebP, KTX2) or has a broken PNG header                                                                                | warning `UNSUPPORTED_IMAGE`; the texture is `missing`                         |
+| an image that is not PNG or JPEG (WebP, KTX2), a lossless, arithmetic or 12-bit JPEG, or a broken header (named)                                      | warning `UNSUPPORTED_IMAGE`; the texture is `missing`                         |
 | `baseColorFactor` ≠ white beside a texture                                                                                                            | warning `BASE_COLOR_FACTOR_IGNORED`; the texture is drawn as it is            |
 | `matrix` together with `translation` / `rotation` / `scale`                                                                                           | warning `INVALID_TRANSFORM`; the matrix is used                               |
 | an image whose file was not picked, or a URL                                                                                                          | warning `MISSING_RESOURCE`; the texture is `missing`                          |
@@ -100,10 +105,10 @@ maps, which are reported) and `TEXCOORD_n` sets no material reads.
 - **Mirroring**: under a negative determinant two corners of every triangle are swapped, so triangles stay
   counter-clockwise seen from outside and agree with their normals (the realtime renderer culls closed shells by
   winding).
-- **Base colour**: a texture is used as it is (sRGB PNG, `uvWidth` × `uvHeight` = its pixel size). A material without a
-  texture gets a generated 1×1 PNG of `baseColorFactor`, converted from linear to sRGB bytes (0.5 → 188), alpha × 255;
-  equal colours share one texture. Preview and render show the colour through the same texture path, with no material
-  field of their own. A primitive without a material keeps material −1 (the renderers' default).
+- **Base colour**: a texture is used as it is (sRGB PNG or JPEG, `uvWidth` × `uvHeight` = its pixel size). A material
+  without a texture gets a generated 1×1 PNG of `baseColorFactor`, converted from linear to sRGB bytes (0.5 → 188),
+  alpha × 255; equal colours share one texture. Preview and render show the colour through the same texture path, with
+  no material field of their own. A primitive without a material keeps material −1 (the renderers' default).
 - **UVs**: `KHR_texture_transform` is applied as the extension's matrix `T · R · S` (rotation rows `(cos, sin)` and
   `(−sin, cos)`: the UVs turn counter-clockwise in UV space, v down; the Khronos Sample Viewer builds the same matrix)
   and the result stored;
@@ -134,7 +139,7 @@ else a `RangeError`).
 | `maxTriangles`       | 200 000    | `TOO_MANY_TRIANGLES` (every instance counted, before any geometry is decoded)                                                                             |
 | `maxVertices`        | 400 000    | `TOO_MANY_VERTICES` (every instance; primitives without normals count 3 per triangle; and, separately, the POSITION vertices decoded, once per primitive) |
 | `maxNesting`         | 64         | `NESTING_TOO_DEEP` (node hierarchy depth)                                                                                                                 |
-| `maxTextureSide`     | 4096 px    | `TEXTURE_TOO_LARGE` (from the PNG header)                                                                                                                 |
+| `maxTextureSide`     | 4096 px    | `TEXTURE_TOO_LARGE` (from the image header)                                                                                                               |
 | `maxTexturePixels`   | 16 777 216 | `TEXTURE_TOO_LARGE`                                                                                                                                       |
 | `maxDataUriChars`    | 64 Mi      | `INVALID_FIELD` (length of a buffer or image `uri`)                                                                                                       |
 | `maxStringChars`     | 1024       | `INVALID_FIELD` (names)                                                                                                                                   |
@@ -165,7 +170,7 @@ GLB container) and a message `<what> at <path>: <detail>` quoting at most 32 cha
 | `NODE_GRAPH_INVALID`             | a node with two parents, its own child, a cycle, or a scene root that is a child or listed twice                                                                                                                                                                                                                                                                                                           |
 | `NESTING_TOO_DEEP`               | the hierarchy is deeper than `maxNesting`                                                                                                                                                                                                                                                                                                                                                                  |
 | `TOO_MANY_*`                     | a count over its limit (see Limits)                                                                                                                                                                                                                                                                                                                                                                        |
-| `TEXTURE_TOO_LARGE`              | a PNG over the side or pixel limit                                                                                                                                                                                                                                                                                                                                                                         |
+| `TEXTURE_TOO_LARGE`              | a PNG or JPEG over the side or pixel limit                                                                                                                                                                                                                                                                                                                                                                 |
 | `NON_FINITE_DATA`                | a NaN or infinite position or UV in a buffer, a world transform that overflows, or a placed position or transformed UV beyond the float32 range                                                                                                                                                                                                                                                            |
 
 ## Warnings

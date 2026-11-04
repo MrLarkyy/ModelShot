@@ -6,6 +6,10 @@ import alphaPlaneSource from '../../../../packages/formats/test/fixtures/bbmodel
 import renderOrderSource from '../../../../packages/formats/test/fixtures/bbmodel/render-order.bbmodel?raw';
 import contactShadowSource from '../../../../packages/formats/test/fixtures/gltf/contact-shadow.gltf?raw';
 import sceneNodesSource from '../../../../packages/formats/test/fixtures/gltf/scene-nodes.gltf?raw';
+import crateGlbUri from '../../../../packages/formats/test/fixtures/jpeg/crate.glb?inline';
+import crateJpgUri from '../../../../packages/formats/test/fixtures/jpeg/crate.jpg?inline';
+import crateMtlSource from '../../../../packages/formats/test/fixtures/jpeg/crate.mtl?raw';
+import crateObjSource from '../../../../packages/formats/test/fixtures/jpeg/crate.obj?raw';
 import shapesMtlSource from '../../../../packages/formats/test/fixtures/obj/shapes.mtl?raw';
 import shapesObjSource from '../../../../packages/formats/test/fixtures/obj/shapes.obj?raw';
 import shapesPngUri from '../../../../packages/formats/test/fixtures/obj/shapes.png?inline';
@@ -62,6 +66,8 @@ export const RT_SCENE_NAMES = [
   'step-order-open',
   'gltf-nodes',
   'obj-shapes',
+  'gltf-jpeg',
+  'obj-jpeg',
   'player-classic',
   'player-slim',
   'player-legacy',
@@ -228,6 +234,9 @@ export const RT_VARIANTS: Readonly<Record<string, Partial<RtView>>> = {
   'fit-flat-cube': { scene: 'flat', yawDeg: 30, pitchDeg: 20 },
   'gltf-nodes-y030': { scene: 'gltf-nodes', yawDeg: 30 },
   'obj-shapes-y030': { scene: 'obj-shapes', yawDeg: 30 },
+  // MS-83: the JPEG-textured crate as a GLB (half its faces under MASK) and as an OBJ; paired with pt-<v>.
+  'gltf-jpeg-y030': { scene: 'gltf-jpeg', yawDeg: 30 },
+  'obj-jpeg-y030': { scene: 'obj-jpeg', yawDeg: 30 },
   // The model-view scenes and the alpha ramp under their fixed cameras (path-tracer goldens and preview pairs).
   'alpha-plane': { scene: 'alpha-plane', look: 'model-view' },
   'render-order': { scene: 'render-order', look: 'model-view' },
@@ -410,6 +419,10 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return loadGltf(sceneNodesSource).scene;
     case 'obj-shapes':
       return loadObj(shapesObjSource, { fileName: 'shapes.obj', files: shapesFiles() }).scene;
+    case 'gltf-jpeg':
+      return loadGltf(dataUriBytes(crateGlbUri)).scene;
+    case 'obj-jpeg':
+      return loadObj(crateObjSource, { fileName: 'crate.obj', files: crateFiles() }).scene;
     case 'coincident-cubes':
       return coincidentCubes(load(showcaseSource));
     case 'grass-field':
@@ -472,12 +485,24 @@ export function rtScene(name: RtSceneName): SceneDocument {
   }
 }
 
+/** The bytes of a base64 `data:` URI from a `?inline` import. */
+function dataUriBytes(uri: string): Uint8Array {
+  return Uint8Array.from(atob(uri.slice(uri.indexOf(',') + 1)), (c) => c.charCodeAt(0));
+}
+
 /** The files a user picks next to `shapes.obj`: its material library and texture (static imports, nothing fetched). */
 function shapesFiles(): ReadonlyMap<string, Uint8Array> {
-  const png = Uint8Array.from(atob(shapesPngUri.slice(shapesPngUri.indexOf(',') + 1)), (c) => c.charCodeAt(0));
   return new Map([
     ['shapes.mtl', new TextEncoder().encode(shapesMtlSource)],
-    ['shapes.png', png],
+    ['shapes.png', dataUriBytes(shapesPngUri)],
+  ]);
+}
+
+/** The files a user picks next to `crate.obj`: its material library and JPEG texture. */
+function crateFiles(): ReadonlyMap<string, Uint8Array> {
+  return new Map([
+    ['crate.mtl', new TextEncoder().encode(crateMtlSource)],
+    ['crate.jpg', dataUriBytes(crateJpgUri)],
   ]);
 }
 

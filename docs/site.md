@@ -43,8 +43,8 @@ The drop zone and the "Open a model" buttons never upload anything. The landing 
 browser and opens the app, which takes them:
 
 1. The site checks the selection with `checkHandoffFiles` (`@modelshot/app/handoff`): at most 32 files, at most
-   256 MiB in total, extensions `.bbmodel .gltf .glb .bin .obj .mtl .png` (any case). A failure is shown in the
-   `role="alert"` element under the drop zone with a message naming the limit (`EMPTY`, `TOO_MANY`,
+   256 MiB in total, extensions `.bbmodel .gltf .glb .bin .obj .mtl .png .jpg .jpeg` (any case). A failure is shown in
+   the `role="alert"` element under the drop zone with a message naming the limit (`EMPTY`, `TOO_MANY`,
    `UNSUPPORTED_TYPE`, `TOO_LARGE`), and the page stays.
 2. `putHandoffFiles` empties IndexedDB database `modelshot-handoff`, store `pending`, and writes one record under
    key `current`: `{ v: 1, files: File[], createdAt: <ms since epoch> }`, in one transaction. A write that does not

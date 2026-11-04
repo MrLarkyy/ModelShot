@@ -46,6 +46,10 @@ export const PT_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions>> = {
   // MS-39: the glTF loader scene, measured 0.00664 / 1.008, with MS-30's anti-aliased cut-out edges 0.00488 / 0.956, x 1.25 (the ground was 0.04472 / 2.305 while the catcher
   // could win against it).
   'gltf-nodes-y030': { threshold: 0.1, maxDiffRatio: 0.00555, maxMeanDelta: 1.179 },
+  // MS-83: the JPEG crate (flat 8x8 blocks) as a GLB, half its faces under MASK, and as an OBJ (blend), measured
+  // 0.00055 / 0.409 and 0.00108 / 0.420, x 1.25; below obj-shapes-y030 as the plan bounds them.
+  'gltf-jpeg-y030': { threshold: 0.1, maxDiffRatio: 0.00069, maxMeanDelta: 0.511 },
+  'obj-jpeg-y030': { threshold: 0.1, maxDiffRatio: 0.00135, maxMeanDelta: 0.525 },
   // MS-60: anti-aliased partial seams and a partial outline in the preview's raster frames, measured 2 px (0.00003) /
   // 1.124, x 1.25. MS-63: the baked catcher moved one partial-alpha pixel toward the render, measured 3 px (0.0000458)
   // / 1.120, x 1.25.

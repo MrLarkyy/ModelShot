@@ -33,8 +33,19 @@ import { CUTOUT_EDGE_TEXELS, cutoutEdgeOpaque, cutoutEdgePoint } from '../fixtur
 import { PARTIAL_EDGE_STRIP_ROW, PARTIAL_EDGE_TEXELS, partialEdgeTexel } from '../fixtures/src/partialEdge';
 import { agxInverse } from '../src/agxInverse';
 import { cutoutSeams } from '../src/cutoutSeams';
-import type { ModelViewProbe, PtProbe, RtBakeOutcome, RtBakeRequest } from '../fixtures/src/fixtureApi';
+import type {
+  DecodedTextureProbe,
+  ModelViewProbe,
+  PtProbe,
+  RtBakeOutcome,
+  RtBakeRequest,
+} from '../fixtures/src/fixtureApi';
 import type { LookPreset } from '../../../packages/looks/src/LookPreset';
+import {
+  CRATE_COLOURS,
+  WIDE_COLOURS,
+  WIDE_PNG_COLOURS,
+} from '../../../packages/formats/test/fixtures/jpeg/generate.mjs';
 
 const spec = (name: string, variant: string): RasterGoldenSpec => ({
   kind: 'raster',
@@ -64,6 +75,9 @@ const GOLDENS = [
   spec('fit-flat-cube', 'fit-flat-cube'),
   spec('gltf-nodes-y030', 'gltf-nodes-y030'),
   spec('obj-shapes-y030', 'obj-shapes-y030'),
+  // MS-83: the JPEG-textured crate as a GLB and an OBJ; paired with pt-gltf-jpeg-y030 and pt-obj-jpeg-y030.
+  spec('gltf-jpeg-y030', 'gltf-jpeg-y030'),
+  spec('obj-jpeg-y030', 'obj-jpeg-y030'),
   ...PLAYER,
   // MS-15: rounded edges on a cube and a wedge, none on a plane, a card and a sphere; paired with pt-edges.
   spec('edges', 'edges'),
@@ -134,6 +148,73 @@ test.describe('realtime goldens', () => {
       await expectGolden(page, testInfo, golden);
       const path = await page.evaluate(() => window.__msFixture?.rt?.path);
       expect(path).toBe(golden.variant?.endsWith('fallback') ? 'fallback' : 'float');
+    });
+  }
+});
+
+async function decodeProbe(page: Page, source: string): Promise<DecodedTextureProbe> {
+  await openFixture(page, '/rt.html?variant=turntable-y030');
+  return page.evaluate(async (name) => {
+    const rt = window.__msFixture?.rt;
+    if (!rt) throw new Error('realtime fixture API missing');
+    return rt.decodeProbe(name);
+  }, source);
+}
+
+/** The colour of every 8x8 block (its centre texel, row by row) of a decoded flat JPEG. */
+function blockColours(image: { width: number; rgba: number[] }, blocks: number): number[][] {
+  const across = image.width / 8;
+  return Array.from({ length: blocks }, (_, b) => {
+    const at = ((Math.floor(b / across) * 8 + 4) * image.width + (b % across) * 8 + 4) * 4;
+    return image.rgba.slice(at, at + 4);
+  });
+}
+
+test.describe('JPEG textures decode as the generator wrote them (MS-83)', () => {
+  for (const scene of ['gltf-jpeg', 'obj-jpeg']) {
+    test(`${scene}: every crate block within 2 levels, opaque, flat to its edges`, async ({ page }) => {
+      const probe = await decodeProbe(page, scene);
+      expect(probe.warnings).toEqual([]);
+      // One texture: in gltf-jpeg both the opaque and the MASK material sample it.
+      expect(probe.mimeTypes).toEqual(['image/jpeg']);
+      const image = probe.images[0];
+      expect(image).toMatchObject({ width: 32, height: 32 });
+      if (!image) return;
+      const colours = blockColours(image, 16);
+      colours.forEach((rgba, b) => {
+        const want = CRATE_COLOURS[b]!;
+        expect(
+          Math.max(...want.map((v, c) => Math.abs(v - rgba[c]!))),
+          `block ${b} ${rgba.join(' ')} vs ${want.join(' ')}`,
+        ).toBeLessThanOrEqual(2);
+      });
+      // A DC-only block has no ringing: every texel equals its block's colour, so texel edges stay crisp.
+      for (let i = 0; i < image.rgba.length; i += 4) {
+        const x = (i / 4) % 32;
+        const y = Math.floor(i / 4 / 32);
+        const block = colours[Math.floor(y / 8) * 4 + Math.floor(x / 8)]!;
+        expect(image.rgba.slice(i, i + 4), `texel ${x},${y}`).toEqual(block);
+      }
+      expect(image.rgba.filter((_, i) => i % 4 === 3).every((a) => a === 255)).toBe(true);
+    });
+  }
+
+  // The Exif orientation is 6 in each: the pinned Chromium turns a tagged image 8 x 16 unless the tag is removed.
+  for (const [source, colours, tolerance] of [
+    ['wide-exif6.jpg', WIDE_COLOURS, 2],
+    ['wide-exif6-padded.jpg', WIDE_COLOURS, 2],
+    ['wide-exif6.png', WIDE_PNG_COLOURS, 0],
+  ] as const) {
+    test(`${source} keeps its stored 16 x 8, the Exif orientation ignored`, async ({ page }) => {
+      const probe = await decodeProbe(page, source);
+      expect(probe.warnings).toEqual([]);
+      const image = probe.images[0];
+      expect(image).toMatchObject({ width: 16, height: 8 });
+      if (!image) return;
+      blockColours(image, 2).forEach((rgba, b) => {
+        const want = colours[b]!;
+        expect(Math.max(...want.map((v, c) => Math.abs(v - rgba[c]!))), `block ${b}`).toBeLessThanOrEqual(tolerance);
+      });
     });
   }
 });

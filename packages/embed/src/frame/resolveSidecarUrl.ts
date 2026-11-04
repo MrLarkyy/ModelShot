@@ -33,7 +33,7 @@ function shown(reference: string): string {
  * scheme (`data:`, `javascript:`, `file:`, even a same-origin `https:`), a protocol-relative or backslash authority, or
  * anything the URL parser lands elsewhere is refused before any request. A drive path (`C:\tex\a.png`) is skipped: it
  * names a file of the author's machine, never requested. A file the app could not take next to a model
- * (not `.bin`, `.png` or `.mtl`, a query) is skipped: the loader reports it missing, as for a local open.
+ * (not `.bin`, `.png`, `.jpg`, `.jpeg` or `.mtl`, a query) is skipped: the loader reports it missing, as for a local open.
  */
 export function resolveSidecarUrl(reference: string, baseUrl: string, modelOrigin: string): SidecarUrl {
   const refuse = (why: string): SidecarUrl => ({

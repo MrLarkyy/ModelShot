@@ -14,10 +14,10 @@ const { scene, warnings } = loadObj(fileBytesOrText, {
 });
 ```
 
-`loadObj(input: string | Uint8Array, options?)` loads a Wavefront `.obj` with its `.mtl` material libraries and PNG
-textures into a [scene format v1](scene-format.md) document plus warnings. It is synchronous and bounded (one linear
-scan over the text, limits checked as counts grow) and reads nothing but the files the caller passed. It throws only
-`ObjError` (and a `RangeError` for invalid `options`).
+`loadObj(input: string | Uint8Array, options?)` loads a Wavefront `.obj` with its `.mtl` material libraries and PNG or
+JPEG textures into a [scene format v1](scene-format.md) document plus warnings. It is synchronous and bounded (one
+linear scan over the text, limits checked as counts grow) and reads nothing but the files the caller passed. It throws
+only `ObjError` (and a `RangeError` for invalid `options`).
 
 ## Supported
 
@@ -26,7 +26,8 @@ scan over the text, limits checked as counts grow) and reads nothing but the fil
 - `o` and `g` (each starts an object), `usemtl`, `mtllib` (each distinct name read once; names resolving to the same
   picked file parse it once); `#` comments, blank lines, CRLF line ends, a byte-order
   mark, and lines continued with a trailing backslash. The text is decoded as UTF-8 with invalid bytes replaced.
-- MTL: `newmtl`, `Kd` (r g b, or one grey value), `d`, `Tr` (when there is no `d`), `map_Kd` (PNG).
+- MTL: `newmtl`, `Kd` (r g b, or one grey value), `d`, `Tr` (when there is no `d`), `map_Kd` (PNG or JPEG, decided by
+  the bytes and sized from the header as in [glTF](gltf.md#supported); Exif / eXIf orientation and ICC profiles ignored).
 
 ## Not supported (reported)
 
@@ -41,7 +42,7 @@ scan over the text, limits checked as counts grow) and reads nothing but the fil
 | other maps (`map_Ka`, `map_Ks`, `map_Bump`, `map_d`, `bump`, `norm`, `disp`, `decal`, `refl`, …)                      | warning `UNSUPPORTED_MATERIAL_FEATURE`, one per material listing them                                                                                       |
 | `Ka`, `Ks`, `Ke`, `Ns`, `Ni`, `illum`, `Tf`, PBR parameters (`Pr`, `Pm`, …), `Kd spectral` / `Kd xyz`                 | warning `MATERIAL_PARAMS_IGNORED`, one per material listing them                                                                                            |
 | `Kd` ≠ white or `d` < 1 beside `map_Kd`                                                                               | warning `BASE_COLOR_FACTOR_IGNORED`; the texture is drawn as it is                                                                                          |
-| a `map_Kd` file not picked, a URL, or not a PNG                                                                       | warning `MISSING_RESOURCE` or `UNSUPPORTED_IMAGE`; the texture is `missing`                                                                                 |
+| a `map_Kd` file not picked, a URL, or not a PNG or JPEG (the reason named)                                            | warning `MISSING_RESOURCE` or `UNSUPPORTED_IMAGE`; the texture is `missing`                                                                                 |
 
 ## Conversion
 
@@ -57,9 +58,9 @@ scan over the text, limits checked as counts grow) and reads nothing but the fil
   gets its own corners with its flat face normal. A zero `vn` takes the face normal.
 - **UVs**: `vt` v is flipped (`1 − v`: OBJ's v grows upwards, the scene's downwards). Faces of a `map_Kd` material
   without `vt` sample texel (0, 0); `uvRects` are the union of the triangle UV boxes per vertex, as for glTF.
-- **Materials**: `map_Kd` → that PNG, `blend` with `BLEND_ALPHA_CUTOFF` (only alpha byte 0 is invisible, as Blockbench
-  and most OBJ viewers draw textures). Without `map_Kd`: a generated 1×1 PNG of `Kd` (read as sRGB, as three.js's
-  MTLLoader does) with alpha `d`; `blend` when `d` < 1, else `opaque`.
+- **Materials**: `map_Kd` → that PNG or JPEG, `blend` with `BLEND_ALPHA_CUTOFF` (only alpha byte 0 is invisible, as
+  Blockbench and most OBJ viewers draw textures). Without `map_Kd`: a generated 1×1 PNG of `Kd` (read as sRGB, as
+  three.js's MTLLoader does) with alpha `d`; `blend` when `d` < 1, else `opaque`.
 - **Filter**: every texture is nearest (no `SceneTexture.filter`, MS-38): MTL has no filter statement, and its
   `-blendu` / `-blendv` options (on by default) would turn every OBJ smooth, against the pixel-art default; they stay
   `UNSUPPORTED_MAP_OPTION`.
@@ -99,7 +100,7 @@ file) and a message quoting at most 32 characters of file content.
 | `INDEX_OUT_OF_RANGE` | index 0, or an index beyond the `v`, `vt` or `vn` statements read so far                                                                 |
 | `NON_FINITE_DATA`    | a number that is not finite (`NaN`, `Infinity`, `1e999`), or not finite in float32 (a position times `unitScale`, a `vt` or `vn` value)  |
 | `TOO_MANY_*`         | a count over its limit (see Limits)                                                                                                      |
-| `TEXTURE_TOO_LARGE`  | a `map_Kd` PNG over the side or pixel limit                                                                                              |
+| `TEXTURE_TOO_LARGE`  | a `map_Kd` PNG or JPEG over the side or pixel limit                                                                                      |
 
 ## Warnings
 

@@ -9,3 +9,5 @@
 *.glb binary
 *.bin binary
 *.bbmodel text eol=lf
+*.jpg binary
+*.jpeg binary

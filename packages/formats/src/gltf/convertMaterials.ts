@@ -2,8 +2,8 @@ import type { SceneMaterial, SceneTexture, SceneTextureFilter, SceneTextureWrap 
 import { BLEND_ALPHA_CUTOFF } from '../alpha/blendAlphaCutoff';
 import { quoteValue } from '../text/quoteValue';
 import { decodeDataUri } from '../dataUri/decodeDataUri';
+import { readImageSize } from '../image/readImageSize';
 import { encodeSolidPng } from '../png/encodeSolidPng';
-import { readPngSize } from '../png/readPngSize';
 import type { ResourceFiles } from '../resources/ResourceFiles';
 import type { GltfAccessors } from './GltfAccessors';
 import { GltfError } from './GltfError';
@@ -81,10 +81,10 @@ const WHITE = [1, 1, 1, 1] as const;
 
 /**
  * glTF materials as scene materials, one for one: alpha mode and cutoff (`BLEND` gets `BLEND_ALPHA_CUTOFF`),
- * `doubleSided` for the mesh groups, the base colour texture (PNG only; read from a `data:` URI, a buffer view or a
- * picked file) with its sampler's filter and wrap (`readSampler`), or, without a texture, a generated 1×1 PNG of the base colour
- * factor in sRGB, so every renderer shows it with no material field of its own. Everything else a material holds is
- * reported, never silently dropped.
+ * `doubleSided` for the mesh groups, the base colour texture (PNG or JPEG, decided by the bytes; read from a `data:`
+ * URI, a buffer view or a picked file) with its sampler's filter and wrap (`readSampler`), or, without a texture, a
+ * generated 1×1 PNG of the base colour factor in sRGB, so every renderer shows it with no material field of its own.
+ * Everything else a material holds is reported, never silently dropped.
  */
 export function convertMaterials(json: JsonObject, sources: MaterialSources): ConvertedMaterials {
   const { limits, warnings } = sources;
@@ -172,7 +172,11 @@ export function convertMaterials(json: JsonObject, sources: MaterialSources): Co
         );
       }
       if (image === undefined) {
-        warnings.add('UNSUPPORTED_IMAGE', texturePath, 'no PNG source (only an extension image); drawn missing');
+        warnings.add(
+          'UNSUPPORTED_IMAGE',
+          texturePath,
+          'no PNG or JPEG source (only an extension image); drawn missing',
+        );
         textures.push(missingTexture(`texture ${textureIndex}`));
         texture = textures.length - 1;
       } else texture = imageTexture(image, samplerInfo.filter, samplerInfo.wrap);
@@ -358,10 +362,15 @@ function readImage(images: readonly unknown[], index: number, sources: MaterialS
     }
     bytes = found.bytes;
   }
-  const size = readPngSize(bytes);
+  const size = readImageSize(bytes);
   if (!size.ok) {
-    const what = mimeType !== '' && mimeType !== 'image/png' ? quoteValue(mimeType) : `not a PNG (${size.reason})`;
-    warnings.add('UNSUPPORTED_IMAGE', path, `${what}; only PNG images are drawn, this one is drawn missing`);
+    const declared = mimeType !== '' && mimeType !== 'image/png' && mimeType !== 'image/jpeg';
+    const what = declared ? `the image (declared ${quoteValue(mimeType)})` : 'the image';
+    warnings.add(
+      'UNSUPPORTED_IMAGE',
+      path,
+      `${what} is ${size.reason}; only PNG and JPEG images are drawn, this one is drawn missing`,
+    );
     return missingTexture(name);
   }
   if (size.width > limits.maxTextureSide || size.height > limits.maxTextureSide) {
@@ -380,7 +389,7 @@ function readImage(images: readonly unknown[], index: number, sources: MaterialS
   }
   return {
     name,
-    mimeType: 'image/png',
+    mimeType: size.mimeType,
     bytes,
     width: size.width,
     height: size.height,

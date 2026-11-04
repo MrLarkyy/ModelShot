@@ -28,6 +28,27 @@ test('opens an OBJ with its material library and texture', async ({ page }) => {
   await waitForModel(page);
 });
 
+for (const [model, files] of [
+  ['crate.gltf', ['crate.gltf', 'crate.bin', 'crate.jpg']],
+  ['crate.obj', ['crate.obj', 'crate.mtl', 'crate.jpg']],
+] as const) {
+  test(`opens ${model} with its JPEG texture, without a note`, async ({ page }) => {
+    await openApp(page);
+    await openFiles(
+      page,
+      files.map((name) => fixture('jpeg', name)),
+      model,
+    );
+    await waitForModel(page);
+    // A loader or renderer warning (UNSUPPORTED_IMAGE, MISSING_RESOURCE, TEXTURE_*) would read "Opened <model> with N
+    // note(s): ..." instead; the bake's "Lighting the preview…" may follow.
+    const status = page.getByRole('status');
+    await expect(status).toContainText(`Opened ${model}.`);
+    await expect(status).not.toContainText('note(s)');
+    await expect(page.getByRole('alert')).toHaveCount(0);
+  });
+}
+
 test('opens a skin PNG as a player model with an arms choice', async ({ page }) => {
   await openApp(page);
   await openFiles(page, [fixture('skins', 'skin-classic.png')], 'skin-classic.png');

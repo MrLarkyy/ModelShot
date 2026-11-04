@@ -35,6 +35,9 @@ const CENSUS: Readonly<Record<string, { world: readonly string[]; key?: string }
   'gltf-nodes-y030': { world: ['ground', 'roof'] },
   // MS-39: the star and the floor are world-charted, the box and wedge per texel.
   'obj-shapes-y030': { world: ['floor', 'star'] },
+  // MS-83: the JPEG crate as a GLB and an OBJ; new, so no key from before world charts.
+  'gltf-jpeg-y030': { world: [] },
+  'obj-jpeg-y030': { world: [] },
   // MS-52: the wrap boxes, baked by textureWrap.spec.ts's pair test; every face per texel.
   'texture-wrap': { world: [], key: '8aeb28781ff695aa' },
   // MS-60: the textured partial-edge quad, per texel; new, so no key from before world charts.

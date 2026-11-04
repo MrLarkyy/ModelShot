@@ -9,7 +9,8 @@ function file(name: string, size = 10): { name: string; size: number } {
 
 describe('checkHandoffFiles', () => {
   it('accepts every listed extension, in any case', () => {
-    const files = ['a.bbmodel', 'b.gltf', 'c.GLB', 'd.bin', 'e.obj', 'f.mtl', 'skin.PNG'].map((n) => file(n));
+    const names = ['a.bbmodel', 'b.gltf', 'c.GLB', 'd.bin', 'e.obj', 'f.mtl', 'skin.PNG', 'g.jpg', 'h.JPEG'];
+    const files = names.map((n) => file(n));
     expect(checkHandoffFiles(files)).toBeNull();
   });
 
@@ -35,12 +36,15 @@ describe('checkHandoffFiles', () => {
     expect(error?.message).toContain('256 MiB');
   });
 
-  it.each(['setup.exe', 'model', 'notes.bbmodel.txt', '.png', 'archive.zip'])('rejects "%s"', (name) => {
-    const error = checkHandoffFiles([file('ok.bbmodel'), file(name)]);
-    expect(error?.code).toBe('UNSUPPORTED_TYPE');
-    expect(error?.message).toContain(name);
-    expect(error?.message).toContain('.bbmodel');
-  });
+  it.each(['setup.exe', 'model', 'notes.bbmodel.txt', '.png', '.jpg', 'archive.zip', 'wood.webp'])(
+    'rejects "%s"',
+    (name) => {
+      const error = checkHandoffFiles([file('ok.bbmodel'), file(name)]);
+      expect(error?.code).toBe('UNSUPPORTED_TYPE');
+      expect(error?.message).toContain(name);
+      expect(error?.message).toContain('.bbmodel');
+    },
+  );
 
   it('shortens a very long hostile name in the message', () => {
     const error = checkHandoffFiles([file(`${'x'.repeat(5000)}.exe`)]);

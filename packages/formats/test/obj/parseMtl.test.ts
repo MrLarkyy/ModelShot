@@ -62,7 +62,7 @@ describe('parseMtl', () => {
     ]);
   });
 
-  it('a missing or non-PNG map is drawn missing with a warning; an oversized one fails', () => {
+  it('a missing or unreadable map is drawn missing with a warning; an oversized one fails', () => {
     const missing = withMtl(lines('newmtl m', 'map_Kd gone.png'));
     expect(missing.scene.textures[0]!.missing).toBe(true);
     expect(missing.warnings.map((w) => w.code)).toEqual(['MISSING_RESOURCE']);

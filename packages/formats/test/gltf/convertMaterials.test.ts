@@ -8,7 +8,7 @@ import { expectGltfError, json } from './expectGltfError';
 import { gltfDoc, pngDataUri, TRIANGLE, type Json, type TestPrimitive } from './gltfBuilder';
 
 const PNG = encodeSolidPng([10, 20, 30, 255]);
-const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1]);
+const TRUNCATED_JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1]);
 const image = (bytes: Uint8Array = PNG, mime = 'image/png'): Json => ({
   uri: `data:${mime};base64,${btoa(String.fromCharCode(...bytes))}`,
 });
@@ -101,11 +101,11 @@ describe('convertMaterials', () => {
     expect(scene.materials).toEqual([]);
   });
 
-  it('a texture: PNG only, deduplicated by image; a JPEG is missing with a warning', () => {
+  it('a texture: deduplicated by image; a truncated JPEG is missing with a warning', () => {
     const textured = (index: number): Json => ({ pbrMetallicRoughness: { baseColorTexture: { index } } });
     const { scene, warnings } = loadMaterials([textured(0), textured(1), textured(2)], {
       textures: [{ source: 0 }, { source: 0 }, { source: 1 }],
-      images: [image(), image(JPEG, 'image/jpeg')],
+      images: [image(), image(TRUNCATED_JPEG, 'image/jpeg')],
     });
     expect(scene.materials.map((m) => m.texture)).toEqual([0, 0, 1]);
     expect(scene.textures.map((t) => [t.width, t.missing])).toEqual([

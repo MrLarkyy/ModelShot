@@ -1,12 +1,14 @@
 // Writes the multi-file models of the embed sidecar tests (embed.sidecars.spec.ts, test/fetchSidecars.test.ts) from
 // our own geometry and pixels, byte for byte the same on every run: a cube textured with a 4x4 checker of two
 // saturated colours no look's backdrop has, as a .gltf with an external buffer and image and as an .obj with an .mtl.
-// The texture's name has a space and the references climb a directory, as exported models often do.
+// The texture's name has a space and the references climb a directory, as exported models often do. scene-jpeg.gltf
+// is the same cube with the checker as a JPEG (2x2 flat 8x8 blocks, packages/formats/test/fixtures/jpeg).
 // Usage: node packages/embed/e2e/fixtures/sidecars/generate.mjs
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
+import { encodeFlatJpeg, rgbToYcc } from '../../../../formats/test/fixtures/jpeg/encodeFlatJpeg.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -31,6 +33,11 @@ function checkerPng() {
     }
   }
   return PNG.sync.write(png, { colorType: 6 });
+}
+
+function checkerJpeg() {
+  const [a, b] = CHECKER_COLOURS.map(rgbToYcc);
+  return encodeFlatJpeg(16, 16, [a, b, b, a]);
 }
 
 /** A unit cube centred on the origin, 4 corners per face, each face's UVs over the whole texture. */
@@ -66,7 +73,7 @@ function cube() {
   return { positions, normals, uvs, indices };
 }
 
-function gltf(mesh) {
+function gltf(mesh, imageUri) {
   const parts = [
     new Float32Array(mesh.positions),
     new Float32Array(mesh.normals),
@@ -96,7 +103,7 @@ function gltf(mesh) {
     materials: [{ name: 'checker', pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }],
     textures: [{ source: 0, sampler: 0 }],
     samplers: [{ magFilter: 9728, minFilter: 9728 }],
-    images: [{ uri: '../textures/checker%20tile.png' }],
+    images: [{ uri: imageUri }],
     accessors: [
       { bufferView: 0, componentType: 5126, count, type: 'VEC3', min: [-0.5, -0.5, -0.5], max: [0.5, 0.5, 0.5] },
       { bufferView: 1, componentType: 5126, count, type: 'VEC3' },
@@ -135,9 +142,11 @@ const MTL = [
 ].join('\n');
 
 const mesh = cube();
-const model = gltf(mesh);
+const model = gltf(mesh, '../textures/checker%20tile.png');
 write('textures/checker tile.png', checkerPng());
+write('textures/checker tile.jpg', checkerJpeg());
 write('gltf/scene.gltf', model.json);
+write('gltf/scene-jpeg.gltf', gltf(mesh, '../textures/checker%20tile.jpg').json);
 write('gltf/bin/scene.bin', model.bin);
 write('obj/scene.obj', obj(mesh));
 write('obj/scene.mtl', MTL);

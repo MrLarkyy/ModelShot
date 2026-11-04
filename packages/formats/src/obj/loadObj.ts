@@ -11,8 +11,8 @@ import { BLEND_ALPHA_CUTOFF } from '../alpha/blendAlphaCutoff';
 import { quoteValue } from '../text/quoteValue';
 import { triangulateFace } from '../geometry/triangulateFace';
 import { resolveUnitScale } from '../limits/resolveLimits';
+import { readImageSize } from '../image/readImageSize';
 import { encodeSolidPng } from '../png/encodeSolidPng';
-import { readPngSize } from '../png/readPngSize';
 import { ResourceFiles } from '../resources/ResourceFiles';
 import { writeUntexturedUvs, writeUvRects } from '../uv/uvRects';
 import { ObjError } from './ObjError';
@@ -33,7 +33,7 @@ interface ConvertedMaterials {
 }
 
 /**
- * Loads a Wavefront `.obj` with its `.mtl` libraries and PNG textures from the picked files: one node and mesh per
+ * Loads a Wavefront `.obj` with its `.mtl` libraries and PNG or JPEG textures from the picked files: one node and mesh per
  * `o`/`g` object, one group per material, polygons of up to `maxFaceVertices` vertices (concave ones by ear clipping),
  * flat normals where a face has no `vn`. Synchronous and bounded; nothing is fetched. A bad file throws only
  * `ObjError`; whatever the scene format cannot carry is a warning. Invalid `options` throw a `RangeError`. Text from
@@ -203,12 +203,12 @@ function readMapTexture(
     );
     return missing;
   }
-  const size = readPngSize(found.bytes);
+  const size = readImageSize(found.bytes);
   if (!size.ok) {
     warnings.add(
       'UNSUPPORTED_IMAGE',
       material.path,
-      `map_Kd ${quoteValue(name)} is not a PNG (${size.reason}); drawn missing`,
+      `map_Kd ${quoteValue(name)} is ${size.reason}; only PNG and JPEG images are drawn, this one is drawn missing`,
     );
     return missing;
   }
@@ -225,7 +225,7 @@ function readMapTexture(
   }
   return {
     name,
-    mimeType: 'image/png',
+    mimeType: size.mimeType,
     bytes: found.bytes,
     width: size.width,
     height: size.height,

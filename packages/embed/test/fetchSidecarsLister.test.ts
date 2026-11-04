@@ -55,6 +55,14 @@ const CASES: Record<string, Case> = {
       '/sidecars/textures/checker%20tile.png': () => fixture('textures/checker tile.png'),
     },
   },
+  'the fixture glTF with a JPEG texture': {
+    model: () => new File([fixture('gltf/scene-jpeg.gltf')], 'scene-jpeg.gltf'),
+    path: '/sidecars/gltf/scene-jpeg.gltf',
+    served: {
+      '/sidecars/gltf/bin/scene.bin': () => fixture('gltf/bin/scene.bin'),
+      '/sidecars/textures/checker%20tile.jpg': () => fixture('textures/checker tile.jpg'),
+    },
+  },
   'the fixture OBJ': {
     model: () => new File([fixture('obj/scene.obj')], 'scene.obj'),
     path: '/sidecars/obj/scene.obj',
@@ -157,6 +165,16 @@ describe('fetchSidecars with the load worker listing the references', () => {
     const here = await outcome(test, undefined);
     const { lister } = workerLister();
     expect(await outcome(test, lister)).toEqual(here);
+  });
+
+  it('downloads the JPEG texture of the fixture glTF', async () => {
+    const ended = await outcome(CASES['the fixture glTF with a JPEG texture']!, workerLister().lister);
+    expect(ended.files).toEqual(['scene.bin', 'checker tile.jpg']);
+  });
+
+  it('ends more references than are listed with the sidecar cap error, before any request', async () => {
+    const ended = await outcome(CASES['more references than are listed']!, workerLister().lister);
+    expect(ended).toMatchObject({ code: 'TOO_MANY_SIDECARS', requests: [] });
   });
 
   it('never reads the model in the frame beyond its first 4 bytes, nor a material library', async () => {

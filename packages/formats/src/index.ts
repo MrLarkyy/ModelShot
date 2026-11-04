@@ -23,6 +23,8 @@ export { MAX_OBJ_WARNINGS, type ObjWarning, type ObjWarningCode } from './obj/Ob
 export { loadObj } from './obj/loadObj';
 export { decodeObjText, type DecodedObjText } from './obj/objText';
 export { BLEND_ALPHA_CUTOFF } from './alpha/blendAlphaCutoff';
+export { readImageSize, type ImageSizeResult } from './image/readImageSize';
+export { readJpegSize, type JpegSizeResult } from './jpeg/readJpegSize';
 export {
   ACCEPTED_MODEL_EXTENSIONS,
   ACCEPTED_RESOURCE_EXTENSIONS,

@@ -21,7 +21,7 @@ import { walkNodes } from './walkNodes';
 
 /**
  * Loads a glTF 2.0 model (`.gltf` text or bytes with `data:` URIs or picked files, or a `.glb`) as static meshes:
- * the active scene's node hierarchy with every world transform baked into the vertices, base colour textures (PNG),
+ * the active scene's node hierarchy with every world transform baked into the vertices, base colour textures (PNG or JPEG),
  * alpha modes and sidedness. Synchronous and bounded: counts, sizes and depth are checked against `limits` before
  * anything proportional to them is allocated or decoded; nothing is fetched. A bad file throws only `GltfError`;
  * whatever the scene format cannot carry is a warning. Invalid `options` throw a `RangeError`. A `GltfContainer` from
