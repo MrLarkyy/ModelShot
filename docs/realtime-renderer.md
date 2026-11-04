@@ -387,6 +387,15 @@ unknown or cyclic
 include throws; no shader text is built from user input. A compile or link failure throws `RendererError`
 (`SHADER_COMPILE` / `SHADER_LINK`) with the driver's info log.
 
+Shipped builds (the app, the embed frame page and the light-bake worker) strip comments and redundant whitespace from
+every shader source at build time (`shippedGlsl` of `@modelshot/brand`, MS-85); the dev server, Vitest and the harness
+dev server keep the full sources. The strip keeps the line count of each source and `linkShader` is unchanged, so the
+linked text of a shipped build has the same line numbers as the linked text of a dev build: a driver message `0:N` in
+a shipped build names line N of `linkShader(source, chunks)` run on the unstripped sources, for the program and stage in
+the error label (`RendererError` of the renderer, `PathTracerError` of the path tracer; it names program and stage, for
+example `trace fragment` of the path tracer). The licence credit in `agx.glsl` stays in the source and in the Credits
+paragraph above (Sobotka, Wrensch).
+
 Node matrices may scale (an animated `SceneNode.scale`, MS-21), so `mesh.vert.glsl` maps normals with
 `u_normalMatrix`, the `mat4NormalMatrix` of the draw's node matrix (the inverse transpose up to a positive factor,
 normalised by `shadingNormal`), never with the upper 3×3 of `u_model`; the path tracer's `flattenScene` uses the same

@@ -15,6 +15,10 @@
       "types": "./src/devWithoutCsp.ts",
       "default": "./src/devWithoutCsp.ts"
     },
+    "./shippedGlsl": {
+      "types": "./src/shippedGlsl.ts",
+      "default": "./src/shippedGlsl.ts"
+    },
     "./tokens.css": "./css/tokens.css",
     "./illustration.css": "./css/illustration.css",
     "./fonts.css": "./css/fonts.css",

@@ -1,6 +1,23 @@
+import { globSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { loadBudgets } from '../src/budgets';
 import { BUNDLE_TARGETS, measureBundle } from '../src/bundleSize';
+
+const PACKAGES = fileURLToPath(new URL('../../../packages/', import.meta.url));
+const SHIPS_GLSL: readonly string[] = ['app', 'app-entry', 'embed-frame'];
+
+// Comment bodies long enough to be no code fragment, without quotes or backslashes that a bundler may rewrite.
+function glslCommentBodies(): string[] {
+  const bodies = new Set<string>();
+  for (const file of globSync('*/src/**/*.glsl', { cwd: PACKAGES })) {
+    for (const line of readFileSync(PACKAGES + file, 'utf8').split(/\r?\n/)) {
+      const body = line.includes('//') ? line.slice(line.indexOf('//') + 2).trim() : '';
+      if (body.length >= 24 && !/["\\]/.test(body)) bodies.add(body);
+    }
+  }
+  return [...bodies];
+}
 
 describe('bundle size', () => {
   it('measures exactly the bundles budgets.json has rows for', () => {
@@ -14,5 +31,7 @@ describe('bundle size', () => {
     expect(bundle.files.length).toBeGreaterThan(0);
     expect(bundle.gzipBytes).toBeLessThanOrEqual(max);
     expect(bundle.sources).not.toMatch(/pixelmatch|pngjs|playwright/i);
+    for (const body of glslCommentBodies()) expect(bundle.sources, `GLSL comment "${body}"`).not.toContain(body);
+    if (SHIPS_GLSL.includes(target)) expect(bundle.sources).toContain('#version 300 es');
   });
 });

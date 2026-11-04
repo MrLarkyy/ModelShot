@@ -406,6 +406,9 @@ Shaders are static `.glsl` files under `src/shaders/` (`trace.frag`, `bake.frag`
 `edgeRounding`); no shader text is built from user input. The shading normal is computed in one place (`surfaceAt` in
 `surfaceHit.glsl`), rounded at sharp edges there (Lighting).
 
+Shipped builds strip the comments and redundant whitespace of these sources and keep every line number, so a driver
+message `0:N` names line N of the linked unstripped source (docs/realtime-renderer.md, Shaders).
+
 ## Light baker
 
 `LightBaker` bakes the realtime preview's lighting (`BakedLighting` of the realtime renderer, see
