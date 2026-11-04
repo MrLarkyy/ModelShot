@@ -17,6 +17,7 @@ const frameRows: Partial<Measured> = {
     'rt-bench-512': 1,
     'rt-bench-order-512': 1,
     'rt-frame-partial-edge-512': 1,
+    'rt-pose-step-512': 1,
   },
 };
 
@@ -40,7 +41,7 @@ describe('bench sections', () => {
     const foreign = checkBudgets(frames, { frameTimeMs: { ...frameRows.frameTimeMs, 'pt-load-200k': 1 } });
     expect(foreign.map((v) => v.message)).toEqual(['frameTimeMs.pt-load-200k: measurement has no budget']);
     const missing = checkBudgets(frames, { frameTimeMs: { 'gradient-256': 1 } });
-    expect(missing).toHaveLength(3);
+    expect(missing).toHaveLength(4);
     expect(missing[0]?.message).toContain('budget has no measurement');
   });
 
@@ -56,6 +57,6 @@ describe('bench sections', () => {
     writeSectionMeasured(dir, 'bake', { bakeTimeMs: { 'bake-bench-n16': 9 } });
     const file = JSON.parse(readFileSync(join(dir, 'budgets-measured.json'), 'utf8')) as Measured;
     expect(file.bakeTimeMs).toEqual({ 'bake-bench-n16': 9 });
-    expect(Object.keys(file.frameTimeMs)).toHaveLength(4);
+    expect(Object.keys(file.frameTimeMs)).toHaveLength(5);
   });
 });

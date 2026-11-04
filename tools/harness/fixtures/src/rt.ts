@@ -10,7 +10,7 @@ import {
   worldMatrices,
   type SceneDocument,
 } from '@modelshot/scene';
-import { installBakeBench, installFrameBench, installFrameReadout, installSceneBench } from './bench';
+import { installBakeBench, installFrameBench, installFrameReadout, installPoseBench, installSceneBench } from './bench';
 import { readDrawingBufferBase64 } from './context';
 import { spinMainThread, startEventLoopLag } from './eventLoopLag';
 import type { MsFixture, RtBakeOutcome, RtBakeRequest, RtControls } from './fixtureApi';
@@ -236,6 +236,7 @@ async function start(): Promise<void> {
   });
 
   installFrameBench(api, gl, () => renderer.render());
+  installPoseBench(api, gl, renderer, () => doc);
   installSceneBench(api, gl, async (scene = 'large-order') => {
     if (!isRtSceneName(scene)) throw new Error(`unknown scene "${scene}"`);
     doc = sceneOf(scene);

@@ -27,7 +27,8 @@ const FRAMES_TIMEOUT_MS =
   (WARM_FRAMES + TIMED_FRAMES) *
     (maxOf('frameTimeMs', 'rt-bench-512') +
       2 * maxOf('frameTimeMs', 'rt-bench-order-512') +
-      maxOf('frameTimeMs', 'rt-frame-partial-edge-512')) +
+      maxOf('frameTimeMs', 'rt-frame-partial-edge-512') +
+      maxOf('frameTimeMs', 'rt-pose-step-512')) +
   120_000;
 const BAKE_TIMEOUT_MS = 3 * maxOf('bakeTimeMs', 'bake-bench-n16') + 120_000;
 // Hang backstops, not the run's bound (globalTimeout in playwright.config.ts is): the slowest CI run (before the sections
@@ -107,6 +108,19 @@ test.describe('bench sections', () => {
     expect(await page.evaluate(() => window.__msFixture?.rt?.depthKeyMode())).toBe('raster');
     const partialEdgeFrames = await frameTimes(page);
 
+    // MS-34: one playback frame of the editor on the bench scene: a rotation channel per node (128 groups), animateScene,
+    // the renderer's pose-only setScene (no decode, upload or bake) and the render.
+    await openFixture(page, '/rt.html?scene=bench&size=512');
+    const poseFrames = await page.evaluate(
+      async ([warm, timed]) => {
+        const fixture = window.__msFixture;
+        if (!fixture?.renderPoseFrames) throw new Error('pose bench missing');
+        await fixture.renderPoseFrames(warm);
+        return fixture.renderPoseFrames(timed);
+      },
+      [WARM_FRAMES, TIMED_FRAMES] as const,
+    );
+
     // The same scene with one mesh at render order 1: every frame uses the exact depth key (gl_FragDepth). A still
     // exact frame draws one shifted pass of its sample history per render (MS-35): the draws of the single-sampled
     // frame (msaa=0, as on main before it), and frame time within 1.25x of that frame measured alongside.
@@ -135,6 +149,7 @@ test.describe('bench sections', () => {
           'rt-bench-512': median(rtFrames),
           'rt-bench-order-512': median(order.times),
           'rt-frame-partial-edge-512': median(partialEdgeFrames),
+          'rt-pose-step-512': median(poseFrames),
         },
       },
       testInfo,

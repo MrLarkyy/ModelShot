@@ -14,6 +14,7 @@ export const BENCH_SECTION_ROWS: SectionRows = {
     'frameTimeMs.rt-bench-512',
     'frameTimeMs.rt-bench-order-512',
     'frameTimeMs.rt-frame-partial-edge-512',
+    'frameTimeMs.rt-pose-step-512',
   ],
   loads: [
     'frameTimeMs.rt-load-first-frame-200k-order',
