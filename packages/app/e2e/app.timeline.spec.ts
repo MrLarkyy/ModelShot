@@ -177,12 +177,29 @@ test('a pose that stays is lit for that pose: preview and render at 0.5 s agree 
   await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
   await page.waitForTimeout(500);
   await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
+  // Every lighting status from here on, so the relight is counted without waiting on it.
+  await page.evaluate(() => {
+    const status = document.getElementById('status-lighting');
+    const seen: string[] = [];
+    (window as unknown as { statusSeen: string[] }).statusSeen = seen;
+    if (status) {
+      new MutationObserver(() => seen.push(status.textContent ?? '')).observe(status, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    }
+  });
+  // "bob" at 0.5 s lifts the body 2 to 4 units off the catcher: the light baked at rest differs from the render at
+  // 0.0876 of the pixels, 7.7 x the pair limit (measured with the relight switched off), the relit pose at 0.0016.
   await playhead(page).fill('0.5');
-  // The scrub ended: the light is baked again for this pose (once, not per frame), then the preview is lit.
-  await expect(page.getByRole('status')).toContainText('Lighting the preview', { timeout: 30_000 });
+  // The scrub ended: a relight starts 0.2 s later (RELIGHT_DELAY_MS). The pixels below decide whether it lit this pose;
+  // the status is only waited on to take the preview after the bake, never as the check.
+  await page.waitForTimeout(2000);
   await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
   await waitForModel(page);
   const preview = await previewImage(page);
+  const seen = await page.evaluate(() => (window as unknown as { statusSeen: string[] }).statusSeen);
 
   await openTab(page, 'Render');
   const samples = page.locator('#render-panel').getByLabel('Samples');
@@ -196,4 +213,8 @@ test('a pose that stays is lit for that pose: preview and render at 0.5 s agree 
   console.log(`[parity posed] ratio ${result.ratio.toFixed(5)} meanDelta ${result.meanDelta.toFixed(3)}`);
   expect(result.ratio, 'differing pixels').toBeLessThanOrEqual(limits?.maxDiffRatio ?? 0);
   expect(result.meanDelta, 'mean difference').toBeLessThanOrEqual(limits?.maxMeanDelta ?? 0);
+  // Lit once for the pose that stays, not once per frame of the scrub.
+  const lighting = (text: string | undefined): boolean => text?.includes('Lighting the preview') ?? false;
+  const relights = seen.filter((text, i) => lighting(text) && !lighting(seen[i - 1])).length;
+  expect(relights, `relights in ${JSON.stringify(seen)}`).toBe(1);
 });
