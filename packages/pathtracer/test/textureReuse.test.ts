@@ -92,6 +92,7 @@ function tracer(options: PathTracerOptions = {}, onCall?: (call: GlCall) => void
     targets: null,
     resolve: null,
     targetLimits: { maxWidth: 4096, maxHeight: 4096 },
+    environment: { bind: () => undefined, dispose: () => undefined },
   }));
   const created = PathTracer.create(canvas, options);
   const worker = FakeGeometryWorker.last;

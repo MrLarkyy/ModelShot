@@ -1,4 +1,6 @@
 import { isNeutralGrade } from './agxToneMap';
+import { environmentSh } from './environmentSh';
+import { environmentYaw } from './equirect';
 import { rimWorldDirection } from './lightRig';
 import type { LookPreset } from './LookPreset';
 import type { LookView } from './LookView';
@@ -8,8 +10,11 @@ import type { LookView } from './LookView';
  * one has no location for it, and `uploadLookUniforms` skips it.
  */
 export const LOOK_UNIFORM_NAMES = [
+  'u_lookEnvironmentKind',
   'u_lookSky',
   'u_lookGround',
+  'u_lookEnvironmentSh',
+  'u_lookEnvironmentYaw',
   'u_lookKeyDirection',
   'u_lookKeyColor',
   'u_lookKeyCosRadius',
@@ -35,10 +40,17 @@ export const LOOK_UNIFORM_NAMES = [
 export type LookUniformName = (typeof LOOK_UNIFORM_NAMES)[number];
 
 /** The part of a WebGL2 context the upload uses. */
-export type LookUniformTarget = Pick<WebGL2RenderingContext, 'uniform1f' | 'uniform1i' | 'uniform3fv' | 'uniform4fv'>;
+export type LookUniformTarget = Pick<
+  WebGL2RenderingContext,
+  'uniform1f' | 'uniform1i' | 'uniform2fv' | 'uniform3fv' | 'uniform4fv'
+>;
 
 type Value =
-  { readonly kind: 'vec3'; readonly value: Float32Array } | { readonly kind: 'float' | 'bool'; readonly value: number };
+  | { readonly kind: 'vec2' | 'vec3'; readonly value: Float32Array }
+  | { readonly kind: 'float' | 'bool' | 'int'; readonly value: number };
+
+/** An image's nine RGB coefficients are 27 floats; a dome uploads zeros (its branch never reads them). */
+const NO_SH = new Float32Array(27);
 
 const packed = new WeakMap<LookPreset, ReadonlyMap<LookUniformName, Value>>();
 
@@ -47,9 +59,17 @@ function pack(look: LookPreset): ReadonlyMap<LookUniformName, Value> {
   const float = (value: number): Value => ({ kind: 'float', value });
   const { key, fill, rim } = look.lights;
   const { grade } = look.toneMapping;
+  const env = look.environment;
+  const image = env.kind === 'hdri';
   return new Map<LookUniformName, Value>([
-    ['u_lookSky', vec3(look.environment.sky)],
-    ['u_lookGround', vec3(look.environment.ground)],
+    ['u_lookEnvironmentKind', { kind: 'int', value: image ? 1 : 0 }],
+    ['u_lookSky', vec3(image ? [0, 0, 0] : env.sky)],
+    ['u_lookGround', vec3(image ? [0, 0, 0] : env.ground)],
+    ['u_lookEnvironmentSh', { kind: 'vec3', value: image ? environmentSh(env) : NO_SH }],
+    [
+      'u_lookEnvironmentYaw',
+      { kind: 'vec2', value: new Float32Array(image ? environmentYaw(env.rotationDeg) : [1, 0]) },
+    ],
     ['u_lookKeyDirection', vec3(key.direction)],
     ['u_lookKeyColor', vec3(key.color)],
     // The disc's cosine in double precision, as the shaders' former constant folded it.
@@ -107,8 +127,19 @@ export function uploadLookUniforms(
     }
     const entry = values.get(name);
     if (!entry) continue;
-    if (entry.kind === 'vec3') gl.uniform3fv(location, entry.value);
-    else if (entry.kind === 'bool') gl.uniform1i(location, entry.value);
-    else gl.uniform1f(location, entry.value);
+    switch (entry.kind) {
+      case 'vec3':
+        gl.uniform3fv(location, entry.value);
+        break;
+      case 'vec2':
+        gl.uniform2fv(location, entry.value);
+        break;
+      case 'bool':
+      case 'int':
+        gl.uniform1i(location, entry.value);
+        break;
+      case 'float':
+        gl.uniform1f(location, entry.value);
+    }
   }
 }

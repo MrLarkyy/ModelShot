@@ -35,8 +35,8 @@ export interface BakeOptions {
   /** Bake the shadow catcher too (`BakedLighting.catcher`). Default `true`. */
   readonly shadowCatcher?: boolean;
   /**
-   * The look to bake under: its key light and dome shape the light, its key places the shadow catcher, and the result
-   * carries its `lightingKey` (a renderer showing a look of another key refuses it). Default `DEFAULT_LOOK`. An
+   * The look to bake under: its key light and environment shape the light, its key places the shadow catcher, and the
+   * result carries its `lightingKey` (a renderer showing a look of another key refuses it). Default `DEFAULT_LOOK`. An
    * invalid look rejects with `LookPresetError`.
    */
   readonly look?: LookPreset;

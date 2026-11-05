@@ -29,7 +29,7 @@ export const ELEMENT_ATTRIBUTE_NAMES = [
 ] as const;
 
 /** The look preset ids of `@modelshot/looks` (`LOOK_PRESETS`; a test keeps them equal, the element does not load looks). */
-export const EMBED_LOOKS = ['studio', 'marketplace', 'rim'] as const;
+export const EMBED_LOOKS = ['studio', 'marketplace', 'rim', 'softbox'] as const;
 export const EMBED_ARMS = ['classic', 'slim'] as const;
 
 /** Room for a 2048-character model URL percent-encoded three-fold (`:` -> `%3A`) and every other parameter. */

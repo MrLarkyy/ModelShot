@@ -11,8 +11,8 @@ float catcherKeyWeight() {
   return catcherLuminance(u_lookKeyColor) * u_lookKeyDirection.y;
 }
 
-// Everything an unshadowed point receives, the dome's fill and the key, in luminance. At most CATCHER_NO_LIGHT (a
-// lightless look): nothing to take away, so both shades below are exactly 1, in the preview and the render alike.
+// Everything an unshadowed point receives, the environment's fill and the key, in luminance. At most
+// CATCHER_NO_LIGHT (a lightless look): nothing to take away, so both shades below are exactly 1, in the preview and the render alike.
 const float CATCHER_NO_LIGHT = 1.0e-6;
 float catcherLightWeight() {
   return catcherLuminance(hemisphereFill(vec3(0.0, 1.0, 0.0))) + catcherKeyWeight();

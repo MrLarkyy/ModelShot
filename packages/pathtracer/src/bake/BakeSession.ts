@@ -1,6 +1,7 @@
 import { LOOK_VIEW_NONE, uploadLookUniforms, type LookPreset } from '@modelshot/looks';
 import type { RawImage, ShadowCatcherPlane } from '@modelshot/renderer-rt';
 import { AccumulationTargets } from '../accumulationTargets';
+import { EnvironmentTextures } from '../EnvironmentTextures';
 import { disposeGpuScene, uploadData, uploadGpuScene, type GpuScene } from '../gpuScene';
 import { DATA_TEXTURE_WIDTH, type DataTexture, type PackedGeometry } from '../packSceneData';
 import { requireExactAccumulation } from '../requireExactAccumulation';
@@ -16,7 +17,7 @@ export interface BakeScene {
   readonly images: readonly (ImageBitmap | RawImage)[];
   readonly charts: ChartTable;
   readonly catcher: ShadowCatcherPlane | null;
-  /** The look baked under: its key and dome. */
+  /** The look baked under: its key and environment. */
   readonly look: LookPreset;
 }
 
@@ -56,6 +57,7 @@ export class BakeSession {
   private readonly program: TracerProgram;
   private readonly vao: WebGLVertexArrayObject;
   private scene: SceneTextures | null = null;
+  private readonly environment: EnvironmentTextures;
   readonly limits: BakeLimits;
 
   constructor(private readonly gl: WebGL2RenderingContext) {
@@ -68,6 +70,7 @@ export class BakeSession {
     };
     this.program = linkTracerProgram(gl, 'bake');
     this.vao = gl.createVertexArray();
+    this.environment = new EnvironmentTextures(gl);
   }
 
   /** Uploads `scene` (replacing the previous one) and zeroes both sums. */
@@ -146,6 +149,12 @@ export class BakeSession {
       gl.bindTexture(target, texture);
       gl.uniform1i(uniform(name), i);
     });
+    // The look's environment image on the two units after the scene's (unbound for a dome look).
+    const radianceUnit = bound.length;
+    const marginalUnit = bound.length + 1;
+    this.environment.bind(scene.look.environment, radianceUnit, marginalUnit);
+    gl.uniform1i(uniform('u_envRadiance'), radianceUnit);
+    gl.uniform1i(uniform('u_envMarginal'), marginalUnit);
     gl.uniform1i(uniform('u_dataWidth'), DATA_TEXTURE_WIDTH);
     gl.uniform1i(uniform('u_nodeCount'), textures.gpu.nodeCount);
     gl.uniform1f(uniform('u_maxRenderOrder'), textures.gpu.maxRenderOrder);
@@ -166,7 +175,7 @@ export class BakeSession {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.disable(gl.SCISSOR_TEST);
     gl.bindVertexArray(null);
-    for (let i = 0; i < bound.length; i++) {
+    for (let i = 0; i < marginalUnit + 1; i++) {
       gl.activeTexture(gl.TEXTURE0 + i);
       gl.bindTexture(bound[i]?.[1] ?? gl.TEXTURE_2D, null);
     }
@@ -188,6 +197,7 @@ export class BakeSession {
 
   dispose(): void {
     this.releaseScene();
+    this.environment.dispose();
     this.gl.deleteProgram(this.program.program);
     this.gl.deleteVertexArray(this.vao);
   }

@@ -27,6 +27,14 @@ vec3 aboveSurface(vec3 d, vec3 side) {
   return below < 0.0 ? d - 2.0 * below * side : d;
 }
 
+// Density along d (above `side`) of aboveSurface(cosineDirection(n)): the cosine lobe at d plus the share of the lobe
+// that mirrors onto d from under the surface.
+float foldedCosinePdf(vec3 n, vec3 side, vec3 d) {
+  float below = dot(d, side);
+  vec3 mirrored = d - 2.0 * below * side;
+  return (max(dot(n, d), 0.0) + max(dot(n, mirrored), 0.0)) / 3.141592653589793;
+}
+
 // Start of a ray leaving the surface at p on the side `side`, clear of it at float precision for the scene's scale.
 vec3 leave(vec3 p, vec3 side) {
   float scale = max(1.0, max(abs(p.x), max(abs(p.y), abs(p.z))));

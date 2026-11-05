@@ -94,6 +94,7 @@ describe('path tracer shaders', () => {
       'vec3 cosineDirection(vec3 n, float u1, float u2)',
       'vec3 leave(vec3 p, vec3 side)',
       'vec3 environmentRadiance(vec3 d)',
+      'vec3 escapeRadiance(vec3 d)',
     ]) {
       expect(trace, shared).toContain(shared);
       expect(bake, shared).toContain(shared);
@@ -130,10 +131,10 @@ describe('path tracer shaders', () => {
 
   it('shades the catcher with a control variate: only a blocked fill ray brings environment radiance', () => {
     const trace = pathTracerProgramSource('trace').fragment;
-    const at = trace.slice(trace.indexOf('float catcherShadeAt('), trace.indexOf('vec3 tracePath('));
+    const at = trace.slice(trace.indexOf('float catcherShadeAt('), trace.indexOf('vec3 environmentLight('));
     expect(trace).toContain('float catcherShadeOfLoss(vec3 fillLost, float keyLost, vec2 xz, vec4 rect)');
     expect(at).toMatch(
-      /vec3 fillLost = closestHit\(origin, d, 0\.0, 3\.0e38, 1\.0, -1, key, dimension \+ 2u, blocker\) \? environmentRadiance\(d\)\s*: vec3\(0\.0\);/,
+      /vec3 fillLost = closestHit\(origin, d, 0\.0, 3\.0e38, 1\.0, -1, key, dimension \+ 2u, blocker\) \? escapeRadiance\(d\)\s*: vec3\(0\.0\);/,
     );
     expect(at).toContain('return catcherShadeOfLoss(fillLost, 1.0 - keyT, point.xz, u_catcherRect);');
     expect(at).not.toMatch(/catcherShade\(/);
@@ -151,7 +152,7 @@ describe('path tracer shaders', () => {
     const bake = pathTracerProgramSource('bake').fragment;
     const catcher = bake.slice(bake.indexOf('vec4 bakeCatcher('), bake.indexOf('vec4 bakeChart('));
     expect(catcher).toMatch(
-      /vec3 lost = closestHit\(origin, d, 0\.0, 3\.0e38, 1\.0, -1, key, ALPHA_DIMENSION, blocker\) \? environmentRadiance\(d\)\s*: vec3\(0\.0\);/,
+      /vec3 lost = closestHit\(origin, d, 0\.0, 3\.0e38, 1\.0, -1, key, ALPHA_DIMENSION, blocker\) \? escapeRadiance\(d\)\s*: vec3\(0\.0\);/,
     );
     expect(catcher).toContain('return vec4(1.0 - lostShare(lost, hemisphereFill(up)), keyT);');
     expect(catcher).not.toMatch(/fill \/|hemisphereFill\(normal\)|bakePoint\(/);
@@ -163,10 +164,10 @@ describe('path tracer shaders', () => {
     // The trace mirrors a ray under the surface (aboveSurface): one that escapes loses the difference of the two sky
     // values, a blocked one what it carried, and the random dimensions are the plain estimate's.
     expect(point).toContain('vec3 mirrored = aboveSurface(d, side);');
-    expect(point).toContain('vec3 lost = environmentRadiance(d);');
+    expect(point).toContain('vec3 lost = escapeRadiance(d);');
     expect(point).toContain('if (dot(mirrored, side) > 0.0) {');
     expect(point).toMatch(
-      /if \(!closestHit\(origin, mirrored, [^)]*blocker\)\) \{\s*lost = lost - environmentRadiance\(mirrored\);/,
+      /if \(!closestHit\(origin, mirrored, [^)]*blocker\)\) \{\s*lost = lost - escapeRadiance\(mirrored\);/,
     );
     expect(point).toContain('return vec4(1.0 - lostShare(lost, hemisphereFill(normal)), keyT);');
     // A non-finite component is replaced alone, the key's visibility kept.
@@ -185,6 +186,50 @@ describe('path tracer shaders', () => {
       'unitRandom(key, FILL_DIMENSION, 0u)',
       'unitRandom(key, FILL_DIMENSION + 1u, 0u)',
     ]);
+  });
+
+  it('an image environment (MS-47): texelFetch tables, escapes through escapeRadiance, a dome takes the dome branch', () => {
+    const trace = pathTracerProgramSource('trace').fragment;
+    const bake = pathTracerProgramSource('bake').fragment;
+    for (const source of [trace, bake]) {
+      expect(source).toContain('uniform highp sampler2D u_envRadiance;');
+      expect(source).toContain('uniform highp sampler2D u_envMarginal;');
+      expect(source).toMatch(
+        /vec3 escapeRadiance\(vec3 d\) \{\s*if \(u_lookEnvironmentKind != 1\) return environmentRadiance\(d\);/,
+      );
+      // Float textures without filtering: never sampled with texture().
+      expect(source).not.toMatch(/texture\(u_env/);
+    }
+    // The bake keeps its cosine rays: every environment read in it is an escape, no light sampling.
+    expect(bake).not.toContain('sampleEnvironment(unitRandom');
+    const bakeMain = bake.slice(bake.indexOf('vec4 bakePoint('));
+    expect(bakeMain).not.toMatch(/environmentRadiance\(/);
+    // A cosine escape of an image is weighted against the light sampling, a dome's is not.
+    expect(trace).toMatch(
+      /vec3 escapeRadianceMis\(vec3 d, float cosinePdf\) \{\s*if \(u_lookEnvironmentKind != 1\) return environmentRadiance\(d\);/,
+    );
+    expect(trace).toContain('cosinePdf = foldedCosinePdf(s.normal, s.side, next);');
+  });
+
+  it('samples an image at every surface vertex in stream 1 of the key cone dimensions, through shadowTransmittance', () => {
+    const trace = pathTracerProgramSource('trace').fragment;
+    const light = trace.slice(trace.indexOf('vec3 environmentLight('), trace.indexOf('vec3 tracePath('));
+    expect(light.match(/unitRandom\([^)]*\)/g)).toEqual([
+      'unitRandom(key, dimension + 4u, 1u)',
+      'unitRandom(key, dimension + 5u, 1u)',
+    ]);
+    // Cut-out texels pass the light's ray as they pass the key's.
+    expect(light).toContain('shadowTransmittance(leave(s.position, s.side), l, skip)');
+    // The density is the bounce's folded one, so a mirrored escape is covered by the light sampling too.
+    expect(light).toContain('float cosinePdf = foldedCosinePdf(s.normal, s.side, l);');
+    expect(light).not.toMatch(/dot\(s\.normal, l\)/);
+    expect(light).toContain('float weight = last ? 1.0 : powerHeuristic(lightPdf, cosinePdf);');
+    // The last vertex samples no bounce, so its light sampling keeps the whole weight.
+    expect(trace).toContain(
+      'radiance += throughput * environmentLight(key, dimension, s, hit.triangle, pathVertex >= u_maxBounces);',
+    );
+    // No dome stream moved: the per-vertex dimensions are the ones of cameraCatcher.
+    expect(trace).toContain('const uint DIMENSIONS_PER_VERTEX = 6u;');
   });
 
   it('sums squared luminance into the second target only when asked', () => {
@@ -206,7 +251,7 @@ describe('path tracer shaders', () => {
     // Opaque: the catcher still shades the backdrop, an escaped camera ray still shows it, the sum is unchanged.
     expect(trace).toContain('if (!u_transparent) return backdropHere() * shade;');
     expect(trace).toContain(
-      'radiance += throughput * (pathVertex == 0 ? backdropHere() : environmentRadiance(direction));',
+      'radiance += throughput * (pathVertex == 0 ? backdropHere() : escapeRadianceMis(direction, cosinePdf));',
     );
     expect(trace).toContain('outSum = vec4(sum.rgb + radiance, sum.a + float(cappedTraversals));');
     // Coverage reuses the camera ray's outcome: no random dimension of its own.

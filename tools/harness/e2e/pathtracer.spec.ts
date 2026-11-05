@@ -101,6 +101,7 @@ const VARIANT_PRESET: Readonly<Record<string, string>> = {
   'preset-marketplace': 'marketplace',
   'preset-marketplace-yaw30': 'marketplace',
   'preset-rim': 'rim',
+  'preset-softbox': 'softbox',
 };
 
 /** The display colour (0..255) of the look's backdrop in image row y (top 0): its TS mirror. */
@@ -161,6 +162,8 @@ test.describe('determinism', () => {
   });
 
   test('batches of 7 samples, 64-pixel tiles and one pass of N give the same bytes', async ({ page }) => {
+    // Six renders: 24.8 s alone on a SwiftShader runner, over 120 s under machine load.
+    test.setTimeout(300_000);
     const reference = await referencePixels(page, TURNTABLE);
     for (const extra of ['batch=1', 'batch=7', 'tile=64', 'batch=7&tile=64']) {
       const { image, info } = await render(page, `variant=turntable-y030&seed=1&samples=64&${extra}`);

@@ -3,7 +3,7 @@ import { CUBE, addViewer, expect, openHost, pixel, shot, test, viewerFrame, wait
 // The page colour comes out as written under every look: the frame solves the look's view transform (docs/embed.md).
 const PAGE_COLOUR = [0x1b, 0x2a, 0x4a] as const;
 
-for (const look of ['studio', 'marketplace', 'rim']) {
+for (const look of ['studio', 'marketplace', 'rim', 'softbox']) {
   test(`background #1b2a4a shows as that colour behind the model under the ${look} look`, async ({ page }) => {
     await openHost(page);
     await addViewer(page, { model: CUBE, look, background: '#1b2a4a' });
