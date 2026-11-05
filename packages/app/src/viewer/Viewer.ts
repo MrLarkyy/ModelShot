@@ -103,6 +103,11 @@ export class Viewer {
     return this.look;
   }
 
+  /** A `setDocument` is under way: its document replaces the one shown, which a bake now would light. */
+  get settingDocument(): boolean {
+    return this.documentsPending > 0;
+  }
+
   /**
    * Shows `doc`. `reframe` takes its bounds as the camera's reference and frames them from the default angles; without
    * it the camera stays (a visibility change). The renderer keeps the previous scene when this rejects. `bake: false`

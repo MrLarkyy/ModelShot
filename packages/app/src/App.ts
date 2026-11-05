@@ -164,6 +164,7 @@ export class App {
         },
         onChange: () => this.cameraChanged(),
         onFrame: (camera) => this.tools?.frame(camera),
+        onBakeStarted: () => this.tools?.bakeStarted(),
         preserveDrawingBuffer: import.meta.env.MODE === 'e2e',
       });
     } catch (error) {

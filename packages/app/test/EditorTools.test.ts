@@ -1,4 +1,4 @@
-import { animateScene, type SceneAnimation, type SceneDocument } from '@modelshot/scene';
+import { animateScene, type SceneAnimation, type SceneCamera, type SceneDocument } from '@modelshot/scene';
 import type { SetSceneResult } from '@modelshot/renderer-rt';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EditorTools, RELIGHT_DELAY_MS, type EditorState } from '../src/editor/EditorTools';
@@ -6,11 +6,14 @@ import { Selection } from '../src/editor/Selection';
 import type { LayoutStore } from '../src/layout/LayoutStore';
 import type { NodeEdit } from '../src/session/NodeEdit';
 import { sceneBakes } from '../src/session/sceneBakes';
-import { withNodeEdits } from '../src/session/withNodeEdits';
+import { setNodeEdit, withNodeEdits } from '../src/session/withNodeEdits';
 import type { Viewer } from '../src/viewer/Viewer';
 import { boxMesh, doc, node } from './editorDocs';
 
-// Just enough of an element for the timeline, the overlay canvas and the viewport in a Node test.
+type Listener = (event: object) => void;
+
+// Just enough of an element for the timeline, the overlay canvas and the viewport in a Node test; the viewport's
+// pointer listeners can be fired.
 class FakeElement {
   id = '';
   className = '';
@@ -24,32 +27,61 @@ class FakeElement {
   width = 0;
   height = 0;
   readonly style: Record<string, string> = {};
+  readonly listeners = new Map<string, Listener>();
   setAttribute(): void {}
   append(): void {}
   replaceChildren(): void {}
-  addEventListener(): void {}
-  removeEventListener(): void {}
+  addEventListener(type: string, listener: Listener): void {
+    this.listeners.set(type, listener);
+  }
+  removeEventListener(type: string): void {
+    this.listeners.delete(type);
+  }
+  getBoundingClientRect(): { left: number; top: number } {
+    return { left: 0, top: 0 };
+  }
   getContext(): object {
-    return {};
+    // Every drawing call of the overlay is a no-op.
+    return new Proxy({}, { get: () => () => undefined, set: () => true });
+  }
+  fire(type: string, event: object): void {
+    this.listeners.get(type)?.(event);
   }
 }
 
-// The light side of Viewer: setDocument and setLook bake unless told not to, relight bakes the shown document.
+// The light side of Viewer: setDocument and setLook bake unless told not to, relight bakes the shown document, every
+// bake reports its start, and a pose is refused while a document is being set.
 class FakeViewer {
   doc: SceneDocument | null = null;
   look = 'studio';
   readonly bakes: SceneDocument[] = [];
   /** The look each bake ran under. */
   readonly bakeLooks: string[] = [];
+  onBakeStarted: () => void = () => undefined;
+  private pending = 0;
 
   get document(): SceneDocument | null {
     return this.doc;
   }
 
-  setDocument(next: SceneDocument, _reframe: boolean, options: { bake?: boolean } = {}): Promise<SetSceneResult> {
+  get settingDocument(): boolean {
+    return this.pending > 0;
+  }
+
+  async setDocument(
+    next: SceneDocument,
+    _reframe: boolean,
+    options: { bake?: boolean; delayMs?: number } = {},
+  ): Promise<SetSceneResult> {
+    this.pending++;
+    try {
+      if (options.delayMs) await new Promise((resolve) => setTimeout(resolve, options.delayMs));
+    } finally {
+      this.pending--;
+    }
     this.doc = next;
     if (options.bake ?? true) this.bake();
-    return Promise.resolve({ applied: true, warnings: [] });
+    return { applied: true, warnings: [] };
   }
 
   setLook(look: string, options: { bake?: boolean } = {}): void {
@@ -58,6 +90,7 @@ class FakeViewer {
   }
 
   setPose(next: SceneDocument): Promise<SetSceneResult> {
+    if (this.pending > 0) return Promise.resolve({ applied: false, warnings: [] });
     this.doc = next;
     return Promise.resolve({ applied: true, warnings: [] });
   }
@@ -66,13 +99,14 @@ class FakeViewer {
     this.bake();
   }
 
+  requestRender(): void {}
+
   private bake(): void {
     if (!this.doc) return;
     this.bakes.push(this.doc);
     this.bakeLooks.push(this.look);
+    this.onBakeStarted();
   }
-
-  requestRender(): void {}
 }
 
 const clip: SceneAnimation = {
@@ -100,9 +134,22 @@ const hidden: SceneDocument = {
   ...animated,
   meshes: [animated.meshes[0]!, { ...animated.meshes[1]!, visible: false }],
 };
+const camera: SceneCamera = {
+  position: [0, 0, 10],
+  target: [0, 0, 0],
+  up: [0, 1, 0],
+  projection: { kind: 'perspective', fovYDeg: 60 },
+  near: 0.1,
+  far: 100,
+};
 
-function setup(rest: SceneDocument = animated) {
+// Long enough for every debounced relight; promises in between are flushed.
+const settle = () => vi.advanceTimersByTimeAsync(RELIGHT_DELAY_MS * 5);
+
+function setup(rest: SceneDocument = animated, options: { refuseEdits?: boolean } = {}) {
   const viewer = new FakeViewer();
+  const selection = new Selection();
+  const viewport = new FakeElement();
   let state: EditorState = {
     rest,
     edits: [],
@@ -114,21 +161,9 @@ function setup(rest: SceneDocument = animated) {
     onChange: () => () => undefined,
   } as unknown as LayoutStore;
   const element = (): HTMLElement => new FakeElement() as unknown as HTMLElement;
-  const tools = new EditorTools({
-    viewer: viewer as unknown as Viewer,
-    selection: new Selection(),
-    layout,
-    viewport: element(),
-    overlay: element() as HTMLCanvasElement,
-    timeline: element(),
-    stats: element(),
-    state: () => state,
-    commitEdit: () => Promise.resolve(true),
-    interacted: () => undefined,
-  });
   // What App.applySetup does with a scene change (and the look of an Undo or Redo step): set the document, then the
   // look, each baking as sceneBakes says, then tell the tools.
-  const commit = async (next: Partial<Pick<EditorState, 'rest' | 'edits'>>, look?: string): Promise<void> => {
+  const apply = async (next: Partial<Pick<EditorState, 'rest' | 'edits'>>, look?: string): Promise<void> => {
     const changed = { ...state, ...next };
     const bakes = sceneBakes({ sceneChanged: true, lookChanged: look !== undefined, reposes: tools.reposes });
     await viewer.setDocument(withNodeEdits(changed.rest, changed.rest, changed.edits), false, {
@@ -137,37 +172,101 @@ function setup(rest: SceneDocument = animated) {
     state = changed;
     if (look !== undefined) viewer.setLook(look, { bake: bakes.look });
     tools.documentChanged();
+  };
+  const tools = new EditorTools({
+    viewer: viewer as unknown as Viewer,
+    selection,
+    layout,
+    viewport: viewport as unknown as HTMLElement,
+    overlay: element() as HTMLCanvasElement,
+    timeline: element(),
+    stats: element(),
+    state: () => state,
+    // App.commitNodeEdit: a queued setup change, or one the scene refuses.
+    commitEdit: async (change) => {
+      if (options.refuseEdits) return false;
+      await apply({ edits: setNodeEdit(state.rest, state.edits, change) });
+      return true;
+    },
+    interacted: () => undefined,
+  });
+  viewer.onBakeStarted = () => tools.bakeStarted();
+  const commit = async (next: Partial<Pick<EditorState, 'rest' | 'edits'>>, look?: string): Promise<void> => {
+    await apply(next, look);
     await settle();
   };
-  // What App.commit does with a model (its one bake is applyLook's): show it, then tell the tools; resolves the bakes it
-  // cost and forgets them.
-  const open = async (next: SceneDocument = state.rest): Promise<number> => {
+  // What App.selectLook does: applyLook bakes under the new look.
+  const pickLook = (look: string): void => viewer.setLook(look);
+  // What App.commit does with a model: pause playback, set the document without a bake (taking `delayMs`), bake under
+  // the look (applyLook) as soon as it is set, then tell the tools. Resolves the documents it baked and forgets them.
+  const open = async (next: SceneDocument = state.rest, delayMs = 0): Promise<SceneDocument[]> => {
     const before = viewer.bakes.length;
-    state = { ...state, rest: next, edits: [] };
-    await viewer.setDocument(next, true);
-    tools.modelChanged();
+    tools.pausePlayback();
+    const shown = viewer.setDocument(next, true, { bake: false, delayMs }).then(() => {
+      state = { ...state, rest: next, edits: [] };
+      viewer.setLook(viewer.look);
+      tools.modelChanged();
+    });
+    await vi.advanceTimersByTimeAsync(delayMs);
+    await shown;
     await settle();
-    const bakes = viewer.bakes.length - before;
+    const baked = viewer.bakes.slice(before);
+    forget();
+    return baked;
+  };
+  const forget = (): void => {
     viewer.bakes.length = 0;
     viewer.bakeLooks.length = 0;
-    return bakes;
   };
-  return { viewer, tools, commit, open, state: () => state };
+  // Presses the move handle of node 1's x axis; `drag.move` drags it along the axis, `drag.release` lets go.
+  const press = () => {
+    selection.set({ kind: 'node', index: 1 });
+    tools.resize({ cssWidth: 400, cssHeight: 400, devicePixelRatio: 1 });
+    tools.overlay.draw(camera);
+    const handle = tools.overlay.handles.find((h) => h.axis === 0);
+    const [from, to] = handle?.polyline ?? [];
+    if (!from || !to) throw new Error('no x handle');
+    const pointer = (x: number, y: number) => ({
+      button: 0,
+      shiftKey: false,
+      isPrimary: true,
+      target: null,
+      pointerId: 1,
+      clientX: x,
+      clientY: y,
+      stopPropagation: () => undefined,
+      preventDefault: () => undefined,
+    });
+    viewport.fire('pointerdown', pointer(to.x, to.y));
+    return {
+      move: () => viewport.fire('pointermove', pointer(2 * to.x - from.x, 2 * to.y - from.y)),
+      release: () => viewport.fire('pointerup', pointer(2 * to.x - from.x, 2 * to.y - from.y)),
+      cancel: () => viewport.fire('pointercancel', {}),
+    };
+  };
+  const play = async (): Promise<void> => {
+    tools.togglePlay();
+    frames.shift()?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(tools.timeline.playing).toBe(true);
+  };
+  return { viewer, tools, commit, open, pickLook, press, play, forget, state: () => state };
 }
-
-// Long enough for every debounced relight; promises in between are flushed.
-const settle = () => vi.advanceTimersByTimeAsync(RELIGHT_DELAY_MS * 5);
 
 function posed(rest: SceneDocument, edits: readonly NodeEdit[], time: number): SceneDocument {
   return withNodeEdits(animateScene(rest, { animation: 0, time, loop: 'loop' }).document, rest, edits);
 }
+
+const translations = (d: SceneDocument | undefined) => d?.nodes.map((n) => n.translation);
 
 let frames: (() => void)[] = [];
 
 beforeEach(() => {
   vi.useFakeTimers();
   frames = [];
-  vi.stubGlobal('document', { createElement: () => new FakeElement() });
+  vi.stubGlobal('document', { createElement: () => new FakeElement(), documentElement: {} });
+  vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => '' }));
+  vi.stubGlobal('Element', class {});
   vi.stubGlobal('requestAnimationFrame', (callback: () => void) => frames.push(callback));
   vi.stubGlobal('cancelAnimationFrame', () => undefined);
 });
@@ -177,8 +276,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('EditorTools light', () => {
-  it('bakes once per scene change at rest: the commit bakes, no relight follows', async () => {
+describe('EditorTools light: a scene change', () => {
+  it('bakes once at rest: the commit bakes, no relight follows', async () => {
     const { viewer, commit, open } = setup();
     await open();
     await commit({ edits: [edit] });
@@ -200,19 +299,18 @@ describe('EditorTools light', () => {
   });
 
   it('lights a scrubbed pose once, and once more per scene change: the clip pose, never the rest pose', async () => {
-    const { viewer, tools, commit, open } = setup();
+    const { viewer, tools, commit, open, forget } = setup();
     await open();
     tools.timeline.seek(0.5);
     await settle();
     expect(viewer.bakes).toHaveLength(1);
     expect(viewer.bakes[0]?.nodes[0]?.translation).toEqual([0, 2, 0]);
-    viewer.bakes.length = 0;
+    forget();
 
     await commit({ edits: [edit] });
     expect(tools.reposes).toBe(true);
     expect(viewer.bakes).toHaveLength(1);
-    const expected = posed(animated, [edit], 0.5);
-    expect(viewer.bakes[0]?.nodes.map((n) => n.translation)).toEqual(expected.nodes.map((n) => n.translation));
+    expect(translations(viewer.bakes[0])).toEqual(translations(posed(animated, [edit], 0.5)));
 
     await commit({ rest: hidden });
     expect(viewer.bakes).toHaveLength(2);
@@ -221,33 +319,34 @@ describe('EditorTools light', () => {
   });
 
   it('a pose at 0 s of a chosen clip is a pose too', async () => {
-    const { viewer, tools, commit, open } = setup();
+    const { viewer, tools, commit, open, forget } = setup();
     await open();
     tools.timeline.seek(0);
     await settle();
-    viewer.bakes.length = 0;
+    forget();
     await commit({ edits: [edit] });
     expect(viewer.bakes).toHaveLength(1);
   });
 
-  it('bakes nothing while a clip plays and lights the pose it stops on once', async () => {
-    const { viewer, tools, commit, open } = setup();
+  it('during playback lights the frame shown at once, then the pose it stops on', async () => {
+    const { viewer, tools, commit, open, play } = setup();
     await open();
-    tools.togglePlay();
+    await play();
+    expect(viewer.bakes).toHaveLength(0);
+    await commit({ rest: hidden });
+    expect(viewer.bakes).toHaveLength(1);
+    expect(viewer.bakes[0]?.meshes[1]?.visible).toBe(false);
     frames.shift()?.();
     await settle();
-    expect(tools.timeline.playing).toBe(true);
-    await commit({ edits: [edit] });
-    await commit({ rest: hidden });
-    expect(viewer.bakes).toHaveLength(0);
+    expect(viewer.bakes).toHaveLength(1);
     tools.togglePlay();
     await settle();
-    expect(viewer.bakes).toHaveLength(1);
-    expect(viewer.bakes[0]).toBe(viewer.doc);
+    expect(viewer.bakes).toHaveLength(2);
+    expect(viewer.bakes[1]).toBe(viewer.doc);
   });
 
   it('an Undo step that changes scene and look bakes once, under the new look, at rest and at a clip pose', async () => {
-    const { viewer, tools, commit, open } = setup();
+    const { viewer, tools, commit, open, forget } = setup();
     await open();
     await commit({ edits: [edit] }, 'marketplace');
     expect(viewer.bakes).toHaveLength(1);
@@ -256,23 +355,160 @@ describe('EditorTools light', () => {
 
     tools.timeline.seek(0.5);
     await settle();
-    viewer.bakes.length = 0;
-    viewer.bakeLooks.length = 0;
+    forget();
     await commit({ edits: [] }, 'rim');
     expect(viewer.bakes).toHaveLength(1);
     expect(viewer.bakeLooks).toEqual(['rim']);
     expect(viewer.bakes[0]?.nodes[0]?.translation).toEqual([0, 2, 0]);
   });
+});
 
+describe('EditorTools light: a model or a look', () => {
   it('opening another model while a clip plays bakes the new model once, no relight of the stopped pose', async () => {
+    const { tools, open, play } = setup();
+    await open();
+    await play();
+    const other = doc(animated.nodes, animated.meshes, [clip]);
+    expect(await open(other)).toEqual([other]);
+    expect(tools.timeline.playing).toBe(false);
+  });
+
+  it('a model that takes longer than the relight delay to set is baked once, the stopped pose never', async () => {
+    const { open, play } = setup();
+    await open();
+    await play();
+    const other = doc(animated.nodes, animated.meshes, [clip]);
+    expect(await open(other, RELIGHT_DELAY_MS * 3 + 50)).toEqual([other]);
+  });
+
+  it('opening a model right after a scrub bakes it once', async () => {
     const { tools, open } = setup();
     await open();
-    tools.togglePlay();
-    frames.shift()?.();
+    tools.timeline.seek(0.5);
+    await vi.advanceTimersByTimeAsync(RELIGHT_DELAY_MS / 2);
+    expect(await open(doc(animated.nodes, animated.meshes, [clip]))).toHaveLength(1);
+  });
+
+  it('a look picked right after a scrub or a pause bakes once, the pose shown', async () => {
+    const { viewer, tools, open, pickLook, play, forget } = setup();
+    await open();
+    tools.timeline.seek(0.5);
+    await vi.advanceTimersByTimeAsync(RELIGHT_DELAY_MS / 2);
+    pickLook('rim');
     await settle();
-    expect(tools.timeline.playing).toBe(true);
-    const other = doc(animated.nodes, animated.meshes, [clip]);
-    expect(await open(other)).toBe(1);
-    expect(tools.timeline.playing).toBe(false);
+    expect(viewer.bakeLooks).toEqual(['rim']);
+    expect(viewer.bakes[0]?.nodes[0]?.translation).toEqual([0, 2, 0]);
+    forget();
+
+    await play();
+    frames.shift()?.();
+    await vi.advanceTimersByTimeAsync(0);
+    tools.togglePlay();
+    await vi.advanceTimersByTimeAsync(RELIGHT_DELAY_MS / 2);
+    pickLook('studio');
+    await settle();
+    expect(viewer.bakeLooks).toEqual(['studio']);
+    expect(viewer.bakes[0]).toBe(viewer.doc);
+  });
+
+  it('a look picked during playback bakes that frame, and the pose it stops on is lit once', async () => {
+    const { viewer, tools, open, pickLook, play } = setup();
+    await open();
+    await play();
+    pickLook('rim');
+    await settle();
+    expect(viewer.bakes).toHaveLength(1);
+    tools.togglePlay();
+    await settle();
+    expect(viewer.bakes).toHaveLength(2);
+  });
+});
+
+describe('EditorTools light: a gizmo drag', () => {
+  it('a drag commit at rest bakes once, the moved node', async () => {
+    const { viewer, open, press } = setup();
+    await open();
+    const drag = press();
+    drag.move();
+    drag.release();
+    await settle();
+    expect(viewer.bakes).toHaveLength(1);
+    expect(viewer.bakes[0]?.nodes[1]?.translation[0]).not.toBe(0);
+  });
+
+  it('a drag commit at a clip pose bakes once, that pose', async () => {
+    const { viewer, tools, open, press, forget } = setup();
+    await open();
+    tools.timeline.seek(0.5);
+    await settle();
+    forget();
+    const drag = press();
+    drag.move();
+    drag.release();
+    await settle();
+    expect(viewer.bakes).toHaveLength(1);
+    expect(viewer.bakes[0]?.nodes[0]?.translation).toEqual([0, 2, 0]);
+    expect(viewer.bakes[0]?.nodes[1]?.translation[0]).not.toBe(0);
+  });
+
+  it('a refused commit lights the pose shown again when a relight fell due during the drag', async () => {
+    const { viewer, open, press, play } = setup(animated, { refuseEdits: true });
+    await open();
+    await play();
+    const drag = press();
+    drag.move();
+    await vi.advanceTimersByTimeAsync(RELIGHT_DELAY_MS * 2);
+    expect(viewer.bakes).toHaveLength(0);
+    drag.release();
+    await settle();
+    expect(viewer.bakes).toHaveLength(1);
+    expect(viewer.bakes[0]).toBe(viewer.doc);
+    expect(viewer.doc?.nodes[1]?.translation).toEqual([0, 0, 0]);
+  });
+
+  it('a refused commit or a cancelled drag over a lit pose bakes nothing', async () => {
+    const { viewer, open, press } = setup(animated, { refuseEdits: true });
+    await open();
+    const refused = press();
+    refused.move();
+    refused.release();
+    await settle();
+    const cancelled = press();
+    cancelled.move();
+    cancelled.cancel();
+    await settle();
+    expect(viewer.bakes).toHaveLength(0);
+  });
+
+  it('a cancelled drag lights the pose shown again when a relight fell due during it', async () => {
+    const { viewer, open, press, play } = setup();
+    await open();
+    await play();
+    const drag = press();
+    drag.move();
+    await vi.advanceTimersByTimeAsync(RELIGHT_DELAY_MS * 2);
+    drag.cancel();
+    await settle();
+    expect(viewer.bakes).toHaveLength(1);
+    expect(viewer.bakes[0]).toBe(viewer.doc);
+  });
+});
+
+describe('EditorTools dispose', () => {
+  it('leaves no relight behind, playing or after a scrub', async () => {
+    const playing = setup();
+    await playing.open();
+    await playing.play();
+    playing.tools.dispose();
+    await settle();
+    expect(playing.viewer.bakes).toHaveLength(0);
+
+    const scrubbed = setup();
+    await scrubbed.open();
+    scrubbed.tools.timeline.seek(0.5);
+    await vi.advanceTimersByTimeAsync(0);
+    scrubbed.tools.dispose();
+    await settle();
+    expect(scrubbed.viewer.bakes).toHaveLength(0);
   });
 });
