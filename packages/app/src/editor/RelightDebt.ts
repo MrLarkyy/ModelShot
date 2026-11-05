@@ -17,7 +17,8 @@ export class RelightDebt {
 
   constructor(
     private readonly host: RelightDebtHost,
-    private readonly delayMs: number,
+    /** How long a pose stays before it is relit; a change applies from the next arm. */
+    public delayMs: number,
   ) {}
 
   /** A bake is owed for the pose shown. */
@@ -31,7 +32,10 @@ export class RelightDebt {
     if (!this.host.passing()) this.arm();
   }
 
-  /** Lights the pose shown at once, a passing one too: a scene change during playback is not left unlit until a pause. */
+  /**
+   * Lights the pose shown at once, a passing one too: a scene change dropped the light, so neither a paused pose nor a
+   * playing one is left unlit for the delay or until a pause. A held one waits for what holds it.
+   */
   relightNow(): void {
     this.stale = true;
     if (this.host.held()) this.arm();

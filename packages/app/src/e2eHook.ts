@@ -1,5 +1,6 @@
 import type { OrbitController, OrbitState } from '@modelshot/renderer-rt';
 import type { App } from './App';
+import type { NodeEdit } from './session/NodeEdit';
 
 interface Pixels {
   readonly width: number;
@@ -14,6 +15,14 @@ export interface MsAppHook {
   setWatchdogMs(ms: number): void;
   hangNextLoad(): void;
   failNextScene(): void;
+  /** The next scene the app sets waits until `releaseScene`; `sceneHeld` tells once it waits. */
+  holdNextScene(): void;
+  sceneHeld(): boolean;
+  releaseScene(): void;
+  /** What a gizmo release commits; resolves whether the scene took the edit. */
+  commitNodeEdit(edit: NodeEdit): Promise<boolean>;
+  /** Sets the editor's relight delay (`RELIGHT_DELAY_MS`); false before the editor tools loaded. */
+  setRelightDelayMs(ms: number): boolean;
   previewPixels(): Pixels;
   renderPixels(): Promise<Pixels | null>;
   loseContext(): boolean;
@@ -43,12 +52,24 @@ export function installE2eHook(app: App): void {
   const { viewer } = internals;
   if (!viewer) return;
   const preview = document.getElementById('preview') as HTMLCanvasElement;
+  let hold: ReturnType<typeof internals.holdNextScene> | null = null;
   window.__msApp = {
     orbit: viewer.orbit,
     state: () => viewer.orbit.state(),
     setWatchdogMs: internals.setWatchdogMs,
     hangNextLoad: internals.hangNextLoad,
     failNextScene: internals.failNextScene,
+    holdNextScene: () => {
+      hold = internals.holdNextScene();
+    },
+    sceneHeld: () => hold?.reached() ?? false,
+    releaseScene: () => hold?.release(),
+    commitNodeEdit: internals.commitNodeEdit,
+    setRelightDelayMs: (ms) => {
+      const tools = internals.editorTools();
+      if (tools) tools.relightDelayMs = ms;
+      return tools !== null;
+    },
     previewPixels: () => {
       viewer.renderNow();
       const copy = document.createElement('canvas');

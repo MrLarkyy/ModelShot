@@ -93,12 +93,15 @@ in the middle, the inspector on the right and the timeline below.
 - **Timeline**: the clips of the model, Play / Pause (one button that renames itself), Loop, a scrubber (a labelled range: "1.25 s of 2.00 s") and a
   marker per distinct keyframe time of the clip, from the file. Nothing plays by itself. Frames use the renderer's
   pose-only path (no texture decode, upload or light bake per frame); the light is baked again for a pose that stays (about
-  0.2 s after a pause, the end of a scrub or an edit), so the preview shows the shadows of what it shows. Each
-  change of the scene (an edit, visibility, a filter, Undo) bakes once: at rest the scene as changed, at a clip pose
-  that pose, never the rest pose first, during playback the frame shown at once (and the pose it stops on after the
-  pause). Any bake (a look, a new model) settles a relight still due, so a look picked right after a scrub or a model
-  opened during playback bakes once; a drag commit the scene refuses leaves a relight that fell due during the drag
-  owed. Starting a render, opening Export or opening
+  0.2 s after a pause or the end of a scrub), so the preview shows the shadows of what it shows. Each
+  change of the scene (an edit, visibility, a filter, Undo) bakes once, at once: at rest the scene as changed, at a
+  clip pose that pose (also one the playhead moved to while the scene was being set), never the rest pose first, during
+  playback the frame shown (and the pose it stops on after the pause). A scene change that fails leaves the old scene
+  and shows the pose the playhead stands at. Any bake (a look, a new model) settles a relight still due, so a look
+  picked right after a scrub or a model opened during playback bakes once; a drag commit the scene refuses leaves a
+  relight that fell due during the drag owed. A gizmo handle takes no new drag while the last one is being committed,
+  and no drag is committed while files open. A look picked while files open is kept unless the model has a saved
+  look. Starting a render, opening Export or opening
   another model pauses playback, and playing or scrubbing during a render cancels it. A model without animations shows
   "This model has no animations".
 - **Undo and Redo** (Ctrl/Cmd+Z, Ctrl+Shift+Z or Ctrl+Y) step through visibility, locks, names, texture filters, node

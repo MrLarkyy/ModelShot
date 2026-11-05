@@ -70,6 +70,8 @@ export class EditorTools {
   private readonly light: RelightDebt;
   /** A released drag's edit is being committed: the scene is about to change under the pose shown. */
   private committing = false;
+  /** The viewer refused the last pose (a document was being set): the playhead may stand where the preview does not. */
+  private poseRefused = false;
 
   constructor(private readonly host: EditorToolsHost) {
     this.overlay = new OverlayRenderer(host.overlay);
@@ -127,7 +129,13 @@ export class EditorTools {
   modelChanged(): void {
     this.timeline.show(this.host.state()?.rest.animations ?? []);
     this.light.reset();
+    this.poseRefused = false;
     this.refresh();
+  }
+
+  /** Tests stretch the relight delay, so a relight that waits for it is told apart from one at once. */
+  set relightDelayMs(ms: number) {
+    this.light.delayMs = ms;
   }
 
   /** The viewer started a bake of the document it shows (`ViewerOptions.onBakeStarted`). */
@@ -144,11 +152,20 @@ export class EditorTools {
   }
 
   /**
-   * The shown document changed (an edit, visibility, undo) and was set with a bake unless `reposes`: the overlay
-   * follows and a clip pose is shown again and lit once for it, a playing one at once.
+   * The shown document changed (an edit, visibility, undo) and was baked unless `reposes`: the overlay follows and a
+   * clip pose is shown again and lit for it at once, the scene having dropped the light of the pose before.
    */
   documentChanged(): void {
     this.showCommitted(true);
+  }
+
+  /**
+   * A scene change was refused or failed, so the document shown stays: a clip pose whose frame the viewer refused
+   * while that document was being set is shown now, and its light is owed like any frame's.
+   */
+  documentRefused(): void {
+    if (!this.poseRefused || !this.reposes) return;
+    void this.playFrame(this.timeline.clipIndex, this.timeline.time, this.timeline.looping, 'frame');
   }
 
   togglePlay(): void {
@@ -212,8 +229,9 @@ export class EditorTools {
   }
 
   // The pose of the clip at `time` with the node edits on top, handed to the renderer's pose-only path. A timeline
-  // `frame` owes its light once it stays; `changed` (the scene changed under the pose) is lit at once even while
-  // playing; `again` shows a pose whose light the debt already accounts for.
+  // `frame` owes its light once it stays; `changed` (the scene changed under the pose) is lit at once, paused or
+  // playing; `again` shows a pose whose light the debt already accounts for. A refused pose was never shown and owes
+  // nothing.
   private async playFrame(
     clip: number,
     time: number,
@@ -223,9 +241,11 @@ export class EditorTools {
     const state = this.host.state();
     if (!state) return;
     const posed = animateScene(state.rest, { animation: clip, time, loop: loop ? 'loop' : 'hold' }).document;
-    await this.showPose(withNodeEdits(posed, state.rest, state.edits));
-    if (mode === 'changed' && this.timeline.playing) this.light.relightNow();
-    else if (mode !== 'again') this.light.posed();
+    const applied = await this.showPose(withNodeEdits(posed, state.rest, state.edits));
+    this.poseRefused = !applied;
+    if (!applied) return;
+    if (mode === 'changed') this.light.relightNow();
+    else if (mode === 'frame') this.light.posed();
   }
 
   // A drag that ends without a commit shows the pose from before it again: its light is owed only when a bake lit a
@@ -235,10 +255,11 @@ export class EditorTools {
     this.light.settled();
   }
 
-  private async showPose(doc: SceneDocument): Promise<void> {
-    const viewer = this.host.viewer;
-    await viewer.setPose(doc);
+  /** False when the viewer refused the pose: a document is being set and the preview still shows the one before. */
+  private async showPose(doc: SceneDocument): Promise<boolean> {
+    const { applied } = await this.host.viewer.setPose(doc);
     this.refresh();
+    return applied;
   }
 
   private local(event: PointerEvent): { x: number; y: number } {
@@ -263,6 +284,9 @@ export class EditorTools {
     event.stopPropagation();
     event.preventDefault();
     this.press = null;
+    // The edits do not hold the released drag's change until its commit lands: a drag from them now would move the
+    // node back and its commit would overwrite that change. The press on the handle neither drags nor orbits.
+    if (this.committing) return;
     this.timeline.pause();
     this.host.interacted();
     this.activeAxis = handle.axis;

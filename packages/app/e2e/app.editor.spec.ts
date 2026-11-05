@@ -8,6 +8,7 @@ import {
   previewImage,
   storedModels,
   test,
+  waitForStored,
   waitForEditor,
   waitForModel,
 } from './appTest';
@@ -207,6 +208,38 @@ test('a scene that fails to build at the release of a drag keeps the old transfo
   await expect(page.getByRole('alert')).toContainText('Could not update the view');
   await expect(page.locator('#tabpanel-object').getByLabel('Position X')).toHaveValue('0');
   expect((await storedModels(page))[0]?.['nodeEdits']).toBeUndefined();
+});
+
+// Opens the cube while the test holds its scene: the open waits with its files loaded until `releaseScene`.
+async function openCubeHeld(page: Page): Promise<void> {
+  await page.evaluate(() => window.__msApp!.holdNextScene());
+  await page.locator('#file-input').setInputFiles([CUBE]);
+  await expect.poll(() => page.evaluate(() => window.__msApp!.sceneHeld())).toBe(true);
+}
+
+test('a gizmo commit while another model opens is refused and the open applies', async ({ page }) => {
+  await openNested(page);
+  await openCubeHeld(page);
+  const committed = await page.evaluate(() =>
+    window.__msApp!.commitNodeEdit({ node: 0, translation: [1, 0, 0], rotation: [0, 0, 0] }),
+  );
+  expect(committed).toBe(false);
+  await page.evaluate(() => window.__msApp!.releaseScene());
+  await expect(page.getByRole('status')).toContainText('Opened single-cube.bbmodel', { timeout: 30_000 });
+  await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test('a look picked while a model without a saved look opens is kept and lit', async ({ page }) => {
+  await openNested(page);
+  await openTab(page, 'Look');
+  await expect(page.getByRole('radio', { name: 'Studio' })).toBeChecked();
+  await openCubeHeld(page);
+  await page.getByRole('radio', { name: 'Marketplace' }).check();
+  await page.evaluate(() => window.__msApp!.releaseScene());
+  await expect(page.getByRole('status')).toContainText('Opened single-cube.bbmodel', { timeout: 30_000 });
+  await expect(page.getByRole('radio', { name: 'Marketplace' })).toBeChecked();
+  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
+  await waitForStored(page, (record) => record['look'] === 'marketplace');
 });
 
 test('the Light tab lists the look lights read-only and adding is disabled', async ({ page }) => {

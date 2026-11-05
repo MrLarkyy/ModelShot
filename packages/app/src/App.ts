@@ -27,6 +27,7 @@ import { ScenePanel } from './panels/ScenePanel';
 import { RenderSession } from './render/RenderSession';
 import { DEFAULT_RENDER_SETTINGS, type RenderSettingsValues } from './render/RenderSettings';
 import { applyLook } from './session/applyLook';
+import { changedRest } from './session/changedRest';
 import { editPose } from './session/editPose';
 import { sceneBakes } from './session/sceneBakes';
 import type { NodeEdit } from './session/NodeEdit';
@@ -132,6 +133,8 @@ export class App {
   private watchdogMs = LOAD_TIMEOUT_MS;
   private hangNext = false;
   private failNext = false;
+  /** e2e: the next scene waits for this before it is set. */
+  private holdNext: { readonly gate: Promise<void>; reached: boolean } | null = null;
   private committing = false;
 
   constructor(private readonly store: AppStateStore) {
@@ -320,6 +323,8 @@ export class App {
     setWatchdogMs: (ms: number) => void;
     hangNextLoad: () => void;
     failNextScene: () => void;
+    holdNextScene: () => { readonly release: () => void; readonly reached: () => boolean };
+    commitNodeEdit: (edit: NodeEdit) => Promise<boolean>;
   } {
     return {
       viewer: this.viewer,
@@ -328,6 +333,13 @@ export class App {
       setWatchdogMs: (ms) => (this.watchdogMs = ms),
       hangNextLoad: () => (this.hangNext = true),
       failNextScene: () => (this.failNext = true),
+      holdNextScene: () => {
+        let release = (): void => undefined;
+        const hold = { gate: new Promise<void>((resolve) => (release = resolve)), reached: false };
+        this.holdNext = hold;
+        return { release, reached: () => hold.reached };
+      },
+      commitNodeEdit: (edit) => this.commitNodeEdit(edit),
     };
   }
 
@@ -342,17 +354,18 @@ export class App {
     return loadModel(request, { arms, timeoutMs: this.watchdogMs, hang });
   }
 
-  private setDocument(
-    viewer: Viewer,
-    doc: SceneDocument,
-    reframe: boolean,
-    bake: boolean,
-  ): ReturnType<Viewer['setDocument']> {
-    const fail = import.meta.env.MODE === 'e2e' && this.failNext;
+  // Without a bake: the caller decides once the document is set which bake lights what is shown then (a look, a clip
+  // pose the playhead moved to meanwhile, or the document itself).
+  private setDocument(viewer: Viewer, doc: SceneDocument, reframe: boolean): ReturnType<Viewer['setDocument']> {
+    const e2e = import.meta.env.MODE === 'e2e';
+    const fail = e2e && this.failNext;
+    const hold = e2e ? this.holdNext : null;
     this.failNext = false;
-    return fail
-      ? Promise.reject(new Error('The scene could not be built (e2e).'))
-      : viewer.setDocument(doc, reframe, { bake });
+    this.holdNext = null;
+    if (fail) return Promise.reject(new Error('The scene could not be built (e2e).'));
+    if (!hold) return viewer.setDocument(doc, reframe, { bake: false });
+    hold.reached = true;
+    return hold.gate.then(() => viewer.setDocument(doc, reframe, { bake: false }));
   }
 
   private async readSaved(key: string): Promise<ModelState | null> {
@@ -424,7 +437,7 @@ export class App {
     } else if (!saved && !reframe && this.textureFilter.length === filters.length) {
       filters = this.textureFilter;
     }
-    const look = (saved && Object.hasOwn(LOOK_PRESETS, saved.look) ? LOOK_PRESETS[saved.look] : undefined) ?? this.look;
+    const savedLook = saved && Object.hasOwn(LOOK_PRESETS, saved.look) ? LOOK_PRESETS[saved.look] : undefined;
     const filteredBase = withTextureFilters(doc, filters);
     const setup: SetupState = {
       nodeVisible,
@@ -440,9 +453,13 @@ export class App {
     let result;
     try {
       // No bake here: applyLook bakes the shown document right after, and a second bake would only supersede the first.
-      result = await this.setDocument(viewer, shown, reframe, false);
-      if (!result.applied) return false;
-      this.look = applyLook(look, [viewer, this.renderSession.existingTracer()]);
+      result = await this.setDocument(viewer, shown, reframe);
+      if (!result.applied) {
+        this.tools?.documentRefused();
+        return false;
+      }
+      // Taken after the wait: a look picked while the files were opening stays, unless the model has its own.
+      this.look = applyLook(savedLook ?? this.look, [viewer, this.renderSession.existingTracer()]);
       if (this.open?.loaded.key !== open.loaded.key) this.selection.set(null);
       this.open = open;
       this.arms = open.arms;
@@ -462,6 +479,9 @@ export class App {
         if (saved.export) this.exportValues = saved.export;
         if (reframe) viewer.orbit.setState(saved.camera);
       }
+    } catch (error) {
+      this.tools?.documentRefused();
+      throw error;
     } finally {
       this.committing = false;
     }
@@ -625,7 +645,10 @@ export class App {
     void this.commitNodeEdit({ node, translation, rotation });
   }
 
+  // Refused while files open, as every edit is: the scene of the new files is being set, and a scene change now would
+  // replace it.
   private commitNodeEdit(edit: NodeEdit): Promise<boolean> {
+    if (this.loading) return Promise.resolve(false);
     return this.queueSetup((state) => {
       const rest = this.restDoc;
       if (!rest || edit.node >= rest.nodes.length) return state;
@@ -667,8 +690,9 @@ export class App {
   ): Promise<boolean> {
     const base = this.base;
     const filteredBase = this.filteredBase;
+    const restDoc = this.restDoc;
     const viewer = this.viewer;
-    if (!base || !filteredBase || !viewer) return false;
+    if (!base || !filteredBase || !restDoc || !viewer) return false;
     const current = this.setupState();
     const next = change(current);
     const lookChanged = look !== undefined && look !== this.look.id;
@@ -679,21 +703,28 @@ export class App {
         next.meshVisible !== current.meshVisible ||
         next.textureFilter !== current.textureFilter ||
         next.nodeEdits !== current.nodeEdits;
-      const bakes = sceneBakes({ sceneChanged, lookChanged, reposes: this.tools?.reposes ?? false });
       let filtered = filteredBase;
-      let rest = this.restDoc;
+      let rest = restDoc;
       if (sceneChanged) {
         // Rebuilt only when a filter changed, so a visibility change keeps the textures array the baker and tracer know.
         filtered =
           next.textureFilter === current.textureFilter ? filteredBase : withTextureFilters(base, next.textureFilter);
-        const shown = this.shownDocument(filtered, next);
-        const result = await this.setDocument(viewer, shown.shown, false, bakes.document);
+        const nextRest = changedRest(
+          rest,
+          { filtered: filteredBase, nodeVisible: current.nodeVisible, meshVisible: current.meshVisible },
+          { filtered, nodeVisible: next.nodeVisible, meshVisible: next.meshVisible },
+        );
+        const result = await this.setDocument(viewer, withNodeEdits(nextRest, nextRest, next.nodeEdits), false);
         if (!result.applied || this.base !== base) {
           this.showPanels();
+          this.tools?.documentRefused();
           return false;
         }
-        rest = shown.rest;
+        rest = nextRest;
       }
+      // Decided once the document is set: a scrub while it was being set leaves a clip pose to light, not this document.
+      const bakes = sceneBakes({ sceneChanged, lookChanged, reposes: this.tools?.reposes ?? false });
+      if (bakes.document) viewer.relight();
       if (record) this.history.record({ setup: current, look: this.look.id });
       this.filteredBase = filtered;
       this.restDoc = rest;
@@ -713,6 +744,7 @@ export class App {
       return true;
     } catch (error) {
       this.showPanels();
+      this.tools?.documentRefused();
       this.notices.alert(`Could not update the view: ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
