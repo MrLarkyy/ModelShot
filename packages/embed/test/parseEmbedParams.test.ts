@@ -194,6 +194,10 @@ describe('parseEmbedFragment', () => {
     expect(parseEmbedFragment(fragment).params.model).toBe(MODEL);
   });
 
+  it('accepts look=softbox, the look lit by the bundled studio image (MS-47)', () => {
+    expect(parseEmbedFragment(`#v=1&model=${encodeURIComponent(MODEL)}&look=softbox`).params.look).toBe('softbox');
+  });
+
   it('decodes an encoded model URL with + and & in it', () => {
     const model = 'https://models.example/a+b.bbmodel?x=1&y=2';
     expect(parseEmbedFragment(`#model=${encodeURIComponent(model)}`).params.model).toBe(model);

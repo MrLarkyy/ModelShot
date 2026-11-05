@@ -297,7 +297,9 @@ replaces both with the new look's (`setEdges` still changes the edges alone). An
 `LookPresetError` naming the field and changes nothing. A look of another `lightingKey` drops the baked light (see
 Baked lighting); a new sharp angle detects edges again as `setEdges` does.
 
-Shading is the look's sky/ground dome (`hemisphereFill`) plus its directional key, unoccluded without baked lighting and
+Shading is the look's environment fill (`hemisphereFill`: the sky/ground dome, or for an environment image its L2
+spherical-harmonic irradiance from 27 uniforms, MS-47; the preview never loads the image,
+[look-presets.md](look-presets.md#lighting-model)) plus its directional key, unoccluded without baked lighting and
 occluded per texel with it, plus the unshadowed accents in both cases, the world-space fill (`fillLight`) and the
 view-relative grazing rim (`rimLight`, its direction turned into world space from the frame's camera): the `lightRig`
 chunk of `@modelshot/looks`, which the path tracer reads too, so an unoccluded surface converges there to the

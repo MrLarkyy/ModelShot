@@ -3,6 +3,7 @@ import bakeFrag from './shaders/bake.frag.glsl?raw';
 import bvhTraverse from './shaders/bvhTraverse.glsl?raw';
 import cameraCatcher from './shaders/cameraCatcher.glsl?raw';
 import denoiseFrag from './shaders/denoise.frag.glsl?raw';
+import environmentMap from './shaders/environmentMap.glsl?raw';
 import fullscreenVert from './shaders/fullscreen.vert.glsl?raw';
 import guideFrag from './shaders/guide.frag.glsl?raw';
 import keyLight from './shaders/keyLight.glsl?raw';
@@ -21,6 +22,7 @@ import traceFrag from './shaders/trace.frag.glsl?raw';
 export const PATH_TRACER_SHADER_CHUNKS: ShaderChunks = Object.freeze({
   ...lookShaderChunks,
   rng,
+  environmentMap,
   pathSampling,
   keyLight,
   sceneData,

@@ -20,6 +20,8 @@ const CENSUS: Readonly<Record<string, { world: readonly string[]; key?: string }
   'preset-rim': { world: [], key: 'a85876914bc0f880' },
   'preset-marketplace-yaw30': { world: [], key: 'a85876914bc0f880' },
   'preset-marketplace-fallback': { world: [], key: 'a85876914bc0f880' },
+  // MS-47: the same player under Softbox; the layout does not depend on the look.
+  'preset-softbox': { world: [], key: 'a85876914bc0f880' },
   'bake-gltf-contact': { world: ['ground', 'box'] },
   // Pair views.
   'turntable-y030': { world: [], key: 'e225d06c95593c4a' },

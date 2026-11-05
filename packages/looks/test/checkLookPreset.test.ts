@@ -124,7 +124,7 @@ describe('checkLookPreset', () => {
     expectError(edit('version', 0), 'VERSION', 'version');
     expectError(edit('version', '1'), 'VERSION', 'version');
     expect(failure(edit('version', 2)).message).toMatch(/newer than this build reads/);
-    expectError(edit('environment.kind', 'hdri'), 'VALUE', 'environment.kind');
+    expectError(edit('environment.kind', 'cubemap'), 'VALUE', 'environment.kind');
     expectError(edit('toneMapping.kind', 'aces'), 'VALUE', 'toneMapping.kind');
   });
 
@@ -156,6 +156,65 @@ describe('checkLookPreset', () => {
   it('rejects a dome that goes negative', () => {
     expectError(edit('environment.ground', [0.01, 0.19, 0.18]), 'DOME', 'environment.ground[0]');
     expectError(edit('environment.sky', [0.5, 0.52, 0.01]), 'DOME', 'environment.sky[2]');
+  });
+});
+
+describe('checkLookPreset: an image environment (MS-47)', () => {
+  const HDRI = { kind: 'hdri', image: 'softbox-studio', intensity: 1.5, rotationDeg: -90 };
+  const withEnvironment = (environment: unknown): Json => edit('environment', environment);
+
+  it('accepts a bundled image with its intensity and rotation, frozen', () => {
+    const look = checkLookPreset(withEnvironment(HDRI));
+    expect(look.environment).toEqual(HDRI);
+    expect(Object.isFrozen(look.environment)).toBe(true);
+    expect(checkLookPreset(withEnvironment({ ...HDRI, intensity: 0, rotationDeg: 180 })).environment).toMatchObject({
+      intensity: 0,
+      rotationDeg: 180,
+    });
+  });
+
+  it.each([
+    'unknown-studio',
+    'https://example.com/studio.hdr',
+    'http://127.0.0.1/a.hdr',
+    'data:application/octet-stream;base64,AAAA',
+    '../environments/softbox-studio.hdr',
+    'softbox-studio.hdr',
+    'Softbox-Studio',
+    '',
+  ])('refuses %j as image: only a bundled id, never a URL or a path', (image) => {
+    expectError(withEnvironment({ ...HDRI, image }), 'VALUE', 'environment.image');
+    expect(failure(withEnvironment({ ...HDRI, image })).message).toMatch(/is not a bundled environment image/);
+  });
+
+  it('checks types, ranges and fields per kind', () => {
+    expectError(withEnvironment({ ...HDRI, image: 3 }), 'TYPE', 'environment.image');
+    expectError(withEnvironment({ ...HDRI, intensity: 16.5 }), 'RANGE', 'environment.intensity');
+    expectError(withEnvironment({ ...HDRI, intensity: -0.1 }), 'RANGE', 'environment.intensity');
+    expectError(withEnvironment({ ...HDRI, intensity: '1' }), 'TYPE', 'environment.intensity');
+    expectError(withEnvironment({ ...HDRI, rotationDeg: 181 }), 'RANGE', 'environment.rotationDeg');
+    expectError(withEnvironment({ ...HDRI, rotationDeg: Number.NaN }), 'TYPE', 'environment.rotationDeg');
+    expectError(withEnvironment({ ...HDRI, sky: [0.5, 0.5, 0.5] }), 'UNKNOWN_KEY', 'environment.sky');
+    expectError(
+      withEnvironment({ kind: 'hdri', image: 'softbox-studio', intensity: 1 }),
+      'MISSING',
+      'environment.rotationDeg',
+    );
+    expectError(edit('environment.image', 'softbox-studio'), 'UNKNOWN_KEY', 'environment.image');
+    expectError(withEnvironment({ kind: 'dome', sky: [0.5, 0.5, 0.5] }), 'MISSING', 'environment.ground');
+    expectError(withEnvironment({ ...HDRI, kind: 'cubemap' }), 'VALUE', 'environment.kind');
+    expectError(withEnvironment([]), 'TYPE', 'environment');
+  });
+
+  it('leaves every dome preset as it was: deep-equal and frozen after the check', () => {
+    for (const look of Object.values(LOOK_PRESETS).filter((l) => l.environment.kind === 'dome')) {
+      expect(checkLookPreset(JSON.parse(JSON.stringify(look)))).toEqual(look);
+    }
+    expect(checkLookPreset(studio()).environment).toEqual({
+      kind: 'dome',
+      sky: [0.5, 0.52, 0.55],
+      ground: [0.2, 0.19, 0.18],
+    });
   });
 });
 

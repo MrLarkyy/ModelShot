@@ -22,10 +22,13 @@ describe('@modelshot/formats', () => {
     expect(typeof formats.detectModelFormat).toBe('function');
     expect(typeof formats.readBbmodelJson).toBe('function');
     expect(typeof formats.listBbmodelReferences).toBe('function');
+    expect(typeof formats.decodeRadianceHdr).toBe('function');
+    expect(new formats.HdrError('SIZE', 'x')).toBeInstanceOf(Error);
   });
 
   it('freezes the default limits', () => {
     expect(Object.isFrozen(formats.DEFAULT_GLTF_LIMITS)).toBe(true);
     expect(Object.isFrozen(formats.DEFAULT_OBJ_LIMITS)).toBe(true);
+    expect(Object.isFrozen(formats.DEFAULT_HDR_LIMITS)).toBe(true);
   });
 });

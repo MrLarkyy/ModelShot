@@ -33,6 +33,7 @@ import {
 } from '@modelshot/looks';
 import { AccumulationTargets } from './accumulationTargets';
 import { buildBvh } from './buildBvh';
+import { EnvironmentTextures } from './EnvironmentTextures';
 import { cameraUniforms, type CameraUniforms } from './cameraUniforms';
 import { flatEdges, flattenScene, visibleTriangleCount, DEFAULT_MAX_TRIANGLES } from './flattenScene';
 import { GeometryBuilder } from './geometry/GeometryBuilder';
@@ -84,6 +85,11 @@ const GUIDE_TILE_DIVISOR = 8;
 const UNIT_SUM = 0;
 const UNIT_MOMENTS = 6;
 const UNIT_COVERAGE = 7;
+// The look's environment image (EnvironmentTextures), bound with the scene; unbound for a dome look.
+const UNIT_ENV_RADIANCE = 8;
+const UNIT_ENV_MARGINAL = 9;
+/** Units a trace step binds, 0..TRACE_UNITS − 1. */
+const TRACE_UNITS = UNIT_ENV_MARGINAL + 1;
 
 const NOT_APPLIED: SetSceneResult = Object.freeze({ applied: false, warnings: Object.freeze([]), triangles: 0 });
 const noop = (): void => undefined;
@@ -144,6 +150,7 @@ interface Gpu {
   resolve: ResolveTargets | null;
   /** The largest render target on each axis, queried with the context. */
   readonly targetLimits: TargetLimits;
+  readonly environment: EnvironmentTextures;
 }
 
 function positiveInt(value: unknown, fallback: number): number {
@@ -723,7 +730,7 @@ export class PathTracer {
       if (toDraw === 0) {
         // Like every step that ends in present(): the default framebuffer bound, not the guide target.
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        this.unbindTextures(UNIT_COVERAGE + 1);
+        this.unbindTextures(TRACE_UNITS);
         this.lastStepAt = performance.now();
         return 0;
       }
@@ -760,7 +767,7 @@ export class PathTracer {
         this.bindTrace(gpu, camera, request.seed, targets);
       }
     }
-    this.unbindTextures(UNIT_COVERAGE + 1);
+    this.unbindTextures(TRACE_UNITS);
     const finished = this.converged || this.done >= request.samples;
     if (extra?.resolved && (checkpoint || finished)) this.resolveImage(gpu, targets, extra, tiles);
     this.present(gpu);
@@ -898,6 +905,7 @@ export class PathTracer {
       targets: null,
       resolve: null,
       targetLimits: this.queryTargetLimits(capabilities),
+      environment: new EnvironmentTextures(gl),
     };
   }
 
@@ -1048,8 +1056,8 @@ export class PathTracer {
   }
 
   /**
-   * Uses `traced` (the trace or the guide) with the scene data on units 1..5 and the camera, look, edge and catcher
-   * uniforms, the frame being the accumulation's size.
+   * Uses `traced` (the trace or the guide) with the scene data on units 1..5, the look's environment image on 8 and 9,
+   * and the camera, look, edge and catcher uniforms, the frame being the accumulation's size.
    */
   private bindScene(
     gpu: Gpu,
@@ -1079,6 +1087,9 @@ export class PathTracer {
       gl.bindTexture(target, texture);
       gl.uniform1i(uniform(name), 1 + i);
     });
+    gpu.environment.bind(this.lookPreset.environment, UNIT_ENV_RADIANCE, UNIT_ENV_MARGINAL);
+    gl.uniform1i(uniform('u_envRadiance'), UNIT_ENV_RADIANCE);
+    gl.uniform1i(uniform('u_envMarginal'), UNIT_ENV_MARGINAL);
     gl.uniform1i(uniform('u_dataWidth'), DATA_TEXTURE_WIDTH);
     gl.uniform1i(uniform('u_nodeCount'), scene.nodeCount);
     gl.uniform1f(uniform('u_maxRenderOrder'), scene.maxRenderOrder);
@@ -1274,6 +1285,7 @@ export class PathTracer {
     if (gpu.scene) disposeGpuScene(gl, gpu.scene);
     gpu.targets?.dispose();
     gpu.resolve?.dispose();
+    gpu.environment.dispose();
     gpu.programs.dispose();
     gl.deleteVertexArray(gpu.vao);
   }

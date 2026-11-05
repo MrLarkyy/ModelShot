@@ -374,6 +374,31 @@ dome and two unshadowed accents ([look-presets.md](look-presets.md#lighting-mode
   (`aboveSurface`, `pathSampling.glsl`) instead of ending the path, which lost that light and darkened bent normals
   against the preview's fill. No random number is added. A sample whose radiance is NaN or infinite counts as 0 instead of poisoning the sum.
 
+### Environment image
+
+A look whose `environment.kind` is `"hdri"` (MS-47, [look-presets.md](look-presets.md#environment-images)) replaces
+the dome for every ray that escapes after a bounce, the catcher's fill ray and the bake's fill rays:
+`escapeRadiance(d)` (`environmentMap.glsl`) reads the image's pixel along d, turned by the look's yaw. A dome look
+takes the branch that returns `environmentRadiance(d)` as before (uniform `u_lookEnvironmentKind` 0), so no dome
+image changed (the dome goldens compare byte for byte). `EnvironmentTextures` uploads `environmentLighting(look)`: the
+radiance times the intensity with each row's conditional CDF in alpha (`u_envRadiance`, RGBA32F) and the rows'
+marginal CDF (`u_envMarginal`, R32F), proportional to luminance × sin θ; texelFetch only (no float filtering), bound
+on texture units 8 and 9 of the trace (after the sums and the scene's 1..5, 6 and 7) and after the bake's ten.
+
+- At every surface vertex one direction is drawn from the image (`sampleEnvironment`: bisection over the CDFs, its
+  density per steradian with it) and seen through `shadowTransmittance`, so cut-out texels pass it as they pass the
+  key's ray. Its contribution `albedo · L · foldedCosinePdf / pdf` is weighted by the power heuristic against the cosine
+  sampling; the bounce's escape adds `L(d)` weighted the other way (`escapeRadianceMis`, with the bounce's
+  density along d, carried from the vertex it left: the cosine lobe plus the share mirrored from under
+  the surface, `foldedCosinePdf`; a direction the light sampling cannot draw keeps weight 1).
+  Its two randoms are the key cone's dimensions in stream 1 (`unitRandom(key, dimension + 4u / 5u, 1u)`), so no
+  dome stream moved. `environmentSampling.ts` mirrors the sampling; its tests check that the density integrates to
+  1, that `environmentPdf` of a drawn direction is the drawn density and the histogram of 64k draws.
+- The catcher's control variate and the bake's loss keep their form with `escapeRadiance`; their reference
+  `hemisphereFill` is the image's L2 irradiance, which the exact cosine mean matches within 1 % (measured 0.63 %
+  for `softbox-studio`), so the catcher's mean is off by at most that share of the blocked fill. The bake keeps its
+  cosine rays: the loss form is unbiased, and its normaliser is the preview's own fill.
+
 ## Limits and errors
 
 `PathTracerError` codes: `WEBGL2_UNAVAILABLE`; `FLOAT_TARGETS_UNAVAILABLE` (no `EXT_color_buffer_float` or RGBA32F
@@ -420,7 +445,7 @@ import.meta.url), { type: 'module' })`); without module workers or OffscreenCanv
   `WORKER_UNAVAILABLE`, as every pending bake rejects when the worker fails, and every later bake with the same error
   (after `dispose()` a bake resolves `applied: false`).
 - `bake(doc, { samples = 64 (1..1024), seed = 1 (0..2^32 − 1), shadowCatcher = true, tileSize = 64 (16..512), look =
-DEFAULT_LOOK, onProgress })` resolves `{ applied, warnings, lighting }`. The look's key and dome shape the light and
+DEFAULT_LOOK, onProgress })` resolves `{ applied, warnings, lighting }`. The look's key and environment shape the light and
   its key places the catcher; the lighting carries `lightingKey(look)`, which `setLighting` of the preview checks
   ([look-presets.md](look-presets.md#baked-light-and-lightingkey)). The call only checks the options (`RangeError`,
   `LookPresetError`) and
@@ -514,8 +539,8 @@ measured on real hardware yet.
 ## What v0 lacks
 
 Temporal (video) denoising, emission from the scene format (MS-32), user lights (MS-33; the look's key,
-accents and dome here), an image-based environment (the dome is analytic), geometric
+accents and environment here), a user-supplied environment image (only bundled ones, MS-47), geometric
 bevels (edges are rounded in shading only), a GPU or WASM build of the render's BVH, glossy or
-transmissive materials, textured environments, and WebGPU. The bake has no interreflection and no animated GI;
+transmissive materials, an environment as a visible background (the bundled image is a lighting source only), and WebGPU. The bake has no interreflection and no animated GI;
 untextured and smooth meshes of more than 4096 triangles are still baked per vertex (world-density charts, MS-41,
 stop at that gate).

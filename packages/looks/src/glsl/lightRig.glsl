@@ -1,8 +1,13 @@
 // The look's light rig (LookPreset of @modelshot/looks, uploaded by uploadLookUniforms), in world space, read by the
 // realtime preview, the path tracer and the light bake alike; lightRig.ts mirrors the shading.
-// The environment: a sky/ground dome, radiance linear in the direction's y.
+// The environment: a sky/ground dome, radiance linear in the direction's y (kind 0), or a bundled image (kind 1),
+// which the preview sees as its L2 irradiance over pi: nine RGB coefficients of the image's frame, which a look turns
+// by the yaw (cos, sin) about +y (equirect.ts).
+uniform int u_lookEnvironmentKind;
 uniform vec3 u_lookSky;
 uniform vec3 u_lookGround;
+uniform vec3 u_lookEnvironmentSh[9];
+uniform vec2 u_lookEnvironmentYaw;
 // The key: unit vector towards it, its colour, and the cosine of its disc's angular radius (the path tracer and the
 // light bake sample its visibility in this cone).
 uniform vec3 u_lookKeyDirection;
@@ -22,13 +27,31 @@ uniform vec4 u_lookEye;
 // Share of the light a fully shadowed shadow-catcher point loses (shadowCatcher).
 uniform float u_lookCatcherStrength;
 
-// Fill a diffuse surface with unit normal n receives from the dome, as a multiple of its albedo (the preview's ambient
-// term).
+// The world direction d in the image's frame: turned by -yaw about +y; the image data never turns.
+vec3 environmentImageDirection(vec3 d) {
+  vec2 yaw = u_lookEnvironmentYaw;
+  return vec3(yaw.x * d.x - yaw.y * d.z, d.y, yaw.y * d.x + yaw.x * d.z);
+}
+
+// The image's L2 irradiance over pi at the unit normal n of its frame (shIrradiance.ts).
+vec3 environmentSh(vec3 n) {
+  return u_lookEnvironmentSh[0] * 0.282095 + u_lookEnvironmentSh[1] * (0.488603 * n.y) +
+    u_lookEnvironmentSh[2] * (0.488603 * n.z) + u_lookEnvironmentSh[3] * (0.488603 * n.x) +
+    u_lookEnvironmentSh[4] * (1.092548 * n.x * n.y) + u_lookEnvironmentSh[5] * (1.092548 * n.y * n.z) +
+    u_lookEnvironmentSh[6] * (0.315392 * (3.0 * n.z * n.z - 1.0)) + u_lookEnvironmentSh[7] * (1.092548 * n.x * n.z) +
+    u_lookEnvironmentSh[8] * (0.546274 * (n.x * n.x - n.y * n.y));
+}
+
+// Fill a diffuse surface with unit normal n receives from the environment, as a multiple of its albedo (the preview's
+// ambient term, the light bake's and the path tracer's catcher reference). An image's is its L2 irradiance, within 1 %
+// of the exact one for the bundled images; the dome's branch is the expression it always was.
 vec3 hemisphereFill(vec3 n) {
+  if (u_lookEnvironmentKind == 1) return max(environmentSh(environmentImageDirection(n)), vec3(0.0));
   return mix(u_lookGround, u_lookSky, n.y * 0.5 + 0.5);
 }
 
-// Radiance of the environment along the unit direction d, for path-traced rays that escape. The cosine-weighted mean
+// Radiance of the dome along the unit direction d, for path-traced rays that escape (an image's escapes read the image
+// itself: escapeRadiance of the path tracer's environmentMap chunk). The cosine-weighted mean
 // of d.y over the hemisphere around n is 2/3 n.y, so with the factor 3/4 an unoccluded Lambert surface receives exactly
 // hemisphereFill(n): the path tracer converges to the preview's fill, and its shadow catcher, which subtracts only the
 // blocked fill from hemisphereFill(up), stays unbiased. Never negative: checkLookPreset keeps each channel of sky and

@@ -2,10 +2,11 @@
 
 A look preset is everything that makes one look, as data: the light rig (key, fill, rim), the environment, the
 backdrop, the shadow catcher's strength, the rounded edges and the tone mapping with its grade. `@modelshot/looks`
-defines it (`LookPreset`), checks it (`checkLookPreset`, `parseLookPreset`) and ships three (`LOOK_PRESETS`):
+defines it (`LookPreset`), checks it (`checkLookPreset`, `parseLookPreset`) and ships four (`LOOK_PRESETS`):
 **Studio** (`studio`, the default `DEFAULT_LOOK`: the v0 look), **Marketplace** (`marketplace`: navy gradient, a cool
-rim, a saturated grade) and **Rim** (`rim`: dark, a strong white rim). The realtime preview, the path tracer and the
-light bake read the same object; no source branches on a preset id (`noPresetBranches.test.ts`).
+rim, a saturated grade), **Rim** (`rim`: dark, a strong white rim) and **Softbox** (`softbox`: lit by the bundled studio
+image `softbox-studio`). The realtime preview, the path tracer and the light bake read the same object; no source
+branches on a preset id (`noPresetBranches.test.ts`).
 
 ```ts
 import { LOOK_PRESETS, parseLookPreset } from '@modelshot/looks';
@@ -23,31 +24,34 @@ A JSON object, `format` `"modelshot-look"`, `version` `1`. Every field below is 
 any level. Colours are scene-linear Rec.709 triples, directions triples toward the light, world space (a model faces
 −z, so `+z` is behind it) but for the rim's, which is in view space.
 
-| field                                     | type and range                                                                             |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `format`                                  | `"modelshot-look"`                                                                         |
-| `version`                                 | `1`                                                                                        |
-| `id`                                      | `[a-z0-9-]{1,32}`                                                                          |
-| `name`                                    | 1..64 code points, well-formed (no lone surrogate), no control characters (C0, DEL, C1)    |
-| `lights.key.direction`                    | components -1000..1000; non-zero; normalised; at least 5° above the horizon (y ≥ sin 5°)   |
-| `lights.key.color`                        | 0..16 per channel                                                                          |
-| `lights.key.angularRadius`                | 0..0.1 radians: the disc that softens shadows                                              |
-| `lights.fill.direction`, `.rim.direction` | components -1000..1000; non-zero; normalised; the rim's in view space (below)              |
-| `lights.fill.color`, `.rim.color`         | 0..16 per channel                                                                          |
-| `lights.rim.exponent`                     | 1..16: how close to the silhouette the rim stays                                           |
-| `lights.rim.albedoShare`                  | 0..1: 0 the rim keeps its own colour on any texel, 1 the texel tints it like diffuse light |
-| `environment.kind`                        | `"dome"`                                                                                   |
-| `environment.sky`, `environment.ground`   | 0..16 per channel; each channel at least a fifth of the other's                            |
-| `backdrop.top`, `backdrop.bottom`         | 0..16 per channel                                                                          |
-| `catcher.strength`                        | 0..1: the share of light a fully shadowed catcher point loses                              |
-| `edges.width`                             | 0..4 model units (`EdgeLook`, [realtime-renderer.md](realtime-renderer.md#edge-rounding))  |
-| `edges.sharpAngleDeg`                     | 1..179                                                                                     |
-| `toneMapping.kind`                        | `"agx"`                                                                                    |
-| `toneMapping.exposure`                    | −6..6 stops                                                                                |
-| `toneMapping.grade.slope`                 | 0..4 per channel                                                                           |
-| `toneMapping.grade.offset`                | −1..1 per channel                                                                          |
-| `toneMapping.grade.power`                 | 0.1..4 per channel                                                                         |
-| `toneMapping.grade.saturation`            | 0..2                                                                                       |
+| field                                     | type and range                                                                              |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `format`                                  | `"modelshot-look"`                                                                          |
+| `version`                                 | `1`                                                                                         |
+| `id`                                      | `[a-z0-9-]{1,32}`                                                                           |
+| `name`                                    | 1..64 code points, well-formed (no lone surrogate), no control characters (C0, DEL, C1)     |
+| `lights.key.direction`                    | components -1000..1000; non-zero; normalised; at least 5° above the horizon (y ≥ sin 5°)    |
+| `lights.key.color`                        | 0..16 per channel                                                                           |
+| `lights.key.angularRadius`                | 0..0.1 radians: the disc that softens shadows                                               |
+| `lights.fill.direction`, `.rim.direction` | components -1000..1000; non-zero; normalised; the rim's in view space (below)               |
+| `lights.fill.color`, `.rim.color`         | 0..16 per channel                                                                           |
+| `lights.rim.exponent`                     | 1..16: how close to the silhouette the rim stays                                            |
+| `lights.rim.albedoShare`                  | 0..1: 0 the rim keeps its own colour on any texel, 1 the texel tints it like diffuse light  |
+| `environment.kind`                        | `"dome"` or `"hdri"`; the fields below per kind, no other                                   |
+| `environment.sky`, `environment.ground`   | dome: 0..16 per channel; each channel at least a fifth of the other's                       |
+| `environment.image`                       | hdri: the id of a bundled environment image (below), never a URL or a path                  |
+| `environment.intensity`                   | hdri: 0..16, a factor on the image's radiance                                               |
+| `environment.rotationDeg`                 | hdri: −180..180, yaw about +y (right-handed: 90 turns what the image shows at +x toward −z) |
+| `backdrop.top`, `backdrop.bottom`         | 0..16 per channel                                                                           |
+| `catcher.strength`                        | 0..1: the share of light a fully shadowed catcher point loses                               |
+| `edges.width`                             | 0..4 model units (`EdgeLook`, [realtime-renderer.md](realtime-renderer.md#edge-rounding))   |
+| `edges.sharpAngleDeg`                     | 1..179                                                                                      |
+| `toneMapping.kind`                        | `"agx"`                                                                                     |
+| `toneMapping.exposure`                    | −6..6 stops                                                                                 |
+| `toneMapping.grade.slope`                 | 0..4 per channel                                                                            |
+| `toneMapping.grade.offset`                | −1..1 per channel                                                                           |
+| `toneMapping.grade.power`                 | 0.1..4 per channel                                                                          |
+| `toneMapping.grade.saturation`            | 0..2                                                                                        |
 
 Numbers must be JSON numbers (not strings), finite. A direction within 1e-4 of unit length is kept as written (so
 hand-written unit vectors stay bit-exact), any other is divided by its length. `checkLookPreset` returns a frozen deep
@@ -68,7 +72,7 @@ message starting with the path:
 | `MISSING`     | a required field is absent                                                 |
 | `UNKNOWN_KEY` | a field v1 does not define (`__proto__` included)                          |
 | `RANGE`       | a number outside its range                                                 |
-| `VALUE`       | `id`, `name` or a `kind` not allowed                                       |
+| `VALUE`       | `id`, `name`, a `kind` or an `environment.image` not allowed               |
 | `DIRECTION`   | a zero direction, or a key under 5° above the horizon                      |
 | `DOME`        | sky or ground under a fifth of the other: the dome would go negative       |
 
@@ -81,7 +85,9 @@ the same error and keep the previous look.
 A field added later is optional with a default that reproduces the v1 image, and its addition is documented here
 (MS-18 adds rounded-edge highlight fields under `edges` this way); v1 files stay valid and a reader that knows the
 field fills it in. Removing a field, changing a range, a meaning or a default is breaking and raises `version`
-(`LOOK_FORMAT_VERSION`); a file of a higher version fails with `VERSION`. Before v1 first shipped the rim changed from
+(`LOOK_FORMAT_VERSION`); a file of a higher version fails with `VERSION`. MS-47 adds `environment.kind` `"hdri"` with
+its own fields: every v1 file is a dome and stays valid with its meaning, so the version stays 1 (a reader before MS-47
+fails an `"hdri"` file with `UNKNOWN_KEY`). Before v1 first shipped the rim changed from
 a world-space diffuse light to the view-relative grazing one with the required `exponent` and `albedoShare` (MS-19
 round 4); no v1 file existed outside this repository, so the version stayed 1. Shipped presets are files in
 `packages/looks/src/presets/` and go through `parseLookPreset` like any file a user picks.
@@ -90,8 +96,14 @@ round 4); no v1 file existed outside this repository, so the version stayed 1. S
 
 - **Environment**: an analytic sky/ground dome, radiance `mix(ground, sky, ½ + ¾ d.y)` along a direction d. Its cosine
   integral over the hemisphere around a normal n is the preview's `hemisphereFill(n) = mix(ground, sky, ½ + ½ n.y)`, so
-  the path tracer converges to the preview's fill on an unoccluded surface. The checker keeps it non-negative. An
-  image-based environment (an HDR equirect) is a later `environment.kind`.
+  the path tracer converges to the preview's fill on an unoccluded surface. The checker keeps it non-negative.
+- **Environment image** (`kind` `"hdri"`, MS-47): a bundled equirectangular image times `intensity`, turned by
+  `rotationDeg`. The preview's `hemisphereFill(n)` is its L2 spherical-harmonic irradiance over π (27 numbers,
+  `environmentSh`, uniforms `u_lookEnvironmentSh` and the yaw `u_lookEnvironmentYaw`); the path tracer's escaping rays
+  read the image itself and sample it by luminance with MIS ([path-tracer.md](path-tracer.md#environment-image)), so
+  an unoccluded surface converges to the exact irradiance, which the L2 fill matches within 1 % per channel for the
+  bundled image (`environmentLighting.test.ts`). The image is never seen directly: escaped camera rays show the
+  backdrop.
 - **Key**: a directional disc light; it is the one that casts shadows (the path tracer's shadow rays, the light bake's
   visibility, the shadow catcher, whose plane extends along the key).
 - **Fill**: a world-space directional accent, `albedo × color × max(n · direction, 0)`.
@@ -124,13 +136,53 @@ and `agx` chunks); `uploadLookUniforms(gl, locate, look, frameHeight, view)` upl
 per program per frame (the bake once per draw), skipping a uniform the program does not use. `view` is the frame's
 camera as `lookView({ position, right, up, forward, orthographic })` gives it (`LookView`: the basis and the eye, a
 point with w 1 or the back direction with w 0); the rim's world direction and the eye follow it. The bake, which has no
-rim, passes `LOOK_VIEW_NONE`. `rimLight` and `unoccludedRadiance(rig, albedo, n, { v, view })` mirror the shading.
+rim, passes `LOOK_VIEW_NONE`. `rimLight` and `unoccludedRadiance(rig, albedo, n, { v, view })` mirror the shading; a
+look with an image passes `environmentFill` as its fifth argument (`unoccludedRadiance` itself stays free of the image
+data, so Node-side tests can import it).
+
+### Environment images
+
+The ids `ENVIRONMENT_IMAGE_IDS` are the only values `environment.image` takes; a look never makes a request. Each image
+ships in `packages/looks/src/environments/`, inlined into the bundle (Vite `?url&inline`), with its licence next to it:
+
+| id               | image                                                                                                          | licence |
+| ---------------- | -------------------------------------------------------------------------------------------------------------- | ------- |
+| `softbox-studio` | 32 × 16 RGBE, procedural: a navy-grey floor, a sky, a broad warm softbox upper front left, a cool panel behind | CC0-1.0 |
+
+`packages/looks/scripts/softboxStudioHdr.mjs` writes it and its preview harmonics (`softbox-studio.sh.json`);
+`softboxAsset.test.ts` checks both committed files equal its output. Every feature is a broad lobe (42° and 46°) and
+every pixel at least 0.02, so the L2 fill stays within 1 % (measured 0.63 %). It is small on purpose: the renderers are
+Lambert only, so an environment reaches a surface only through cosine integrals, and the image is never on screen; two
+inlined copies (the path tracer and the bake worker) cost about 2 KB of gzip each, the preview none (it reads only the
+harmonics).
+
+`decodeRadianceHdr(bytes, limits = DEFAULT_HDR_LIMITS)` of `@modelshot/formats` decodes them (`#?RADIANCE` or
+`#?RGBE`, `FORMAT=32-bit_rle_rgbe`, `-Y h +X w`, flat or new-style run-length scanlines; `RadianceImage`, scene-linear
+RGB, row 0 at the top). It checks every limit before allocating what it bounds and fails with an `HdrError`:
+
+| code          | when (default limit)                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------ |
+| `TOO_LARGE`   | more than `maxBytes` (32 MiB), before anything is read                                     |
+| `SIGNATURE`   | no `#?RADIANCE` or `#?RGBE` first line                                                     |
+| `HEADER`      | no blank line within `maxHeaderBytes` (64 KiB), or no resolution line                      |
+| `FORMAT`      | a `FORMAT=` other than `32-bit_rle_rgbe`                                                   |
+| `ORIENTATION` | a resolution other than `-Y <height> +X <width>`                                           |
+| `SIZE`        | width or height 0, width over `maxWidth` (8192), more than `maxPixels` (4 Mi) pixels       |
+| `TRUNCATED`   | too few bytes for the declared scanlines (checked before allocating), or data ending early |
+| `RLE`         | a run or literal past the scanline end, a zero count, a width mismatch, old-style runs     |
+| `RANGE`       | a pixel over `maxRadiance` (1e6)                                                           |
+
+Messages name the byte offset or scanline, never file content. One pass over the bytes, each loop step consuming one,
+so a hostile file ends after its length (a fixed-seed fuzz of 1 MiB of mutations only ever throws `HdrError`). Only
+bundled images are decoded today; user-supplied `.hdr` files would go through the same decoder.
 
 ## Baked light and `lightingKey`
 
 Baked light (`BakedLighting`) stores the key's visibility and the fill as a share of `hemisphereFill(n)`: both depend
-on the key's direction and disc and on the dome, nothing else. `lightingKey(look)` is a canonical string of exactly
-those (`key.direction`, `key.angularRadius`, `environment.sky`, `environment.ground`). `LightBaker.bake({ look })`
+on the key's direction and disc and on the environment, nothing else. `lightingKey(look)` is a canonical string of
+exactly those (`key.direction`, `key.angularRadius`, then a dome's `environment.sky` and `environment.ground`, or
+`"hdri"`, `environment.image`, `environment.intensity` and `environment.rotationDeg`); a dome's key reads as before
+MS-47 (pinned in `lightingKey.test.ts`), so stored dome bakes stay valid, and a dome bake is refused under Softbox. `LightBaker.bake({ look })`
 stamps it on the result; `RealtimeRenderer.setLighting` refuses (returns `false`) light whose `lightingKey` is not the
 current look's, and `setLook` to a look of another key drops the shown light (the preview shows the unbaked look until
 light baked under the new one is set). Looks that differ only in colours, accents, backdrop, catcher strength, edges or
@@ -143,6 +195,7 @@ grading share baked light.
 | Studio      | v0: above, behind right, warm white | none (black)                                        | v0 grey dome, flat grey (0.14, 0.15, 0.17) | neutral                                |
 | Marketplace | front, above, warm                  | narrow white rim screen left, behind; dim blue fill | dim blue dome; navy gradient, lighter low  | exposure 0, power 1.1, saturation 1.15 |
 | Rim         | weak, front                         | white rim screen right, from behind                 | low dome; dark grey gradient               | power 1.25                             |
+| Softbox     | moderate, front left, above         | none (black)                                        | `softbox-studio` image; navy gradient      | as Marketplace                         |
 
 Studio is the v0 look number for number (`LIGHT_RIG_V0`, `EDGE_LOOK_V0`; tested), so every golden from before look
 presets holds unregenerated. Every preset rounds edges at 30°, so switching presets never detects sharp edges again.
@@ -160,4 +213,6 @@ from the side ((0.9, 0.12, −0.42), colour 4), which greyed those faces to (95,
 that spared them put the pair over its limits, because the player's preview frames (exact depth key) drew
 single-sampled silhouettes the render's jittered rays do not. Since MS-35 a still frame of them accumulates 4
 rotated-grid samples ([realtime-renderer.md](realtime-renderer.md#passes)). Studio's rim is black (exponent 4, albedo share 1:
-inert).
+inert). Softbox (MS-47) lights the model from the `softbox-studio` image at intensity 1, rotation 0, with a key of
+(0.8, 0.76, 0.7) along the softbox (direction (−0.5, 0.62, −0.6), disc 0.08) for the shadow, black accents and
+Marketplace's backdrop and grade; preview-vs-render pair 0.01398, mean delta 1.000 ([testing.md](testing.md#look-presets)).

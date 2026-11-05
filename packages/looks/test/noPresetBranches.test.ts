@@ -27,7 +27,7 @@ describe('look presets are data, not code paths', () => {
 
   it('no source mentions a preset id', () => {
     const ids = Object.keys(LOOK_PRESETS);
-    expect(ids).toEqual(['studio', 'marketplace', 'rim']);
+    expect(ids).toEqual(['studio', 'marketplace', 'rim', 'softbox']);
     for (const [file, text] of Object.entries(sources)) {
       for (const id of ids) {
         // A quoted id is a branch or a lookup by name. GLSL has no strings, so there any mention of the word counts.
