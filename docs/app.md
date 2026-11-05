@@ -67,13 +67,16 @@ in the middle, the inspector on the right and the timeline below.
 - **Outliner**: the node tree (at most 500 rows are listed) with, per row, a visibility checkbox, a name button that
   selects and a Lock toggle (`aria-pressed`). F2 or a double click renames (128 characters, Enter keeps, Esc cancels;
   an empty name takes the file's name back). The search field keeps the rows whose label contains the text, with their
-  groups, and says "N matches". The Lights group lists the look's key and rim light and opens the Light tab. The Add
+  groups, and says "N matches". The Lights group has a button for the look's key and rim light, each opening the Light
+  tab on it. The Add
   menu has "Open model" and a disabled "Add light" (user-placed lights are not available yet). Labels and locks are
   app labels: they never change the scene document, an export or a pixel.
 - **Inspector** (tabs: arrows, Home and End move between them): **Object** (name, visible, locked, position and
   rotation of the selected node, the player's arms), **Material** (the materials the selected element draws with,
   alpha mode, blending, sides, and "Texture filtering" with a Nearest (pixel art, the default) or Linear (smooth)
-  select per texture, applied to the preview and the render), **Light** (the look's key and rim light, read-only),
+  select per texture, applied to the preview and the render), **Light** (the look's lights as the look defines them,
+  read-only: key, fill and rim, a black one shown as off, and the environment: a dome's sky and ground or an image's
+  name, intensity and rotation; Softbox is lit by its environment image and the key, its fill and rim are off),
   **Look** (one radio per look preset, [look-presets.md](look-presets.md); `session/applyLook.ts` is the one place that
   sets the look and edges on the viewer, the tracer and the bake) and **Render** (samples, supersampling, denoise, and
   the camera: field of view (disabled in orthographic), perspective or orthographic, Frame, Reset).
@@ -92,7 +95,10 @@ in the middle, the inspector on the right and the timeline below.
   pose-only path (no texture decode, upload or light bake per frame); the light is baked again for a pose that stays (about
   0.2 s after a pause, the end of a scrub or an edit), so the preview shows the shadows of what it shows. Each
   change of the scene (an edit, visibility, a filter, Undo) bakes once: at rest the scene as changed, at a clip pose
-  that pose, never the rest pose first; starting a render, opening Export or opening
+  that pose, never the rest pose first, during playback the frame shown at once (and the pose it stops on after the
+  pause). Any bake (a look, a new model) settles a relight still due, so a look picked right after a scrub or a model
+  opened during playback bakes once; a drag commit the scene refuses leaves a relight that fell due during the drag
+  owed. Starting a render, opening Export or opening
   another model pauses playback, and playing or scrubbing during a render cancels it. A model without animations shows
   "This model has no animations".
 - **Undo and Redo** (Ctrl/Cmd+Z, Ctrl+Shift+Z or Ctrl+Y) step through visibility, locks, names, texture filters, node
