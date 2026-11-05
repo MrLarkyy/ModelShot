@@ -13,6 +13,12 @@ async function violations(page: Page, covered = false): Promise<string[]> {
   return result.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
 }
 
+// The scans read settled colours: a tab panel or drawer caught mid fade-in has its text at partial opacity and fails
+// contrast at random. Motion itself is covered by app.motion.spec.ts.
+test.beforeEach(async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+});
+
 test('axe finds no WCAG A/AA violation on the empty app', async ({ page }) => {
   await openApp(page);
   expect(await violations(page)).toEqual([]);
