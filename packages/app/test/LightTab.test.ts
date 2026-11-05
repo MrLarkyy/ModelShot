@@ -1,6 +1,6 @@
 import { LOOK_PRESETS } from '@modelshot/looks';
-import { describe, expect, it } from 'vitest';
-import { lightSections } from '../src/inspector/LightTab';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { buildLightTab, lightSections } from '../src/inspector/LightTab';
 
 const rows = (id: string): Record<string, Record<string, string>> =>
   Object.fromEntries(lightSections(LOOK_PRESETS[id]!).map((s) => [s.title, Object.fromEntries(s.rows)]));
@@ -30,5 +30,42 @@ describe('lightSections', () => {
         expect(env['Image']).toBe(look.environment.image);
       }
     }
+  });
+});
+
+// Just enough of an element for `el`: its tag, text and children.
+interface FakeNode {
+  readonly tag: string;
+  textContent: string;
+  readonly children: FakeNode[];
+}
+
+function stubDocument(): void {
+  vi.stubGlobal('document', {
+    createElement: (tag: string) => {
+      const node = { tag, textContent: '', children: [] as FakeNode[] };
+      return { ...node, setAttribute: () => undefined, append: (...c: FakeNode[]) => node.children.push(...c) };
+    },
+  });
+}
+
+// The h3 titles of the tab's sections, in the order shown.
+const titles = (focus: 'key' | 'rim' | null): string[] =>
+  (buildLightTab(LOOK_PRESETS['studio']!, focus) as unknown as FakeNode[])
+    .filter((e) => e.tag === 'section')
+    .map((e) => e.children.find((c) => c.tag === 'h3')?.textContent ?? '');
+
+describe('buildLightTab', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('shows the rim light first when it was picked, the others in their defined order', () => {
+    stubDocument();
+    expect(titles('rim')).toEqual(['Rim light', 'Key light', 'Fill light', 'Environment']);
+  });
+
+  it('keeps the defined order for the key light or no pick', () => {
+    stubDocument();
+    expect(titles('key')).toEqual(['Key light', 'Fill light', 'Rim light', 'Environment']);
+    expect(titles(null)).toEqual(['Key light', 'Fill light', 'Rim light', 'Environment']);
   });
 });
