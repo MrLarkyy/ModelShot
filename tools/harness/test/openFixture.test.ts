@@ -94,7 +94,7 @@ describe('openFixture', () => {
     await openFixture(page, '/pt.html');
     expect(calls).toEqual(['goto', 'wait', 'wait', 'wait']);
     expect(warn).toHaveBeenCalledOnce();
-    expect(warn.mock.calls[0]?.[0]).toMatch(/^[fixture slow] /pt.html has 1 request(s) in flight after 20000 ms/);
+    expect(warn.mock.calls[0]?.[0]).toContain('[fixture slow] /pt.html has 1 request(s) in flight after 20000 ms');
     expect(warn.mock.calls[0]?.[0]).toContain('/src/pt.ts');
     expect(listening(handlers)).toBe(0);
   });
