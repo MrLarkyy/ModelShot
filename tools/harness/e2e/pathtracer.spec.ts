@@ -694,11 +694,11 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
 /**
  * Mean per-pixel variance (8-bit alpha levels squared) of the catcher shadow at 1 sample over seeds 1..16, transparent:
  * a regression guard at the value measured after MS-64 times 1.25. MS-64's importance-sampled fill raised it (922.5 ->
- * 988.5 under the dome, 1588.7 -> 1904.9 under the image; by band in docs/testing.md); it is no improvement claim.
+ * 988.5 under the dome, 1588.7 -> 1912.8 under the image; by band in docs/testing.md); it is no improvement claim.
  */
 const CATCHER_VARIANCE_BOUNDS: readonly (readonly [string, number])[] = [
   ['turntable-y030', 1236],
-  ['preset-softbox', 2382],
+  ['preset-softbox', 2391],
 ];
 
 test.describe('transparency, shadows and sides (scene format rules)', () => {

@@ -840,7 +840,8 @@ of `u_envMarginal` (path-tracer.md, Environment image), after which every fill s
 the fill shades formed a continuum: 2 721 off-level pixels at seed 1 (the `turntable-y030` view).
 "Catcher shadow variance per pixel" is a regression guard, not an improvement: transparent, 1 sample, seeds 1..16,
 the mean per-pixel alpha variance (levels²) over catcher pixels with a mean above 0 (no model alpha in the pixel or its
-8 neighbours at 16 samples with `catcher=0`), bound = measured after x 1.25 (1 236 and 2 382). The estimator lowers
+8 neighbours at 16 samples with `catcher=0`), bound = measured after x 1.25 (1 236 and 2 391; Softbox re-measured after the row band moved
+from the GPU to the CPU, 1904.9 before). The estimator lowers
 the noise only where the model blocks the brighter part of the environment: per sample the fill's mean square loss is
 E[X'²] = K × mean against E_cos[B L²] for the cosine estimate (B the blocked directions, K = lum(sky) or the image's
 cos-weighted mean luminance). Before (3e6baab) -> after, overall and by each run's mean alpha (below 64, 64..191,
@@ -850,7 +851,7 @@ from 192): the faint skirts and, under the dome, the darkest band rose; only the
 | view                      | overall                  | < 64             | 64..191          | >= 192           |
 | ------------------------- | ------------------------ | ---------------- | ---------------- | ---------------- |
 | `turntable-y030` (Studio) | 922.5 -> 988.5 (x1.07)   | 867.6 -> 932.1   | 4036.1 -> 3893.3 | 2159.4 -> 2318.0 |
-| `preset-softbox` (image)  | 1588.7 -> 1904.9 (x1.20) | 1523.0 -> 1865.8 | 5186.1 -> 3806.8 | none             |
+| `preset-softbox` (image)  | 1588.7 -> 1912.8 (x1.20) | 1523.0 -> 1873.7 | 5186.1 -> 3815.4 | none             |
 | `cutout-checker` (Studio) | 1496.3 -> 1625.1 (x1.09) | 825.1 -> 920.8   | 4894.4 -> 4950.8 | 1810.1 -> 1983.9 |
 
 "An unblocked catcher shades exactly 1" also runs under Softbox (seeds 1 and 7, 0 pixels at tolerance 0; casting
@@ -889,8 +890,8 @@ shaded on the face" compares the preview with the `pt-turntable-y030` PNG: 1.748
 golden (pixel centre 1.7754), 1.7903 over 3 563 against the new one (pixel centre 1.8190); the bound moved on purpose
 to the new midpoint 1.8047 (was 1.7633); the band differs only on catcher pixels. Bundle: `embed-frame` measured
 179 036 gzip bytes on origin/main 3f9e90c and 180 439 at bd40cd3 (over its 180 400); the light bake now links
-from its own module (`bakeProgramSource`), so the frame ships none of the render's shaders: 175 308 (`app` 199 869
-on 3f9e90c -> 196 134); no budget changed.
+from its own module (`bakeProgramSource`), so the frame ships none of the render's shaders: 175 364 (`app` 199 869
+on 3f9e90c -> 196 183); no budget changed.
 
 Pairs before -> after (ratio / mean delta; limits unchanged except `texture-wrap`): `turntable-y030` 0.00189 / 0.692 ->
 0.00200 / 0.675, `iso` 0.00381 / 0.864 -> 0.00401 / 0.850, `alpha-plane` 0.00354 / 1.335 -> 0.00325 / 1.321,
