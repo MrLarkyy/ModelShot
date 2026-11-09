@@ -6,7 +6,14 @@ import { appSources } from './appSources';
 const NETWORK_API = /\b(?:fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|importScripts|WebTransport)\b\s*[(.]?/;
 const ABSOLUTE_URL = /(?:https?|wss?|ftp):\/\/|(?<![:\w])\/\/[a-z][\w.-]*\.[a-z]/i;
 
-const code = (text: string): string => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+// The SVG namespace is an identifier for createElementNS, never requested; any other address still fails.
+const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
+
+const code = (text: string): string =>
+  text
+    .replaceAll(`'${SVG_NAMESPACE}'`, "''")
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 describe('the app sources make no network request', () => {
   const sources = appSources('.ts').filter((file) => !file.path.startsWith('src/offline/'));
@@ -19,6 +26,19 @@ describe('the app sources make no network request', () => {
     const body = code(text ?? '');
     expect(body.match(NETWORK_API)?.[0]).toBeUndefined();
     expect(body.match(ABSOLUTE_URL)?.[0]).toBeUndefined();
+  });
+
+  it('lets the exact SVG namespace string through and nothing that merely starts with it', () => {
+    const exact = "document.createElementNS('http://www.w3.org/2000/svg', 'svg');";
+    expect(code(exact).match(ABSOLUTE_URL)).toBeNull();
+    for (const near of [
+      "load('http://www.w3.org/2000/svg.evil.example/x');",
+      "load('http://www.w3.org/2000/svg/extra');",
+      'load("http://www.w3.org/2000/svg");',
+      "load('https://www.w3.org/2000/svg');",
+    ]) {
+      expect(code(near).match(ABSOLUTE_URL), near).not.toBeNull();
+    }
   });
 
   it('the service worker is the only place that fetches, and only through its own cache or the same origin', () => {

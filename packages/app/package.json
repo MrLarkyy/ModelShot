@@ -24,6 +24,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test:browser": "playwright test",
+    "golden:update": "node ../site/scripts/refuseInCi.mjs golden:update:app && playwright test --update-snapshots=all app.system",
     "build:e2e": "vite build --mode e2e --outDir dist-e2e",
     "preview:e2e": "vite preview --outDir dist-e2e --base /app/ --strictPort --host 127.0.0.1",
     "serve:e2e": "pnpm run build:e2e && pnpm run preview:e2e"

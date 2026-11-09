@@ -32,6 +32,9 @@ describe('bundle size', () => {
     expect(bundle.gzipBytes).toBeLessThanOrEqual(max);
     expect(bundle.sources).not.toMatch(/pixelmatch|pngjs|playwright/i);
     for (const body of glslCommentBodies()) expect(bundle.sources, `GLSL comment "${body}"`).not.toContain(body);
+    // The e2e-only control specimen (MS-101) never reaches a production bundle.
+    expect(bundle.sources).not.toContain('Control specimen');
+    expect(bundle.sources).not.toContain('showSpecimen');
     if (SHIPS_GLSL.includes(target)) expect(bundle.sources).toContain('#version 300 es');
   });
 });

@@ -23,17 +23,47 @@ const NAMED_COLOURS = new Set(
   ).split(' '),
 );
 
+// CSS system colours follow the user's forced-colours palette: allowed only inside @media (forced-colors: active).
+const SYSTEM_COLOURS = new Set(
+  (
+    'highlight highlighttext canvastext canvas buttontext buttonface buttonborder linktext graytext field fieldtext ' +
+    'mark marktext selecteditem selecteditemtext accentcolor accentcolortext activetext visitedtext'
+  ).split(' '),
+);
+
+function withoutForcedColours(css: string): string {
+  let rest = css;
+  for (let start = rest.search(/@media\s*\(\s*forced-colors\s*:\s*active\s*\)\s*\{/); start >= 0;) {
+    let depth = 0;
+    let end = rest.indexOf('{', start);
+    for (; end < rest.length; end++) {
+      if (rest[end] === '{') depth += 1;
+      if (rest[end] === '}' && (depth -= 1) === 0) break;
+    }
+    rest = rest.slice(0, start) + rest.slice(end + 1);
+    start = rest.search(/@media\s*\(\s*forced-colors\s*:\s*active\s*\)\s*\{/);
+  }
+  return rest;
+}
+
 // Properties that take a colour, custom properties included.
 const COLOUR_PROPERTY =
   /^(?:--[\w-]+|color|background(?:-color)?|fill|stroke|stop-color|caret-color|accent-color|scrollbar-color|(?:border|outline|column-rule|text-decoration)(?:-(?:top|right|bottom|left|block|inline)(?:-start|-end)?)?(?:-color)?|(?:box|text)-shadow)$/i;
 
-function namedColours(css: string): string[] {
-  const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
-  return [...withoutComments.matchAll(/([\w-]+)\s*:\s*([^;{}]+)/g)].flatMap(([, property, value]) => {
+function coloursIn(css: string, names: ReadonlySet<string>): string[] {
+  return [...css.matchAll(/([\w-]+)\s*:\s*([^;{}]+)/g)].flatMap(([, property, value]) => {
     if (!COLOUR_PROPERTY.test(property ?? '')) return [];
     const words = (value ?? '').replace(/var\([^)]*\)/g, '').match(/[a-z]+/gi) ?? [];
-    return words.filter((word) => NAMED_COLOURS.has(word.toLowerCase())).map((word) => `${property}: ${word}`);
+    return words.filter((word) => names.has(word.toLowerCase())).map((word) => `${property}: ${word}`);
   });
+}
+
+function namedColours(css: string): string[] {
+  const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  return [
+    ...coloursIn(withoutComments, NAMED_COLOURS),
+    ...coloursIn(withoutForcedColours(withoutComments), SYSTEM_COLOURS),
+  ];
 }
 
 function rawColours(text: string): string[] {
@@ -63,6 +93,9 @@ describe('the app stylesheet takes its colours from the brand tokens only', () =
     '.x { outline-color: navy }',
     '.x { box-shadow: 0 0 4px gold; }',
     ':root { --accent: teal; }',
+    '.x { outline: 2px solid Highlight; }',
+    '@media (forced-colors: none) { .x { color: ButtonText; } }',
+    '@media (forced-colors: active) { .a { color: red; } }',
   ])('the matcher catches %s', (sample) => {
     expect(rawColours(sample)).not.toEqual([]);
   });
@@ -71,6 +104,7 @@ describe('the app stylesheet takes its colours from the brand tokens only', () =
     'color: var(--ms-color-ink); background: var(--ms-color-paper);',
     '.x { color: currentColor; background: transparent; border-color: inherit; }',
     '/* never white on flash */ .x { fill: none; stroke: currentColor; }',
+    '.x { color: var(--c); } @media (forced-colors: active) { .x { outline: 2px solid Highlight; } .y { color: GrayText; } }',
   ])('the matcher accepts %s', (sample) => {
     expect(rawColours(sample)).toEqual([]);
   });

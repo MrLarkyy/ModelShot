@@ -176,13 +176,60 @@ No request carries a body or leaves the origin; no analytics, fonts or scripts f
 stay in the browser (`test/localFirst.test.ts`, `e2e/app.network.spec.ts`). Share hands a PNG to the operating system's
 share sheet on a click; the app makes no request for it.
 
+## Visual system
+
+Three layers, so a screen picks classes and never a colour (MS-101; MS-102..110 build the structure on it).
+
+1. Brand tokens (`packages/brand/src/tokens.ts`, [brand.md](brand.md)): the only source of a colour, size or radius.
+2. `--ed-*` aliases in `:root` of `app.css`: `--ed-ground`, `--ed-panel`, `--ed-raised`, `--ed-field` (surfaces),
+   `--ed-text`, `--ed-text-2`, `--ed-text-3` (paper, `textSecondary`, `textHint`), `--ed-accent` (Shot Blue),
+   `--ed-accent-hi` (`blueMid`, the "blue light"), `--ed-sun`, `--ed-flash`, `--ed-ok`, `--ed-ax`/`--ed-ay`/`--ed-az`,
+   the alpha layers `--ed-line` (paper 7 %), `--ed-line-strong` (14 %), `--ed-hover` (5 %), `--ed-press` (9 %),
+   `--ed-accent-soft` (Shot Blue 18 %) as `color-mix` of tokens, the sizes `--ed-row-h` and `--ed-field-h` (30 px),
+   `--ed-control-h` (32 px), `--ed-bar-h` (48 px), the radii `--ed-radius-key` 6, `-field` 8, `-ui` 10, and the focus
+   ring `--ed-ring`.
+3. Element defaults and component classes below. A raw colour in `app.css` fails `noRawColours.test.ts`.
+
+Type: Manrope 500 at 13 px for the body, 700 for labels and buttons, 12 px for captions and hints, an 11 px uppercase
+overline for panel headings (`.overline`, `.panel-head h2`), IBM Plex Mono for numbers (readouts, number fields,
+stats, keycaps), Unbounded only for the logo and the drop overlay (the empty message is Manrope). Controls inherit the
+font (`font: inherit`).
+
+Element defaults (no class needed): `button` is the secondary button (transparent, 1 px `--ed-line-strong` border, 32
+px, radius 10); a checkbox is a 34x20 toggle, a radio outside `.segment` a round radio, a range a 4 px track with a 14
+px thumb, number, text, search and select are 30 px fields on `--ed-field` (the select chevron is two gradients, no
+`data:` image), `kbd` a keycap, `.segmented` / `.segment` a field track whose checked segment is raised, a selected
+tab is raised with a blue light bottom bar. `[hidden]` always wins over a component's `display`.
+
+Classes (stable names): `.primary` (the only button fill in Shot Blue: Render, Export and the dialog Export, one per
+view; a checked toggle's track is the one other use), `.ghost` (no border, secondary text), `.destructive` (Flash
+border and text), `.icon-button` 32 px and `.icon-button.small` 26 px (an icon alone; the helper sets `aria-label`),
+`.small` (a 26 px text button), `.on`, `[aria-pressed='true']` and `.bar-toggle[aria-expanded='true']` (the active
+state: soft blue wash, blue light text), `.slider` (a range with its number field), `.axis-field` + `.x`/`.y`/`.z` (a
+number field with its axis letter in an `<i>`), `.toggle-row` (label left, toggle right), `.overline`. A disabled
+control keeps its fill at 40 % opacity with `cursor: not-allowed`, so it never looks like an active one.
+
+Icons: `src/ui/icon.ts` draws `ICON_NAMES` (eye, lock, chevron-down, -right, -left, -up, plus, undo, redo, search,
+cube, sun, camera, play, loop, frame, share, download, more) as a 16 px (or 14 px) SVG on a 16 grid, stroke 1.7, round
+caps, `currentColor`, `aria-hidden`, built with `createElementNS` (never `innerHTML`); `src/ui/iconButton.ts` wraps
+one in a named button. The paths are drawn for the project: no icon set, no licence entry.
+
+Control specimen: the e2e build adds `window.__msApp.showSpecimen()`, a full-window page of every variant in default,
+on and disabled (`src/ui/specimen.ts`, imported only by `e2eHook.ts`, so the production bundle never holds it).
+`e2e/app.system.spec.ts` checks it: goldens at 1440 and 375 px (`packages/app/goldens`, regenerated with `pnpm
+golden:update:app`, refused in CI), axe, hover and focus on every control, disabled against on, and that only primary
+buttons are blue on the real screens.
+
 ## Accessibility
 
 Landmarks (header, outliner `nav`, view `main`, inspector `aside`, timeline `section`, a focusable messages region),
-every control labelled, visible focus (the yellow `--ms-focus-on-dark` ring on the dark workspace), errors in
-`role="alert"`, progress in `role="status"`, native controls and dialogs, tabs and separators with their ARIA patterns,
-the overlay canvas `aria-hidden`, colours only from the brand tokens ([brand.md](brand.md)). Every panel is reachable by
-keyboard; the shortcut list is the cheat sheet.
+every control labelled, visible focus (a 3 px `--ms-color-blue-mid` ring, 2 px off the control, on every control of
+the dark workspace; the viewport chips sit over the 3D view, so their ring has a ground halo under it), errors in
+`role="alert"`, progress in `role="status"`, native controls and dialogs, tabs and separators with their ARIA
+patterns, the overlay canvas `aria-hidden`, colours only from the brand tokens ([brand.md](brand.md)). In forced
+colours the native checkbox, radio and select return and every active state (`.on`, pressed, the checked segment, the
+selected tab, the current outliner row) gets a system-colour outline or bar. Every panel is reachable by keyboard; the
+shortcut list is the cheat sheet.
 
 ## Tests
 
@@ -190,5 +237,6 @@ Vitest in `packages/app/test`; Playwright in `packages/app/e2e` (`pnpm --filter 
 flow, formats, camera, persistence, hostile files, offline, network, handoff, accessibility and preview/render parity,
 and the editor: `app.editor.spec.ts` (outliner, picking, gizmo, undo, names and locks), `app.timeline.spec.ts`,
 `app.layout.spec.ts` (1280, 1440, 1920 and 900 px with screenshots in `test-results` for review, resize, collapse,
-drawers), `app.overlay.spec.ts` (toggles; overlays never in the preview, render or export) and `app.motion.spec.ts`
-(reduced motion, overlay draw time). Bundle budgets: [testing.md](testing.md#budgets).
+drawers), `app.overlay.spec.ts` (toggles; overlays never in the preview, render or export), `app.motion.spec.ts`
+(reduced motion, overlay draw time) and `app.system.spec.ts` (the control specimen and its goldens, blue only on
+primaries, chip focus ring, forced colours). Bundle budgets: [testing.md](testing.md#budgets).

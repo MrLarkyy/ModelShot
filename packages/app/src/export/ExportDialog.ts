@@ -141,7 +141,7 @@ export class ExportDialog {
     });
     const note = el('p', { className: 'hint', attributes: { 'aria-live': 'polite' } });
     const failure = el('p', { className: 'error', attributes: { role: 'alert', hidden: '' } });
-    const exportButton = el('button', { text: 'Export', attributes: { type: 'button' } });
+    const exportButton = el('button', { className: 'primary', text: 'Export', attributes: { type: 'button' } });
     const closeButton = el('button', { text: 'Close', attributes: { type: 'button' } });
     const cancelButton = el('button', { text: 'Cancel export', attributes: { type: 'button', hidden: '' } });
     const heading = el('h2', { id: 'export-title', text: 'Export' });

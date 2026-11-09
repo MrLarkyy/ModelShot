@@ -69,3 +69,29 @@ describe('the render sweep', () => {
     }
   });
 });
+
+describe('the editor alpha layers', () => {
+  const { paper, shotBlue, textHint, blueMid, panel } = color;
+
+  // The element rules lay a 5 % paper wash on hover and an 18 % shot blue wash on an active control; axe cannot
+  // resolve text over a translucent layer, so the composited grounds are checked here.
+  it('keeps hint text readable on a hovered panel row', () => {
+    const hover = compositeOver('rgb(255 255 255 / 0.05)', panel);
+    expect(contrastRatio(textHint, hover)).toBeCloseTo(5.25, 2);
+    expect(contrastRatio(textHint, hover)).toBeGreaterThanOrEqual(MIN_CONTRAST.body);
+  });
+
+  it('keeps an active control readable on its shot blue wash', () => {
+    const wash = compositeOver('rgb(47 75 255 / 0.18)', panel);
+    expect(shotBlue).toBe('#2F4BFF');
+    expect(contrastRatio(blueMid, wash)).toBeCloseTo(6.26, 2);
+    expect(contrastRatio(paper, wash)).toBeGreaterThanOrEqual(MIN_CONTRAST.body);
+  });
+
+  // A hovered "on" chip: the same wash over the raised ground.
+  it('keeps a hovered active chip readable on its wash over raised', () => {
+    const wash = compositeOver('rgb(47 75 255 / 0.18)', color.raised);
+    expect(contrastRatio(blueMid, wash)).toBeGreaterThanOrEqual(MIN_CONTRAST.body);
+    expect(contrastRatio(paper, wash)).toBeGreaterThanOrEqual(MIN_CONTRAST.body);
+  });
+});
