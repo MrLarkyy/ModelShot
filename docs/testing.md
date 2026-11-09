@@ -840,8 +840,8 @@ of `u_envMarginal` (path-tracer.md, Environment image), after which every fill s
 the fill shades formed a continuum: 2 721 off-level pixels at seed 1 (the `turntable-y030` view).
 "Catcher shadow variance per pixel" is a regression guard, not an improvement: transparent, 1 sample, seeds 1..16,
 the mean per-pixel alpha variance (levels²) over catcher pixels with a mean above 0 (no model alpha in the pixel or its
-8 neighbours at 16 samples with `catcher=0`), bound = measured after x 1.25 (1 236 and 2 391; Softbox re-measured after the row band moved
-from the GPU to the CPU, 1904.9 before). The estimator lowers
+8 neighbours at 16 samples with `catcher=0`), bound = measured after x 1.25 (1 236 and 2 391; Softbox
+re-measured after the row band moved from the GPU to the CPU, 1904.9 before). The estimator lowers
 the noise only where the model blocks the brighter part of the environment: per sample the fill's mean square loss is
 E[X'²] = K × mean against E_cos[B L²] for the cosine estimate (B the blocked directions, K = lum(sky) or the image's
 cos-weighted mean luminance). Before (3e6baab) -> after, overall and by each run's mean alpha (below 64, 64..191,
