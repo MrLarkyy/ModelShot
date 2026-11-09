@@ -289,7 +289,32 @@ test('forced colours keep every control and active state visible', async ({ page
   const buttons = row('Secondary').locator('button');
   expect(await buttons.nth(0).evaluate(cue)).toBe('none');
   expect(await buttons.nth(1).evaluate(cue)).toBe('solid 2px');
+  const sliders = row('Slider and value').locator('input[type=range]');
+  const low = await sliders.nth(0).screenshot();
+  const high = await sliders.nth(1).screenshot();
+  expect(low.equals(high), 'the slider thumb moves').toBe(false);
   const segments = row('Segmented').locator('.segmented').nth(1);
   expect(await segments.locator('input:checked + span').evaluate(cue)).toBe('solid 2px');
   expect(await segments.locator('input:not(:checked) + span').first().evaluate(cue)).toBe('none');
+});
+
+test('forced colours mark the selected tab, an open panel toggle and the current outliner row', async ({ page }) => {
+  await page.emulateMedia({ forcedColors: 'active' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'nested-groups.bbmodel')], 'nested-groups.bbmodel');
+  await waitForEditor(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  await openTab(page, 'Object');
+  const tab = await page
+    .getByRole('tab', { name: 'Object', exact: true })
+    .evaluate((n) => [getComputedStyle(n).borderBottomStyle, getComputedStyle(n).borderBottomWidth]);
+  expect(tab).toEqual(['solid', '3px']);
+  const outline = (selector: string): Promise<string[]> =>
+    page
+      .locator(selector)
+      .first()
+      .evaluate((n) => [getComputedStyle(n).outlineStyle, getComputedStyle(n).outlineWidth]);
+  expect(await outline('#outliner-toggle[aria-expanded=true]')).toEqual(['solid', '2px']);
+  expect(await outline('.outliner-row .name[aria-current=true]')).toEqual(['solid', '2px']);
 });
