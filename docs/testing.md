@@ -160,10 +160,17 @@ directory, so two worktrees can test at once; a server already on that port is n
 `gl.readPixels`, flips it, and encodes a PNG in Node. Every golden render asserts a SwiftShader renderer, so a local GPU
 never produces or checks a golden. Every spec uses the shared `test` from `src/harnessTest.ts`, which fails any request off the fixture origin on any page,
 and every `openFixture` asserts SwiftShader. `openFixture` waits 20 s for `__msFixture` (the module sets it as it
-evaluates). On a timeout it prints the page's failed requests, responses >= 400, console errors and page errors under
-`[fixture reload]`. If the page threw (a page error), it fails at once; otherwise it reloads once. A second boot timeout
-fails with that list when the test has 40 s left for both waits (a fixture opened early under the 60 s default). A page once loaded without running its module (pt-gltf-contact in a full `pathtracer.spec.ts`
-run); the cause is unknown, so the reload is a guard and the printed list is the trace to find it. Fixture image code uses no clock or random source (lint rule; timing lives in `fixtures/src/bench.ts` only).
+evaluates). A wait that ends with requests still in flight is a slow page (a loaded machine stretches the module graph's
+load), not a hung one: it prints `[fixture slow]` with the requests and waits again, up to 5 waits (100 s) in all. A wait
+that ends with nothing in flight never ran its module: it prints the page's failed requests, responses >= 400, console
+errors and page errors under `[fixture reload]`. If the page threw (a page error), it fails at once; otherwise it reloads
+once, and a second boot failure fails with that list when the test has 40 s left for both waits (a fixture opened
+early under the 60 s default); otherwise the test timeout ends the second wait and the `[fixture reload]` line is the trace. With the slow path a request stuck in flight lets one boot wait up to 5 x 20 s before the reload, about 200 s across both boots; a test on the 60 s default or a 120 s describe timeout is ended by the test timeout first, and the `[fixture slow]` line is then the only trace. A test that opens several fixtures (the closed double-sided boxes
+open up to 6) sets its own timeout with room for them under load, not the 60 s default. A page once loaded without running
+its module (pt-gltf-contact in a full `pathtracer.spec.ts` run); the cause is unknown, so the reload is a guard and the
+printed list is the trace to find it. The landing handoff test at the limit (32 files, 256 MiB) asserts outcomes (the app
+opens with the files, the take succeeds, no record is left) and only prints its durations; the margin of the storage
+timeouts over the measured times is a Vitest test (`putTimeoutMs.test.ts`). Fixture image code uses no clock or random source (lint rule; timing lives in `fixtures/src/bench.ts` only).
 
 The embed suite (`packages/embed/e2e`, `pnpm --filter @modelshot/embed run test:browser`, part of the root
 `test:browser`) runs two servers on two origins: the production embed build (`serve:e2e` builds into `dist-e2e`, `vite preview` serves it) on
