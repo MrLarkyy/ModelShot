@@ -697,7 +697,9 @@ every path-traced golden pairs with a preview of the same view, plus `seed`, `sa
 `tile` (tile side), `size`, `maxTriangles`, `track=1`, `timing=1`, `geometryWorker=0` (setScene builds the geometry on
 the main thread, MS-40) and the render quality of the request (MS-18):
 `supersample=1..4`, `denoise=0|1`, `noise=<threshold>`, which the sample bench uses too, and `transparent=1` (`readRGBA`
-gives `readImage()`'s straight alpha); `cameraonly=1` makes every mesh camera-only (MS-59); the path-tracer-only variant `emissive` sets an
+gives `readImage()`'s straight alpha); `cameraonly=1` makes every mesh camera-only (MS-59); `catcherscale=<k>` (an
+integer 1..16) puts the catcher under the scene's bounds scaled k times in x and z about their centre, so its fade band
+leaves the frame (MS-64); the path-tracer-only variant `emissive` sets an
 emission on the showcase's brick material. A golden spec names its view in `variant` (`PathTracedGoldenSpec.variant`,
 put in the URL, not in the file name); so are its quality fields (`supersample`, `denoise`), so the name of such a
 golden says them (`-x2-denoised`).
@@ -820,6 +822,76 @@ preset), every `pt-*`, export, site and unbaked golden is byte-equal. Judged as 
 of noise pattern) and not on the catcher or backdrop; unoccluded faces are flatter (the checker's plane texels shift as
 flat tones by up to 9 levels, the turntable's faces by texel blocks), the box faces and crevices carry a different
 speckle (at most 10 levels except `rt-bake-gltf-contact`'s smooth box); no shadow shape moved.
+
+MS-64 draws the catcher's fill ray by cos × the environment's luminance (path-tracer.md, shadow catcher): a blocked
+ray always loses the same luminance, so a catcher sample has one of four shades where the key's blockers are opaque
+and the point lies inside the fade. "A catcher sample loses fill only by
+visibility" renders `cutout-checker` (no partial alpha: the glass of `turntable-y030` gives a fractional key and so
+levels between) with `catcherscale=4`, `transparent=1`, 1 sample, seeds 1 and 7: every catcher alpha (model pixels
+taken from the same seed with `catcher=0`) lies within 1 of 0, 88.4, 166.6 or 255 (Studio: 255 × lum(sky) / W,
+255 × key / W, 255), at least 50 pixels each (seed 1: 53 005 / 2 441 / 2 903 / 783, seed 7: 52 999 / 2 443 / 2 955 /
+767). The same under Softbox (`preset=softbox`, `src/catcherLevels.ts`: the fill level 255 × 0.8 × Z / pi / W with
+Z / pi the image's cos-weighted mean luminance, W = lum(environmentFill(up)) + key): 0, 128.5, 75.1, 203.7, seed 1
+53 344 / 2 459 / 2 875 / 454, seed 7 53 310 / 2 456 / 2 927 / 471. Its first run found the fill level spread over
+128..130 (241 / 2 202 / 16 pixels, both blocked 203..205): the row band of the weight came from the GPU's cos, which
+SwiftShader evaluates too coarsely near the zenith; the band is now computed in float64 and read from the b channel
+of `u_envMarginal` (path-tracer.md, Environment image), after which every fill sample is 129 and every both-blocked
+204, no tolerance widened. `pt-preset-softbox` moved by 43 pixels of 1 level with it and passes, so it stays. Before,
+the fill shades formed a continuum: 2 721 off-level pixels at seed 1 (the `turntable-y030` view).
+"Catcher shadow variance per pixel" is a regression guard, not an improvement: transparent, 1 sample, seeds 1..16,
+the mean per-pixel alpha variance (levels²) over catcher pixels with a mean above 0 (no model alpha in the pixel or its
+8 neighbours at 16 samples with `catcher=0`), bound = measured after x 1.25 (1 236 and 2 391; Softbox
+re-measured after the row band moved from the GPU to the CPU, 1904.9 before). The estimator lowers
+the noise only where the model blocks the brighter part of the environment: per sample the fill's mean square loss is
+E[X'²] = K × mean against E_cos[B L²] for the cosine estimate (B the blocked directions, K = lum(sky) or the image's
+cos-weighted mean luminance). Before (3e6baab) -> after, overall and by each run's mean alpha (below 64, 64..191,
+from 192): the faint skirts and, under the dome, the darkest band rose; only the mid band fell, except on
+`cutout-checker` (x1.01):
+
+| view                      | overall                  | < 64             | 64..191          | >= 192           |
+| ------------------------- | ------------------------ | ---------------- | ---------------- | ---------------- |
+| `turntable-y030` (Studio) | 922.5 -> 988.5 (x1.07)   | 867.6 -> 932.1   | 4036.1 -> 3893.3 | 2159.4 -> 2318.0 |
+| `preset-softbox` (image)  | 1588.7 -> 1912.8 (x1.20) | 1523.0 -> 1873.7 | 5186.1 -> 3815.4 | none             |
+| `cutout-checker` (Studio) | 1496.3 -> 1625.1 (x1.09) | 825.1 -> 920.8   | 4894.4 -> 4950.8 | 1810.1 -> 1983.9 |
+
+"An unblocked catcher shades exactly 1" also runs under Softbox (seeds 1 and 7, 0 pixels at tolerance 0; casting
+9 609 and 9 633). Unit tests (`catcherFillSampling.test.ts`, the TS mirror of the `catcherFill` chunk): a blocked
+sample loses lum(sky) within 1e-6 relative under every dome preset and the 5x corner looks, the image's
+cos-weighted mean within 1e-5 (2.6e-6 measured: float32 CDFs) for Softbox and synthetic images (a hot pixel over a
+dim sky, an odd height with a row across the horizon, black above the horizon); the importance-sampled blocked fill
+has the cosine estimate's mean within 1e-3 for four blockers; the y histogram follows y × luminance within 2 % and
+does not depend on the yaw; `environmentLighting.test.ts` the catcher marginal, `EnvironmentTextures.test.ts` the
+RGB32F upload (marginal, catcher marginal, row band). Regenerated on purpose (seed 1, same samples and sizes; changed
+pixels, max channel delta, mean delta per channel; the export frames alpha included): `pt-turntable-y030` 13 661, 16,
+0.222; `pt-iso` 14 693, 18, 0.245; `pt-closeup` 2 212, 19, 0.074; `pt-alpha-ramp-blend` 1 636, 5, 0.031; `pt-emissive`
+13 630, 16, 0.220; `pt-player-hold-34` 14 378, 23, 0.312; `pt-cutout-checker` 19 521, 12, 0.248; `pt-edges` 14 602, 11,
+0.174; `pt-preset-marketplace` 9 232, 4, 0.073; `pt-preset-rim` 6 633, 2, 0.055; `pt-preset-softbox` 14 111, 6, 0.178;
+`pt-outline-hull` 15 263, 9, 0.246; `pt-closeup-denoised` 1 463, 12, 0.025; `pt-turntable-y030-x2-denoised` 3 737,
+10, 0.033; `pt-closeup-reference` 1 265, 4, 0.013; `pt-gltf-nodes-y030` 6 753, 6, 0.062; `pt-obj-shapes-y030` 1 167,
+2, 0.009; `pt-gltf-jpeg-y030` and `pt-obj-jpeg-y030` 10 017, 6, 0.135; `pt-partial-edge` 10 254, 4, 0.116;
+`pt-texture-wrap` 13 183, 16, 0.292; `pt-texture-filter` 6 799, 7, 0.119; `export-still-transparent` 1 370, 42,
+0.099; the turntable and animation frames 942-1 234, at most 59 (alpha), at most 0.055. Every changed pixel differs
+between catcher on and off (the old or the new render), so a camera ray reaches the catcher there: the shaded catcher,
+silhouettes, glass and partial texels that show it; the rest were catcher pixels lit in all of the old samples that
+now have a blocked one (faint skirts). The mean brightness of the shaded catcher moved by at most 0.15 levels; no
+shadow shape moved. The export frames changed alpha, and RGB only with it (at most 4 pixels per frame by rounding).
+`pt-alpha-plane` (5 pixels by 1 level) and `pt-render-order` (41 by 1) passed and stay; `pt-gltf-contact` (no
+catcher) and every `rt-*` golden did not change (the bake reads only the r channel of the marginal texture). Pairs
+at unchanged limits, before (MS-87) -> after (ratio / mean delta): `turntable-y030` 0.00200 / 0.675 -> 0.00204 /
+0.679, `iso` 0.00401 / 0.850 -> 0.00401 / 0.853, `player-hold-34` 0.01053 / 0.975 -> 0.01051 / 0.971,
+`cutout-checker` 0.00374 / 0.605 -> 0.00374 / 0.608, `edges` 0.00070 / 0.349 -> 0.00064 / 0.352, `preset-softbox`
+0.01398 / 1.000 -> 0.01395 / 1.009, `outline-hull` 0.00259 / 0.395 -> 0.00255 / 0.400, `gltf-nodes-y030` 0.930 ->
+0.932, `preset-marketplace` 0.787 -> 0.786, `partial-edge` 3 / 1.102 -> 2 / 1.103, `texture-filter` 6 -> 7 pixels,
+the denoised 2x turntable 0.00156 -> 0.00153 / 0.569; `alpha-plane`, `preset-rim`, `preset-marketplace-yaw30`,
+`gltf-contact`, `obj-shapes-y030`, `gltf-jpeg-y030`, `obj-jpeg-y030` and `texture-wrap` the same. The shared
+bisections (`marginalSearch`, `conditionalSearch`; `cdfSearch` in TS) moved no golden byte: a golden update of
+every pt, rt, export and model-view golden test rewrote the same files. realtime.spec "MSAA silhouette pixels are
+shaded on the face" compares the preview with the `pt-turntable-y030` PNG: 1.7482 over 3 745 px against the old
+golden (pixel centre 1.7754), 1.7903 over 3 563 against the new one (pixel centre 1.8190); the bound moved on purpose
+to the new midpoint 1.8047 (was 1.7633); the band differs only on catcher pixels. Bundle: `embed-frame` measured
+179 036 gzip bytes on origin/main 3f9e90c and 180 439 at bd40cd3 (over its 180 400); the light bake now links
+from its own module (`bakeProgramSource`), so the frame ships none of the render's shaders: 175 364 (`app` 199 869
+on 3f9e90c -> 196 183); no budget changed.
 
 Pairs before -> after (ratio / mean delta; limits unchanged except `texture-wrap`): `turntable-y030` 0.00189 / 0.692 ->
 0.00200 / 0.675, `iso` 0.00381 / 0.864 -> 0.00401 / 0.850, `alpha-plane` 0.00354 / 1.335 -> 0.00325 / 1.321,

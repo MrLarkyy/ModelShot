@@ -259,9 +259,12 @@ test('MSAA silhouette pixels are shaded on the face: the outline band of turntab
   // Measured mean 1.7485 over 3 745 px against the MS-59 render; 1.7781 over the same pixels when shaded at the pixel
   // centre (the centroid qualifiers reverted). MS-63: the preview catcher is now exactly the backdrop where the bake is
   // 1, so the band drops the low-delta pixels it used to select (1.6961 over 4 028 px, pixel centre 1.7219 before).
-  // The bound is their midpoint, so a revert of the centroid qualifiers fails it.
+  // MS-64 regenerated pt-turntable-y030 (importance-sampled catcher fill): against the previous golden (3f9e90c) the
+  // band is 1.7482 over 3 745 px (pixel centre 1.7754), against the new one 1.7903 over 3 563 px (pixel centre
+  // 1.8190), +0.04: the band's catcher pixels changed, no model pixel did (every changed one shows the catcher).
+  // The bound is the midpoint of the current pair, so a revert of the centroid qualifiers fails it.
   const maxMean = 2.12;
-  const midpoint = 1.7633;
+  const midpoint = 1.8047;
   const traced = decodePng(
     readFileSync(
       goldenPath({

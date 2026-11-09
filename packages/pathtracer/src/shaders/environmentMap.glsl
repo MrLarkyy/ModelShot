@@ -6,7 +6,7 @@
 
 // rgb the radiance times the look's intensity, a the conditional CDF of the pixel's row through it; row 0 the zenith.
 uniform highp sampler2D u_envRadiance;
-// Per row (x) the marginal CDF through it.
+// Per row (x) the marginal CDF through it in r; g the shadow catcher's, b its row band (catcherFill).
 uniform highp sampler2D u_envMarginal;
 
 const float ENV_PI = 3.141592653589793;
@@ -24,12 +24,42 @@ ivec2 environmentPixel(vec3 d, ivec2 size) {
   return clamp(ivec2(int(u * float(size.x)), int(v * float(size.y))), ivec2(0), size - 1);
 }
 
+// channel 0: the marginal CDF through row (luminance x solid angle), 1: the shadow catcher's (catcherFill).
+float envMarginalCdf(int row, int channel) {
+  return row < 0 ? 0.0 : texelFetch(u_envMarginal, ivec2(row, 0), 0)[channel];
+}
+
 float marginalCdf(int row) {
-  return row < 0 ? 0.0 : texelFetch(u_envMarginal, ivec2(row, 0), 0).r;
+  return envMarginalCdf(row, 0);
 }
 
 float conditionalCdf(int x, int row) {
   return x < 0 ? 0.0 : texelFetch(u_envRadiance, ivec2(x, row), 0).a;
+}
+
+// The first of `rows` rows whose marginal CDF of `channel` exceeds u: bisection, at most 16 steps (images up to 65536
+// a side).
+int marginalSearch(float u, int rows, int channel) {
+  int lo = 0;
+  int hi = rows - 1;
+  for (int i = 0; i < 16 && lo < hi; i++) {
+    int mid = (lo + hi) / 2;
+    if (envMarginalCdf(mid, channel) > u) hi = mid;
+    else lo = mid + 1;
+  }
+  return lo;
+}
+
+// The first of the `width` pixels of `row` whose conditional CDF exceeds u, as marginalSearch.
+int conditionalSearch(float u, int row, int width) {
+  int lo = 0;
+  int hi = width - 1;
+  for (int i = 0; i < 16 && lo < hi; i++) {
+    int mid = (lo + hi) / 2;
+    if (conditionalCdf(mid, row) > u) hi = mid;
+    else lo = mid + 1;
+  }
+  return lo;
 }
 
 // Radiance of the environment along the unit world direction d, for rays that escape: the dome's
@@ -53,27 +83,13 @@ float environmentPdf(vec3 d) {
 }
 
 // A world direction drawn by the image's luminance x solid angle from u1, u2 in [0, 1): its density per steradian
-// (0: unusable) and the radiance along it. Bisection over the CDFs, at most 16 steps (images up to 65536 a side).
+// (0: unusable) and the radiance along it. Bisection over the CDFs (marginalSearch, conditionalSearch).
 vec3 sampleEnvironment(float u1, float u2, out float pdf, out vec3 radiance) {
   ivec2 size = textureSize(u_envRadiance, 0);
-  int lo = 0;
-  int hi = size.y - 1;
-  for (int i = 0; i < 16 && lo < hi; i++) {
-    int mid = (lo + hi) / 2;
-    if (marginalCdf(mid) > u1) hi = mid;
-    else lo = mid + 1;
-  }
-  int row = lo;
+  int row = marginalSearch(u1, size.y, 0);
   float r0 = marginalCdf(row - 1);
   float r1 = marginalCdf(row);
-  lo = 0;
-  hi = size.x - 1;
-  for (int i = 0; i < 16 && lo < hi; i++) {
-    int mid = (lo + hi) / 2;
-    if (conditionalCdf(mid, row) > u2) hi = mid;
-    else lo = mid + 1;
-  }
-  int x = lo;
+  int x = conditionalSearch(u2, row, size.x);
   float c0 = conditionalCdf(x - 1, row);
   float c1 = conditionalCdf(x, row);
   float v = (float(row) + clamp((u1 - r0) / max(r1 - r0, 1.0e-30), 0.0, 1.0)) / float(size.y);

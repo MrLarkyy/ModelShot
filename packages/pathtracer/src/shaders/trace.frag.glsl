@@ -10,6 +10,7 @@ precision highp sampler2DArray;
 #include "pathSampling"
 #include "keyLight"
 #include "shadowCatcher"
+#include "catcherFill"
 #include "backdrop"
 #include "primaryRay"
 #include "bvhTraverse"
@@ -36,21 +37,24 @@ layout(location = 2) out vec2 outCoverage;
 const int MAX_BOUNCES = 16;
 const int ROULETTE_FROM = 3;
 
-// The catcher point's shade of the backdrop: one key ray in the cone and one cosine-weighted fill ray, as a control
-// variate: the analytic unoccluded fill hemisphereFill(up), less what the fill ray would have brought had nothing
-// blocked it. Unbiased, since the dome's cosine mean is exactly hemisphereFill(up) (an image's is within 1 % of its
-// harmonics, the preview's reference too), and catcherShadeOfLoss
-// is affine, so the mean over samples is the shade of the preview's baked means; where neither ray is blocked every
-// sample is exactly 1 (the bare backdrop, coverage 0), so the noise sits only where something blocks. The catcher is
-// invisible to every other ray.
+// The catcher point's shade of the backdrop: one key ray in the cone and one fill ray drawn by cos x the environment's
+// luminance (catcherFill), as a control variate: the analytic unoccluded fill hemisphereFill(up), less what the fill
+// ray takes when blocked. Unbiased, since the importance-sampled loss has the cosine estimate's mean and the dome's
+// cosine mean is exactly hemisphereFill(up) (an image's is within 1 % of its harmonics, the preview's reference too),
+// and catcherShadeOfLoss is affine, so the mean over samples is the shade of the preview's baked means. A blocked fill
+// ray always loses the same luminance, so where the key's blockers are opaque and the point lies inside the fade a
+// sample takes one of four shades (nothing, fill, key or both blocked; a partial texel gives a fractional key, the
+// fade a scaled shade); where neither ray is blocked every sample is exactly 1 (the bare backdrop, coverage 0). The
+// catcher is invisible to every other ray.
 float catcherShadeAt(uint key, uint dimension, vec3 point) {
   vec3 up = vec3(0.0, 1.0, 0.0);
   vec3 origin = leave(point, up);
   vec3 cone = keyConeDirection(unitRandom(key, dimension + 4u, 0u), unitRandom(key, dimension + 5u, 0u));
   float keyT = shadowTransmittance(origin, cone, -1);
-  vec3 d = cosineDirection(up, unitRandom(key, dimension, 0u), unitRandom(key, dimension + 1u, 0u));
+  vec3 lostIfBlocked;
+  vec3 d = sampleCatcherFill(unitRandom(key, dimension, 0u), unitRandom(key, dimension + 1u, 0u), lostIfBlocked);
   Hit blocker;
-  vec3 fillLost = closestHit(origin, d, 0.0, 3.0e38, 1.0, -1, key, dimension + 2u, blocker) ? escapeRadiance(d)
+  vec3 fillLost = closestHit(origin, d, 0.0, 3.0e38, 1.0, -1, key, dimension + 2u, blocker) ? lostIfBlocked
                                                                                             : vec3(0.0);
   return catcherShadeOfLoss(fillLost, 1.0 - keyT, point.xz, u_catcherRect);
 }
@@ -58,8 +62,8 @@ float catcherShadeAt(uint key, uint dimension, vec3 point) {
 // An image environment's light at a surface vertex: one direction drawn by the image (environmentMap), seen through
 // shadowTransmittance (cut-out texels pass it, as they pass the key's ray), weighted by the power heuristic against the
 // cosine sampling of the bounce (folded above the surface, foldedCosinePdf), whose escape adds the other share
-// (escapeRadianceMis); at the last vertex no bounce follows, so the light sampling keeps its full weight. Its randoms are the key cone's dimensions in stream 1, so no
-// stream a dome look draws moves.
+// (escapeRadianceMis); at the last vertex no bounce follows, so the light sampling keeps its full weight. Its randoms
+// are the key cone's dimensions in stream 1, so no stream a dome look draws moves.
 vec3 environmentLight(uint key, uint dimension, Surface s, int skip, bool last) {
   float lightPdf;
   vec3 incoming;
@@ -74,13 +78,13 @@ vec3 environmentLight(uint key, uint dimension, Surface s, int skip, bool last) 
 }
 
 // One path: the camera ray through a jittered point of the pixel (a box filter: texel edges come out area-averaged),
-// then Lambert bounces. At every hit: emission and the key light through a shadow ray in its cone; at the camera hit also
-// the unshadowed fill and rim accents, the rim seen back along the camera ray (no ray, so no random dimension of their
-// own); on escape the environment (lightRig, environmentMap), whose cosine integral is the preview's fill; an image is
-// also sampled at every vertex (environmentLight), each strategy weighted against the other. A camera ray that escapes
-// shows the backdrop at its pixel, or the shadow catcher. Transparent: such a ray adds no radiance, and coverage is 0
-// there, 1 - shade on the catcher (never negative, exactly 0 where nothing blocks; unclamped, so the mean stays affine:
-// radiance + backdrop x (1 - coverage) is the opaque mean) and 1 where it met a texel it accepted.
+// then Lambert bounces. At every hit: emission and the key light through a shadow ray in its cone; at the camera hit
+// also the unshadowed fill and rim accents, the rim seen back along the camera ray (no ray, so no random dimension of
+// their own); on escape the environment (lightRig, environmentMap), whose cosine integral is the preview's fill; an
+// image is also sampled at every vertex (environmentLight), each strategy weighted against the other. A camera ray that
+// escapes shows the backdrop at its pixel, or the shadow catcher. Transparent: such a ray adds no radiance, and
+// coverage is 0 there, 1 - shade on the catcher (never negative, exactly 0 where nothing blocks; unclamped, so the mean
+// stays affine: radiance + backdrop x (1 - coverage) is the opaque mean) and 1 where it met a texel it accepted.
 vec3 tracePath(uint key, vec2 pixel, out float coverage) {
   vec3 origin;
   vec3 direction;
@@ -118,8 +122,8 @@ vec3 tracePath(uint key, vec2 pixel, out float coverage) {
     }
     Surface s = surfaceAt(hit);
     radiance += throughput * s.emission;
-    // The key is a light of irradiance pi * u_lookKeyColor: Lambert albedo / pi times that is the preview's term, times the
-    // share of its disc the shadow ray sees.
+    // The key is a light of irradiance pi * u_lookKeyColor: Lambert albedo / pi times that is the preview's term, times
+    // the share of its disc the shadow ray sees.
     float cosKey = dot(s.normal, u_lookKeyDirection);
     if (cosKey > 0.0 && dot(s.side, u_lookKeyDirection) > 0.0) {
       vec3 cone = keyConeDirection(unitRandom(key, dimension + 4u, 0u), unitRandom(key, dimension + 5u, 0u));
@@ -129,8 +133,8 @@ vec3 tracePath(uint key, vec2 pixel, out float coverage) {
     if (u_lookEnvironmentKind == 1) {
       radiance += throughput * environmentLight(key, dimension, s, hit.triangle, pathVertex >= u_maxBounces);
     }
-    // Only where the camera sees the surface: unshadowed, it would light faces the rig hides and bounce out of them; the
-    // preview has no accent bounce either.
+    // Only where the camera sees the surface: unshadowed, it would light faces the rig hides and bounce out of them;
+    // the preview has no accent bounce either.
     if (pathVertex == 0) radiance += s.albedo * fillLight(s.normal) + rimLight(s.normal, -direction, s.albedo);
     if (pathVertex >= u_maxBounces) break;
     vec3 next = aboveSurface(
