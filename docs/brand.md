@@ -42,20 +42,23 @@ Pages use tokens only: the landing page has no raw `#hex`, `rgb()` or named colo
 
 ### Colour roles
 
-| token                             | value     | role                                                              |
-| --------------------------------- | --------- | ----------------------------------------------------------------- |
-| `cloud`                           | `#EEF0F4` | page ground                                                       |
-| `paper`                           | `#FFFFFF` | cards, text on ink and blue                                       |
-| `ink`                             | `#121318` | text, dark surfaces, focus ring                                   |
-| `slate`                           | `#4E5361` | secondary text                                                    |
-| `shotBlue`                        | `#2F4BFF` | primary action, links, hero                                       |
-| `flash`                           | `#FF6A3D` | accent; ink text only                                             |
-| `sun`                             | `#FFD23F` | CTA on ink, highlights, focus ring on dark grounds; ink text only |
-| `blueHover`                       | `#1A33D6` | hovered primary button and links                                  |
-| `blueTint`, `blueMid`, `blueDeep` |           | logo cube faces, drop zone border, island shadow                  |
-| `dropGround`                      | `#F5F6FF` | drop zone ground                                                  |
-| `hairline`, `border`              |           | card outline, secondary button outline                            |
-| `mutedOnInk`                      | `#C9CCD6` | secondary text on ink                                             |
+| token                                | value                                      | role                                                                                  |
+| ------------------------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------- |
+| `cloud`                              | `#EEF0F4`                                  | page ground                                                                           |
+| `paper`                              | `#FFFFFF`                                  | cards, text on ink and blue                                                           |
+| `ink`                                | `#121318`                                  | text, dark surfaces, focus ring                                                       |
+| `slate`                              | `#4E5361`                                  | secondary text                                                                        |
+| `shotBlue`                           | `#2F4BFF`                                  | primary action, links, hero                                                           |
+| `flash`                              | `#FF6A3D`                                  | accent; ink text only                                                                 |
+| `sun`                                | `#FFD23F`                                  | CTA on ink, highlights, focus ring on dark grounds; ink text only                     |
+| `blueHover`                          | `#1A33D6`                                  | hovered primary button and links                                                      |
+| `blueTint`, `blueMid`, `blueDeep`    |                                            | logo cube faces, drop zone border, island shadow                                      |
+| `dropGround`                         | `#F5F6FF`                                  | drop zone ground                                                                      |
+| `hairline`, `border`                 |                                            | card outline, secondary button outline                                                |
+| `mutedOnInk`                         | `#C9CCD6`                                  | secondary text on ink                                                                 |
+| `ground`, `panel`, `raised`, `field` | `#0B0C10`, `#13151B`, `#1A1D25`, `#0E1015` | editor window ground, panels and bars, selected rows, menus and dialogs, input fields |
+| `textSecondary`, `textHint`          | `#B0B5C4`, `#8D93A5`                       | editor secondary text, hints and units (paper is text 1)                              |
+| `ok`, `axisX`, `axisZ`               | `#5ED08A`, `#F0647A`, `#6C8CFF`            | editor ready status and axis letters (Y reuses `ok`)                                  |
 
 ### Contrast
 
@@ -69,6 +72,10 @@ Pages use tokens only: the landing page has no raw `#hex`, `rgb()` or named colo
 - Translucent layers are checked at their strongest point: the render sweep (`illustration.sweep`, white at 12 %)
   composited over shot blue (`compositeOver`) still gives paper text 4.74:1. axe reports text over a gradient only as
   incomplete, so this test is the check.
+- Editor pairs (MS-101): paper, `textSecondary` and `textHint` on `ground`, `panel`, `raised` and `field`; `flash` on
+  `panel` and `raised` (destructive); `blueMid` on `panel` (an active control) and as the focus ring on all four
+  surfaces; the axis letters on `field`. The 5 % paper hover wash and the 18 % shot blue wash of an active control are
+  composited in `contrast.test.ts` (hint text on a hovered panel 5.25:1, `blueMid` on the active wash 6.26:1).
 - A new colour pair on a page is added to `CONTRAST_PAIRS` first. The site checks this twice: CSS rules that set both
   a colour and a ground (`packages/site/test/contrastCoverage.test.ts`) and every rendered text element in the browser
   (`landing.a11y.spec.ts`).

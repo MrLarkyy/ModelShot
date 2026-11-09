@@ -1,0 +1,213 @@
+import AxeBuilder from '@axe-core/playwright';
+import type { Locator, Page } from '@playwright/test';
+import { expect, fixture, openApp, openFileMenu, openFiles, openTab, test, waitForEditor } from './appTest';
+
+const SHOT_BLUE = 'rgb(47, 75, 255)';
+const BLUE_HOVER = 'rgb(26, 51, 214)';
+const BLUE_LIGHT = 'rgb(140, 155, 255)';
+const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
+
+interface ButtonLook {
+  readonly name: string;
+  readonly primary: boolean;
+  readonly background: string;
+}
+
+async function visibleButtons(page: Page): Promise<ButtonLook[]> {
+  await page.mouse.move(0, 0);
+  return page.evaluate(() =>
+    [...document.querySelectorAll('button')]
+      .filter((b) => b.getClientRects().length > 0 && getComputedStyle(b).visibility !== 'hidden')
+      .map((b) => ({
+        name: (b.getAttribute('aria-label') ?? b.textContent ?? '').trim(),
+        primary: b.classList.contains('primary'),
+        background: getComputedStyle(b).backgroundColor,
+      })),
+  );
+}
+
+function expectOnlyPrimariesBlue(buttons: ButtonLook[], where: string): void {
+  expect(buttons.length, where).toBeGreaterThan(0);
+  for (const b of buttons) {
+    const blue = b.background === SHOT_BLUE || b.background === BLUE_HOVER;
+    expect(blue, `${where}: ${b.name} is blue only when primary`).toBe(b.primary);
+  }
+}
+
+async function showSpecimen(page: Page, width: number, height: number): Promise<void> {
+  await page.setViewportSize({ width, height });
+  await openApp(page);
+  await page.evaluate(() => window.__msApp!.showSpecimen());
+  await expect(page.locator('#specimen')).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+}
+
+test('no button is blue unless it is primary; Export and Render are the only primaries on the screens', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openApp(page);
+  expectOnlyPrimariesBlue(await visibleButtons(page), 'empty app');
+  await openFiles(page, [fixture('bbmodel', 'animated.bbmodel')], 'animated.bbmodel');
+  await waitForEditor(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  for (const tab of ['Object', 'Material', 'Light', 'Look', 'Render'] as const) {
+    await openTab(page, tab);
+    expectOnlyPrimariesBlue(await visibleButtons(page), tab);
+  }
+  const main = (await visibleButtons(page)).filter((b) => b.primary).map((b) => b.name);
+  expect(main).toEqual(['Render', 'Export…']);
+  await openFileMenu(page);
+  expectOnlyPrimariesBlue(await visibleButtons(page), 'File menu');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Export…' }).first().click();
+  const dialog = page.getByRole('dialog', { name: 'Export' });
+  await expect(dialog).toBeVisible();
+  const inDialog = await dialog
+    .getByRole('button')
+    .evaluateAll((buttons) =>
+      buttons.map((b) => ({ name: b.textContent?.trim() ?? '', primary: b.classList.contains('primary') })),
+    );
+  expect(inDialog.filter((b) => b.primary).map((b) => b.name)).toEqual(['Export']);
+  expectOnlyPrimariesBlue(await visibleButtons(page), 'export dialog');
+});
+
+test('elements with the hidden attribute stay hidden', async ({ page }) => {
+  await openApp(page);
+  for (const selector of ['#share-button', '#render-progress', '#file-menu', '#add-menu', '#overlay-menu']) {
+    await expect(page.locator(selector), selector).toBeHidden();
+  }
+});
+
+for (const [width, height] of [
+  [1440, 900],
+  [375, 812],
+] as const) {
+  test(`the specimen at ${width} px matches its golden`, async ({ page }) => {
+    await showSpecimen(page, width, height);
+    // The specimen scrolls inside the fixed view: grow the window to its height so one image holds all of it.
+    const full = await page.locator('#specimen').evaluate((node) => node.scrollHeight);
+    await page.setViewportSize({ width, height: full });
+    await page.mouse.move(0, 0);
+    await expect(page).toHaveScreenshot(`specimen-${width}.png`);
+  });
+
+  test(`axe finds no violation on the specimen at ${width} px`, async ({ page }) => {
+    await showSpecimen(page, width, height);
+    const result = await new AxeBuilder({ page }).withTags(TAGS).include('#specimen').analyze();
+    expect(result.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
+  });
+}
+
+const HOVERED = [
+  '#specimen button:enabled',
+  '#specimen select:enabled',
+  '#specimen input[type=checkbox]:enabled',
+  '#specimen input[type=radio]:enabled:not(.segment input)',
+  '#specimen input[type=range]:enabled',
+  '#specimen .slider input[type=number]:enabled',
+  '#specimen .axis-field',
+  '#specimen .segment:has(input:enabled)',
+].join(', ');
+
+// Where a control's hover shows: the segment's label is a wrapper, its span paints.
+async function look(control: Locator): Promise<string> {
+  return control.evaluate((node) => {
+    const target = node.classList.contains('segment') ? (node.querySelector('span') ?? node) : node;
+    const style = getComputedStyle(target);
+    return [style.backgroundColor, style.borderColor, style.color, style.outlineStyle, style.opacity].join('|');
+  });
+}
+
+test('hovering changes every enabled specimen control and a disabled one stays as it is', async ({ page }) => {
+  await showSpecimen(page, 1440, 900);
+  const controls = page.locator(HOVERED);
+  const count = await controls.count();
+  expect(count).toBeGreaterThan(20);
+  for (let i = 0; i < count; i++) {
+    const control = controls.nth(i);
+    await control.scrollIntoViewIfNeeded();
+    // The checked segment is already raised; its own hover wash is under the raised fill, so compare the unchecked.
+    if (await control.evaluate((node) => node.classList.contains('segment') && !!node.querySelector('input:checked'))) {
+      continue;
+    }
+    await page.mouse.move(0, 0);
+    const before = await look(control);
+    await control.hover();
+    expect(await look(control), await control.evaluate((n) => n.outerHTML.slice(0, 90))).not.toBe(before);
+  }
+  const disabled = page.locator(
+    '#specimen button:disabled, #specimen select:disabled, #specimen input:disabled:not(.segment input)',
+  );
+  const disabledCount = await disabled.count();
+  expect(disabledCount).toBeGreaterThan(10);
+  for (let i = 0; i < disabledCount; i++) {
+    const control = disabled.nth(i);
+    await control.scrollIntoViewIfNeeded();
+    await page.mouse.move(0, 0);
+    const before = await look(control);
+    await control.hover({ force: true });
+    expect(await look(control)).toBe(before);
+    expect(await control.evaluate((n) => getComputedStyle(n).cursor)).toBe('not-allowed');
+  }
+});
+
+test('every enabled specimen control shows a 3 px blue light focus ring', async ({ page }) => {
+  await showSpecimen(page, 1440, 900);
+  await page.locator('#specimen button').first().focus();
+  const seen = new Set<string>();
+  for (let i = 0; i < 80; i++) {
+    const ring = await page.evaluate(() => {
+      const active = document.activeElement as HTMLElement | null;
+      if (!active || !active.closest('#specimen')) return null;
+      const target = active.closest('.segment') ?? active;
+      const style = getComputedStyle(target);
+      return {
+        key: `${[...document.querySelectorAll('#specimen *')].indexOf(active)} ${active.outerHTML.slice(0, 80)}`,
+        style: style.outlineStyle,
+        width: style.outlineWidth,
+        colour: style.outlineColor,
+      };
+    });
+    if (ring) {
+      expect(ring, ring.key).toMatchObject({ style: 'solid', width: '3px', colour: BLUE_LIGHT });
+      seen.add(ring.key);
+    }
+    await page.keyboard.press('Tab');
+  }
+  const enabled = await page
+    .locator(
+      '#specimen :is(button, select, input):enabled:not([type=radio]), #specimen .segmented input:checked:enabled',
+    )
+    .count();
+  expect(seen.size).toBeGreaterThanOrEqual(enabled - 1);
+});
+
+test('disabled never looks like on', async ({ page }) => {
+  await showSpecimen(page, 1440, 900);
+  const sections = ['Secondary', 'Ghost', 'Small', 'Icon 32', 'Icon 26', 'Toggle'];
+  for (const name of sections) {
+    const row = page.locator('#specimen section', { has: page.getByRole('heading', { name, exact: true }) });
+    const controls = row.locator('button, input[type=checkbox]');
+    const on = await controls.nth(1).evaluate((n) => {
+      const s = getComputedStyle(n);
+      return { opacity: s.opacity, background: s.backgroundColor, disabled: (n as HTMLButtonElement).disabled };
+    });
+    const off = await controls.nth(2).evaluate((n) => {
+      const s = getComputedStyle(n);
+      return { opacity: s.opacity, background: s.backgroundColor, disabled: (n as HTMLButtonElement).disabled };
+    });
+    expect(on.disabled, name).toBe(false);
+    expect(off.disabled, name).toBe(true);
+    expect(off.opacity, name).not.toBe(on.opacity);
+    expect(off.background, name).not.toBe(on.background);
+  }
+});
+
+test('every icon-only button has an accessible name', async ({ page }) => {
+  await showSpecimen(page, 1440, 900);
+  const buttons = page.locator('#specimen .icon-button');
+  const count = await buttons.count();
+  expect(count).toBeGreaterThanOrEqual(19);
+  for (let i = 0; i < count; i++) await expect(buttons.nth(i)).toHaveAccessibleName(/\S/);
+});

@@ -19,6 +19,7 @@
     "golden:update:data": "vitest run --update",
     "golden:update": "pnpm --filter @modelshot/harness run golden:update",
     "golden:update:site": "pnpm --filter @modelshot/site run golden:update",
+    "golden:update:app": "pnpm --filter @modelshot/app run golden:update",
     "browsers": "pnpm --filter @modelshot/harness run browsers"
   },
   "devDependencies": {

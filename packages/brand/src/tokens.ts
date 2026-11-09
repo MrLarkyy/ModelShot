@@ -17,6 +17,18 @@ export const tokens = {
     hairline: '#D5D9E2',
     border: '#C7CBD6',
     mutedOnInk: '#C9CCD6',
+    // The editor's dark surfaces, from the window ground inwards: ground, panel, raised (selected, dialog), field.
+    ground: '#0B0C10',
+    panel: '#13151B',
+    raised: '#1A1D25',
+    field: '#0E1015',
+    // Editor text below paper: secondary labels, hints and units.
+    textSecondary: '#B0B5C4',
+    textHint: '#8D93A5',
+    // Editor status "ready", and the X and Z axis letters (Y reuses ok).
+    ok: '#5ED08A',
+    axisX: '#F0647A',
+    axisZ: '#6C8CFF',
   },
   shadow: {
     lift: '0 18px 40px -18px rgb(18 19 24 / 0.45)',
@@ -40,8 +52,13 @@ export const tokens = {
     body: 17,
     ui: 15,
     label: 13,
+    caption: 12,
+    overline: 11,
   },
   radius: {
+    key: 6,
+    field: 8,
+    ui: 10,
     control: 14,
     button: 18,
     tile: 24,

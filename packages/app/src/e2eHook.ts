@@ -34,6 +34,8 @@ export interface MsAppHook {
   overlayPixels(): number;
   /** The gizmo handles in CSS pixels of the viewport: the end points of each handle's first segment. */
   gizmoHandles(): { axis: number; from: { x: number; y: number }; to: { x: number; y: number } }[];
+  /** Shows the control specimen over the app (every control variant); once, a second call does nothing. */
+  showSpecimen(): Promise<void>;
 }
 
 declare global {
@@ -103,6 +105,11 @@ export function installE2eHook(app: App): void {
         const to = handle.polyline[1];
         return from && to ? [{ axis: handle.axis, from, to }] : [];
       }),
+    showSpecimen: async () => {
+      if (document.getElementById('specimen')) return;
+      const { buildSpecimen } = await import('./ui/specimen');
+      if (!document.getElementById('specimen')) document.body.append(buildSpecimen());
+    },
     loseContext: () => {
       const extension = preview.getContext('webgl2')?.getExtension('WEBGL_lose_context');
       extension?.loseContext();

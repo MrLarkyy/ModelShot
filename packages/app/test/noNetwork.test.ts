@@ -6,7 +6,14 @@ import { appSources } from './appSources';
 const NETWORK_API = /\b(?:fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|importScripts|WebTransport)\b\s*[(.]?/;
 const ABSOLUTE_URL = /(?:https?|wss?|ftp):\/\/|(?<![:\w])\/\/[a-z][\w.-]*\.[a-z]/i;
 
-const code = (text: string): string => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+// The SVG namespace is an identifier for createElementNS, never requested; any other address still fails.
+const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
+
+const code = (text: string): string =>
+  text
+    .replaceAll(`'${SVG_NAMESPACE}'`, "''")
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 describe('the app sources make no network request', () => {
   const sources = appSources('.ts').filter((file) => !file.path.startsWith('src/offline/'));

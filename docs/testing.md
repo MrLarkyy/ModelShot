@@ -207,6 +207,9 @@ See [hosting.md](hosting.md#tests).
   Linux passes the Windows-made goldens by tolerance), so commit only the goldens you meant to change. A pair
   comparison (`compareAgainst`) never writes the golden it compares against. The command is refused when `CI` is set. Review every changed image as an image before
   committing.
+- The editor's control specimen goldens (`packages/app/goldens/specimen-1440.png`, `specimen-375.png`, MS-101) are image
+  goldens of the app: written only by `pnpm golden:update:app` (the site's `refuseInCi` guard, Playwright
+  `--update-snapshots=all app.system`), compared at the site's tolerance; review the changed images before committing.
 - Data goldens (JSON file snapshots of loader output, `__goldens__/*.json` next to the Vitest tests) are written only by
   `pnpm golden:update:data [test file pattern]` (`vitest run --update`); review the JSON diff before committing.
 - Animation frames (MS-21) are data goldens, not images: `packages/formats/test/bbmodel/__goldens__/animated.frames.json`

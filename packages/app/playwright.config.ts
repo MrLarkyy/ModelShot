@@ -16,11 +16,17 @@ const command = previewCommand(dirname(fileURLToPath(import.meta.url)), port, pr
 export default defineConfig({
   testDir: 'e2e',
   outputDir: 'test-results',
+  snapshotPathTemplate: '{testDir}/../goldens/{arg}{ext}',
   timeout: 120_000,
   workers: 1,
   retries: 0,
   forbidOnly: ci,
+  updateSnapshots: 'none',
   reporter: [['list']],
+  expect: {
+    // The site's landing tolerance: a wrong layout fails, text anti-aliasing between machines does not.
+    toHaveScreenshot: { animations: 'disabled', caret: 'hide', maxDiffPixelRatio: 0.002, threshold: 0.2 },
+  },
   webServer: {
     command,
     url: `${origin}/app/`,

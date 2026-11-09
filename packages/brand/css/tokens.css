@@ -15,6 +15,15 @@
   --ms-color-hairline: #D5D9E2;
   --ms-color-border: #C7CBD6;
   --ms-color-muted-on-ink: #C9CCD6;
+  --ms-color-ground: #0B0C10;
+  --ms-color-panel: #13151B;
+  --ms-color-raised: #1A1D25;
+  --ms-color-field: #0E1015;
+  --ms-color-text-secondary: #B0B5C4;
+  --ms-color-text-hint: #8D93A5;
+  --ms-color-ok: #5ED08A;
+  --ms-color-axis-x: #F0647A;
+  --ms-color-axis-z: #6C8CFF;
   --ms-shadow-lift: 0 18px 40px -18px rgb(18 19 24 / 0.45);
   --ms-font-display: 'Unbounded', system-ui, sans-serif;
   --ms-font-body: 'Manrope', system-ui, sans-serif;
@@ -30,6 +39,11 @@
   --ms-size-body: 17px;
   --ms-size-ui: 15px;
   --ms-size-label: 13px;
+  --ms-size-caption: 12px;
+  --ms-size-overline: 11px;
+  --ms-radius-key: 6px;
+  --ms-radius-field: 8px;
+  --ms-radius-ui: 10px;
   --ms-radius-control: 14px;
   --ms-radius-button: 18px;
   --ms-radius-tile: 24px;
