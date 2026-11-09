@@ -87,4 +87,11 @@ describe('the editor alpha layers', () => {
     expect(contrastRatio(blueMid, wash)).toBeCloseTo(6.26, 2);
     expect(contrastRatio(paper, wash)).toBeGreaterThanOrEqual(MIN_CONTRAST.body);
   });
+
+  // A hovered "on" chip: the same wash over the raised ground.
+  it('keeps a hovered active chip readable on its wash over raised', () => {
+    const wash = compositeOver('rgb(47 75 255 / 0.18)', color.raised);
+    expect(contrastRatio(blueMid, wash)).toBeGreaterThanOrEqual(MIN_CONTRAST.body);
+    expect(contrastRatio(paper, wash)).toBeGreaterThanOrEqual(MIN_CONTRAST.body);
+  });
 });

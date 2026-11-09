@@ -127,7 +127,7 @@ test('hovering changes every enabled specimen control and a disabled one stays a
   for (let i = 0; i < count; i++) {
     const control = controls.nth(i);
     await control.scrollIntoViewIfNeeded();
-    // The checked segment is already raised; its own hover wash is under the raised fill, so compare the unchecked.
+    // A checked segment keeps its raised fill on hover (the checked rule wins over the hover wash), so only the unchecked ones change.
     if (await control.evaluate((node) => node.classList.contains('segment') && !!node.querySelector('input:checked'))) {
       continue;
     }
@@ -210,4 +210,86 @@ test('every icon-only button has an accessible name', async ({ page }) => {
   const count = await buttons.count();
   expect(count).toBeGreaterThanOrEqual(19);
   for (let i = 0; i < count; i++) await expect(buttons.nth(i)).toHaveAccessibleName(/\S/);
+});
+
+test('a chip over the 3D view keeps its ring clear of the backdrop with a ground halo', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'animated.bbmodel')], 'animated.bbmodel');
+  // A key press first, so the focus that follows is a keyboard focus (:focus-visible).
+  await page.locator('#file-menu-button').focus();
+  await page.keyboard.press('Tab');
+  await page.locator('#camera-presets button').first().focus();
+  const ring = await page.evaluate(() => {
+    const style = getComputedStyle(document.activeElement as Element);
+    return {
+      inChip: !!document.activeElement?.closest('.chips'),
+      offset: style.outlineOffset,
+      width: style.outlineWidth,
+      colour: style.outlineColor,
+      shadow: style.boxShadow,
+    };
+  });
+  expect(ring).toMatchObject({ inChip: true, offset: '0px', width: '3px', colour: BLUE_LIGHT });
+  expect(ring.shadow).toContain('rgb(11, 12, 16)');
+  expect(ring.shadow).toContain('5px');
+});
+
+test('a locked row shows the on state and a hovered active chip differs from a hovered inactive one', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'nested-groups.bbmodel')], 'nested-groups.bbmodel');
+  await waitForEditor(page);
+  const lock = page.locator('.outliner-row .lock').first();
+  await lock.click();
+  await expect(lock).toHaveAttribute('aria-pressed', 'true');
+  await page.mouse.move(0, 0);
+  expect(await lock.evaluate((n) => getComputedStyle(n).color)).toBe(BLUE_LIGHT);
+  await page.evaluate(() => {
+    const host = document.querySelector('.chips') as HTMLElement;
+    for (const [id, pressed] of [
+      ['probe-off', 'false'],
+      ['probe-on', 'true'],
+    ] as const) {
+      const chip = document.createElement('button');
+      chip.id = id;
+      chip.textContent = id;
+      chip.setAttribute('aria-pressed', pressed);
+      host.append(chip);
+    }
+  });
+  const hovered = async (id: string): Promise<string> => {
+    await page.locator(`#${id}`).hover();
+    return page.locator(`#${id}`).evaluate((n) => getComputedStyle(n).backgroundImage);
+  };
+  expect(await hovered('probe-on')).not.toBe(await hovered('probe-off'));
+});
+
+test('forced colours keep every control and active state visible', async ({ page }) => {
+  await page.emulateMedia({ forcedColors: 'active' });
+  await showSpecimen(page, 1440, 900);
+  const row = (name: string) =>
+    page.locator('#specimen section', { has: page.getByRole('heading', { name, exact: true }) });
+  for (const kind of ['input[type=checkbox]', 'input[type=radio]']) {
+    const heading = kind.includes('checkbox') ? 'Toggle' : 'Radio';
+    const controls = row(heading).locator(kind);
+    expect(await controls.first().evaluate((n) => getComputedStyle(n).appearance), heading).not.toBe('none');
+    const unchecked = await controls.nth(0).screenshot();
+    const checked = await controls.nth(1).screenshot();
+    expect(unchecked.equals(checked), `${heading}: checked looks different from unchecked`).toBe(false);
+  }
+  const select = row('Select').locator('select').first();
+  expect(await select.evaluate((n) => getComputedStyle(n).appearance)).not.toBe('none');
+  const cue = (n: Element): string => {
+    const s = getComputedStyle(n);
+    return s.outlineStyle === 'none' ? 'none' : `${s.outlineStyle} ${s.outlineWidth}`;
+  };
+  const buttons = row('Secondary').locator('button');
+  expect(await buttons.nth(0).evaluate(cue)).toBe('none');
+  expect(await buttons.nth(1).evaluate(cue)).toBe('solid 2px');
+  const segments = row('Segmented').locator('.segmented').nth(1);
+  expect(await segments.locator('input:checked + span').evaluate(cue)).toBe('solid 2px');
+  expect(await segments.locator('input:not(:checked) + span').first().evaluate(cue)).toBe('none');
 });

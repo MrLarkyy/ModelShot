@@ -209,7 +209,10 @@ See [hosting.md](hosting.md#tests).
   committing.
 - The editor's control specimen goldens (`packages/app/goldens/specimen-1440.png`, `specimen-375.png`, MS-101) are image
   goldens of the app: written only by `pnpm golden:update:app` (the site's `refuseInCi` guard, Playwright
-  `--update-snapshots=all app.system`), compared at the site's tolerance; review the changed images before committing.
+  `--update-snapshots=all app.system`), compared at the site's tolerance (`maxDiffPixelRatio` 0.002, threshold 0.2) and
+  launched with the site's `--font-render-hinting=none --disable-lcd-text`. They are made on Windows and CI compares them on
+  Linux: the site's landing goldens set the precedent, but the Windows-to-Ubuntu difference (at most 0.00042) was
+  measured on those pages only, not on the specimen; review the changed images before committing.
 - Data goldens (JSON file snapshots of loader output, `__goldens__/*.json` next to the Vitest tests) are written only by
   `pnpm golden:update:data [test file pattern]` (`vitest run --update`); review the JSON diff before committing.
 - Animation frames (MS-21) are data goldens, not images: `packages/formats/test/bbmodel/__goldens__/animated.frames.json`

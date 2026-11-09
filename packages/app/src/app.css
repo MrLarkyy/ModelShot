@@ -153,7 +153,8 @@ h3 {
   display: none !important;
 }
 
-/* The element default is the secondary button; .primary is the only rule that paints Shot Blue. */
+/* The element default is the secondary button; .primary is the only button fill in Shot Blue (a checked toggle's track is the
+   other use of it). */
 button {
   display: inline-flex;
   align-items: center;
@@ -574,10 +575,21 @@ button:disabled {
   background: var(--ed-raised);
 }
 
+/* The page behind a chip is the 3D view, any colour: a ground halo under the ring keeps it 3:1 against it. */
+.chips button:focus-visible {
+  outline-offset: 0;
+  box-shadow: 0 0 0 5px var(--ed-ground);
+}
+
 /* Chips sit over the canvas: the wash goes over a solid panel ground so its contrast stays computable. */
 .chips button.on,
 .chips button[aria-pressed='true'] {
   background: linear-gradient(var(--ed-accent-soft), var(--ed-accent-soft)), var(--ed-panel);
+}
+
+.chips button.on:hover:not(:disabled),
+.chips button[aria-pressed='true']:hover:not(:disabled) {
+  background: linear-gradient(var(--ed-accent-soft), var(--ed-accent-soft)), var(--ed-raised);
 }
 
 .stats {
@@ -743,7 +755,7 @@ input[type='radio']:not(.segment input) {
   height: 16px;
   margin: 0;
   background-color: var(--ed-field);
-  border: 1px solid var(--ed-line-strong);
+  border: 1px solid var(--ed-text-3);
   border-radius: 50%;
   cursor: pointer;
 }
@@ -963,6 +975,9 @@ legend {
   min-height: 26px;
   padding: 0 var(--ms-space-2);
   border-color: transparent;
+}
+
+.outliner-row .lock:not([aria-pressed='true']) {
   color: var(--ed-text-3);
 }
 
@@ -1111,6 +1126,63 @@ progress {
 
   .timeline {
     padding-block: var(--ms-space-2);
+  }
+}
+
+/* Forced colours drop fills and shadows: native checkbox, radio and select come back, and each active state gets a border
+   or outline cue that does not depend on a colour. */
+@media (forced-colors: active) {
+  input[type='checkbox'],
+  input[type='radio']:not(.segment input),
+  select {
+    appearance: auto;
+    background-image: none;
+  }
+
+  input[type='checkbox'] {
+    width: 16px;
+    height: 16px;
+  }
+
+  input[type='range']::-webkit-slider-runnable-track {
+    forced-color-adjust: none;
+    background: GrayText;
+  }
+
+  input[type='range']::-webkit-slider-thumb {
+    forced-color-adjust: none;
+    background: ButtonText;
+  }
+
+  input[type='range']::-moz-range-track {
+    forced-color-adjust: none;
+    background: GrayText;
+  }
+
+  input[type='range']::-moz-range-thumb {
+    forced-color-adjust: none;
+    background: ButtonText;
+  }
+
+  button.on,
+  button[aria-pressed='true'],
+  .bar-toggle[aria-expanded='true'],
+  .segment input:checked + span,
+  .outliner-row .name[aria-current='true'] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  button.on:focus-visible,
+  button[aria-pressed='true']:focus-visible,
+  .bar-toggle[aria-expanded='true']:focus-visible,
+  .outliner-row .name[aria-current='true']:focus-visible {
+    outline: var(--ed-ring);
+    outline-offset: var(--ed-ring-offset);
+  }
+
+  [role='tab'][aria-selected='true'] {
+    border-bottom: 3px solid Highlight;
   }
 }
 

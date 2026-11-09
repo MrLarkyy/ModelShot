@@ -28,6 +28,19 @@ describe('the app sources make no network request', () => {
     expect(body.match(ABSOLUTE_URL)?.[0]).toBeUndefined();
   });
 
+  it('lets the exact SVG namespace string through and nothing that merely starts with it', () => {
+    const exact = "document.createElementNS('http://www.w3.org/2000/svg', 'svg');";
+    expect(code(exact).match(ABSOLUTE_URL)).toBeNull();
+    for (const near of [
+      "load('http://www.w3.org/2000/svg.evil.example/x');",
+      "load('http://www.w3.org/2000/svg/extra');",
+      'load("http://www.w3.org/2000/svg");',
+      "load('https://www.w3.org/2000/svg');",
+    ]) {
+      expect(code(near).match(ABSOLUTE_URL), near).not.toBeNull();
+    }
+  });
+
   it('the service worker is the only place that fetches, and only through its own cache or the same origin', () => {
     const worker = appSources('.ts').find((f) => f.path === 'src/offline/sw.template.ts');
     expect(worker?.text).toContain('fetch(request)');

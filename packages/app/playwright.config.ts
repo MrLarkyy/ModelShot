@@ -40,7 +40,14 @@ export default defineConfig({
     viewport: { width: 1100, height: 700 },
     deviceScaleFactor: 1,
     launchOptions: {
-      args: ['--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader', '--force-color-profile=srgb'],
+      args: [
+        '--use-angle=swiftshader',
+        '--use-gl=angle',
+        '--enable-unsafe-swiftshader',
+        '--force-color-profile=srgb',
+        '--font-render-hinting=none',
+        '--disable-lcd-text',
+      ],
     },
   },
   projects: [{ name: 'app' }],

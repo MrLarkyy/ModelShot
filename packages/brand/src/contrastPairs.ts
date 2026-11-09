@@ -57,6 +57,7 @@ export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   { fg: 'axisX', bg: 'field', use: 'body', where: 'editor X axis letter' },
   { fg: 'ok', bg: 'field', use: 'body', where: 'editor Y axis letter' },
   { fg: 'axisZ', bg: 'field', use: 'body', where: 'editor Z axis letter' },
+  { fg: 'textHint', bg: 'field', use: 'ring', where: 'editor unchecked radio border (non-text 3:1)' },
   { fg: 'blueMid', bg: 'ground', use: 'ring', where: 'editor focus ring on the ground' },
   { fg: 'blueMid', bg: 'panel', use: 'ring', where: 'editor focus ring on panels' },
   { fg: 'blueMid', bg: 'raised', use: 'ring', where: 'editor focus ring on raised surfaces and dialogs' },
