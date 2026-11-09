@@ -47,6 +47,16 @@ export class RelightDebt {
     if (this.stale && !this.host.passing()) this.arm();
   }
 
+  /**
+   * An edit commit that held the pose ended and the pose it leaves is shown: an owed bake is paid at once, like the
+   * relight of any scene change. A pose held by something else still waits for it; a passing one for `settled`.
+   */
+  released(): void {
+    if (!this.stale || this.host.passing()) return;
+    if (this.host.held()) this.arm();
+    else this.pay();
+  }
+
   /** A bake of the document shown started. */
   bakeStarted(): void {
     this.cancel();

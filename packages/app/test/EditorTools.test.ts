@@ -525,7 +525,7 @@ describe('EditorTools light: a gizmo drag', () => {
     expect(viewer.bakes[0]?.nodes[1]?.translation[0]).not.toBe(0);
   });
 
-  it('a drag commit at a clip pose bakes once, that pose', async () => {
+  it('a drag commit at a clip pose bakes once, that pose, at once', async () => {
     const { viewer, tools, open, press, forget } = setup();
     await open();
     tools.timeline.seek(0.5);
@@ -534,6 +534,9 @@ describe('EditorTools light: a gizmo drag', () => {
     const drag = press();
     drag.move();
     drag.release();
+    // Lit as soon as the commit lands, like any edit, not a relight delay later like the end of a scrub.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(viewer.bakes).toHaveLength(1);
     await settle();
     expect(viewer.bakes).toHaveLength(1);
     expect(viewer.bakes[0]?.nodes[0]?.translation).toEqual([0, 2, 0]);

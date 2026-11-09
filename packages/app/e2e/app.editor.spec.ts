@@ -229,6 +229,36 @@ test('a gizmo commit while another model opens is refused and the open applies',
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
+test('changes queued before an open apply to their model first, then the open applies untouched', async ({ page }) => {
+  await openNested(page);
+  // Change A (hide mesh 0) is held while it sets its scene; the node edit B queues behind it, then the cube opens.
+  await page.evaluate(() => window.__msApp!.holdNextScene());
+  await page.locator('#scene-panel [data-focus="box:mesh:0"]').click();
+  await expect.poll(() => page.evaluate(() => window.__msApp!.sceneHeld())).toBe(true);
+  await page.evaluate(() => {
+    void window.__msApp!.commitNodeEdit({ node: 0, translation: [1, 0, 0], rotation: [0, 0, 0] });
+  });
+  await page.locator('#file-input').setInputFiles([CUBE]);
+  await expect(page.getByRole('status')).toContainText('Opening single-cube.bbmodel');
+  // Long enough for the cube to load and show if it did not wait for the queued changes.
+  await page.waitForTimeout(1500);
+  await expect(page.getByRole('status')).toContainText('Opening single-cube.bbmodel');
+  await page.evaluate(() => window.__msApp!.releaseScene());
+  await expect(page.getByRole('status')).toContainText('Opened single-cube.bbmodel', { timeout: 30_000 });
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.locator('#scene-panel [data-focus="box:mesh:0"]')).toBeChecked();
+  // The nested model keeps both changes (its record also hides what the file hides); the cube's record has none.
+  await waitForStored(page, (record) => {
+    const hidden = record['hiddenMeshes'] as number[] | undefined;
+    const edits = record['nodeEdits'] as unknown[] | undefined;
+    return (hidden?.includes(0) ?? false) && edits?.length === 1;
+  });
+  await waitForStored(
+    page,
+    (record) => (record['hiddenMeshes'] as unknown[] | undefined)?.length === 0 && record['nodeEdits'] === undefined,
+  );
+});
+
 test('a look picked while a model without a saved look opens is kept and lit', async ({ page }) => {
   await openNested(page);
   await openTab(page, 'Look');

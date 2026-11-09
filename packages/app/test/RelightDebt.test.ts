@@ -79,6 +79,39 @@ describe('RelightDebt', () => {
     expect(owner.owed).toBe(true);
   });
 
+  it('released pays a relight held by a commit at once, still held or passing it waits, owed nothing it bakes nothing', () => {
+    const { host, owner } = debt();
+    owner.released();
+    expect(host.relights).toBe(0);
+    host.held = true;
+    owner.relightNow();
+    host.held = false;
+    owner.released();
+    expect(host.relights).toBe(1);
+    vi.advanceTimersByTime(DELAY * 5);
+    expect(host.relights).toBe(1);
+
+    host.held = true;
+    owner.relightNow();
+    owner.released();
+    expect(host.relights).toBe(1);
+    host.held = false;
+    vi.advanceTimersByTime(DELAY);
+    expect(host.relights).toBe(2);
+
+    host.held = true;
+    owner.relightNow();
+    host.held = false;
+    host.passing = true;
+    owner.released();
+    vi.advanceTimersByTime(DELAY * 5);
+    expect(host.relights).toBe(2);
+    host.passing = false;
+    owner.settled();
+    vi.advanceTimersByTime(DELAY);
+    expect(host.relights).toBe(3);
+  });
+
   it('reset and dispose leave nothing owed or armed', () => {
     const { host, owner } = debt();
     owner.posed();

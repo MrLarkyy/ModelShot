@@ -156,7 +156,7 @@ export class EditorTools {
    * clip pose is shown again and lit for it at once, the scene having dropped the light of the pose before.
    */
   documentChanged(): void {
-    this.showCommitted(true);
+    void this.showCommitted(true);
   }
 
   /**
@@ -217,14 +217,14 @@ export class EditorTools {
 
   // The committed document in the pose the timeline shows: the clip pose when one is shown (lit once more when
   // `changed`), else the rest pose, whose light the commit baked.
-  private showCommitted(changed: boolean): void {
+  private async showCommitted(changed: boolean): Promise<void> {
     const state = this.host.state();
     if (!state) return;
     if (this.reposes) {
       const mode = changed ? 'changed' : 'again';
-      void this.playFrame(this.timeline.clipIndex, this.timeline.time, this.timeline.looping, mode);
+      await this.playFrame(this.timeline.clipIndex, this.timeline.time, this.timeline.looping, mode);
     } else {
-      void this.showPose(withNodeEdits(state.rest, state.rest, state.edits));
+      await this.showPose(withNodeEdits(state.rest, state.rest, state.edits));
     }
   }
 
@@ -251,7 +251,7 @@ export class EditorTools {
   // A drag that ends without a commit shows the pose from before it again: its light is owed only when a bake lit a
   // drag pose or a relight fell due during the drag.
   private endDragWithoutCommit(): void {
-    this.showCommitted(false);
+    void this.showCommitted(false);
     this.light.settled();
   }
 
@@ -333,16 +333,17 @@ export class EditorTools {
         this.endDragWithoutCommit();
         return;
       }
-      // An applied commit bakes, or calls documentChanged which lights the pose it shows; showing the committed pose
-      // again afterwards keeps a refused commit from leaving the drag's last pose on show, and its owed light falls due.
+      // An applied commit bakes, or calls documentChanged, whose relight of the pose shown waits for the commit's hold;
+      // showing the committed pose again afterwards keeps a refused commit from leaving the drag's last pose on show,
+      // and the light owed for it is paid at once, as for any edit, not a scrub's delay later.
       this.committing = true;
       void this.host
         .commitEdit(drag.live)
         .catch(() => false)
-        .then(() => {
+        .then(async () => {
           this.committing = false;
-          this.showCommitted(false);
-          this.light.settled();
+          await this.showCommitted(false);
+          this.light.released();
         });
       return;
     }

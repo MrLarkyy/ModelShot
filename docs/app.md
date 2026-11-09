@@ -94,13 +94,14 @@ in the middle, the inspector on the right and the timeline below.
   marker per distinct keyframe time of the clip, from the file. Nothing plays by itself. Frames use the renderer's
   pose-only path (no texture decode, upload or light bake per frame); the light is baked again for a pose that stays (about
   0.2 s after a pause or the end of a scrub), so the preview shows the shadows of what it shows. Each
-  change of the scene (an edit, visibility, a filter, Undo) bakes once, at once: at rest the scene as changed, at a
-  clip pose that pose (also one the playhead moved to while the scene was being set), never the rest pose first, during
+  change of the scene (an edit, the release of a gizmo drag too, visibility, a filter, Undo) bakes once, at once: at
+  rest the scene as changed, at a clip pose that pose (also one the playhead moved to while the scene was being set), never the rest pose first, during
   playback the frame shown (and the pose it stops on after the pause). A scene change that fails leaves the old scene
   and shows the pose the playhead stands at. Any bake (a look, a new model) settles a relight still due, so a look
-  picked right after a scrub or a model opened during playback bakes once; a drag commit the scene refuses leaves a
-  relight that fell due during the drag owed. A gizmo handle takes no new drag while the last one is being committed,
-  and no drag is committed while files open. A look picked while files open is kept unless the model has a saved
+  picked right after a scrub or a model opened during playback bakes once; a drag commit the scene refuses pays a
+  relight that fell due during the drag at once. A gizmo handle takes no new drag while the last one is being committed,
+  and no drag is committed while files open. Changes made before files are opened are applied to the model they were
+  made for before the new one is shown. A look picked while files open is kept unless the model has a saved
   look. Starting a render, opening Export or opening
   another model pauses playback, and playing or scrubbing during a render cancels it. A model without animations shows
   "This model has no animations".

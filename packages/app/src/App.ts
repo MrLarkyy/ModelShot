@@ -300,6 +300,7 @@ export class App {
       this.persistence.resume();
       if (!(await this.commit({ loaded, request, files, arms }, saved, true))) {
         this.notices.alert(`Could not show ${name}: the scene changed while it was opening.`);
+        this.notices.status(this.open ? `Still showing ${this.open.loaded.name}.` : '');
         return;
       }
       void this.persistence.saveSession(files, loaded.key);
@@ -397,6 +398,9 @@ export class App {
   /** False when the scene was replaced while this one was loading: nothing of it is applied. */
   private async commit(open: OpenModel, saved: ModelState | null, reframe: boolean): Promise<boolean> {
     const viewer = this.requireViewer();
+    // Changes queued before the open run first, on the model they were made for: one running after would replace this
+    // scene, or apply that model's indices to this one.
+    await this.setupQueue.catch(() => undefined);
     // The previous model's setup is saved before the view changes under it.
     await this.persistence.flush();
     this.tools?.pausePlayback();
