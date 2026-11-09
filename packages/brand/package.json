@@ -2,7 +2,7 @@
   "name": "@modelshot/brand",
   "version": "0.0.0",
   "private": true,
-  "license": "MIT",
+  "license": "(MIT AND OFL-1.1 AND LicenseRef-ModelShot-Brand)",
   "type": "module",
   "sideEffects": [
     "*.css"
