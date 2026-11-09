@@ -133,6 +133,7 @@ export class App {
   private watchdogMs = LOAD_TIMEOUT_MS;
   private hangNext = false;
   private failNext = false;
+  private refuseNext = false;
   /** e2e: the next scene waits for this before it is set. */
   private holdNext: { readonly gate: Promise<void>; reached: boolean } | null = null;
   private committing = false;
@@ -324,6 +325,7 @@ export class App {
     setWatchdogMs: (ms: number) => void;
     hangNextLoad: () => void;
     failNextScene: () => void;
+    refuseNextScene: () => void;
     holdNextScene: () => { readonly release: () => void; readonly reached: () => boolean };
     commitNodeEdit: (edit: NodeEdit) => Promise<boolean>;
   } {
@@ -334,6 +336,7 @@ export class App {
       setWatchdogMs: (ms) => (this.watchdogMs = ms),
       hangNextLoad: () => (this.hangNext = true),
       failNextScene: () => (this.failNext = true),
+      refuseNextScene: () => (this.refuseNext = true),
       holdNextScene: () => {
         let release = (): void => undefined;
         const hold = { gate: new Promise<void>((resolve) => (release = resolve)), reached: false };
@@ -363,7 +366,10 @@ export class App {
     const hold = e2e ? this.holdNext : null;
     this.failNext = false;
     this.holdNext = null;
+    const refuse = e2e && this.refuseNext;
+    this.refuseNext = false;
     if (fail) return Promise.reject(new Error('The scene could not be built (e2e).'));
+    if (refuse) return Promise.resolve({ applied: false, warnings: [] });
     if (!hold) return viewer.setDocument(doc, reframe, { bake: false });
     hold.reached = true;
     return hold.gate.then(() => viewer.setDocument(doc, reframe, { bake: false }));

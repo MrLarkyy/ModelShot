@@ -229,6 +229,22 @@ test('a gizmo commit while another model opens is refused and the open applies',
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
+test('an open whose scene fails to build says which model is still shown', async ({ page }) => {
+  await openNested(page);
+  await page.evaluate(() => window.__msApp!.failNextScene());
+  await page.locator('#file-input').setInputFiles([CUBE]);
+  await expect(page.getByRole('alert')).toContainText('Could not show single-cube.bbmodel');
+  await expect(page.getByRole('status')).toContainText('Still showing nested-groups.bbmodel.');
+});
+
+test('an open whose scene is refused says which model is still shown', async ({ page }) => {
+  await openNested(page);
+  await page.evaluate(() => window.__msApp!.refuseNextScene());
+  await page.locator('#file-input').setInputFiles([CUBE]);
+  await expect(page.getByRole('alert')).toContainText('the scene changed while it was opening.');
+  await expect(page.getByRole('status')).toContainText('Still showing nested-groups.bbmodel.');
+});
+
 test('changes queued before an open apply to their model first, then the open applies untouched', async ({ page }) => {
   await openNested(page);
   // Change A (hide mesh 0) is held while it sets its scene; the node edit B queues behind it, then the cube opens.

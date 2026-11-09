@@ -15,6 +15,8 @@ export interface MsAppHook {
   setWatchdogMs(ms: number): void;
   hangNextLoad(): void;
   failNextScene(): void;
+  /** The next scene the app sets comes back not applied, as when the scene changed meanwhile. */
+  refuseNextScene(): void;
   /** The next scene the app sets waits until `releaseScene`; `sceneHeld` tells once it waits. */
   holdNextScene(): void;
   sceneHeld(): boolean;
@@ -59,6 +61,7 @@ export function installE2eHook(app: App): void {
     setWatchdogMs: internals.setWatchdogMs,
     hangNextLoad: internals.hangNextLoad,
     failNextScene: internals.failNextScene,
+    refuseNextScene: internals.refuseNextScene,
     holdNextScene: () => {
       hold = internals.holdNextScene();
     },
