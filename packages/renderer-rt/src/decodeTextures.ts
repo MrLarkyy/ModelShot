@@ -117,17 +117,27 @@ export async function decodeTextures(
 ): Promise<DecodedTextures | null> {
   const plan = planTextureDecode(textures, limits);
   const warnings = [...plan.warnings];
-  const decoded = new Map<Uint8Array, Promise<ImageBitmap | null>>();
+  // Sharers of one bytes object have the same header, so the declared size is the same for each.
+  type Outcome = { bitmap: ImageBitmap } | { mismatch: readonly [number, number] } | null;
+  const decoded = new Map<Uint8Array, Promise<Outcome>>();
   const results = await Promise.all(
     textures.map(async (texture, index): Promise<ImageBitmap | null> => {
       if (!plan.decode[index] || !texture.bytes) return null;
       let pending = decoded.get(texture.bytes);
       if (!pending) {
-        pending = decodeOne(texture).catch(() => null);
+        pending = decodeOne(texture).then(
+          (bitmap): Outcome => {
+            if (bitmap.width === texture.width && bitmap.height === texture.height) return { bitmap };
+            const mismatch = [bitmap.width, bitmap.height] as const;
+            bitmap.close();
+            return { mismatch };
+          },
+          () => null,
+        );
         decoded.set(texture.bytes, pending);
       }
-      const bitmap = await pending;
-      if (!bitmap) {
+      const outcome = await pending;
+      if (!outcome) {
         warnings.push({
           code: 'TEXTURE_DECODE_FAILED',
           texture: index,
@@ -135,16 +145,15 @@ export async function decodeTextures(
         });
         return null;
       }
-      if (bitmap.width !== texture.width || bitmap.height !== texture.height) {
-        bitmap.close();
+      if ('mismatch' in outcome) {
         warnings.push({
           code: 'TEXTURE_SIZE_MISMATCH',
           texture: index,
-          message: `texture ${index} decodes to ${bitmap.width}x${bitmap.height}, its header says ${texture.width}x${texture.height}`,
+          message: `texture ${index} decodes to ${outcome.mismatch[0]}x${outcome.mismatch[1]}, its header says ${texture.width}x${texture.height}`,
         });
         return null;
       }
-      return bitmap;
+      return outcome.bitmap;
     }),
   );
   if (!isCurrent()) {

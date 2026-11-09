@@ -49,4 +49,16 @@ describe('decodeTextures with a shared bytes object', () => {
     expect(await decodeTextures([one, { ...one }], limits, () => false)).toBeNull();
     expect(close).toHaveBeenCalled();
   });
+
+  it('warns per sharer with the real decoded size when it disagrees with the header', async () => {
+    stubBitmaps(() => ({ width: 8, height: 4, close: vi.fn() }));
+    const one = testTexture();
+    const result = await decodeTextures([one, { ...one }], limits, () => true);
+    expect(result?.bitmaps).toEqual([null, null]);
+    expect(result?.warnings.map((w) => [w.code, w.texture])).toEqual([
+      ['TEXTURE_SIZE_MISMATCH', 0],
+      ['TEXTURE_SIZE_MISMATCH', 1],
+    ]);
+    for (const w of result?.warnings ?? []) expect(w.message).toContain('8x4');
+  });
 });
