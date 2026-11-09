@@ -823,6 +823,58 @@ of noise pattern) and not on the catcher or backdrop; unoccluded faces are flatt
 flat tones by up to 9 levels, the turntable's faces by texel blocks), the box faces and crevices carry a different
 speckle (at most 10 levels except `rt-bake-gltf-contact`'s smooth box); no shadow shape moved.
 
+MS-64 draws the catcher's fill ray by cos × the environment's luminance (path-tracer.md, shadow catcher): a blocked
+ray always loses the same luminance, so a catcher sample has one of four shades. "A catcher sample loses fill only by
+visibility" renders `cutout-checker` (no partial alpha: the glass of `turntable-y030` gives a fractional key and so
+levels between) with `catcherscale=4`, `transparent=1`, 1 sample, seeds 1 and 7: every catcher alpha (model pixels
+taken from the same seed with `catcher=0`) lies within 1 of 0, 88.4, 166.6 or 255 (Studio: 255 × lum(sky) / W,
+255 × key / W, 255), at least 50 pixels each (seed 1: 53 005 / 2 441 / 2 903 / 783, seed 7: 52 999 / 2 443 / 2 955 /
+767). Before, the fill shades formed a continuum: 2 721 off-level pixels at seed 1 (the `turntable-y030` view).
+"Catcher shadow variance per pixel" is a regression guard, not an improvement: transparent, 1 sample, seeds 1..16,
+the mean per-pixel alpha variance (levels²) over catcher pixels with a mean above 0 (no model alpha in the pixel or its
+8 neighbours at 16 samples with `catcher=0`), bound = measured after x 1.25 (1 236 and 2 382). The estimator lowers
+the noise only where the model blocks the bright part of the environment: per sample, E[X'²] = K × mean against the
+cosine estimate's E[B L²] = (L-weighted mean of L over the blocked directions) × mean, K = lum(sky) or the image's
+cos-weighted mean luminance, and the faint skirts are blocked low, near the dim horizon. Before (3e6baab) -> after,
+overall and by each run's mean alpha (< 64, 64..191, >= 192):
+
+| view                      | overall                  | < 64             | 64..191          | >= 192           |
+| ------------------------- | ------------------------ | ---------------- | ---------------- | ---------------- |
+| `turntable-y030` (Studio) | 922.5 -> 988.5 (x1.07)   | 867.6 -> 932.1   | 4036.1 -> 3893.3 | 2159.4 -> 2318.0 |
+| `preset-softbox` (image)  | 1588.7 -> 1904.9 (x1.20) | 1523.0 -> 1865.8 | 5186.1 -> 3806.8 | none             |
+| `cutout-checker` (Studio) | 1496.3 -> 1625.1 (x1.09) | 825.1 -> 920.8   | 4894.4 -> 4950.8 | 1810.1 -> 1983.9 |
+
+"An unblocked catcher shades exactly 1" also runs under Softbox (seeds 1 and 7, 0 pixels at tolerance 0; casting
+9 609 and 9 633). Unit tests (`catcherFillSampling.test.ts`, the TS mirror of the `catcherFill` chunk): a blocked
+sample loses lum(sky) within 1e-6 relative under every dome preset and the 5x corner looks, the image's
+cos-weighted mean within 1e-5 (2.6e-6 measured: float32 CDFs) for Softbox and synthetic images (a hot pixel over a
+dim sky, an odd height with a row across the horizon, black above the horizon); the importance-sampled blocked fill
+has the cosine estimate's mean within 1e-3 for four blockers; the y histogram follows y × luminance within 2 % and
+does not depend on the yaw; `environmentLighting.test.ts` the catcher marginal, `EnvironmentTextures.test.ts` the
+RG32F upload. Regenerated on purpose (seed 1, same samples and sizes; changed pixels, max channel delta, mean delta
+per channel; the export frames alpha included): `pt-turntable-y030` 13 661, 16, 0.222; `pt-iso` 14 693, 18, 0.245;
+`pt-closeup` 2 212, 19, 0.074; `pt-alpha-ramp-blend` 1 636, 5, 0.031; `pt-emissive` 13 630, 16, 0.220;
+`pt-player-hold-34` 14 378, 23, 0.312; `pt-cutout-checker` 19 521, 12, 0.248; `pt-edges` 14 602, 11, 0.174;
+`pt-preset-marketplace` 9 232, 4, 0.073; `pt-preset-rim` 6 633, 2, 0.055; `pt-preset-softbox` 14 111, 6, 0.178;
+`pt-outline-hull` 15 263, 9, 0.246; `pt-closeup-denoised` 1 463, 12, 0.025; `pt-turntable-y030-x2-denoised` 3 737,
+10, 0.033; `pt-closeup-reference` 1 265, 4, 0.013; `pt-gltf-nodes-y030` 6 753, 6, 0.062; `pt-obj-shapes-y030` 1 167,
+2, 0.009; `pt-gltf-jpeg-y030` and `pt-obj-jpeg-y030` 10 017, 6, 0.135; `pt-partial-edge` 10 254, 4, 0.116;
+`pt-texture-wrap` 13 183, 16, 0.292; `pt-texture-filter` 6 799, 7, 0.119; `export-still-transparent` 1 370, 42,
+0.099; the turntable and animation frames 942-1 234, at most 59 (alpha), at most 0.055. Every changed pixel differs
+between catcher on and off (the old or the new render), so a camera ray reaches the catcher there: the shaded catcher,
+silhouettes, glass and partial texels that show it; the rest were catcher pixels lit in all of the old samples that
+now have a blocked one (faint skirts). The mean brightness of the shaded catcher moved by at most 0.15 levels; no
+shadow shape moved. The export frames changed alpha, and RGB only with it (at most 4 pixels per frame by rounding).
+`pt-alpha-plane` (5 pixels by 1 level) and `pt-render-order` (41 by 1) passed and stay; `pt-gltf-contact` (no
+catcher) and every `rt-*` golden did not change (the bake reads only the r channel of the marginal texture). Pairs
+at unchanged limits, before (MS-87) -> after (ratio / mean delta): `turntable-y030` 0.00200 / 0.675 -> 0.00204 /
+0.679, `iso` 0.00401 / 0.850 -> 0.00401 / 0.853, `player-hold-34` 0.01053 / 0.975 -> 0.01051 / 0.971,
+`cutout-checker` 0.00374 / 0.605 -> 0.00374 / 0.608, `edges` 0.00070 / 0.349 -> 0.00064 / 0.352, `preset-softbox`
+0.01398 / 1.000 -> 0.01395 / 1.009, `outline-hull` 0.00259 / 0.395 -> 0.00255 / 0.400, `gltf-nodes-y030` 0.930 ->
+0.932, `preset-marketplace` 0.787 -> 0.786, `partial-edge` 3 / 1.102 -> 2 / 1.103, `texture-filter` 6 -> 7 pixels,
+the denoised 2x turntable 0.00156 -> 0.00153 / 0.569; `alpha-plane`, `preset-rim`, `preset-marketplace-yaw30`,
+`gltf-contact`, `obj-shapes-y030`, `gltf-jpeg-y030`, `obj-jpeg-y030` and `texture-wrap` the same.
+
 Pairs before -> after (ratio / mean delta; limits unchanged except `texture-wrap`): `turntable-y030` 0.00189 / 0.692 ->
 0.00200 / 0.675, `iso` 0.00381 / 0.864 -> 0.00401 / 0.850, `alpha-plane` 0.00354 / 1.335 -> 0.00325 / 1.321,
 `cutout-checker` 0.00342 / 0.598 -> 0.00374 / 0.605, `edges` 0.00064 / 0.361 -> 0.00070 / 0.349 (limit 0.00079),
