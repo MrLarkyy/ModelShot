@@ -30,10 +30,40 @@ describe('planTextureDecode', () => {
   });
 
   it('stops admitting once the total pixel budget is spent', () => {
-    const big = testTexture({ width: 64, height: 64 });
-    const plan = planTextureDecode([big, big, big, testTexture({ width: 1, height: 1 })], limits);
+    const big = () => testTexture({ width: 64, height: 64 });
+    const plan = planTextureDecode([big(), big(), big(), testTexture({ width: 1, height: 1 })], limits);
     expect(plan.decode).toEqual([true, true, false, false]);
     expect(plan.warnings.map((w) => w.texture)).toEqual([2, 3]);
+  });
+});
+
+describe('planTextureDecode with a shared bytes object', () => {
+  it('counts one image under two samplers once', () => {
+    const one = testTexture({ width: 64, height: 64 });
+    const plan = planTextureDecode([one, { ...one }], { maxTextureSide: 64, maxTexturePixelsTotal: 64 * 64 });
+    expect(plan).toEqual({ decode: [true, true], warnings: [] });
+  });
+
+  it('counts equal content in distinct bytes objects twice', () => {
+    const plan = planTextureDecode([testTexture({ width: 64, height: 64 }), testTexture({ width: 64, height: 64 })], {
+      maxTextureSide: 64,
+      maxTexturePixelsTotal: 64 * 64,
+    });
+    expect(plan.decode).toEqual([true, false]);
+  });
+
+  it('rejects a duplicate whose declared size disagrees with the shared header', () => {
+    const one = testTexture();
+    const plan = planTextureDecode([one, { ...one, width: 8 }], limits);
+    expect(plan.decode).toEqual([true, false]);
+    expect(plan.warnings).toMatchObject([{ code: 'TEXTURE_SIZE_MISMATCH', texture: 1 }]);
+  });
+
+  it('rejects every duplicate of a rejected first occurrence', () => {
+    const one = testTexture({ width: 65 });
+    const plan = planTextureDecode([one, { ...one }], limits);
+    expect(plan.decode).toEqual([false, false]);
+    expect(plan.warnings.map((w) => w.texture)).toEqual([0, 1]);
   });
 });
 

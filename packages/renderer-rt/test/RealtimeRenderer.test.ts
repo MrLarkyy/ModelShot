@@ -145,6 +145,39 @@ describe('RealtimeRenderer.setScene with another pose of the shown document', ()
   });
 });
 
+describe('RealtimeRenderer.setScene with two textures sharing one bytes object', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function run(textures: SceneDocument['textures']) {
+    const decode = vi.fn(() => Promise.resolve({ width: 16, height: 16, close: () => undefined }));
+    vi.stubGlobal('createImageBitmap', decode);
+    const fake = fakeWebGl();
+    const renderer = RealtimeRenderer.create(fake.canvas);
+    expect((await renderer.setScene({ ...quadScene(), textures })).applied).toBe(true);
+    const loaded = {
+      decodes: decode.mock.calls.length,
+      storage: fake.count('texStorage2D'),
+      reads: fake.count('readPixels'),
+    };
+    const deletesBefore = fake.count('deleteTexture');
+    renderer.dispose();
+    return { ...loaded, deletes: fake.count('deleteTexture') - deletesBefore };
+  }
+
+  it('decodes, uploads, reads back and deletes the image once', async () => {
+    const one = testTexture();
+    const shared = await run([one, { ...one }]);
+    const separate = await run([testTexture(), testTexture()]);
+    expect(shared.decodes).toBe(1);
+    expect(separate.decodes).toBe(2);
+    expect(separate.storage - shared.storage).toBe(1);
+    expect(separate.reads - shared.reads).toBe(1);
+    expect(separate.deletes - shared.deletes).toBe(1);
+  });
+});
+
 describe('RealtimeRenderer exact-key frames on the float path: progressive rotated-grid samples', () => {
   /** Inside the bounding sphere's depth range (near = far × 1e-4): exact. */
   const inside: SceneCamera = { ...camera, near: 0.001, far: 10 };

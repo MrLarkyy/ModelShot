@@ -42,7 +42,7 @@ const PNG_2X2 = Uint8Array.from([
 const texture = (name: string): SceneTexture => ({
   name,
   mimeType: 'image/png',
-  bytes: PNG_2X2,
+  bytes: PNG_2X2.slice(),
   width: 2,
   height: 2,
   uvWidth: 16,

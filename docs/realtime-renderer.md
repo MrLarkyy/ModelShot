@@ -433,7 +433,8 @@ every frame is a full layout and decode that supersedes the previous one, and th
   document declares: each side at most min(`maxTextureSide`, default 4096, `MAX_TEXTURE_SIZE`), at most
   `maxTexturePixelsTotal` (default 64 Mi) pixels per scene, and the header size must equal the declared size.
   Decoding uses `createImageBitmap` on a `Blob` of the bytes (never a URL, so nothing is fetched); the decoded size is
-  checked again. A JPEG's Exif Orientation is set to 1 in the copy decoded (browsers apply it even under
+  checked again. Textures sharing one `bytes` object (one image under a nearest and a linear sampler) are decoded, uploaded and counted toward `maxTexturePixelsTotal` once.
+  A JPEG's Exif Orientation is set to 1 in the copy decoded (browsers apply it even under
   `imageOrientation: 'none'`), so every browser decodes it in stored order, as the UVs expect.
 - A texture that is missing, not a PNG or JPEG, too large, fails to decode or whose size disagrees becomes a 2 × 2
   grey checker, and `setScene` resolves with a `RendererWarning` (`TEXTURE_MISSING`, `TEXTURE_TOO_LARGE`,

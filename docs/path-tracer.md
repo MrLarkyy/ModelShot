@@ -24,7 +24,7 @@ requestAnimationFrame(frame);
 - `PathTracer.create(canvas, options)`: creates the WebGL2 context. Options: `look` (a look preset, default
   `DEFAULT_LOOK`, the preview's; [look-presets.md](look-presets.md)), `background` (scene-linear, a flat backdrop over the
   initial look's; three finite channels in 0..16, else a `RangeError`), `maxBounces` (1..16, default 4), `maxTriangles` (default 200 000, the loaders'
-  limit), `maxTextureSide` (default 4096, capped by `MAX_TEXTURE_SIZE`), `maxTexturePixelsTotal` (default 64 Mi),
+  limit), `maxTextureSide` (default 4096, capped by `MAX_TEXTURE_SIZE`), `maxTexturePixelsTotal` (default 64 Mi; textures sharing one `bytes` object count and decode once),
   `tileSize` (16..4096, default 256), `maxPixels`, `preserveDrawingBuffer`, `edges` (`Partial<EdgeLook>`, the
   preview's rounded edges over the initial look's; out of range a `RangeError` naming `edges.width` or
   `edges.sharpAngleDeg`), `geometryWorker` (default `true`: `setScene` builds the geometry in a module Worker;
