@@ -1,9 +1,14 @@
 ModelShot brand assets
 
-Copyright (c) 2026 the ModelShot authors. All rights reserved.
+Copyright (c) 2026 MrLarkyy. All rights reserved.
 
 The ModelShot name, the logo mark (every variant in logo/ and the icons in public/), the hero illustration in
-illustrations/ and the social preview image are our own work. All rights in them are reserved until the repository
-chooses a licence, which will then state the terms for these files.
+illustrations/ and the social preview image are our own work. They are not covered by the MIT licence of this
+repository (the LICENSE file at the repository root, which covers the code and the documentation). All rights in them
+are reserved: you may not use, copy, modify or distribute them without written permission from the holder. The same
+holds for the artwork that the generator sources draw (../src/logo/markSvg.ts, ../src/illustration/heroIslandSvg.ts and
+../social/social-preview.html with its stylesheet): the code of those files is MIT, the marks and images they produce are
+not. You may also not use the name to suggest that your work is or comes from ModelShot. Nominative references to
+ModelShot as a project, such as a link or a mention in text, need no permission.
 
 The fonts are not covered by this note: they live in ../fonts/<family>/ with their SIL Open Font License (OFL.txt).
