@@ -2,6 +2,7 @@ import { linkShader, lookShaderChunks, type ShaderChunks } from '@modelshot/look
 import bakeFrag from './shaders/bake.frag.glsl?raw';
 import bvhTraverse from './shaders/bvhTraverse.glsl?raw';
 import cameraCatcher from './shaders/cameraCatcher.glsl?raw';
+import catcherFill from './shaders/catcherFill.glsl?raw';
 import denoiseFrag from './shaders/denoise.frag.glsl?raw';
 import environmentMap from './shaders/environmentMap.glsl?raw';
 import fullscreenVert from './shaders/fullscreen.vert.glsl?raw';
@@ -30,6 +31,7 @@ export const PATH_TRACER_SHADER_CHUNKS: ShaderChunks = Object.freeze({
   surfaceHit,
   bvhTraverse,
   cameraCatcher,
+  catcherFill,
   luminanceMoments,
 });
 

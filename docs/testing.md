@@ -697,7 +697,9 @@ every path-traced golden pairs with a preview of the same view, plus `seed`, `sa
 `tile` (tile side), `size`, `maxTriangles`, `track=1`, `timing=1`, `geometryWorker=0` (setScene builds the geometry on
 the main thread, MS-40) and the render quality of the request (MS-18):
 `supersample=1..4`, `denoise=0|1`, `noise=<threshold>`, which the sample bench uses too, and `transparent=1` (`readRGBA`
-gives `readImage()`'s straight alpha); `cameraonly=1` makes every mesh camera-only (MS-59); the path-tracer-only variant `emissive` sets an
+gives `readImage()`'s straight alpha); `cameraonly=1` makes every mesh camera-only (MS-59); `catcherscale=<k>` puts the
+catcher under the scene's bounds scaled k times in x and z about their centre, so its fade band leaves the frame
+(MS-64); the path-tracer-only variant `emissive` sets an
 emission on the showcase's brick material. A golden spec names its view in `variant` (`PathTracedGoldenSpec.variant`,
 put in the URL, not in the file name); so are its quality fields (`supersample`, `denoise`), so the name of such a
 golden says them (`-x2-denoised`).

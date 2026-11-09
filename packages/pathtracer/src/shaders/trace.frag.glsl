@@ -10,6 +10,7 @@ precision highp sampler2DArray;
 #include "pathSampling"
 #include "keyLight"
 #include "shadowCatcher"
+#include "catcherFill"
 #include "backdrop"
 #include "primaryRay"
 #include "bvhTraverse"
@@ -36,21 +37,23 @@ layout(location = 2) out vec2 outCoverage;
 const int MAX_BOUNCES = 16;
 const int ROULETTE_FROM = 3;
 
-// The catcher point's shade of the backdrop: one key ray in the cone and one cosine-weighted fill ray, as a control
-// variate: the analytic unoccluded fill hemisphereFill(up), less what the fill ray would have brought had nothing
-// blocked it. Unbiased, since the dome's cosine mean is exactly hemisphereFill(up) (an image's is within 1 % of its
-// harmonics, the preview's reference too), and catcherShadeOfLoss
-// is affine, so the mean over samples is the shade of the preview's baked means; where neither ray is blocked every
-// sample is exactly 1 (the bare backdrop, coverage 0), so the noise sits only where something blocks. The catcher is
-// invisible to every other ray.
+// The catcher point's shade of the backdrop: one key ray in the cone and one fill ray drawn by cos x the environment's
+// luminance (catcherFill), as a control variate: the analytic unoccluded fill hemisphereFill(up), less what the fill
+// ray takes when blocked. Unbiased, since the importance-sampled loss has the cosine estimate's mean and the dome's
+// cosine mean is exactly hemisphereFill(up) (an image's is within 1 % of its harmonics, the preview's reference too),
+// and catcherShadeOfLoss is affine, so the mean over samples is the shade of the preview's baked means. A blocked fill
+// ray always loses the same luminance, so a sample takes one of four shades (nothing, fill, key or both blocked); where
+// neither ray is blocked every sample is exactly 1 (the bare backdrop, coverage 0), so the noise is visibility alone.
+// The catcher is invisible to every other ray.
 float catcherShadeAt(uint key, uint dimension, vec3 point) {
   vec3 up = vec3(0.0, 1.0, 0.0);
   vec3 origin = leave(point, up);
   vec3 cone = keyConeDirection(unitRandom(key, dimension + 4u, 0u), unitRandom(key, dimension + 5u, 0u));
   float keyT = shadowTransmittance(origin, cone, -1);
-  vec3 d = cosineDirection(up, unitRandom(key, dimension, 0u), unitRandom(key, dimension + 1u, 0u));
+  vec3 lostIfBlocked;
+  vec3 d = sampleCatcherFill(unitRandom(key, dimension, 0u), unitRandom(key, dimension + 1u, 0u), lostIfBlocked);
   Hit blocker;
-  vec3 fillLost = closestHit(origin, d, 0.0, 3.0e38, 1.0, -1, key, dimension + 2u, blocker) ? escapeRadiance(d)
+  vec3 fillLost = closestHit(origin, d, 0.0, 3.0e38, 1.0, -1, key, dimension + 2u, blocker) ? lostIfBlocked
                                                                                             : vec3(0.0);
   return catcherShadeOfLoss(fillLost, 1.0 - keyT, point.xz, u_catcherRect);
 }

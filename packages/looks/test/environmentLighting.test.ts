@@ -3,7 +3,7 @@ import type { Rgb } from '../src/agxToneMap';
 import { environmentFill } from '../src/environmentFill';
 import { ENVIRONMENT_IMAGE_IDS } from '../src/environmentImageIds';
 import { environmentImage } from '../src/environmentImage';
-import { environmentLighting, type EnvironmentLighting } from '../src/environmentLighting';
+import { environmentLighting, prepareEnvironmentLighting, type EnvironmentLighting } from '../src/environmentLighting';
 import { imageIrradianceSh } from '../src/imageIrradianceSh';
 import { ENVIRONMENT_SH_IMAGES, environmentSh } from '../src/environmentSh';
 import { environmentPdf, sampleEnvironment } from '../src/environmentSampling';
@@ -109,7 +109,13 @@ describe('environmentLighting', () => {
     // The CDF does not depend on the intensity; only the radiance and the harmonics scale.
     expect(brighter.table[3]).toBe(a.table[3]);
     expect(brighter.marginal).toEqual(a.marginal);
-    expect([a.width, a.height, a.table.length, a.marginal.length]).toEqual([32, 16, 32 * 16 * 4, 16]);
+    expect([a.width, a.height, a.table.length, a.marginal.length, a.catcherMarginal.length]).toEqual([
+      32,
+      16,
+      32 * 16 * 4,
+      16,
+      16,
+    ]);
   });
 
   it("the preview's precomputed harmonics are the decoded image's, scaled by the intensity", () => {
@@ -157,6 +163,55 @@ describe('environmentLighting', () => {
       expect(shaded[c]).toBeCloseTo((albedo[c] ?? 0) * ((fill[c] ?? 0) + (look.lights.key.color[c] ?? 0) * k), 12);
     }
     expect(() => unoccludedRadiance(look, albedo, n)).toThrow(TypeError);
+  });
+});
+
+describe('the catcher marginal (cos x luminance over the upper hemisphere, per row)', () => {
+  const synthetic = (width: number, height: number, at: (x: number, y: number) => number): EnvironmentLighting => {
+    const rgb = new Float32Array(width * height * 3);
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < width; x++) rgb.fill(at(x, y), (y * width + x) * 3, (y * width + x + 1) * 3);
+    return prepareEnvironmentLighting({ width, height, rgb }, 1);
+  };
+  const shares = (cdf: Float32Array): number[] => [...cdf].map((v, i) => v - (i > 0 ? (cdf[i - 1] ?? 0) : 0));
+
+  it('is monotone, 1 from the last row above the horizon on, and gives rows below it nothing', () => {
+    for (const lighting of [
+      environmentLighting(SOFTBOX),
+      synthetic(8, 9, (x, y) => 0.1 + x + y),
+      synthetic(8, 6, (_, y) => (y >= 3 ? 50 : 0.2)),
+    ]) {
+      const cdf = lighting.catcherMarginal;
+      const upper = Math.ceil(lighting.height / 2);
+      expect(cdf).toHaveLength(lighting.height);
+      shares(cdf).forEach((share, row) => {
+        expect(share, `row ${row}`).toBeGreaterThanOrEqual(0);
+        if (row >= upper) expect(share, `row ${row} below the horizon`).toBe(0);
+      });
+      for (let row = upper - 1; row < lighting.height; row++) expect(cdf[row]).toBe(1);
+    }
+  });
+
+  it('weights a row by its luminance sum times the integral of cos sin theta over its band, clipped at the horizon', () => {
+    // A uniform image: rows share by cos^2 theta0 - cos^2 theta1 only; the odd middle row keeps its upper half.
+    const lighting = synthetic(4, 5, () => 1);
+    const band = (row: number): number => {
+      const y0 = Math.max(0, Math.cos((Math.PI * row) / 5));
+      const y1 = Math.max(0, Math.cos((Math.PI * (row + 1)) / 5));
+      return y0 * y0 - y1 * y1;
+    };
+    shares(lighting.catcherMarginal).forEach((share, row) => expect(share, `row ${row}`).toBeCloseTo(band(row), 6));
+  });
+
+  it('falls back to uniform over the upper rows when they are all black', () => {
+    const lighting = synthetic(4, 8, (_, y) => (y >= 4 ? 3 : 0));
+    expect([...lighting.catcherMarginal]).toEqual([0.25, 0.5, 0.75, 1, 1, 1, 1, 1]);
+  });
+
+  it('does not depend on the intensity', () => {
+    expect(environmentLighting({ ...SOFTBOX, intensity: 3 }).catcherMarginal).toEqual(
+      environmentLighting(SOFTBOX).catcherMarginal,
+    );
   });
 });
 

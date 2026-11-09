@@ -6,7 +6,7 @@
 
 // rgb the radiance times the look's intensity, a the conditional CDF of the pixel's row through it; row 0 the zenith.
 uniform highp sampler2D u_envRadiance;
-// Per row (x) the marginal CDF through it.
+// Per row (x) the marginal CDF through it in r; g the shadow catcher's (catcherFill).
 uniform highp sampler2D u_envMarginal;
 
 const float ENV_PI = 3.141592653589793;
