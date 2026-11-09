@@ -111,7 +111,7 @@ With `prefers-reduced-motion: reduce` every animation and transition is off. The
     are refused with an alert; a drop outside the zone does nothing; the app refuses expired and unknown records; the
     picker is empty after a refused choice, after a storage failure, after Back from the app and after a
     back/forward-cache restore; the landing page removes an expired record on load and keeps a fresh one; a first
-    visit creates no handoff database; 32 files of 256 MiB are stored and opened in under half of each timeout.
+    visit creates no handoff database; the limit test (32 files of 256 MiB) asserts the outcomes (the app opens with the stored files, the take succeeds, no record is left) and only prints durations; the timeout margin is pinned in `packages/app/test/putTimeoutMs.test.ts`.
 
 `pnpm test` runs them after the harness (`pnpm test:browser`); the port is `MS_SITE_PORT`, else the site band of the per-checkout port scheme
 (docs/testing.md, Browser tests; 4910..5409). CI uploads `packages/site/test-results/` with the harness results.

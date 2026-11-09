@@ -17,6 +17,15 @@ describe('putTimeoutMs', () => {
     expect(putTimeoutMs(HandoffLimits.maxTotalBytes)).toBe(21_000);
   });
 
+  // The e2e test at the limit (packages/site/e2e/landing.handoff.spec.ts) asserts outcomes, not durations, so the margin
+  // of the timeouts over the measured times is pinned here: 2026-10, put 45..274 ms and take 174..433 ms at the limit.
+  it('keeps the margin the floor assumes: the limit gets 50 times the slowest measured put, 10 times the take', () => {
+    const slowestPutMs = 274;
+    const slowestTakeMs = 433;
+    expect(putTimeoutMs(HandoffLimits.maxTotalBytes)).toBeGreaterThanOrEqual(50 * slowestPutMs);
+    expect(HandoffLimits.storageTimeoutMs).toBeGreaterThanOrEqual(10 * slowestTakeMs);
+  });
+
   it('putHandoffFiles waits the scaled time on a stuck write at the limit, then gives up', async () => {
     vi.useFakeTimers();
     const transaction = { objectStore: () => ({ clear: vi.fn(), put: vi.fn() }), abort: vi.fn() };

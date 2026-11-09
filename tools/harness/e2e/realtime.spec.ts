@@ -1202,6 +1202,9 @@ function differingPixels(a: Image, b: Image): number {
 }
 
 test.describe('closed double-sided boxes: no hidden face at any sample', () => {
+  // Up to 6 fixture loads and renders per test (a closed and an open variant of three looks); six parallel SwiftShader
+  // workers stretch each several-fold (MS-74), and the default 60 s test timeout once ended one on a loaded machine.
+  test.describe.configure({ timeout: 180_000 });
   const modes = [
     ['float, raster key', '', '&depth=framed', 'raster'],
     ['float, exact key (inside the sphere)', '', '&depth=inside', 'exact'],

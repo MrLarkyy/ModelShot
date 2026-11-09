@@ -213,8 +213,13 @@ test('a page restored from the back/forward cache shows an empty picker and no o
 
 // The handoff at its limit, against the storage timeouts (packages/app/src/handoff/putTimeoutMs.ts): the files are
 // built in the page, so nothing crosses the test protocol. Measured 2026-10: put 45..274 ms, take 174..433 ms.
-test('32 files of 256 MiB in total are stored and opened well within the timeouts', async ({ page }) => {
-  test.setTimeout(120_000);
+// What the timeouts protect is asserted, not how long the machine took: a put or take that ran into its timeout shows
+// an alert on the landing page or in the app and never reaches the 'No model file' alert, and a stuck record stays in
+// the store. The margin of the timeouts over the measured times is pinned without a clock, in
+// packages/app/test/putTimeoutMs.test.ts. The durations are printed for a human; a loaded machine stretches them
+// (put 2.6 s and more under 30 CPU spinners) without any bug.
+test('32 files of 256 MiB in total are stored and opened without a storage timeout', async ({ page }) => {
+  test.setTimeout(180_000);
   await openLanding(page, 1440);
   const started = Date.now();
   await page.evaluate(() => {
@@ -228,18 +233,26 @@ test('32 files of 256 MiB in total are stored and opened well within the timeout
     document.querySelector('#drop-zone')!.dispatchEvent(drop);
   });
   const dropped = Date.now();
-  await page.waitForURL(APP_URL, { timeout: 60_000 });
+  // The put has its own timeout (21 s at the limit) and then says so in the alert of the landing page; the poll's limit
+  // is only the backstop for a page that does neither, and the last value names what the page said.
+  const state = async (): Promise<string> =>
+    APP_URL.test(page.url())
+      ? 'app'
+      : await page
+          .locator('#drop-error')
+          .textContent({ timeout: 1000 })
+          .then((text) => text || 'waiting')
+          .catch(() => 'waiting');
+  await expect
+    .poll(state, { message: 'the landing page opens the app or shows an alert', timeout: 150_000, intervals: [250] })
+    .not.toBe('waiting');
+  expect(await state(), 'the landing page opens the app with the stored files').toBe('app');
   const stored = Date.now();
-  // 32 buffers and no model: the app took all of them and says what is missing.
-  await expect(page.getByRole('alert')).toContainText('No model file', { timeout: 30_000 });
+  // 32 buffers and no model: the app took all of them and says what is missing; a take that timed out says so instead.
+  await expect(page.getByRole('alert')).toContainText('No model file', { timeout: 60_000 });
   const listed = Date.now();
   console.log(`[limit] build ${dropped - started} ms, put ${stored - dropped} ms, load + take ${listed - stored} ms`);
   expect(await pendingRecords(page)).toBe(0);
-  // Half of the put timeout (21 s at the limit): the margin it is sized for still holds. The take is bounded by its own
-  // 5 s timeout, not by half of it: the alert above already proves the take did not time out, and load + take also
-  // contains the app page load, which a loaded host stretches (2.6 s measured against 0.2..0.4 s idle).
-  expect(stored - dropped).toBeLessThan(21_000 / 2);
-  expect(listed - stored).toBeLessThan(5_000);
 });
 
 test('a first visit creates no handoff database', async ({ page }) => {
