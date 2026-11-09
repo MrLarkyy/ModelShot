@@ -136,5 +136,6 @@ sample renders.
 ## Licences
 
 - Fonts: SIL Open Font License 1.1, `fonts/<family>/OFL.txt`.
-- Marks, icons, illustration and social preview: our own work, all rights reserved (`assets/LICENSE`); the repository's
-  MIT licence (root `LICENSE`) covers the code and docs, not these files.
+- Marks, icons, illustration and social preview: our own work, © 2026 MrLarkyy (the holder named in the root
+  `LICENSE`), all rights reserved (`assets/LICENSE`). The repository's MIT licence (root `LICENSE`) covers the code and
+  docs, not these files, and grants no right to use the name or the marks so that work looks like it is ModelShot.
