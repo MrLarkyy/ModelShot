@@ -403,8 +403,9 @@ marginal CDF (`u_envMarginal` r, RGB32F), proportional to luminance × sin θ, a
 rows weighted by their luminance sum × the integral of cos θ sin θ over their band clipped at the horizon, 0 below it
 (`EnvironmentLighting.catcherMarginal`, MS-64), and (b) each row's cos² θ0 − cos² θ1, the band the catcher's weight
 divides by, computed in float64 (`catcherBands`: SwiftShader's cos left the topmost bands up to 1 % off, which
-spread a blocked sample's loss over 128..130 instead of one level); the bake reads r only; texelFetch only (no float filtering), bound
-on texture units 8 and 9 of the trace (after the sums and the scene's 1..5, 6 and 7) and after the bake's ten.
+spread a blocked sample's loss over 128..130 instead of one level); the bake reads r only; texelFetch only (no float
+filtering), bound on texture units 8 and 9 of the trace (after the sums and the scene's 1..5, 6 and 7) and after the
+bake's ten.
 
 - At every surface vertex one direction is drawn from the image (`sampleEnvironment`: bisection over the CDFs, its
   density per steradian with it) and seen through `shadowTransmittance`, so cut-out texels pass it as they pass the

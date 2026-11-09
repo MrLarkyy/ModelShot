@@ -861,11 +861,11 @@ cos-weighted mean within 1e-5 (2.6e-6 measured: float32 CDFs) for Softbox and sy
 dim sky, an odd height with a row across the horizon, black above the horizon); the importance-sampled blocked fill
 has the cosine estimate's mean within 1e-3 for four blockers; the y histogram follows y × luminance within 2 % and
 does not depend on the yaw; `environmentLighting.test.ts` the catcher marginal, `EnvironmentTextures.test.ts` the
-RGB32F upload (marginal, catcher marginal, row band). Regenerated on purpose (seed 1, same samples and sizes; changed pixels, max channel delta, mean delta
-per channel; the export frames alpha included): `pt-turntable-y030` 13 661, 16, 0.222; `pt-iso` 14 693, 18, 0.245;
-`pt-closeup` 2 212, 19, 0.074; `pt-alpha-ramp-blend` 1 636, 5, 0.031; `pt-emissive` 13 630, 16, 0.220;
-`pt-player-hold-34` 14 378, 23, 0.312; `pt-cutout-checker` 19 521, 12, 0.248; `pt-edges` 14 602, 11, 0.174;
-`pt-preset-marketplace` 9 232, 4, 0.073; `pt-preset-rim` 6 633, 2, 0.055; `pt-preset-softbox` 14 111, 6, 0.178;
+RGB32F upload (marginal, catcher marginal, row band). Regenerated on purpose (seed 1, same samples and sizes; changed
+pixels, max channel delta, mean delta per channel; the export frames alpha included): `pt-turntable-y030` 13 661, 16,
+0.222; `pt-iso` 14 693, 18, 0.245; `pt-closeup` 2 212, 19, 0.074; `pt-alpha-ramp-blend` 1 636, 5, 0.031; `pt-emissive`
+13 630, 16, 0.220; `pt-player-hold-34` 14 378, 23, 0.312; `pt-cutout-checker` 19 521, 12, 0.248; `pt-edges` 14 602, 11,
+0.174; `pt-preset-marketplace` 9 232, 4, 0.073; `pt-preset-rim` 6 633, 2, 0.055; `pt-preset-softbox` 14 111, 6, 0.178;
 `pt-outline-hull` 15 263, 9, 0.246; `pt-closeup-denoised` 1 463, 12, 0.025; `pt-turntable-y030-x2-denoised` 3 737,
 10, 0.033; `pt-closeup-reference` 1 265, 4, 0.013; `pt-gltf-nodes-y030` 6 753, 6, 0.062; `pt-obj-shapes-y030` 1 167,
 2, 0.009; `pt-gltf-jpeg-y030` and `pt-obj-jpeg-y030` 10 017, 6, 0.135; `pt-partial-edge` 10 254, 4, 0.116;

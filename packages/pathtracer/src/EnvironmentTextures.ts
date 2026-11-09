@@ -29,9 +29,10 @@ type EnvironmentGl = Pick<
 /**
  * The look's environment image on one context, for the trace and the bake programs' `environmentMap` chunk: the
  * radiance and conditional CDF (`u_envRadiance`, RGBA32F) and per row the marginal CDF (r), the shadow catcher's (g)
- * and its row band (b; the bake reads r only) (`u_envMarginal`, RGB32F), NEAREST and read by texelFetch only. A dome look has none: its
- * units are left unbound, which its branch never reads. Kept while the prepared lighting (`environmentLighting`) stays
- * the same object, made again when it changes; dead with a lost context (make a new instance on the restored one).
+ * and its row band (b; the bake reads r only) (`u_envMarginal`, RGB32F), NEAREST and read by texelFetch only. A dome
+ * look has none: its units are left unbound, which its branch never reads. Kept while the prepared lighting
+ * (`environmentLighting`) stays the same object, made again when it changes; dead with a lost context (make a new
+ * instance on the restored one).
  */
 export class EnvironmentTextures {
   private lighting: EnvironmentLighting | null = null;
