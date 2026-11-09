@@ -1,18 +1,7 @@
+import { cdfSearch } from './cdfSearch';
 import type { EnvironmentLighting } from './environmentLighting';
 import { equirectDirection, equirectUv } from './equirect';
 import type { Direction } from './LookPreset';
-
-/** The first index whose CDF value exceeds u, by bisection over `count` values from `at(0)`. */
-function search(count: number, u: number, at: (i: number) => number): number {
-  let lo = 0;
-  let hi = count - 1;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (at(mid) > u) hi = mid;
-    else lo = mid + 1;
-  }
-  return lo;
-}
 
 const rowCdf = (lighting: EnvironmentLighting, row: number): number => (row < 0 ? 0 : (lighting.marginal[row] ?? 1));
 const columnCdf = (lighting: EnvironmentLighting, x: number, row: number): number =>
@@ -32,10 +21,10 @@ export function sampleEnvironment(
   u2: number,
 ): { readonly direction: Direction; readonly pdf: number } {
   const { width, height } = lighting;
-  const row = search(height, u1, (i) => rowCdf(lighting, i));
+  const row = cdfSearch(height, u1, (i) => rowCdf(lighting, i));
   const r0 = rowCdf(lighting, row - 1);
   const r1 = rowCdf(lighting, row);
-  const x = search(width, u2, (i) => columnCdf(lighting, i, row));
+  const x = cdfSearch(width, u2, (i) => columnCdf(lighting, i, row));
   const c0 = columnCdf(lighting, x - 1, row);
   const c1 = columnCdf(lighting, x, row);
   const v = (row + Math.min(1, Math.max(0, (u1 - r0) / Math.max(r1 - r0, 1e-30)))) / height;

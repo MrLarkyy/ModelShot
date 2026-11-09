@@ -697,9 +697,9 @@ every path-traced golden pairs with a preview of the same view, plus `seed`, `sa
 `tile` (tile side), `size`, `maxTriangles`, `track=1`, `timing=1`, `geometryWorker=0` (setScene builds the geometry on
 the main thread, MS-40) and the render quality of the request (MS-18):
 `supersample=1..4`, `denoise=0|1`, `noise=<threshold>`, which the sample bench uses too, and `transparent=1` (`readRGBA`
-gives `readImage()`'s straight alpha); `cameraonly=1` makes every mesh camera-only (MS-59); `catcherscale=<k>` puts the
-catcher under the scene's bounds scaled k times in x and z about their centre, so its fade band leaves the frame
-(MS-64); the path-tracer-only variant `emissive` sets an
+gives `readImage()`'s straight alpha); `cameraonly=1` makes every mesh camera-only (MS-59); `catcherscale=<k>` (an
+integer 1..16) puts the catcher under the scene's bounds scaled k times in x and z about their centre, so its fade band
+leaves the frame (MS-64); the path-tracer-only variant `emissive` sets an
 emission on the showcase's brick material. A golden spec names its view in `variant` (`PathTracedGoldenSpec.variant`,
 put in the URL, not in the file name); so are its quality fields (`supersample`, `denoise`), so the name of such a
 golden says them (`-x2-denoised`).
@@ -824,19 +824,28 @@ flat tones by up to 9 levels, the turntable's faces by texel blocks), the box fa
 speckle (at most 10 levels except `rt-bake-gltf-contact`'s smooth box); no shadow shape moved.
 
 MS-64 draws the catcher's fill ray by cos × the environment's luminance (path-tracer.md, shadow catcher): a blocked
-ray always loses the same luminance, so a catcher sample has one of four shades. "A catcher sample loses fill only by
+ray always loses the same luminance, so a catcher sample has one of four shades where the key's blockers are opaque
+and the point lies inside the fade. "A catcher sample loses fill only by
 visibility" renders `cutout-checker` (no partial alpha: the glass of `turntable-y030` gives a fractional key and so
 levels between) with `catcherscale=4`, `transparent=1`, 1 sample, seeds 1 and 7: every catcher alpha (model pixels
 taken from the same seed with `catcher=0`) lies within 1 of 0, 88.4, 166.6 or 255 (Studio: 255 × lum(sky) / W,
 255 × key / W, 255), at least 50 pixels each (seed 1: 53 005 / 2 441 / 2 903 / 783, seed 7: 52 999 / 2 443 / 2 955 /
-767). Before, the fill shades formed a continuum: 2 721 off-level pixels at seed 1 (the `turntable-y030` view).
+767). The same under Softbox (`preset=softbox`, `src/catcherLevels.ts`: the fill level 255 × 0.8 × Z / pi / W with
+Z / pi the image's cos-weighted mean luminance, W = lum(environmentFill(up)) + key): 0, 128.5, 75.1, 203.7, seed 1
+53 344 / 2 459 / 2 875 / 454, seed 7 53 310 / 2 456 / 2 927 / 471. Its first run found the fill level spread over
+128..130 (241 / 2 202 / 16 pixels, both blocked 203..205): the row band of the weight came from the GPU's cos, which
+SwiftShader evaluates too coarsely near the zenith; the band is now computed in float64 and read from the b channel
+of `u_envMarginal` (path-tracer.md, Environment image), after which every fill sample is 129 and every both-blocked
+204, no tolerance widened. `pt-preset-softbox` moved by 43 pixels of 1 level with it and passes, so it stays. Before,
+the fill shades formed a continuum: 2 721 off-level pixels at seed 1 (the `turntable-y030` view).
 "Catcher shadow variance per pixel" is a regression guard, not an improvement: transparent, 1 sample, seeds 1..16,
 the mean per-pixel alpha variance (levels²) over catcher pixels with a mean above 0 (no model alpha in the pixel or its
 8 neighbours at 16 samples with `catcher=0`), bound = measured after x 1.25 (1 236 and 2 382). The estimator lowers
-the noise only where the model blocks the bright part of the environment: per sample, E[X'²] = K × mean against the
-cosine estimate's E[B L²] = (L-weighted mean of L over the blocked directions) × mean, K = lum(sky) or the image's
-cos-weighted mean luminance, and the faint skirts are blocked low, near the dim horizon. Before (3e6baab) -> after,
-overall and by each run's mean alpha (< 64, 64..191, >= 192):
+the noise only where the model blocks the brighter part of the environment: per sample the fill's mean square loss is
+E[X'²] = K × mean against E_cos[B L²] for the cosine estimate (B the blocked directions, K = lum(sky) or the image's
+cos-weighted mean luminance). Before (3e6baab) -> after, overall and by each run's mean alpha (below 64, 64..191,
+from 192): the faint skirts and, under the dome, the darkest band rose; only the mid band fell, except on
+`cutout-checker` (x1.01):
 
 | view                      | overall                  | < 64             | 64..191          | >= 192           |
 | ------------------------- | ------------------------ | ---------------- | ---------------- | ---------------- |
@@ -851,7 +860,7 @@ cos-weighted mean within 1e-5 (2.6e-6 measured: float32 CDFs) for Softbox and sy
 dim sky, an odd height with a row across the horizon, black above the horizon); the importance-sampled blocked fill
 has the cosine estimate's mean within 1e-3 for four blockers; the y histogram follows y × luminance within 2 % and
 does not depend on the yaw; `environmentLighting.test.ts` the catcher marginal, `EnvironmentTextures.test.ts` the
-RG32F upload. Regenerated on purpose (seed 1, same samples and sizes; changed pixels, max channel delta, mean delta
+RGB32F upload (marginal, catcher marginal, row band). Regenerated on purpose (seed 1, same samples and sizes; changed pixels, max channel delta, mean delta
 per channel; the export frames alpha included): `pt-turntable-y030` 13 661, 16, 0.222; `pt-iso` 14 693, 18, 0.245;
 `pt-closeup` 2 212, 19, 0.074; `pt-alpha-ramp-blend` 1 636, 5, 0.031; `pt-emissive` 13 630, 16, 0.220;
 `pt-player-hold-34` 14 378, 23, 0.312; `pt-cutout-checker` 19 521, 12, 0.248; `pt-edges` 14 602, 11, 0.174;
@@ -873,7 +882,15 @@ at unchanged limits, before (MS-87) -> after (ratio / mean delta): `turntable-y0
 0.01398 / 1.000 -> 0.01395 / 1.009, `outline-hull` 0.00259 / 0.395 -> 0.00255 / 0.400, `gltf-nodes-y030` 0.930 ->
 0.932, `preset-marketplace` 0.787 -> 0.786, `partial-edge` 3 / 1.102 -> 2 / 1.103, `texture-filter` 6 -> 7 pixels,
 the denoised 2x turntable 0.00156 -> 0.00153 / 0.569; `alpha-plane`, `preset-rim`, `preset-marketplace-yaw30`,
-`gltf-contact`, `obj-shapes-y030`, `gltf-jpeg-y030`, `obj-jpeg-y030` and `texture-wrap` the same.
+`gltf-contact`, `obj-shapes-y030`, `gltf-jpeg-y030`, `obj-jpeg-y030` and `texture-wrap` the same. The shared
+bisections (`marginalSearch`, `conditionalSearch`; `cdfSearch` in TS) moved no golden byte: a golden update of
+every pt, rt, export and model-view golden test rewrote the same files. realtime.spec "MSAA silhouette pixels are
+shaded on the face" compares the preview with the `pt-turntable-y030` PNG: 1.7482 over 3 745 px against the old
+golden (pixel centre 1.7754), 1.7903 over 3 563 against the new one (pixel centre 1.8190); the bound moved on purpose
+to the new midpoint 1.8047 (was 1.7633); the band differs only on catcher pixels. Bundle: `embed-frame` measured
+179 036 gzip bytes on origin/main 3f9e90c and 180 439 at bd40cd3 (over its 180 400); the light bake now links
+from its own module (`bakeProgramSource`), so the frame ships none of the render's shaders: 175 308 (`app` 199 869
+on 3f9e90c -> 196 134); no budget changed.
 
 Pairs before -> after (ratio / mean delta; limits unchanged except `texture-wrap`): `turntable-y030` 0.00189 / 0.692 ->
 0.00200 / 0.675, `iso` 0.00381 / 0.864 -> 0.00401 / 0.850, `alpha-plane` 0.00354 / 1.335 -> 0.00325 / 1.321,

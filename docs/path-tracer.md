@@ -359,12 +359,17 @@ dome and two unshadowed accents ([look-presets.md](look-presets.md#lighting-mode
   draws a row by the catcher marginal (Environment image), a pixel by its row's conditional CDF and cos² θ uniform in
   the row's band. A blocked ray loses radiance × cos / (π × density), whose luminance is the same for every direction:
   `lum(hemisphereFill(up))` under a dome, the image's cos-weighted mean luminance under an image (up to the float32
-  CDF tables, 3e-6 relative). So a catcher sample takes one of four shades (nothing, fill, key, or both blocked): where
-  the fill is always blocked the noise is visibility alone; before, a blocked fill sample lost
-  `lum(environmentRadiance(d))`, which varies with d. This does not lower the noise overall: a sample's square loss
-  is K × mean against the cosine estimate's mean of L² over the blocked directions, so it wins only where the model
-  blocks the bright part of the environment, and the faint skirts, blocked low near a dim horizon, got noisier (per-pixel
-  variance x1.07 under the Studio dome, x1.20 under Softbox; docs/testing.md). The mean is unchanged: the importance-sampled loss has the cosine estimate's mean for any blocker
+  CDF tables, 3e-6 relative). So where the key's blockers are opaque and the point lies inside the fade, a catcher
+  sample takes one of four shades (nothing, fill, key, or both blocked; a partial texel in the key's way gives a
+  fractional key, the fade band a scaled one): where the fill is always blocked the noise is visibility alone; before,
+  a blocked fill sample lost `lum(environmentRadiance(d))`, which varies with d. This does not lower the noise
+  overall: a sample's mean square fill loss is K × mean against E_cos[B L²] for the cosine estimate (B the blocked
+  directions, K the luminance a blocked sample loses), so it wins only where the model blocks the environment's
+  brighter part. Measured over 16 seeds at 1 sample (docs/testing.md) the per-pixel variance rose x1.07 under the
+  Studio dome and x1.20 under Softbox overall; by mean shade it rose in the faint skirts and, under the dome, in the
+  darkest band too (x1.07 `turntable-y030`, x1.10 `cutout-checker`); only the mid band fell (x0.96 and x0.73;
+  `cutout-checker` x1.01). The mean is unchanged: the importance-sampled loss has the cosine estimate's mean for any
+  blocker
   (`catcherFillSampling.test.ts`, the TS mirror `catcherFillSampling.ts`), and the cosine-weighted mean of
   `environmentRadiance` over the up hemisphere is exactly `hemisphereFill(up)` (a unit test pins it per look). The fill
   ray accepts partial texels with its own random number (vertex 0's roulette dimension, unused there), not the camera
@@ -394,9 +399,11 @@ the dome for every ray that escapes after a bounce, the catcher's fill ray and t
 takes the branch that returns `environmentRadiance(d)` as before (uniform `u_lookEnvironmentKind` 0), so no dome
 image changed (the dome goldens compare byte for byte). `EnvironmentTextures` uploads `environmentLighting(look)`: the
 radiance times the intensity with each row's conditional CDF in alpha (`u_envRadiance`, RGBA32F) and the rows'
-marginal CDF (`u_envMarginal` r, RG32F), proportional to luminance × sin θ, and beside it (g) the catcher marginal: rows
-weighted by their luminance sum × the integral of cos θ sin θ over their band clipped at the horizon, 0 below it
-(`EnvironmentLighting.catcherMarginal`, MS-64; the bake reads r only); texelFetch only (no float filtering), bound
+marginal CDF (`u_envMarginal` r, RGB32F), proportional to luminance × sin θ, and beside it (g) the catcher marginal:
+rows weighted by their luminance sum × the integral of cos θ sin θ over their band clipped at the horizon, 0 below it
+(`EnvironmentLighting.catcherMarginal`, MS-64), and (b) each row's cos² θ0 − cos² θ1, the band the catcher's weight
+divides by, computed in float64 (`catcherBands`: SwiftShader's cos left the topmost bands up to 1 % off, which
+spread a blocked sample's loss over 128..130 instead of one level); the bake reads r only; texelFetch only (no float filtering), bound
 on texture units 8 and 9 of the trace (after the sums and the scene's 1..5, 6 and 7) and after the bake's ten.
 
 - At every surface vertex one direction is drawn from the image (`sampleEnvironment`: bisection over the CDFs, its
@@ -441,9 +448,12 @@ cover).
 
 Shaders are static `.glsl` files under `src/shaders/` (`trace.frag`, `bake.frag`, `present.frag`, `guide.frag`,
 `denoise.frag`, `resolve.frag`, `noise.frag`, `fullscreen.vert` and the chunks `rng`, `sceneData`, `primaryRay`,
-`surfaceHit`, `bvhTraverse`, `pathSampling`, `keyLight`, `cameraCatcher`, `luminanceMoments`) composed by
-`linkShader` with the shared look chunks (`agx`, `texelAlpha`, `faceTexels`, `lightRig`, `shadowCatcher`,
-`edgeRounding`); no shader text is built from user input. The shading normal is computed in one place (`surfaceAt` in
+`surfaceHit`, `bvhTraverse`, `pathSampling`, `keyLight`, `environmentMap`, `cameraCatcher`, `catcherFill`,
+`luminanceMoments`) composed by `linkShader` with the shared look chunks (`agx`, `texelAlpha`, `faceTexels`,
+`lightRig`, `shadowCatcher`, `edgeRounding`); no shader text is built from user input. The light bake's program has
+its own module (`bakeProgramSource`, `BAKE_SHADER_CHUNKS`) and links through `linkProgram`, so the baker, which the
+preview and the embed frame load without the render, ships none of the render's shader sources (MS-64: the embed
+frame's gzip bytes fell by about 5 KB). The shading normal is computed in one place (`surfaceAt` in
 `surfaceHit.glsl`), rounded at sharp edges there (Lighting).
 
 Shipped builds strip the comments and redundant whitespace of these sources and keep every line number, so a driver

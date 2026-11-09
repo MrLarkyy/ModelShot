@@ -23,6 +23,11 @@ export interface EnvironmentLighting {
    * the path tracer). 1 from the last row above the horizon on; uniform over those rows if they are all black.
    */
   readonly catcherMarginal: Float32Array;
+  /**
+   * Per row cos² θ0 − cos² θ1 of its band clipped at the horizon (0 at or below it), `u_envMarginal` b: the catcher
+   * fill weights a sample by it, computed here in float64 because a GPU's cos near the zenith is too coarse for it.
+   */
+  readonly catcherBands: Float32Array;
 }
 
 const LUMINANCE = [0.2126, 0.7152, 0.0722] as const;
@@ -40,11 +45,13 @@ function cdfTables(image: RadianceImage): {
   conditional: Float32Array;
   marginal: Float32Array;
   catcherMarginal: Float32Array;
+  catcherBands: Float32Array;
 } {
   const { width, height, rgb } = image;
   const conditional = new Float32Array(width * height);
   const rowSums = new Float64Array(height);
   const catcherRows = new Float64Array(height);
+  const catcherBands = new Float32Array(height);
   for (let y = 0; y < height; y++) {
     const sinTheta = Math.sin((Math.PI * (y + 0.5)) / height);
     let sum = 0;
@@ -62,6 +69,7 @@ function cdfTables(image: RadianceImage): {
     if (y < Math.ceil(height / 2)) {
       const y0 = Math.cos((Math.PI * y) / height);
       const y1 = Math.max(0, Math.cos((Math.PI * (y + 1)) / height));
+      catcherBands[y] = y0 * y0 - y1 * y1;
       catcherRows[y] = (luminanceSum * (y0 * y0 - y1 * y1)) / 2;
     }
     let running = 0;
@@ -77,7 +85,7 @@ function cdfTables(image: RadianceImage): {
     running += rowSums[y] ?? 0;
     marginal[y] = y === height - 1 ? 1 : total > 0 ? running / total : (y + 1) / height;
   }
-  return { conditional, marginal, catcherMarginal: catcherCdf(catcherRows) };
+  return { conditional, marginal, catcherMarginal: catcherCdf(catcherRows), catcherBands };
 }
 
 /** The catcher's row CDF from its row weights: rows from `ceil(height / 2)` on lie below the horizon. */
@@ -100,7 +108,7 @@ function catcherCdf(rows: Float64Array): Float32Array {
  */
 export function prepareEnvironmentLighting(image: RadianceImage, intensity: number): EnvironmentLighting {
   const { width, height, rgb } = image;
-  const { conditional, marginal, catcherMarginal } = cdfTables(image);
+  const { conditional, marginal, catcherMarginal, catcherBands } = cdfTables(image);
   const table = new Float32Array(width * height * 4);
   for (let p = 0; p < width * height; p++) {
     table[p * 4] = (rgb[p * 3] ?? 0) * intensity;
@@ -108,7 +116,7 @@ export function prepareEnvironmentLighting(image: RadianceImage, intensity: numb
     table[p * 4 + 2] = (rgb[p * 3 + 2] ?? 0) * intensity;
     table[p * 4 + 3] = conditional[p] ?? 0;
   }
-  return Object.freeze({ width, height, table, marginal, catcherMarginal });
+  return Object.freeze({ width, height, table, marginal, catcherMarginal, catcherBands });
 }
 
 /**

@@ -26,6 +26,7 @@ import {
 } from '../src/imageMetrics';
 import { PT_PAIR_TOLERANCE } from '../src/ptPairTolerance';
 import { rowCoverage } from '../src/rowCoverage';
+import { catcherLevels } from '../src/catcherLevels';
 import { agxInverse } from '../src/agxInverse';
 import { near } from '../src/imageMetrics';
 import { cutoutEdgePoint } from '../fixtures/src/cutoutEdge';
@@ -141,7 +142,8 @@ const at = <T extends { name: string }>(probes: readonly T[], name: string): T =
 };
 
 test.describe('path-tracer goldens', () => {
-  // 10.5-22.4 s on a SwiftShader runner (then the 30 s default timeout); MS-39's two loader scenes 5.2 and 3.5 s locally.
+  // 10.5-22.4 s on a SwiftShader runner (then the 30 s default timeout); MS-39's two loader scenes 5.2 and 3.5 s
+  // locally.
   test.describe.configure({ timeout: 120_000 });
   for (const golden of GOLDENS) {
     test(`${golden.name} matches its golden`, async ({ page }, testInfo) => {
@@ -607,7 +609,8 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
   test('an emissive face over near-black texels denoises at 1 sample with no NaN and no black blob', async ({
     page,
   }) => {
-    // The albedo floor makes one sample's variance about 1e6 here, far over half precision: it must not reach the filter.
+    // The albedo floor makes one sample's variance about 1e6 here, far over half precision: it must not reach the
+    // filter.
     const plain = (await render(page, 'variant=emissive-dark&seed=1&samples=1')).image;
     const denoised = (await render(page, 'variant=emissive-dark&seed=1&samples=1&denoise=1')).image;
     let glowing = 0;
@@ -691,7 +694,7 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
 /**
  * Mean per-pixel variance (8-bit alpha levels squared) of the catcher shadow at 1 sample over seeds 1..16, transparent:
  * a regression guard at the value measured after MS-64 times 1.25. MS-64's importance-sampled fill raised it (922.5 ->
- * 988.5 under the dome, 1588.7 -> 1904.9 under the image: the faint skirts, docs/testing.md); it is no improvement claim.
+ * 988.5 under the dome, 1588.7 -> 1904.9 under the image; by band in docs/testing.md); it is no improvement claim.
  */
 const CATCHER_VARIANCE_BOUNDS: readonly (readonly [string, number])[] = [
   ['turntable-y030', 1236],
@@ -699,8 +702,8 @@ const CATCHER_VARIANCE_BOUNDS: readonly (readonly [string, number])[] = [
 ];
 
 test.describe('transparency, shadows and sides (scene format rules)', () => {
-  // 11.2-22.5 s on a SwiftShader runner (then the 30 s default timeout); MS-39's sentinel and catcher tests 5.0 and 9.7 s locally;
-  // up to 66 s at six parallel workers (MS-74).
+  // 11.2-22.5 s on a SwiftShader runner (then the 30 s default timeout); MS-39's sentinel and catcher tests 5.0 and 9.7
+  // s locally; up to 66 s at six parallel workers (MS-74).
   test.describe.configure({ timeout: 180_000 });
   test('light passes cut-out texels and opaque texels cast pixel-shaped shadows', async ({ page }) => {
     const { image } = await render(page, 'variant=alpha-plane&seed=1&samples=128');
@@ -818,18 +821,21 @@ test.describe('transparency, shadows and sides (scene format rules)', () => {
     }
   });
 
-  test('a catcher sample loses fill only by visibility: one of four coverages at 1 sample under a dome', async ({
+  test('a catcher sample loses fill only by visibility: one of four coverages at 1 sample, dome and image', async ({
     page,
   }) => {
-    // The fill ray is drawn by cos x the dome's luminance, so a blocked one always loses lum(sky): a sample's coverage is
-    // 0, fill only, key only or both, nothing between. catcherscale=4 keeps the fade band out of the frame; the same seed
-    // without the catcher marks the model's pixels (same camera rays).
-    const look = lookPresetFile('studio');
-    const fill = luminance(look.environment.sky);
-    const key = luminance(look.lights.key.color) * look.lights.key.direction[1];
-    const levels = [0, fill, key, fill + key].map((v) => (255 * look.catcher.strength * v) / (fill + key));
-    for (const seed of [1, 7]) {
-      const query = `variant=cutout-checker&catcherscale=4&transparent=1&seed=${seed}&samples=1`;
+    // The fill ray is drawn by cos x the environment's luminance, so a blocked one always loses the same luminance
+    // (lum(sky) under the dome, Z / pi under the image): with the checker's opaque cut-out blockers a sample's coverage
+    // is 0, fill only, key only or both, nothing between. catcherscale=4 keeps the fade band out of the frame; the same
+    // seed without the catcher marks the model's pixels (same camera rays).
+    for (const [preset, seed] of [
+      ['studio', 1],
+      ['studio', 7],
+      ['softbox', 1],
+      ['softbox', 7],
+    ] as const) {
+      const levels = catcherLevels(preset);
+      const query = `variant=cutout-checker&preset=${preset}&catcherscale=4&transparent=1&seed=${seed}&samples=1`;
       const model = (await render(page, `${query}&catcher=0`)).image.data;
       const shaded = (await render(page, query)).image.data;
       const atLevel = levels.map(() => 0);
@@ -842,14 +848,17 @@ test.describe('transparency, shadows and sides (scene format rules)', () => {
         else atLevel[nearest]! += 1;
       }
       console.log(
-        `[pt probe] catcher levels seed ${seed}: ${levels.map((l, k) => `${l.toFixed(1)}: ${atLevel[k]}`).join(', ')}; ${off.length} off-level`,
+        `[pt probe] catcher levels ${preset} seed ${seed}: ${levels.map((l, k) => `${l.toFixed(1)}: ${atLevel[k]}`).join(', ')}; ${off.length} off-level`,
       );
-      expect(off.length, `seed ${seed}: catcher alphas off the four levels, first ${off.slice(0, 16).join(', ')}`).toBe(
-        0,
-      );
+      expect(
+        off.length,
+        `${preset} seed ${seed}: catcher alphas off the four levels, first ${off.slice(0, 16).join(', ')}`,
+      ).toBe(0);
       // Not vacuous: every shade occurs.
       for (let k = 1; k < levels.length; k++) {
-        expect(atLevel[k], `seed ${seed}: pixels at level ${levels[k]!.toFixed(1)}`).toBeGreaterThanOrEqual(50);
+        expect(atLevel[k], `${preset} seed ${seed}: pixels at level ${levels[k]!.toFixed(1)}`).toBeGreaterThanOrEqual(
+          50,
+        );
       }
     }
   });
@@ -859,7 +868,8 @@ test.describe('transparency, shadows and sides (scene format rules)', () => {
   }) => {
     test.setTimeout(600_000);
     for (const [variant, bound] of CATCHER_VARIANCE_BOUNDS) {
-      // Catcher pixels: no model coverage at 16 samples, nor in any of the 8 neighbours (a 1-sample jitter stays inside).
+      // Catcher pixels: no model coverage at 16 samples, nor in any of the 8 neighbours (a 1-sample jitter stays
+      // inside).
       const model = (await render(page, `variant=${variant}&transparent=1&seed=1&samples=16&catcher=0`)).image;
       const { width, height } = model;
       const sum = new Float64Array(width * height);
@@ -995,8 +1005,8 @@ test.describe('transparency, shadows and sides (scene format rules)', () => {
   });
 
   test('a model surface at the catcher height hides the catcher', async ({ page }) => {
-    // gltf-nodes' ground lies in the catcher's plane: a camera ray there must always take the ground. Patches of it clear
-    // of the other meshes (the glass plane shows the catcher past the ground's edge through its rejected texels).
+    // gltf-nodes' ground lies in the catcher's plane: a camera ray there must always take the ground. Patches of it
+    // clear of the other meshes (the glass plane shows the catcher past the ground's edge through its rejected texels).
     const query = 'variant=gltf-nodes-y030&seed=1&samples=128';
     const without = (await render(page, `${query}&catcher=0`)).image;
     const withCatcher = (await render(page, query)).image;

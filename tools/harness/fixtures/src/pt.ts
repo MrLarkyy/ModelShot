@@ -25,14 +25,14 @@ import { lookByName } from './lookByName';
 import { isRtSceneName, parseRtView, reverseMeshOrder, rtCamera, rtLook, rtScene, type RtSceneName } from './rtScenes';
 
 // URL parameters: the realtime fixture's view (variant, scene, yaw, pitch, proj, fov, zoom, iso, reverse, look, depth;
-// rtScenes.ts; catcher=0|1 the shadow catcher, default on; edges=<width> the rounded edges, 0 none; preset=<look
-// preset id>, rim=0) plus the path-tracer-only variant `emissive`; seed (default 1), samples (default 64), batch (samples
-// per step, default all), tile (tile side, default 256), size (CSS pixels, default 256), maxTriangles, track=1 (count
-// GL objects), timing=1 (one sample per frame with a time readout, for a manual run on real hardware), geometryWorker=0
+// rtScenes.ts; catcher=0|1 the shadow catcher, default on; edges=<width> the rounded edges, 0 none; preset=<look preset
+// id>, rim=0) plus the path-tracer-only variant `emissive`; seed (default 1), samples (default 64), batch (samples per
+// step, default all), tile (tile side, default 256), size (CSS pixels, default 256), maxTriangles, track=1 (count GL
+// objects), timing=1 (one sample per frame with a time readout, for a manual run on real hardware), geometryWorker=0
 // (setScene builds the geometry on the main thread); the render quality (RenderRequest): supersample=1..4, denoise=1,
 // noise=<threshold>, which the sample bench uses too; transparent=1 (RenderRequest.transparent: readRGBA gives
-// readImage's straight alpha, rows bottom to top as the drawing buffer's); cameraonly=1 (every mesh seen by camera
-// rays only, so nothing blocks a catcher ray); catcherscale=<k> (the catcher under the scene's bounds scaled k times in x
+// readImage's straight alpha, rows bottom to top as the drawing buffer's); cameraonly=1 (every mesh seen by camera rays
+// only, so nothing blocks a catcher ray); catcherscale=<k> (the catcher under the scene's bounds scaled k times in x
 // and z about their centre, so its fade band leaves the frame).
 const params = new URLSearchParams(location.search);
 
@@ -40,7 +40,8 @@ const params = new URLSearchParams(location.search);
 const PT_VARIANTS: Readonly<Record<string, { view: string; options: SetSceneOptions; darken?: number }>> = {
   // The showcase's brick material (the body's east face) glows warm; the post beside it picks up its light.
   emissive: { view: 'turntable-y030', options: { emission: [undefined, [4, 2.2, 0.8]] } },
-  // A 4x glow over near-black texels (MS-18): divided by the floored albedo, one sample's variance overflows half floats.
+  // A 4x glow over near-black texels (MS-18): divided by the floored albedo, one sample's variance overflows half
+  // floats.
   'emissive-dark': { view: 'turntable-y030', options: { emission: [undefined, [16, 8.8, 3.2]] }, darken: 1 },
 };
 

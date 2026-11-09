@@ -203,6 +203,18 @@ describe('the catcher marginal (cos x luminance over the upper hemisphere, per r
     shares(lighting.catcherMarginal).forEach((share, row) => expect(share, `row ${row}`).toBeCloseTo(band(row), 6));
   });
 
+  it('stores each row band cos^2 theta0 - cos^2 theta1 clipped at the horizon, 0 below it', () => {
+    for (const height of [8, 9]) {
+      const { catcherBands } = synthetic(4, height, () => 1);
+      for (let row = 0; row < height; row++) {
+        const y0 = Math.cos((Math.PI * row) / height);
+        const y1 = Math.max(0, Math.cos((Math.PI * (row + 1)) / height));
+        const band = row < Math.ceil(height / 2) ? y0 * y0 - y1 * y1 : 0;
+        expect(catcherBands[row], `height ${height}, row ${row}`).toBe(Math.fround(band));
+      }
+    }
+  });
+
   it('falls back to uniform over the upper rows when they are all black', () => {
     const lighting = synthetic(4, 8, (_, y) => (y >= 4 ? 3 : 0));
     expect([...lighting.catcherMarginal]).toEqual([0.25, 0.5, 0.75, 1, 1, 1, 1, 1]);

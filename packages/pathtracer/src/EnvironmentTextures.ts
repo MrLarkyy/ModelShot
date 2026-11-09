@@ -16,9 +16,9 @@ type EnvironmentGl = Pick<
   | 'TEXTURE_2D'
   | 'TEXTURE0'
   | 'RGBA32F'
-  | 'RG32F'
+  | 'RGB32F'
   | 'RGBA'
-  | 'RG'
+  | 'RGB'
   | 'FLOAT'
   | 'NEAREST'
   | 'TEXTURE_MIN_FILTER'
@@ -28,8 +28,8 @@ type EnvironmentGl = Pick<
 
 /**
  * The look's environment image on one context, for the trace and the bake programs' `environmentMap` chunk: the
- * radiance and conditional CDF (`u_envRadiance`, RGBA32F) and per row the marginal CDF (r) beside the shadow catcher's
- * (g; the bake reads r only) (`u_envMarginal`, RG32F), NEAREST and read by texelFetch only. A dome look has none: its
+ * radiance and conditional CDF (`u_envRadiance`, RGBA32F) and per row the marginal CDF (r), the shadow catcher's (g)
+ * and its row band (b; the bake reads r only) (`u_envMarginal`, RGB32F), NEAREST and read by texelFetch only. A dome look has none: its
  * units are left unbound, which its branch never reads. Kept while the prepared lighting (`environmentLighting`) stays
  * the same object, made again when it changes; dead with a lost context (make a new instance on the restored one).
  */
@@ -77,12 +77,13 @@ export class EnvironmentTextures {
       return handle;
     };
     this.radiance = texture(gl.RGBA32F, lighting.width, lighting.height, gl.RGBA, lighting.table);
-    const marginals = new Float32Array(lighting.height * 2);
+    const marginals = new Float32Array(lighting.height * 3);
     for (let row = 0; row < lighting.height; row++) {
-      marginals[row * 2] = lighting.marginal[row] ?? 1;
-      marginals[row * 2 + 1] = lighting.catcherMarginal[row] ?? 1;
+      marginals[row * 3] = lighting.marginal[row] ?? 1;
+      marginals[row * 3 + 1] = lighting.catcherMarginal[row] ?? 1;
+      marginals[row * 3 + 2] = lighting.catcherBands[row] ?? 0;
     }
-    this.marginal = texture(gl.RG32F, lighting.height, 1, gl.RG, marginals);
+    this.marginal = texture(gl.RGB32F, lighting.height, 1, gl.RGB, marginals);
     this.lighting = lighting;
   }
 

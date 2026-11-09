@@ -10,7 +10,13 @@
 
 // Per row (x) the catcher's marginal CDF through it: rows weighted by luminance x the row's integral of cos sin theta.
 float catcherMarginalCdf(int row) {
-  return row < 0 ? 0.0 : texelFetch(u_envMarginal, ivec2(row, 0), 0).g;
+  return envMarginalCdf(row, 1);
+}
+
+// The row's cos^2 theta0 - cos^2 theta1 clipped at the horizon, from the CPU: cos near the zenith is too coarse on
+// some GPUs (SwiftShader: up to 1 % in the topmost bands) for a weight that must match the drawn density.
+float catcherBand(int row) {
+  return texelFetch(u_envMarginal, ivec2(row, 0), 0).b;
 }
 
 // The dome's luminance is A + B y (environmentRadiance, linear in d.y), so the density in y is
@@ -47,33 +53,19 @@ vec3 sampleDomeCatcherFill(float u1, float u2, out vec3 lostIfBlocked) {
 // so the estimate is unbiased for the stored tables, whatever they round.
 vec3 sampleImageCatcherFill(float u1, float u2, out vec3 lostIfBlocked) {
   ivec2 size = textureSize(u_envRadiance, 0);
-  int lo = 0;
-  int hi = size.y - 1;
-  for (int i = 0; i < 16 && lo < hi; i++) {
-    int mid = (lo + hi) / 2;
-    if (catcherMarginalCdf(mid) > u1) hi = mid;
-    else lo = mid + 1;
-  }
-  int row = lo;
+  int row = marginalSearch(u1, size.y, 1);
   float r0 = catcherMarginalCdf(row - 1);
   float r1 = catcherMarginalCdf(row);
-  lo = 0;
-  hi = size.x - 1;
-  for (int i = 0; i < 16 && lo < hi; i++) {
-    int mid = (lo + hi) / 2;
-    if (conditionalCdf(mid, row) > u2) hi = mid;
-    else lo = mid + 1;
-  }
-  int x = lo;
+  int x = conditionalSearch(u2, row, size.x);
   float c0 = conditionalCdf(x - 1, row);
   float c1 = conditionalCdf(x, row);
   float y0 = cos(ENV_PI * float(row) / float(size.y));
-  float y1 = max(0.0, cos(ENV_PI * float(row + 1) / float(size.y)));
-  float band = y0 * y0 - y1 * y1;
+  float band = catcherBand(row);
   float t = clamp((u1 - r0) / max(r1 - r0, 1.0e-30), 0.0, 1.0);
   float y = sqrt(max(0.0, y0 * y0 - band * t));
   float sinTheta = sqrt(max(0.0, 1.0 - y * y));
-  float phi = 2.0 * ENV_PI * ((float(x) + clamp((u2 - c0) / max(c1 - c0, 1.0e-30), 0.0, 1.0)) / float(size.x)) - ENV_PI;
+  float column = clamp((u2 - c0) / max(c1 - c0, 1.0e-30), 0.0, 1.0);
+  float phi = 2.0 * ENV_PI * ((float(x) + column) / float(size.x)) - ENV_PI;
   vec3 radiance = texelFetch(u_envRadiance, ivec2(x, row), 0).rgb;
   float p = (r1 - r0) * (c1 - c0);
   lostIfBlocked = catcherLuminance(radiance) > 0.0 && p > 0.0 && band > 0.0 ? radiance * (band / (float(size.x) * p))

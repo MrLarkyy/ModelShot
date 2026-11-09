@@ -1,4 +1,5 @@
 import type { Rgb } from './agxToneMap';
+import { cdfSearch } from './cdfSearch';
 import type { EnvironmentLighting } from './environmentLighting';
 import { worldDirection } from './equirect';
 import type { Direction, LookDomeEnvironment } from './LookPreset';
@@ -63,18 +64,6 @@ export function sampleDomeCatcherFill(
   };
 }
 
-/** The first index whose CDF value exceeds u, by bisection over `count` values from `at(0)`. */
-function search(count: number, u: number, at: (i: number) => number): number {
-  let lo = 0;
-  let hi = count - 1;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (at(mid) > u) hi = mid;
-    else lo = mid + 1;
-  }
-  return lo;
-}
-
 /**
  * A direction drawn by cos × the image's luminance over the upper hemisphere from u1, u2 in [0, 1), `yaw` the look's
  * (cos, sin): a row by `catcherMarginal`, a pixel by its row's conditional CDF, cos² θ uniform inside the row's band
@@ -90,15 +79,14 @@ export function sampleImageCatcherFill(
   const { width, height, table, catcherMarginal } = lighting;
   const rowCdf = (row: number): number => (row < 0 ? 0 : (catcherMarginal[row] ?? 1));
   const columnCdf = (x: number, row: number): number => (x < 0 ? 0 : (table[(row * width + x) * 4 + 3] ?? 1));
-  const row = search(height, u1, rowCdf);
+  const row = cdfSearch(height, u1, rowCdf);
   const r0 = rowCdf(row - 1);
   const r1 = rowCdf(row);
-  const x = search(width, u2, (i) => columnCdf(i, row));
+  const x = cdfSearch(width, u2, (i) => columnCdf(i, row));
   const c0 = columnCdf(x - 1, row);
   const c1 = columnCdf(x, row);
   const y0 = Math.cos((Math.PI * row) / height);
-  const y1 = Math.max(0, Math.cos((Math.PI * (row + 1)) / height));
-  const band = y0 * y0 - y1 * y1;
+  const band = lighting.catcherBands[row] ?? 0;
   const t = clamp01((u1 - r0) / Math.max(r1 - r0, 1e-30));
   const y = Math.sqrt(Math.max(0, y0 * y0 - band * t));
   const sinTheta = Math.sqrt(Math.max(0, 1 - y * y));

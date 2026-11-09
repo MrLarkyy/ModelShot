@@ -133,7 +133,8 @@ describe('path tracer shaders', () => {
     const trace = pathTracerProgramSource('trace').fragment;
     const at = trace.slice(trace.indexOf('float catcherShadeAt('), trace.indexOf('vec3 environmentLight('));
     expect(trace).toContain('float catcherShadeOfLoss(vec3 fillLost, float keyLost, vec2 xz, vec4 rect)');
-    // The fill direction and what a blocked ray loses come from the importance sampling (catcherFill); unblocked, nothing.
+    // The fill direction and what a blocked ray loses come from the importance sampling (catcherFill); unblocked,
+    // nothing.
     expect(at).toMatch(
       /vec3 d = sampleCatcherFill\(unitRandom\(key, dimension, 0u\), unitRandom\(key, dimension \+ 1u, 0u\),\s*lostIfBlocked\);/,
     );
@@ -161,13 +162,21 @@ describe('path tracer shaders', () => {
     expect(trace).toContain('y = t > 0.0 ? pow(t, 1.0 / 3.0) : 0.0;');
     expect(trace).toContain('y = 0.5 + sin(asin(clamp(2.0 * t - 1.0, -1.0, 1.0)) / 3.0);');
     expect(trace).toContain('if (lum > 0.0) lostIfBlocked = radiance * (2.0 * total / lum);');
-    expect(trace).toContain('return row < 0 ? 0.0 : texelFetch(u_envMarginal, ivec2(row, 0), 0).g;');
-    expect(trace).toContain('float y1 = max(0.0, cos(ENV_PI * float(row + 1) / float(size.y)));');
+    expect(trace).toContain('return row < 0 ? 0.0 : texelFetch(u_envMarginal, ivec2(row, 0), 0)[channel];');
+    expect(trace).toContain('return envMarginalCdf(row, 1);');
+    // One bisection for the light sampling and the catcher, each over its own marginal channel.
+    expect(trace.match(/for \(int i = 0; i < 16 && lo < hi; i\+\+\)/g)).toHaveLength(2);
+    expect(trace).toContain('int row = marginalSearch(u1, size.y, 0);');
+    expect(trace).toContain('int row = marginalSearch(u1, size.y, 1);');
+    expect(trace.match(/int x = conditionalSearch\(u2, row, size\.x\);/g)).toHaveLength(2);
+    expect(trace).toContain('float band = catcherBand(row);');
+    expect(trace).toContain('return texelFetch(u_envMarginal, ivec2(row, 0), 0).b;');
     expect(trace).toMatch(/radiance \* \(band \/ \(float\(size\.x\) \* p\)\)/);
-    // The bake keeps its cosine fill and reads only the r channel of the marginal texture.
+    // The bake keeps its cosine fill and never reads the catcher's marginal channel.
     const bake = pathTracerProgramSource('bake').fragment;
     expect(bake).not.toContain('sampleCatcherFill');
-    expect(bake).not.toContain('.g;');
+    expect(bake).not.toContain('catcherMarginalCdf');
+    expect(bake).not.toMatch(/envMarginalCdf\([^)]*, 1\)/);
   });
 
   it('bakes the catcher with the same control variate: 1 less the fill lost, guarded against dark channels', () => {
