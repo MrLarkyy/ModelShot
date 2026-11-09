@@ -1,16 +1,23 @@
 import type { Page } from '@playwright/test';
 
-type ShiftWindow = Window & { __cls: number };
+type ShiftRecord = PerformanceEntry & { value: number; hadRecentInput: boolean };
+type ShiftWindow = Window & {
+  __cls: number;
+  __clsObserver: PerformanceObserver;
+  __clsAdd: (records: PerformanceEntryList) => void;
+};
 
 export async function observeLayoutShift(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const w = window as unknown as ShiftWindow;
     w.__cls = 0;
-    new PerformanceObserver((list) => {
-      for (const entry of list.getEntries() as (PerformanceEntry & { value: number; hadRecentInput: boolean })[]) {
+    w.__clsAdd = (records) => {
+      for (const entry of records as ShiftRecord[]) {
         if (!entry.hadRecentInput) w.__cls += entry.value;
       }
-    }).observe({ type: 'layout-shift', buffered: true });
+    };
+    w.__clsObserver = new PerformanceObserver((list) => w.__clsAdd(list.getEntries()));
+    w.__clsObserver.observe({ type: 'layout-shift', buffered: true });
   });
 }
 
@@ -21,6 +28,11 @@ export async function settleFonts(page: Page): Promise<void> {
   });
 }
 
+// takeRecords drains entries the observer has not delivered yet, so the total is complete at the read.
 export function layoutShiftTotal(page: Page): Promise<number> {
-  return page.evaluate(() => (window as unknown as ShiftWindow).__cls);
+  return page.evaluate(() => {
+    const w = window as unknown as ShiftWindow;
+    w.__clsAdd(w.__clsObserver.takeRecords());
+    return w.__cls;
+  });
 }
