@@ -26,6 +26,7 @@ import {
 } from '../src/imageMetrics';
 import { PT_PAIR_TOLERANCE } from '../src/ptPairTolerance';
 import { rowCoverage } from '../src/rowCoverage';
+import { catcherLevels } from '../src/catcherLevels';
 import { agxInverse } from '../src/agxInverse';
 import { near } from '../src/imageMetrics';
 import { cutoutEdgePoint } from '../fixtures/src/cutoutEdge';
@@ -141,7 +142,8 @@ const at = <T extends { name: string }>(probes: readonly T[], name: string): T =
 };
 
 test.describe('path-tracer goldens', () => {
-  // 10.5-22.4 s on a SwiftShader runner (then the 30 s default timeout); MS-39's two loader scenes 5.2 and 3.5 s locally.
+  // 10.5-22.4 s on a SwiftShader runner (then the 30 s default timeout); MS-39's two loader scenes 5.2 and 3.5 s
+  // locally.
   test.describe.configure({ timeout: 120_000 });
   for (const golden of GOLDENS) {
     test(`${golden.name} matches its golden`, async ({ page }, testInfo) => {
@@ -607,7 +609,8 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
   test('an emissive face over near-black texels denoises at 1 sample with no NaN and no black blob', async ({
     page,
   }) => {
-    // The albedo floor makes one sample's variance about 1e6 here, far over half precision: it must not reach the filter.
+    // The albedo floor makes one sample's variance about 1e6 here, far over half precision: it must not reach the
+    // filter.
     const plain = (await render(page, 'variant=emissive-dark&seed=1&samples=1')).image;
     const denoised = (await render(page, 'variant=emissive-dark&seed=1&samples=1&denoise=1')).image;
     let glowing = 0;
@@ -688,9 +691,19 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
   });
 });
 
+/**
+ * Mean per-pixel variance (8-bit alpha levels squared) of the catcher shadow at 1 sample over seeds 1..16, transparent:
+ * a regression guard at the value measured after MS-64 times 1.25. MS-64's importance-sampled fill raised it (922.5 ->
+ * 988.5 under the dome, 1588.7 -> 1912.8 under the image; by band in docs/testing.md); it is no improvement claim.
+ */
+const CATCHER_VARIANCE_BOUNDS: readonly (readonly [string, number])[] = [
+  ['turntable-y030', 1236],
+  ['preset-softbox', 2391],
+];
+
 test.describe('transparency, shadows and sides (scene format rules)', () => {
-  // 11.2-22.5 s on a SwiftShader runner (then the 30 s default timeout); MS-39's sentinel and catcher tests 5.0 and 9.7 s locally;
-  // up to 66 s at six parallel workers (MS-74).
+  // 11.2-22.5 s on a SwiftShader runner (then the 30 s default timeout); MS-39's sentinel and catcher tests 5.0 and 9.7
+  // s locally; up to 66 s at six parallel workers (MS-74).
   test.describe.configure({ timeout: 180_000 });
   test('light passes cut-out texels and opaque texels cast pixel-shaped shadows', async ({ page }) => {
     const { image } = await render(page, 'variant=alpha-plane&seed=1&samples=128');
@@ -779,8 +792,13 @@ test.describe('transparency, shadows and sides (scene format rules)', () => {
       }
       return differ;
     };
-    for (const seed of [1, 7]) {
-      const query = `variant=turntable-y030&cameraonly=1&seed=${seed}&samples=1`;
+    for (const [seed, look] of [
+      [1, ''],
+      [7, ''],
+      [1, '&preset=softbox'],
+      [7, '&preset=softbox'],
+    ] as const) {
+      const query = `variant=turntable-y030&cameraonly=1&seed=${seed}&samples=1${look}`;
       const opaqueOn = (await render(page, query)).image.data;
       const opaqueOff = (await render(page, `${query}&catcher=0`)).image.data;
       expect(count(opaqueOn, opaqueOff), `seed ${seed}: opaque pixels the catcher changed`).toBe(0);
@@ -793,11 +811,104 @@ test.describe('transparency, shadows and sides (scene format rules)', () => {
       expect(clear, `seed ${seed}: alpha-0 pixels`).toBeGreaterThan(clearOn.length / 4 / 4);
       // Not vacuous: the catcher's rectangle comes from the visible geometry, camera-only or not, and with the model
       // casting it darkens the same view.
-      const castOn = (await render(page, `variant=turntable-y030&seed=${seed}&samples=1`)).image.data;
-      const castOff = (await render(page, `variant=turntable-y030&seed=${seed}&samples=1&catcher=0`)).image.data;
+      const castOn = (await render(page, `variant=turntable-y030&seed=${seed}&samples=1${look}`)).image.data;
+      const castOff = (await render(page, `variant=turntable-y030&seed=${seed}&samples=1&catcher=0${look}`)).image.data;
       const cast = count(castOn, castOff);
-      console.log(`[pt probe] seed ${seed}: catcher on/off differ in 0 camera-only pixels, ${cast} casting / min 100`);
-      expect(cast, `seed ${seed}: pixels the catcher changes under a casting model`).toBeGreaterThan(100);
+      console.log(
+        `[pt probe] seed ${seed}${look}: catcher on/off differ in 0 camera-only pixels, ${cast} casting / min 100`,
+      );
+      expect(cast, `seed ${seed}${look}: pixels the catcher changes under a casting model`).toBeGreaterThan(100);
+    }
+  });
+
+  test('a catcher sample loses fill only by visibility: one of four coverages at 1 sample, dome and image', async ({
+    page,
+  }) => {
+    // The fill ray is drawn by cos x the environment's luminance, so a blocked one always loses the same luminance
+    // (lum(sky) under the dome, Z / pi under the image): with the checker's opaque cut-out blockers a sample's coverage
+    // is 0, fill only, key only or both, nothing between. catcherscale=4 keeps the fade band out of the frame; the same
+    // seed without the catcher marks the model's pixels (same camera rays).
+    for (const [preset, seed] of [
+      ['studio', 1],
+      ['studio', 7],
+      ['softbox', 1],
+      ['softbox', 7],
+    ] as const) {
+      const levels = catcherLevels(preset);
+      const query = `variant=cutout-checker&preset=${preset}&catcherscale=4&transparent=1&seed=${seed}&samples=1`;
+      const model = (await render(page, `${query}&catcher=0`)).image.data;
+      const shaded = (await render(page, query)).image.data;
+      const atLevel = levels.map(() => 0);
+      const off: number[] = [];
+      for (let i = 3; i < shaded.length; i += 4) {
+        if ((model[i] ?? 0) > 0) continue;
+        const alpha = shaded[i] ?? 0;
+        const nearest = levels.findIndex((level) => Math.abs(alpha - level) <= 1);
+        if (nearest < 0) off.push(alpha);
+        else atLevel[nearest]! += 1;
+      }
+      console.log(
+        `[pt probe] catcher levels ${preset} seed ${seed}: ${levels.map((l, k) => `${l.toFixed(1)}: ${atLevel[k]}`).join(', ')}; ${off.length} off-level`,
+      );
+      expect(
+        off.length,
+        `${preset} seed ${seed}: catcher alphas off the four levels, first ${off.slice(0, 16).join(', ')}`,
+      ).toBe(0);
+      // Not vacuous: every shade occurs.
+      for (let k = 1; k < levels.length; k++) {
+        expect(atLevel[k], `${preset} seed ${seed}: pixels at level ${levels[k]!.toFixed(1)}`).toBeGreaterThanOrEqual(
+          50,
+        );
+      }
+    }
+  });
+
+  test('catcher shadow variance per pixel over 16 seeds at 1 sample stays within its measured regression bound', async ({
+    page,
+  }) => {
+    test.setTimeout(600_000);
+    for (const [variant, bound] of CATCHER_VARIANCE_BOUNDS) {
+      // Catcher pixels: no model coverage at 16 samples, nor in any of the 8 neighbours (a 1-sample jitter stays
+      // inside).
+      const model = (await render(page, `variant=${variant}&transparent=1&seed=1&samples=16&catcher=0`)).image;
+      const { width, height } = model;
+      const sum = new Float64Array(width * height);
+      const squares = new Float64Array(width * height);
+      const seeds = 16;
+      for (let seed = 1; seed <= seeds; seed++) {
+        const { data } = (await render(page, `variant=${variant}&transparent=1&seed=${seed}&samples=1`)).image;
+        for (let p = 0; p < width * height; p++) {
+          const alpha = data[p * 4 + 3] ?? 0;
+          sum[p]! += alpha;
+          squares[p]! += alpha * alpha;
+        }
+      }
+      let pixels = 0;
+      let variance = 0;
+      const bands = [0, 0, 0];
+      const bandPixels = [0, 0, 0];
+      for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          const covered = [-1, 0, 1].some((dy) =>
+            [-1, 0, 1].some((dx) => (model.data[((y + dy) * width + x + dx) * 4 + 3] ?? 0) > 0),
+          );
+          const p = y * width + x;
+          if (covered || sum[p] === 0) continue;
+          const mean = sum[p]! / seeds;
+          const v = (squares[p]! - seeds * mean * mean) / (seeds - 1);
+          variance += v;
+          pixels++;
+          const band = mean < 64 ? 0 : mean < 192 ? 1 : 2;
+          bands[band]! += v;
+          bandPixels[band]! += 1;
+        }
+      }
+      variance /= Math.max(pixels, 1);
+      console.log(
+        `[pt probe] catcher shadow variance ${variant}: ${variance.toFixed(1)} levels^2 over ${pixels} pixels / max ${bound}; by mean alpha <64, 64..191, >=192: ${bands.map((b, k) => `${(b / Math.max(bandPixels[k]!, 1)).toFixed(1)} (${bandPixels[k]} px)`).join(', ')}`,
+      );
+      expect(pixels, `${variant}: catcher shadow pixels`).toBeGreaterThan(500);
+      expect(variance, `${variant}: mean per-pixel alpha variance (levels^2)`).toBeLessThanOrEqual(bound);
     }
   });
 
@@ -894,8 +1005,8 @@ test.describe('transparency, shadows and sides (scene format rules)', () => {
   });
 
   test('a model surface at the catcher height hides the catcher', async ({ page }) => {
-    // gltf-nodes' ground lies in the catcher's plane: a camera ray there must always take the ground. Patches of it clear
-    // of the other meshes (the glass plane shows the catcher past the ground's edge through its rejected texels).
+    // gltf-nodes' ground lies in the catcher's plane: a camera ray there must always take the ground. Patches of it
+    // clear of the other meshes (the glass plane shows the catcher past the ground's edge through its rejected texels).
     const query = 'variant=gltf-nodes-y030&seed=1&samples=128';
     const without = (await render(page, `${query}&catcher=0`)).image;
     const withCatcher = (await render(page, query)).image;

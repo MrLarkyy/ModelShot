@@ -1,12 +1,13 @@
 import { LOOK_VIEW_NONE, uploadLookUniforms, type LookPreset } from '@modelshot/looks';
 import type { RawImage, ShadowCatcherPlane } from '@modelshot/renderer-rt';
 import { AccumulationTargets } from '../accumulationTargets';
+import { bakeProgramSource } from '../bakeProgramSource';
 import { EnvironmentTextures } from '../EnvironmentTextures';
+import { linkProgram, type TracerProgram } from '../linkProgram';
 import { disposeGpuScene, uploadData, uploadGpuScene, type GpuScene } from '../gpuScene';
 import { DATA_TEXTURE_WIDTH, type DataTexture, type PackedGeometry } from '../packSceneData';
 import { requireExactAccumulation } from '../requireExactAccumulation';
 import type { TextureLayerPlan } from '../textureLayers';
-import { linkTracerProgram, type TracerProgram } from '../tracerPrograms';
 import type { ChartTable } from './chartTable';
 
 /** Everything a bake draws from, kept on the CPU so a lost context can be rebuilt without building it again. */
@@ -68,7 +69,7 @@ export class BakeSession {
       maxTextureSize: positive(gl.getParameter(gl.MAX_TEXTURE_SIZE), 2048),
       maxArrayTextureLayers: positive(gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS), 256),
     };
-    this.program = linkTracerProgram(gl, 'bake');
+    this.program = linkProgram(gl, 'bake', bakeProgramSource());
     this.vao = gl.createVertexArray();
     this.environment = new EnvironmentTextures(gl);
   }

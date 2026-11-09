@@ -55,7 +55,8 @@ vec3 hemisphereFill(vec3 n) {
 // of d.y over the hemisphere around n is 2/3 n.y, so with the factor 3/4 an unoccluded Lambert surface receives exactly
 // hemisphereFill(n): the path tracer converges to the preview's fill, and its shadow catcher, which subtracts only the
 // blocked fill from hemisphereFill(up), stays unbiased. Never negative: checkLookPreset keeps each channel of sky and
-// ground within five times the other.
+// ground within five times the other. The path tracer's catcherFill chunk samples cos x the luminance of this in closed
+// form, so it must stay linear in d.y.
 vec3 environmentRadiance(vec3 d) {
   return mix(u_lookGround, u_lookSky, d.y * 0.75 + 0.5);
 }

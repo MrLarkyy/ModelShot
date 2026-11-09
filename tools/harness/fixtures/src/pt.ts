@@ -7,7 +7,14 @@ import {
   type RenderRequest,
   type SetSceneOptions,
 } from '@modelshot/pathtracer';
-import { cameraProjection, cameraView, mat4Multiply, type SceneDocument } from '@modelshot/scene';
+import {
+  cameraProjection,
+  cameraView,
+  mat4Multiply,
+  sceneBounds,
+  type SceneBounds,
+  type SceneDocument,
+} from '@modelshot/scene';
 import { installSampleBench, installSampleReadout, installSceneBench, installStepBench } from './bench';
 import { readDrawingBufferBase64 } from './context';
 import type { MsFixture, PtControls, PtProbe } from './fixtureApi';
@@ -18,21 +25,23 @@ import { lookByName } from './lookByName';
 import { isRtSceneName, parseRtView, reverseMeshOrder, rtCamera, rtLook, rtScene, type RtSceneName } from './rtScenes';
 
 // URL parameters: the realtime fixture's view (variant, scene, yaw, pitch, proj, fov, zoom, iso, reverse, look, depth;
-// rtScenes.ts; catcher=0|1 the shadow catcher, default on; edges=<width> the rounded edges, 0 none; preset=<look
-// preset id>, rim=0) plus the path-tracer-only variant `emissive`; seed (default 1), samples (default 64), batch (samples
-// per step, default all), tile (tile side, default 256), size (CSS pixels, default 256), maxTriangles, track=1 (count
-// GL objects), timing=1 (one sample per frame with a time readout, for a manual run on real hardware), geometryWorker=0
+// rtScenes.ts; catcher=0|1 the shadow catcher, default on; edges=<width> the rounded edges, 0 none; preset=<look preset
+// id>, rim=0) plus the path-tracer-only variant `emissive`; seed (default 1), samples (default 64), batch (samples per
+// step, default all), tile (tile side, default 256), size (CSS pixels, default 256), maxTriangles, track=1 (count GL
+// objects), timing=1 (one sample per frame with a time readout, for a manual run on real hardware), geometryWorker=0
 // (setScene builds the geometry on the main thread); the render quality (RenderRequest): supersample=1..4, denoise=1,
 // noise=<threshold>, which the sample bench uses too; transparent=1 (RenderRequest.transparent: readRGBA gives
-// readImage's straight alpha, rows bottom to top as the drawing buffer's); cameraonly=1 (every mesh seen by camera
-// rays only, so nothing blocks a catcher ray).
+// readImage's straight alpha, rows bottom to top as the drawing buffer's); cameraonly=1 (every mesh seen by camera rays
+// only, so nothing blocks a catcher ray); catcherscale=<k> (the catcher under the scene's bounds scaled k times in x
+// and z about their centre, so its fade band leaves the frame).
 const params = new URLSearchParams(location.search);
 
 /** Path-tracer-only presets: a realtime view plus what only the tracer has. */
 const PT_VARIANTS: Readonly<Record<string, { view: string; options: SetSceneOptions; darken?: number }>> = {
   // The showcase's brick material (the body's east face) glows warm; the post beside it picks up its light.
   emissive: { view: 'turntable-y030', options: { emission: [undefined, [4, 2.2, 0.8]] } },
-  // A 4x glow over near-black texels (MS-18): divided by the floored albedo, one sample's variance overflows half floats.
+  // A 4x glow over near-black texels (MS-18): divided by the floored albedo, one sample's variance overflows half
+  // floats.
   'emissive-dark': { view: 'turntable-y030', options: { emission: [undefined, [16, 8.8, 3.2]] }, darken: 1 },
 };
 
@@ -56,6 +65,16 @@ function darkenMaterial(doc: SceneDocument, index: number): SceneDocument {
     textures: [...doc.textures, texture],
     materials: doc.materials.map((m, i) => (i === index ? { ...m, texture: doc.textures.length } : m)),
   };
+}
+
+/** The scene's bounds scaled `k` times in x and z about their centre; `undefined` (the tracer's own) at 1. */
+function scaledCatcherBounds(doc: SceneDocument, k: number): SceneBounds | undefined {
+  const bounds = sceneBounds(doc);
+  if (k === 1 || !bounds) return undefined;
+  const [cx, , cz] = bounds.center;
+  const min: [number, number, number] = [cx + (bounds.min[0] - cx) * k, bounds.min[1], cz + (bounds.min[2] - cz) * k];
+  const max: [number, number, number] = [cx + (bounds.max[0] - cx) * k, bounds.max[1], cz + (bounds.max[2] - cz) * k];
+  return { min, max, center: bounds.center, radius: Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2 };
 }
 
 function intParam(name: string, fallback: number, min: number, max: number): number {
@@ -130,13 +149,13 @@ async function start(): Promise<void> {
   const timing = params.get('timing') === '1';
   const cameraOnly = intParam('cameraonly', 0, 0, 1) === 1;
   const geometryWorker = intParam('geometryWorker', 1, 0, 1) === 1;
+  const catcherScale = intParam('catcherscale', 1, 1, 16);
   const quality = qualityParams();
   const variantName = params.get('variant');
   const ptVariant = variantName !== null && Object.hasOwn(PT_VARIANTS, variantName) ? PT_VARIANTS[variantName] : null;
   const viewParams = new URLSearchParams(params);
   if (ptVariant) viewParams.set('variant', ptVariant.view);
   const view = parseRtView(viewParams);
-  const sceneOptions: SetSceneOptions = { ...(ptVariant?.options ?? {}), shadowCatcher: view.catcher };
   canvas.style.width = `${size}px`;
   canvas.style.height = `${size}px`;
 
@@ -170,6 +189,12 @@ async function start(): Promise<void> {
     return view.reverse ? reverseMeshOrder(doc) : doc;
   };
   let doc = sceneOf(view.scene);
+  const catcherBounds = scaledCatcherBounds(doc, catcherScale);
+  const sceneOptions: SetSceneOptions = {
+    ...(ptVariant?.options ?? {}),
+    shadowCatcher: view.catcher,
+    ...(catcherBounds ? { catcherBounds } : {}),
+  };
   let warnings: readonly PathTracerWarning[] = [];
   let triangles = 0;
   const camera = () => rtCamera(doc, view, canvas.width / canvas.height);

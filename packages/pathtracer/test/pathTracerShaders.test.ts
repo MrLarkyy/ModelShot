@@ -129,15 +129,20 @@ describe('path tracer shaders', () => {
     }
   });
 
-  it('shades the catcher with a control variate: only a blocked fill ray brings environment radiance', () => {
+  it('shades the catcher with a control variate: a blocked fill ray loses what the importance sampling gives', () => {
     const trace = pathTracerProgramSource('trace').fragment;
     const at = trace.slice(trace.indexOf('float catcherShadeAt('), trace.indexOf('vec3 environmentLight('));
     expect(trace).toContain('float catcherShadeOfLoss(vec3 fillLost, float keyLost, vec2 xz, vec4 rect)');
+    // The fill direction and what a blocked ray loses come from the importance sampling (catcherFill); unblocked,
+    // nothing.
     expect(at).toMatch(
-      /vec3 fillLost = closestHit\(origin, d, 0\.0, 3\.0e38, 1\.0, -1, key, dimension \+ 2u, blocker\) \? escapeRadiance\(d\)\s*: vec3\(0\.0\);/,
+      /vec3 d = sampleCatcherFill\(unitRandom\(key, dimension, 0u\), unitRandom\(key, dimension \+ 1u, 0u\),\s*lostIfBlocked\);/,
+    );
+    expect(at).toMatch(
+      /vec3 fillLost = closestHit\(origin, d, 0\.0, 3\.0e38, 1\.0, -1, key, dimension \+ 2u, blocker\) \? lostIfBlocked\s*: vec3\(0\.0\);/,
     );
     expect(at).toContain('return catcherShadeOfLoss(fillLost, 1.0 - keyT, point.xz, u_catcherRect);');
-    expect(at).not.toMatch(/catcherShade\(/);
+    expect(at).not.toMatch(/catcherShade\(|cosineDirection\(|escapeRadiance\(/);
     // The same random dimensions as before: the guide and the goldens' seeds keep their meaning.
     expect(at.match(/unitRandom\(key, dimension( \+ \du)?, 0u\)/g)).toEqual([
       'unitRandom(key, dimension + 4u, 0u)',
@@ -146,6 +151,32 @@ describe('path tracer shaders', () => {
       'unitRandom(key, dimension + 1u, 0u)',
     ]);
     expect(trace).toContain('coverage = 1.0 - shade;');
+  });
+
+  it('draws the catcher fill by cos x luminance: the dome mixture, the image catcher marginal and its weight', () => {
+    const trace = pathTracerProgramSource('trace').fragment;
+    expect(trace.match(/vec3 sampleCatcherFill\(/g)).toHaveLength(1);
+    expect(trace).toContain('float horizon = max(catcherLuminance(environmentRadiance(vec3(1.0, 0.0, 0.0))), 0.0);');
+    expect(trace).toContain('float zenith = max(catcherLuminance(environmentRadiance(vec3(0.0, 1.0, 0.0))), 0.0);');
+    expect(trace).toContain('float total = quadratic + horizon / 6.0;');
+    expect(trace).toContain('y = t > 0.0 ? pow(t, 1.0 / 3.0) : 0.0;');
+    expect(trace).toContain('y = 0.5 + sin(asin(clamp(2.0 * t - 1.0, -1.0, 1.0)) / 3.0);');
+    expect(trace).toContain('if (lum > 0.0) lostIfBlocked = radiance * (2.0 * total / lum);');
+    expect(trace).toContain('return row < 0 ? 0.0 : texelFetch(u_envMarginal, ivec2(row, 0), 0)[channel];');
+    expect(trace).toContain('return envMarginalCdf(row, 1);');
+    // One bisection for the light sampling and the catcher, each over its own marginal channel.
+    expect(trace.match(/for \(int i = 0; i < 16 && lo < hi; i\+\+\)/g)).toHaveLength(2);
+    expect(trace).toContain('int row = marginalSearch(u1, size.y, 0);');
+    expect(trace).toContain('int row = marginalSearch(u1, size.y, 1);');
+    expect(trace.match(/int x = conditionalSearch\(u2, row, size\.x\);/g)).toHaveLength(2);
+    expect(trace).toContain('float band = catcherBand(row);');
+    expect(trace).toContain('return texelFetch(u_envMarginal, ivec2(row, 0), 0).b;');
+    expect(trace).toMatch(/radiance \* \(band \/ \(float\(size\.x\) \* p\)\)/);
+    // The bake keeps its cosine fill and never reads the catcher's marginal channel.
+    const bake = pathTracerProgramSource('bake').fragment;
+    expect(bake).not.toContain('sampleCatcherFill');
+    expect(bake).not.toContain('catcherMarginalCdf');
+    expect(bake).not.toMatch(/envMarginalCdf\([^)]*, 1\)/);
   });
 
   it('bakes the catcher with the same control variate: 1 less the fill lost, guarded against dark channels', () => {
