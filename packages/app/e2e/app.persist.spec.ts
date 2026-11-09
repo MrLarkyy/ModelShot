@@ -3,14 +3,16 @@ import {
   expect,
   fixture,
   openApp,
+  openFileMenu,
   openFiles,
+  openTab,
   previewImage,
   renderImage,
   storedModels,
   test,
+  type Rgba,
   waitForModel,
   waitForStored,
-  type Rgba,
 } from './appTest';
 
 const CUBE = fixture('bbmodel', 'single-cube.bbmodel');
@@ -27,6 +29,7 @@ async function changeView(page: Page): Promise<void> {
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('ArrowUp');
   await page.keyboard.press('+');
+  await openTab(page, 'Render');
   await page.getByLabel('Field of view').fill('50');
   await page.getByRole('radio', { name: 'Orthographic' }).check();
 }
@@ -72,15 +75,18 @@ test('opening the same file again restores its view, whatever was open in betwee
 test('the look, the hidden nodes and the render settings are restored', async ({ page }) => {
   await openApp(page);
   await openFiles(page, [fixture('bbmodel', 'nested-groups.bbmodel')], 'nested-groups.bbmodel');
+  await openTab(page, 'Look');
   await page.getByRole('radio', { name: 'Rim' }).check();
   const boxes = page.locator('#scene-panel input[type="checkbox"]');
   await boxes.first().uncheck();
+  await openTab(page, 'Render');
   const samples = page.locator('#render-panel').getByLabel('Samples');
   await samples.fill('32');
   await samples.dispatchEvent('change');
   await waitForStored(page, (record) => (record['render'] as { samples: number }).samples === 32);
   await page.reload();
   await expect(page.getByRole('status')).toContainText('Opened nested-groups.bbmodel', { timeout: 30_000 });
+  await openTab(page, 'Look');
   await expect(page.getByRole('radio', { name: 'Rim' })).toBeChecked();
   await expect(page.locator('#scene-panel input[type="checkbox"]').first()).not.toBeChecked();
   await expect(page.locator('#render-panel').getByLabel('Samples')).toHaveValue('32');
@@ -93,6 +99,7 @@ test('Forget local data deletes the database, and the next start has no model an
   await openFiles(page, [CUBE], 'single-cube.bbmodel');
   await changeView(page);
   await waitForStored(page, () => true);
+  await openFileMenu(page);
   await page.getByRole('button', { name: 'Forget local data' }).click();
   await expect(page.getByRole('status')).toContainText('Local data deleted');
   const names = await page.evaluate(async () => (await indexedDB.databases()).map((d) => d.name));
@@ -108,8 +115,9 @@ test('Forget local data deletes the database, and the next start has no model an
 
 test('says where the settings are kept, and keeps working when the browser refuses to store them', async ({ page }) => {
   await openApp(page);
-  await expect(page.locator('#data-heading')).toBeVisible();
+  await openFileMenu(page);
   await expect(page.getByText('Everything stays in this browser.')).toBeVisible();
+  await page.keyboard.press('Escape');
   await page.evaluate(() => {
     const refuse = (): never => {
       throw new DOMException('full', 'QuotaExceededError');
@@ -138,7 +146,8 @@ async function renderOnce(page: Page, renders: number): Promise<Rgba> {
 }
 
 async function switchFilterByKeyboard(page: Page): Promise<void> {
-  const select = page.locator('#scene-panel').getByRole('combobox', { name: TEXTURE });
+  await openTab(page, 'Material');
+  const select = page.locator('#inspector').getByRole('combobox', { name: TEXTURE });
   await select.focus();
   await page.keyboard.press('ArrowDown');
 }
@@ -146,10 +155,12 @@ async function switchFilterByKeyboard(page: Page): Promise<void> {
 test('the texture filter follows in the preview and the render, is saved and restored on reload', async ({ page }) => {
   await openApp(page);
   await openFiles(page, [CUBE], 'single-cube.bbmodel');
+  await openTab(page, 'Render');
   const samples = page.locator('#render-panel').getByLabel('Samples');
   await samples.fill('8');
   await samples.dispatchEvent('change');
-  const select = page.locator('#scene-panel').getByRole('combobox', { name: TEXTURE });
+  await openTab(page, 'Material');
+  const select = page.locator('#inspector').getByRole('combobox', { name: TEXTURE });
   await expect(select).toHaveCount(1);
   await expect(select).toHaveValue('nearest');
   await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
@@ -169,7 +180,7 @@ test('the texture filter follows in the preview and the render, is saved and res
 
   await page.reload();
   await expect(page.getByRole('status')).toContainText('Opened single-cube.bbmodel', { timeout: 30_000 });
-  await expect(page.locator('#scene-panel').getByRole('combobox', { name: TEXTURE })).toHaveValue('linear');
+  await expect(page.locator('#inspector').getByRole('combobox', { name: TEXTURE })).toHaveValue('linear');
   await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
   const restored = await waitForModel(page);
   expect(restored.data.equals(nearestPreview.data), 'the restored preview is not the nearest look').toBe(false);
@@ -187,7 +198,7 @@ test('a filter switch whose scene fails to build reverts the select and saves no
   await page.evaluate(() => window.__msApp!.failNextScene());
   await switchFilterByKeyboard(page);
   await expect(page.getByRole('alert')).toContainText('Could not update the view');
-  await expect(page.locator('#scene-panel').getByRole('combobox')).toHaveValue('nearest');
+  await expect(page.locator('#inspector').getByRole('combobox')).toHaveValue('nearest');
   await page.waitForTimeout(1500);
   const records = await storedModels(page);
   expect(records.map((record) => JSON.stringify(record['textureFilters']))).toEqual(['["nearest"]']);

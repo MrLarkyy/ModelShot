@@ -4,7 +4,14 @@ import type { ShortcutAction } from '../src/shortcuts/shortcutAction';
 
 class FakeElement {
   isContentEditable = false;
-  constructor(readonly tagName: string) {}
+  constructor(
+    readonly tagName: string,
+    private readonly role: string | null = null,
+  ) {}
+
+  getAttribute(name: string): string | null {
+    return name === 'role' ? this.role : null;
+  }
 }
 
 type KeyHandler = (event: Record<string, unknown>) => void;
@@ -30,6 +37,16 @@ function setup(dialogOpen = false) {
     'nextLook',
     'toggleSelected',
     'help',
+    'undo',
+    'redo',
+    'playPause',
+    'move',
+    'rotate',
+    'overlays',
+    'rename',
+    'outliner',
+    'inspector',
+    'timeline',
   ] as const;
   const handlers = Object.fromEntries(actions.map((a) => [a, () => calls.push(a)])) as unknown as Record<
     ShortcutAction,
@@ -92,6 +109,31 @@ describe('bindShortcuts', () => {
     press('r', { defaultPrevented: true });
     press('r', { isComposing: true });
     expect(calls).toEqual([]);
+  });
+
+  it('plays and pauses on Space, but leaves Space to a focused button, link, tab or separator', () => {
+    const { calls, press } = setup();
+    press(' ');
+    expect(calls).toEqual(['playPause']);
+    for (const element of [
+      new FakeElement('BUTTON'),
+      new FakeElement('A'),
+      new FakeElement('DIV', 'separator'),
+      new FakeElement('BUTTON', 'tab'),
+    ]) {
+      const event = press(' ', {}, element);
+      expect(event.preventDefault).not.toHaveBeenCalled();
+    }
+    expect(calls).toEqual(['playPause']);
+  });
+
+  it('handles the editing keys', () => {
+    const { calls, press } = setup();
+    press('z', { ctrlKey: true });
+    press('z', { ctrlKey: true, shiftKey: true });
+    press('w');
+    press('e');
+    expect(calls).toEqual(['undo', 'redo', 'move', 'rotate']);
   });
 
   it('stops listening when unbound', () => {

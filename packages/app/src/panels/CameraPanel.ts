@@ -1,6 +1,6 @@
 import { MAX_FOV_DEG, MIN_FOV_DEG, type OrbitController } from '@modelshot/renderer-rt';
 import { el, uniqueId } from '../ui/dom';
-import { CAMERA_PRESETS, applyCameraPreset, type CameraPresetId } from './cameraPresets';
+import { applyCameraPreset, type CameraPresetId } from './cameraPresets';
 
 export interface CameraPanelHost {
   readonly orbit: OrbitController;
@@ -10,7 +10,7 @@ export interface CameraPanelHost {
   readonly resetView: () => void;
 }
 
-// Field of view, projection, frame and reset, and the preset angles. `sync` shows what the controller holds, whoever
+// Field of view, projection, frame and reset; the preset angles are applied with `applyPreset` (viewport chips, keys). `sync` shows what the controller holds, whoever
 // changed it (the viewport's mouse and keys included, so O and I stay in step).
 export class CameraPanel {
   private readonly fov: HTMLInputElement;
@@ -71,11 +71,6 @@ export class CameraPanel {
         button('Frame', 'Frame the model', () => host.frameModel()),
         button('Reset', 'Reset the view', () => host.resetView()),
       ]),
-      el(
-        'div',
-        { className: 'button-row', attributes: { role: 'group', 'aria-label': 'Preset angles' } },
-        CAMERA_PRESETS.map((preset) => button(preset.label, `${preset.label} view`, () => this.applyPreset(preset.id))),
-      ),
     );
     this.sync();
   }

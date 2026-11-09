@@ -1,4 +1,4 @@
-import { expect, fixture, openApp, openFiles, test } from './appTest';
+import { expect, fixture, openApp, openFiles, openTab, test } from './appTest';
 
 interface Seen {
   readonly method: string;
@@ -34,6 +34,8 @@ test('opening, rendering and exporting make only same-origin GET requests withou
   const afterOpen = seen.slice(initial).map((r) => new URL(r.url).pathname.split('/').pop() ?? '');
   expect(afterOpen.some((name) => name.startsWith('loadWorker'))).toBe(true);
   expect(afterOpen.some((name) => name.startsWith('bakeWorker'))).toBe(true);
+
+  await openTab(page, 'Render');
 
   const samples = page.locator('#render-panel').getByLabel('Samples');
   await samples.fill('4');

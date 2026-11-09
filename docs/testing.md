@@ -1527,6 +1527,18 @@ round 7); its max was 750 ms then.
 - `bundleGzipBytes` `app` 204 000, `app-entry` 66 100 and `embed-frame` 180 400 (MS-85: the shipped builds strip GLSL
   comments and redundant whitespace; measured before 215 145, 70 139 and 193 867 B, after 185 394, 60 087 and 163 921 B,
   gzip level 9, plus 10 %, rounded up to 100; the other rows are unchanged).
+- `bundleGzipBytes` `app` 223 100 and `app-entry` 79 600 (MS-34, 2026-11-04: the editor layout, outliner, inspector,
+  layout store and dark stylesheet; the overlay, picking, gizmo and timeline are a lazy chunk and count only in `app`.
+  Measured on origin/main eb38591 185 746 and 60 094 B, with MS-34 203 043 and 72 291 B, gzip level 9; each max is the
+  old max plus the measured growth plus 10 %, rounded up to 100. `embed-frame` 165 081 to 165 115 B, within its max.)
+- `frameTimeMs.rt-pose-step-512` (MS-34): one playback frame of the editor on the bench scene (128 group nodes, a
+  rotation channel per node): `animateScene`, the renderer's pose-only `setScene` (no decode, upload or bake) and the
+  render at 512 x 512, each timed until the GPU finished; median of 11 frames after 4 (`renderPoseFrames`, installed by
+  `installPoseBench` in `fixtures/src/bench.ts`, which also throws when the renderer's `lightmapLayout` changes, so a
+  frame that left the pose-only path fails whatever its time). Local SwiftShader medians 849.9, 1060.2 and 1017.5 ms against 947 to 983 ms for
+  `rt-bench-512` in the same sessions (the pose step costs no more than the frame, so playback is not a load or an
+  upload); max 10 200 ms, 10x the middle run, rounded up. The app's own frame cost is asserted in
+  `e2e/app.motion.spec.ts`: the overlay's median draw time at most 2 ms.
 - `bakeTimeMs.bake-bench-n16` (MS-16): `LightBaker.bake` of the benchmark scene in its worker, 16 samples with the
   shadow catcher (lightmap 2048 wide, catcher 512 x 512), from the call to the final lighting, median of 3. Local
   SwiftShader 22 873, 22 113 and 22 141 ms; max 222 000 ms (10x the middle run, rounded up). Each run is asserted

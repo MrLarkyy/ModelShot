@@ -1,13 +1,23 @@
 import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
-import { expect, fixture, openApp, openFiles, test } from './appTest';
+import { expect, fixture, openApp, openFileMenu, openFiles, openTab, test, waitForEditor } from './appTest';
 
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
-async function violations(page: Page): Promise<string[]> {
-  const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+// `covered`: a popup or drawer is open over the view, so the chips under it are not targets of the moment (they are scanned
+// uncovered in every other test).
+async function violations(page: Page, covered = false): Promise<string[]> {
+  const builder = new AxeBuilder({ page }).withTags(TAGS);
+  if (covered) builder.exclude('#viewport-chips');
+  const result = await builder.analyze();
   return result.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
 }
+
+// The scans read settled colours: a tab panel or drawer caught mid fade-in has its text at partial opacity and fails
+// contrast at random. Motion itself is covered by app.motion.spec.ts.
+test.beforeEach(async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+});
 
 test('axe finds no WCAG A/AA violation on the empty app', async ({ page }) => {
   await openApp(page);
@@ -27,16 +37,65 @@ test('axe finds no violation with a model open, with an error shown and in the d
   await expect(page.getByRole('dialog', { name: 'Export' })).toBeVisible();
   expect(await violations(page)).toEqual([]);
   await page.keyboard.press('Escape');
+  await openFileMenu(page);
   await page.getByRole('button', { name: 'Shortcuts' }).click();
   await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeVisible();
   expect(await violations(page)).toEqual([]);
 });
 
-test('every control can be reached with Tab, has a name and shows where the focus is', async ({ page }) => {
+test('axe finds no violation in any inspector tab of an animated model with a node selected', async ({ page }) => {
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'animated.bbmodel')], 'animated.bbmodel');
+  await waitForEditor(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  for (const tab of ['Object', 'Material', 'Light', 'Look', 'Render'] as const) {
+    await openTab(page, tab);
+    expect(await violations(page), tab).toEqual([]);
+  }
+  // The timeline with a pose on show: the playhead moved, the clip playing.
+  await page.locator('#timeline').getByRole('slider', { name: 'Playhead' }).fill('0.5');
+  expect(await violations(page), 'scrubbed').toEqual([]);
+  await page.locator('#timeline').getByRole('button', { name: 'Play' }).click();
+  await expect(page.locator('#timeline').getByRole('button', { name: 'Pause' })).toBeVisible();
+  expect(await violations(page), 'playing').toEqual([]);
+});
+
+test('axe finds no violation with the File, Add and Overlays menus open', async ({ page }) => {
   await openApp(page);
   await openFiles(page, [fixture('bbmodel', 'nested-groups.bbmodel')], 'nested-groups.bbmodel');
-  const reached = new Map<string, boolean>();
-  for (let i = 0; i < 80; i++) {
+  await waitForEditor(page);
+  for (const [name, id] of [
+    ['File', 'file-menu-button'],
+    ['Add', 'add-menu-button'],
+    ['Overlays', 'overlay-menu-button'],
+  ] as const) {
+    const button = page.locator(`#${id}`);
+    await button.click();
+    await expect(button).toHaveAttribute('aria-expanded', 'true');
+    expect(await violations(page, true), name).toEqual([]);
+    await page.keyboard.press('Escape');
+    await expect(button).toHaveAttribute('aria-expanded', 'false');
+  }
+});
+
+test('axe finds no violation at 900 px with the outliner and the inspector drawer open', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 700 });
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'nested-groups.bbmodel')], 'nested-groups.bbmodel');
+  await waitForEditor(page);
+  expect(await violations(page), 'closed').toEqual([]);
+  for (const name of ['Outliner', 'Inspector']) {
+    await page.getByRole('button', { name, exact: true }).click();
+    await expect(page.locator(`#${name.toLowerCase()}`)).toBeVisible();
+    // The drawer slides in: the colours are checked once it stands still.
+    await page.waitForTimeout(400);
+    expect(await violations(page, true), name).toEqual([]);
+  }
+});
+
+async function walk(page: Page, reached: Map<string, boolean>, presses = 90): Promise<void> {
+  await page.locator('.skip-link').focus();
+  for (let i = 0; i < presses; i++) {
     await page.keyboard.press('Tab');
     const focus = await page.evaluate(() => {
       const element = document.activeElement as (HTMLElement & { labels?: NodeListOf<HTMLLabelElement> }) | null;
@@ -54,25 +113,54 @@ test('every control can be reached with Tab, has a name and shows where the focu
     });
     if (!focus) continue;
     expect(focus.name, 'a focused control has a name').not.toBe('');
-    reached.set(focus.name, focus.outline);
+    reached.set(focus.name, (reached.get(focus.name) ?? true) && focus.outline);
+  }
+}
+
+test('every control can be reached with Tab, has a name and shows where the focus is', async ({ page }) => {
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'nested-groups.bbmodel')], 'nested-groups.bbmodel');
+  const reached = new Map<string, boolean>();
+  for (const tab of ['Object', 'Material', 'Light', 'Look', 'Render'] as const) {
+    await openTab(page, tab);
+    await walk(page, reached);
+  }
+  // The menu closes when the focus leaves it, so it is walked from its own button.
+  await page.getByRole('button', { name: 'File', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  for (let i = 0; i < 4; i++) {
+    await page.keyboard.press('Tab');
+    const name = await page.evaluate(() => document.activeElement?.textContent?.trim() ?? '');
+    reached.set(name, true);
   }
   for (const name of [
     'Skip to the 3D view',
-    'Open…',
+    'Outliner',
+    'Inspector',
+    'Timeline',
+    'File',
     'Render',
     'Export…',
-    'Shortcuts',
+    'Search the outliner',
+    'Resize the outliner',
+    'Resize the inspector',
     '3D view of the model',
+    'Front view',
+    'Isometric view',
+    'Overlays',
+    'Object',
+    'Material',
+    'Look',
     'Studio',
     'Field of view',
     'Perspective',
     'Frame the model',
     'Reset the view',
-    'Front view',
-    'Isometric view',
     'Samples',
     'Supersampling',
     'Denoise',
+    'Open…',
+    'Shortcuts',
     'Forget local data',
   ]) {
     expect(
@@ -112,10 +200,12 @@ test('the shortcuts work from the keyboard and never override the view keys', as
   await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeVisible();
   await page.keyboard.press('Escape');
   await page.keyboard.press('l');
+  await openTab(page, 'Look');
   await expect(page.getByRole('radio', { name: 'Marketplace' })).toBeChecked();
   await page.locator('#preview').focus();
   await page.keyboard.press('o');
   expect(await page.evaluate(() => window.__msApp!.state().projection)).toBe('orthographic');
+  await openTab(page, 'Render');
   const samples = page.locator('#render-panel').getByLabel('Samples');
   await samples.fill('4096');
   await samples.dispatchEvent('change');
@@ -146,10 +236,12 @@ test('a render that cannot get a graphics context says it failed and can be star
 test('typing in a field does not trigger a shortcut', async ({ page }) => {
   await openApp(page);
   await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
+  await openTab(page, 'Render');
   const samples = page.locator('#render-panel').getByLabel('Samples');
   await samples.focus();
   await page.keyboard.type('r1l');
   await expect(page.getByRole('status')).not.toContainText('Rendering');
+  await openTab(page, 'Look');
   await expect(page.getByRole('radio', { name: 'Studio' })).toBeChecked();
 });
 

@@ -17,11 +17,45 @@
     <a class="skip-link" href="#viewport">Skip to the 3D view</a>
     <header class="top-bar">
       <h1 id="title"></h1>
-      <div class="toolbar" role="toolbar" aria-label="Main actions">
-        <button id="open-button" type="button">Open…</button>
+      <div class="bar-group" role="group" aria-label="Panels">
+        <button id="outliner-toggle" class="bar-toggle" type="button" aria-controls="outliner" aria-expanded="true">
+          Outliner
+        </button>
+        <button id="inspector-toggle" class="bar-toggle" type="button" aria-controls="inspector" aria-expanded="true">
+          Inspector
+        </button>
+        <button id="timeline-toggle" class="bar-toggle" type="button" aria-controls="timeline" aria-expanded="true">
+          Timeline
+        </button>
+      </div>
+      <div class="menu">
+        <button id="file-menu-button" type="button" aria-expanded="false" aria-controls="file-menu">File</button>
+        <div id="file-menu" class="menu-list" hidden>
+          <button id="open-button" type="button">Open…</button>
+          <button id="menu-export-button" type="button" disabled>Export…</button>
+          <p class="hint">
+            Everything stays in this browser. The last model and your settings are kept here so the app can reopen them.
+          </p>
+          <button id="forget-button" type="button">Forget local data</button>
+          <button id="help-button" type="button">Shortcuts</button>
+        </div>
+      </div>
+      <div class="bar-group" role="group" aria-label="History">
+        <button id="undo-button" type="button" disabled>Undo</button>
+        <button id="redo-button" type="button" disabled>Redo</button>
+      </div>
+      <fieldset class="segmented" aria-label="Viewport mode">
+        <label class="segment"
+          ><input id="mode-preview" type="radio" name="mode" value="preview" checked /><span>Preview</span></label
+        >
+        <label class="segment"
+          ><input id="mode-render" type="radio" name="mode" value="render" disabled /><span>Render</span></label
+        >
+      </fieldset>
+      <div class="toolbar bar-end" role="toolbar" aria-label="Main actions">
         <button id="render-button" type="button" disabled>Render</button>
+        <button id="share-button" type="button" hidden>Share</button>
         <button id="export-button" type="button" disabled>Export…</button>
-        <button id="help-button" type="button">Shortcuts</button>
       </div>
       <input
         id="file-input"
@@ -33,15 +67,44 @@
         tabindex="-1"
       />
     </header>
-    <div class="work">
+    <div class="work" id="work">
+      <nav id="outliner" class="panel panel-left" aria-label="Outliner">
+        <div class="panel-head">
+          <h2 id="scene-heading">Outliner</h2>
+          <div class="menu">
+            <button id="add-menu-button" type="button" aria-expanded="false" aria-controls="add-menu">Add</button>
+            <div id="add-menu" class="menu-list" hidden></div>
+          </div>
+        </div>
+        <div id="scene-panel"><p class="hint">No model open.</p></div>
+      </nav>
+      <div
+        id="outliner-separator"
+        class="separator vertical"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize the outliner"
+        tabindex="0"
+      ></div>
       <main class="stage">
         <div id="viewport" class="viewport">
           <canvas id="preview" class="layer" aria-label="3D view of the model"></canvas>
+          <canvas id="overlay" class="layer overlay" aria-hidden="true"></canvas>
           <canvas id="result" class="layer result" aria-label="Rendered image" hidden></canvas>
+          <div id="viewport-chips" class="chips chips-top">
+            <div id="camera-presets" class="chips" role="group" aria-label="Camera presets"></div>
+            <div class="menu">
+              <button id="overlay-menu-button" type="button" aria-expanded="false" aria-controls="overlay-menu">
+                Overlays
+              </button>
+              <div id="overlay-menu" class="menu-list menu-list-right" hidden></div>
+            </div>
+          </div>
+          <p id="stats" class="chips chips-bottom stats" hidden></p>
           <p id="empty" class="empty">Drop a model here, or choose Open…</p>
           <div id="drop-overlay" class="drop-overlay" hidden>Drop to open</div>
         </div>
-        <div class="messages">
+        <div class="messages" role="region" aria-label="Status and messages" tabindex="0">
           <div id="status" role="status">
             <span id="status-main"></span> <span id="status-lighting"></span> <span id="status-storage"></span>
           </div>
@@ -52,32 +115,27 @@
           </div>
         </div>
       </main>
-      <aside class="panels" aria-label="Scene settings">
-        <section aria-labelledby="scene-heading">
-          <h2 id="scene-heading">Scene</h2>
-          <div id="scene-panel"><p class="hint">No model open.</p></div>
-        </section>
-        <section aria-labelledby="look-heading">
-          <h2 id="look-heading">Look</h2>
-          <div id="look-panel"></div>
-        </section>
-        <section aria-labelledby="camera-heading">
-          <h2 id="camera-heading">Camera</h2>
-          <div id="camera-panel"></div>
-        </section>
-        <section aria-labelledby="render-heading">
-          <h2 id="render-heading">Render</h2>
-          <div id="render-panel"></div>
-        </section>
-        <section aria-labelledby="data-heading">
-          <h2 id="data-heading">Local data</h2>
-          <p class="hint">
-            Everything stays in this browser. The last model and your settings are kept here so the app can reopen them.
-          </p>
-          <button id="forget-button" type="button">Forget local data</button>
-        </section>
+      <div
+        id="inspector-separator"
+        class="separator vertical"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize the inspector"
+        tabindex="0"
+      ></div>
+      <aside id="inspector" class="panel panel-right" aria-label="Inspector">
+        <div id="inspector-tabs"></div>
       </aside>
     </div>
+    <div
+      id="timeline-separator"
+      class="separator horizontal"
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label="Resize the timeline"
+      tabindex="0"
+    ></div>
+    <section id="timeline" class="panel timeline" aria-label="Timeline"></section>
     <dialog id="export-dialog" aria-labelledby="export-title"></dialog>
     <dialog id="help-dialog" aria-labelledby="help-title"></dialog>
     <script type="module" src="/src/main.ts"></script>

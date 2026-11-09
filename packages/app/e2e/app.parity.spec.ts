@@ -1,7 +1,18 @@
 import { PNG } from 'pngjs';
 import { compareImages } from '../../../tools/harness/src/compareImages';
 import { PT_PAIR_TOLERANCE } from '../../../tools/harness/src/ptPairTolerance';
-import { expect, fixture, openApp, openFiles, previewImage, renderImage, test, type Rgba } from './appTest';
+import {
+  expect,
+  fixture,
+  openApp,
+  openFiles,
+  openTab,
+  previewImage,
+  renderImage,
+  test,
+  waitForEditor,
+  type Rgba,
+} from './appTest';
 
 function toPng(image: Rgba): Buffer {
   const png = new PNG({ width: image.width, height: image.height });
@@ -12,15 +23,18 @@ function toPng(image: Rgba): Buffer {
 test('the preview and the render of the same view agree within the path tracer pair tolerance, and a render repeats exactly', async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1000, height: 560 });
+  await page.setViewportSize({ width: 1100, height: 600 });
   await openApp(page);
   await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
+  await openTab(page, 'Look');
   await page.getByRole('radio', { name: 'Marketplace' }).check();
   await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
   // The Marketplace bake replaced the Studio one: wait for the bake that ends after the look change.
   await page.waitForTimeout(500);
   await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
   const preview = await previewImage(page);
+
+  await openTab(page, 'Render');
 
   const samples = page.locator('#render-panel').getByLabel('Samples');
   await samples.fill('64');
@@ -48,6 +62,7 @@ test('the preview and the render of the same view agree within the path tracer p
 test('the render canvas is drawn pixelated and as large as the view', async ({ page }) => {
   await openApp(page);
   await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
+  await openTab(page, 'Render');
   const samples = page.locator('#render-panel').getByLabel('Samples');
   await samples.fill('2');
   await samples.dispatchEvent('change');
@@ -66,7 +81,9 @@ test('the render canvas is drawn pixelated and as large as the view', async ({ p
   });
   expect(sizes.rendering).toBe('pixelated');
   expect(sizes.resultBacking).toEqual(sizes.previewBacking);
-  expect(sizes.previewBacking).toEqual([sizes.css[0]! * sizes.dpr, sizes.css[1]! * sizes.dpr]);
+  // The client size is rounded and the layout is fractional: the backing store is within a device pixel of it.
+  expect(Math.abs(sizes.previewBacking[0]! - sizes.css[0]! * sizes.dpr)).toBeLessThanOrEqual(1);
+  expect(Math.abs(sizes.previewBacking[1]! - sizes.css[1]! * sizes.dpr)).toBeLessThanOrEqual(1);
 });
 
 test('the backing store follows the device pixel ratio', async ({ browser, baseURL }) => {
@@ -79,17 +96,27 @@ test('the backing store follows the device pixel ratio', async ({ browser, baseU
     .poll(() =>
       page.evaluate(() => {
         const preview = document.getElementById('preview') as HTMLCanvasElement;
-        return [preview.width - preview.clientWidth * 2, preview.height - preview.clientHeight * 2];
+        return Math.max(
+          Math.abs(preview.width - preview.clientWidth * 2),
+          Math.abs(preview.height - preview.clientHeight * 2),
+        );
       }),
     )
-    .toEqual([0, 0]);
+    .toBeLessThanOrEqual(1);
   await context.close();
 });
 
 test('a lost graphics context comes back with the model drawn again', async ({ page }) => {
   await openApp(page);
   await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
+  await waitForEditor(page);
   await page.waitForTimeout(500);
+  expect(await page.evaluate(() => window.__msApp!.overlayPixels())).toBeGreaterThan(0);
+  await page.evaluate(() => {
+    const overlay = document.getElementById('overlay') as HTMLCanvasElement;
+    overlay.getContext('2d')?.clearRect(0, 0, overlay.width, overlay.height);
+  });
+  expect(await page.evaluate(() => window.__msApp!.overlayPixels())).toBe(0);
   expect(await page.evaluate(() => window.__msApp!.loseContext())).toBe(true);
   await expect(page.getByRole('status')).toContainText('graphics context was restored', { timeout: 30_000 });
   let centreChanged = false;
@@ -101,4 +128,6 @@ test('a lost graphics context comes back with the model drawn again', async ({ p
     if (!centreChanged) await page.waitForTimeout(150);
   }
   expect(centreChanged, 'the model is drawn after the context came back').toBe(true);
+  // The frame after the restore also redraws the overlay on top.
+  await expect.poll(() => page.evaluate(() => window.__msApp!.overlayPixels())).toBeGreaterThan(0);
 });

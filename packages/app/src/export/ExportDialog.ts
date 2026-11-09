@@ -13,7 +13,12 @@ import {
 } from './ExportSettings';
 
 export interface ExportDialogHost {
+  /** The document on show, in the pose the preview has: what a still image and a turntable are made from. */
   readonly document: () => SceneDocument | null;
+  /** The rest pose (no node edits, no animation applied): an animation clip animates from it. Absent: the shown document. */
+  readonly restDocument?: () => SceneDocument | null;
+  /** The node edits as a step on a sampled frame of a clip (the edits sit on top of the animation); absent without edits. */
+  readonly editPose?: () => ((pose: SceneDocument) => SceneDocument) | undefined;
   readonly modelName: () => string;
   readonly camera: () => SceneCamera;
   readonly viewportAspect: () => number;
@@ -75,6 +80,9 @@ export class ExportDialog {
 
   private build(doc: SceneDocument, settings: ExportSettings, lib: typeof import('@modelshot/export')): void {
     const animations = doc.animations ?? [];
+    // An animation clip is built from the rest pose: the shown document may already be a pose of the same clip.
+    const documentFor = (s: ExportSettings): SceneDocument =>
+      s.kind === 'animation' ? (this.host.restDocument?.() ?? doc) : doc;
     const number = (value: number, min: number, max: number): HTMLInputElement =>
       el('input', {
         attributes: { type: 'number', min: String(min), max: String(max), step: '1', value: String(value) },
@@ -180,7 +188,7 @@ export class ExportDialog {
       transparent.disabled = video;
       transparentField.title = video ? 'Video formats have no transparency.' : '';
       try {
-        lib.checkExportOptions(doc, options(s));
+        lib.checkExportOptions(documentFor(s), options(s));
         problem.textContent = '';
         exportButton.disabled = this.running;
       } catch (error) {
@@ -220,15 +228,17 @@ export class ExportDialog {
           note.textContent = `${p.phase === 'render' ? 'Rendering' : 'Encoding'} ${Math.round(p.fraction * 100)} %`;
         };
         const checked = options(s);
+        const pose = s.kind === 'animation' ? this.host.editPose?.() : undefined;
         const result =
           s.kind === 'still'
             ? await lib.exportStill(tracer, doc, checked as Parameters<typeof lib.exportStill>[2], {
                 signal: controller.signal,
                 onProgress,
               })
-            : await lib.exportClip(tracer, doc, checked as Parameters<typeof lib.exportClip>[2], {
+            : await lib.exportClip(tracer, documentFor(s), checked as Parameters<typeof lib.exportClip>[2], {
                 signal: controller.signal,
                 onProgress,
+                ...(pose ? { pose } : {}),
               });
         const file = downloadBlob(result.blob, this.host.modelName(), result.extension);
         const warnings = result.warnings.map((w) => w.message).join(' ');

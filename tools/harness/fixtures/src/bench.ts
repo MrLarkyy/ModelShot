@@ -1,4 +1,7 @@
+import type { RealtimeRenderer } from '@modelshot/renderer-rt';
+import { animateScene, type SceneDocument } from '@modelshot/scene';
 import type { MsFixture } from './fixtureApi';
+import { withSpinClip } from './spinClip';
 
 function finish(gl: WebGL2RenderingContext): void {
   gl.finish();
@@ -134,5 +137,36 @@ export function installBakeBench(api: MsFixture, bake: () => Promise<void>): voi
     const start = performance.now();
     await bake();
     return performance.now() - start;
+  };
+}
+
+/**
+ * The editor's playback frame: `animateScene` of a clip that turns every node, the renderer's pose-only `setScene` and a
+ * render, each timed until the GPU finished. The clip's document shares the loaded document's meshes, materials and
+ * textures arrays, so no frame decodes or uploads geometry.
+ */
+export function installPoseBench(
+  api: MsFixture,
+  gl: WebGL2RenderingContext,
+  renderer: RealtimeRenderer,
+  current: () => SceneDocument,
+): void {
+  api.renderPoseFrames = async (count) => {
+    const animated = withSpinClip(current());
+    const times: number[] = [];
+    // A frame that stopped being pose-only builds a new layout summary; a timing band cannot tell that apart.
+    const layout = renderer.lightmapLayout;
+    for (let i = 0; i < count; i++) {
+      const start = performance.now();
+      const posed = animateScene(animated, { animation: 0, time: (i % 100) / 100 }).document;
+      const result = await renderer.setScene(posed);
+      if (!result.applied) throw new Error('the pose frame was not applied');
+      if (renderer.lightmapLayout !== layout)
+        throw new Error('the pose frame took the full scene path (the layout changed)');
+      renderer.render();
+      finish(gl);
+      times.push(performance.now() - start);
+    }
+    return times;
   };
 }

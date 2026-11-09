@@ -34,7 +34,10 @@ for (const warning of clip.warnings) console.info(warning.message);
 - `exportStill(renderer, doc, options, { signal, onProgress })`: one render of `doc`, encoded as PNG. Resolves
   `ExportResult` `{ blob, format, mimeType, extension, width, height, frames, warnings }`.
 - `exportClip(renderer, doc, options, { signal, onProgress })`: a turntable (`kind: 'turntable'`) or an animation
-  (`kind: 'animation'`) in `options.format`, or the format it fell back to (`result.format`).
+  (`kind: 'animation'`) in `options.format`, or the format it fell back to (`result.format`). The run options also take
+  `pose: (pose) => doc` for an animation: it receives every sampled frame (and the poses that fit the camera and place the
+  shadow catcher) and returns it edited, keeping the meshes, materials and textures arrays; the editor puts its node
+  edits on the clip this way.
 - `renderer` is a `FrameRenderer`: `PathTracer` has its shape. The export resizes it to the output size (device pixel
   ratio 1), replaces its scene, camera and request, and leaves them so; give it a tracer of its own. Its look and edges
   are the caller's (`setLook`, `setEdges` before the export).

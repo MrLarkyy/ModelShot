@@ -87,6 +87,10 @@ export async function cubeFile(): Promise<{ name: string; mimeType: string; buff
 /** In the open app: Render 4 samples, then export a 32 px PNG and return its bytes. */
 export async function renderAndExport(page: Page): Promise<Buffer> {
   await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 90_000 });
+  // The render settings live on the inspector's Render tab; the others hide them.
+  const renderTab = page.getByRole('tab', { name: 'Render', exact: true });
+  await renderTab.click();
+  await expect(renderTab).toHaveAttribute('aria-selected', 'true');
   const samples = page.locator('#render-panel').getByLabel('Samples');
   await samples.fill('4');
   await samples.dispatchEvent('change');

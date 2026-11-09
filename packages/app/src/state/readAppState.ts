@@ -1,10 +1,12 @@
 import { LOOK_PRESETS } from '@modelshot/looks';
 import { MAX_FOV_DEG, MAX_PITCH_DEG, MIN_FOV_DEG, MIN_PITCH_DEG, type OrbitState } from '@modelshot/renderer-rt';
-import type { SceneTextureFilter } from '@modelshot/scene';
+import { MAX_ANIMATION_VALUE, type SceneTextureFilter, type Vec3 } from '@modelshot/scene';
 import { CLIP_FORMAT_CHOICES, EXPORT_KINDS, type ExportSettings } from '../export/ExportSettings';
 import { findHandoffViolation } from '../handoff/findHandoffViolation';
 import type { PlayerArmsChoice } from '../intake/LoadMessages';
 import type { RenderSettingsValues } from '../render/RenderSettings';
+import { MAX_NAME_LENGTH } from '../editor/displayName';
+import type { NodeEdit } from '../session/NodeEdit';
 import { APP_STATE_VERSION, type ModelState, type SessionState } from './AppState';
 
 const MAX_INDEX = 100_000;
@@ -50,6 +52,50 @@ function readTextureFilters(value: unknown): SceneTextureFilter[] | null {
   for (const entry of list) {
     if (entry !== 'nearest' && entry !== 'linear') return null;
     out.push(entry);
+  }
+  return out;
+}
+
+const NAME_KEY = /^[nm]:\d{1,6}$/;
+/** Labels and node edits kept per model. */
+export const MAX_STORED_EDITS = 20_000;
+
+function readNames(value: unknown): Record<string, string> | null {
+  if (!isRecord(value)) return null;
+  const keys = Object.keys(value);
+  if (keys.length > MAX_STORED_EDITS) return null;
+  const out: Record<string, string> = {};
+  for (const key of keys) {
+    const name = own(value, key);
+    if (NAME_KEY.test(key) && typeof name === 'string' && name.trim() !== '' && name.length <= MAX_NAME_LENGTH) {
+      out[key] = name;
+    }
+  }
+  return out;
+}
+
+function readVec3(value: unknown): Vec3 | null {
+  if (!Array.isArray(value) || value.length !== 3) return null;
+  const x = number(value[0], -MAX_ANIMATION_VALUE, MAX_ANIMATION_VALUE);
+  const y = number(value[1], -MAX_ANIMATION_VALUE, MAX_ANIMATION_VALUE);
+  const z = number(value[2], -MAX_ANIMATION_VALUE, MAX_ANIMATION_VALUE);
+  return x === null || y === null || z === null ? null : [x, y, z];
+}
+
+// Entries that are not exactly an edit are dropped one by one; the rest of the record stays usable.
+function readNodeEdits(value: unknown): NodeEdit[] | null {
+  if (!Array.isArray(value) || value.length > MAX_STORED_EDITS) return null;
+  const list: unknown[] = Array.from(value as unknown[]);
+  const seen = new Set<number>();
+  const out: NodeEdit[] = [];
+  for (const entry of list) {
+    if (!isRecord(entry)) continue;
+    const node = integer(own(entry, 'node'), 0, MAX_INDEX);
+    const translation = readVec3(own(entry, 'translation'));
+    const rotation = readVec3(own(entry, 'rotation'));
+    if (node === null || !translation || !rotation || seen.has(node)) continue;
+    seen.add(node);
+    out.push({ node, translation, rotation });
   }
   return out;
 }
@@ -137,6 +183,10 @@ export function readModelState(value: unknown): ModelState | null {
     const arms: PlayerArmsChoice | undefined = armsValue === 'classic' || armsValue === 'slim' ? armsValue : undefined;
     const textureFilters = readTextureFilters(own(value, 'textureFilters'));
     const exportSettings = readExport(own(value, 'export'));
+    const names = readNames(own(value, 'names'));
+    const lockedNodes = indices(own(value, 'lockedNodes'));
+    const lockedMeshes = indices(own(value, 'lockedMeshes'));
+    const nodeEdits = readNodeEdits(own(value, 'nodeEdits'));
     return {
       v: APP_STATE_VERSION,
       camera,
@@ -145,6 +195,10 @@ export function readModelState(value: unknown): ModelState | null {
       hiddenMeshes,
       ...(textureFilters ? { textureFilters } : {}),
       ...(arms ? { arms } : {}),
+      ...(names ? { names } : {}),
+      ...(lockedNodes ? { lockedNodes } : {}),
+      ...(lockedMeshes ? { lockedMeshes } : {}),
+      ...(nodeEdits ? { nodeEdits } : {}),
       render,
       ...(exportSettings ? { export: exportSettings } : {}),
       savedAt,
