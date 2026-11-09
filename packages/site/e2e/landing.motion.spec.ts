@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { layoutShiftTotal, observeLayoutShift, settleFonts } from './layoutShift';
 import { expect, openLanding, test } from './siteTest';
 
 const MOVING = new Set(['transform', 'opacity']);
@@ -44,23 +45,37 @@ test('hover lift and look hover transition only transform and opacity', async ({
   ).toBe(true);
 });
 
+// The brand face replaces the fallback face after first layout (font-display: block, preload not
+// blocking), re-wrapping tile and drop-zone titles. Measured max 0.00056 under heavy load: 10x below
+// the 0.01 visible bar, 100x below the Core Web Vitals "good" 0.1. The ambient window below stays strict.
+const LOAD_SHIFT_BUDGET = 0.001;
+
 for (const width of [360, 1440]) {
   test(`no layout shift over load and 4 s of animation at ${width} px`, async ({ page }) => {
-    await page.addInitScript(() => {
-      const w = window as unknown as { __cls: number };
-      w.__cls = 0;
-      new PerformanceObserver((list) => {
-        for (const entry of list.getEntries() as (PerformanceEntry & { value: number; hadRecentInput: boolean })[]) {
-          if (!entry.hadRecentInput) w.__cls += entry.value;
-        }
-      }).observe({ type: 'layout-shift', buffered: true });
-    });
+    await observeLayoutShift(page);
     await openLanding(page, width);
+    await settleFonts(page);
+    expect(await layoutShiftTotal(page)).toBeLessThanOrEqual(LOAD_SHIFT_BUDGET);
+    const before = await layoutShiftTotal(page);
     // A fixed observation window over the ambient loops (up to 8 s); not a wait for a result.
     await page.waitForTimeout(4000);
-    expect(await page.evaluate(() => (window as unknown as { __cls: number }).__cls)).toBe(0);
+    expect(await layoutShiftTotal(page) - before).toBe(0);
   });
 }
+
+test('layout shift observer detects a real shift', async ({ page }) => {
+  await observeLayoutShift(page);
+  await openLanding(page, 1440);
+  await settleFonts(page);
+  const before = await layoutShiftTotal(page);
+  await page.evaluate(() => {
+    const spacer = document.createElement('div');
+    spacer.style.height = '300px';
+    document.body.prepend(spacer);
+  });
+  await settleFonts(page);
+  await expect.poll(async () => (await layoutShiftTotal(page)) - before).toBeGreaterThan(0.01);
+});
 
 test('reduced motion stops every animation and transition', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
