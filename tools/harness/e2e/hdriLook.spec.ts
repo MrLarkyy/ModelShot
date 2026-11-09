@@ -41,10 +41,11 @@ const HEAD_LIMIT = 3.3;
  * Path-tracer cost of the image (one more shadow ray per vertex): the median of 3 runs of 64 samples at 128 x 128 on the
  * bench scene, software GL. Locally Softbox 2079 to 2211 ms against Marketplace 1739 to 1911 ms (ratio 1.16 to 1.20).
  * CI medians, Softbox / Marketplace: 4941 / 4298 ms on an AMD EPYC 9V74 (run 41938074241), 6812 / 5758 ms and
- * 6791 / 5714 ms on an Intel Xeon Platinum 8573C (runs 42603995894, 42609514376): ratio 1.15 to 1.19, the local one,
- * while Marketplace alone runs 2.3 to 3.0x slower than locally. The runners differ, the Softbox cost did not grow.
- * 15000 ms is 3.0x the fast runner's Softbox median and 2.2x the slowest; the ratio limit is the Softbox-specific
- * guard (a 1.35x Softbox-only slowdown fails it on any runner), the absolute one catches a tracer-wide slowdown.
+ * 6791 / 5714 ms on an Intel Xeon Platinum 8573C (runs 42603995894, 42609514376): ratio 1.15 to 1.19, as locally
+ * (1.21 to 1.27 in three runs on a later day), while Marketplace alone runs 2.2 to 3.3x slower than locally. The runners
+ * differ, the Softbox cost did not grow. 15000 ms is 3.0x the fast runner's Softbox median and 2.2x the slowest. The
+ * ratio limit is the Softbox-specific guard: on the CI runners measured it fails at a Softbox-only slowdown of about
+ * 1.4x (1.39x from 1.15, 1.34x from 1.19); the absolute limit catches a tracer-wide slowdown beyond 3x.
  */
 const SOFTBOX_SAMPLES_MS = 15000;
 const SOFTBOX_COST_RATIO = 1.6;
