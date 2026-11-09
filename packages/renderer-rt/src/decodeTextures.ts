@@ -29,11 +29,13 @@ export interface DecodedTextures {
  * Decides from the image header in the bytes alone (never the size the document declares), before anything is decoded,
  * which textures may be decoded: a PNG or JPEG header of the declared `mimeType`, within `limits`, that agrees with the
  * declared size. The others become placeholders with a warning. Textures are admitted in order until the total pixel
- * budget is spent.
+ * budget is spent; textures sharing one bytes object count once.
  */
 export function planTextureDecode(textures: readonly SceneTexture[], limits: TextureLimits): TextureDecodePlan {
   const warnings: RendererWarning[] = [];
   let pixels = 0;
+  // Textures sharing one bytes object (one glTF image under two samplers) decode to the same pixels.
+  const admitted = new Set<Uint8Array>();
   const decode = textures.map((texture, index) => {
     if (texture.bytes === null || texture.missing) {
       warnings.push({
@@ -71,6 +73,7 @@ export function planTextureDecode(textures: readonly SceneTexture[], limits: Tex
       });
       return false;
     }
+    if (admitted.has(texture.bytes)) return true;
     if (pixels + width * height > limits.maxTexturePixelsTotal) {
       warnings.push({
         code: 'TEXTURE_TOO_LARGE',
@@ -80,6 +83,7 @@ export function planTextureDecode(textures: readonly SceneTexture[], limits: Tex
       return false;
     }
     pixels += width * height;
+    admitted.add(texture.bytes);
     return true;
   });
   return { decode, warnings };
@@ -113,22 +117,17 @@ export async function decodeTextures(
 ): Promise<DecodedTextures | null> {
   const plan = planTextureDecode(textures, limits);
   const warnings = [...plan.warnings];
+  const decoded = new Map<Uint8Array, Promise<ImageBitmap | null>>();
   const results = await Promise.all(
     textures.map(async (texture, index): Promise<ImageBitmap | null> => {
-      if (!plan.decode[index]) return null;
-      try {
-        const bitmap = await decodeOne(texture);
-        if (bitmap.width !== texture.width || bitmap.height !== texture.height) {
-          bitmap.close();
-          warnings.push({
-            code: 'TEXTURE_SIZE_MISMATCH',
-            texture: index,
-            message: `texture ${index} decodes to ${bitmap.width}x${bitmap.height}, its header says ${texture.width}x${texture.height}`,
-          });
-          return null;
-        }
-        return bitmap;
-      } catch {
+      if (!plan.decode[index] || !texture.bytes) return null;
+      let pending = decoded.get(texture.bytes);
+      if (!pending) {
+        pending = decodeOne(texture).catch(() => null);
+        decoded.set(texture.bytes, pending);
+      }
+      const bitmap = await pending;
+      if (!bitmap) {
         warnings.push({
           code: 'TEXTURE_DECODE_FAILED',
           texture: index,
@@ -136,6 +135,16 @@ export async function decodeTextures(
         });
         return null;
       }
+      if (bitmap.width !== texture.width || bitmap.height !== texture.height) {
+        bitmap.close();
+        warnings.push({
+          code: 'TEXTURE_SIZE_MISMATCH',
+          texture: index,
+          message: `texture ${index} decodes to ${bitmap.width}x${bitmap.height}, its header says ${texture.width}x${texture.height}`,
+        });
+        return null;
+      }
+      return bitmap;
     }),
   );
   if (!isCurrent()) {

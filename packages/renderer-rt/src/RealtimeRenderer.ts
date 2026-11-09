@@ -749,11 +749,28 @@ export class RealtimeRenderer {
     const loaded = this.loaded;
     if (!loaded) return;
     const gl = this.gl;
-    gpu.sceneTextures = loaded.bitmaps.map((bitmap) => (bitmap ? uploadTexture(gl, bitmap) : null));
+    // Textures sharing one image (the same bitmap) share one GL texture and one alpha read.
+    const uploaded = new Map<ImageBitmap, WebGLTexture>();
+    gpu.sceneTextures = loaded.bitmaps.map((bitmap) => {
+      if (!bitmap) return null;
+      let texture = uploaded.get(bitmap);
+      if (!texture) {
+        texture = uploadTexture(gl, bitmap);
+        uploaded.set(bitmap, texture);
+      }
+      return texture;
+    });
     if (!loaded.alphaLevels || !loaded.closedOpaque) {
+      const read = new Map<ImageBitmap, ReturnType<typeof readTextureAlpha>>();
       const alpha = loaded.bitmaps.map((bitmap, index) => {
         const texture = gpu.sceneTextures[index];
-        return bitmap && texture ? readTextureAlpha(gl, texture, bitmap.width, bitmap.height) : null;
+        if (!bitmap || !texture) return null;
+        let result = read.get(bitmap);
+        if (!result) {
+          result = readTextureAlpha(gl, texture, bitmap.width, bitmap.height);
+          read.set(bitmap, result);
+        }
+        return result;
       });
       loaded.alphaLevels = alpha.map((texture) => texture?.levels ?? null);
       // A texture without an image draws the opaque placeholder. The translucent-texel tables are needed only here;
@@ -785,7 +802,7 @@ export class RealtimeRenderer {
     const gpu = this.gpu;
     if (gpu && !this.lost) {
       if (gpu.scene) disposeGpuScene(this.gl, gpu.scene);
-      for (const texture of gpu.sceneTextures) if (texture) this.gl.deleteTexture(texture);
+      for (const texture of new Set(gpu.sceneTextures)) if (texture) this.gl.deleteTexture(texture);
     }
     if (gpu) {
       gpu.scene = null;
@@ -798,7 +815,7 @@ export class RealtimeRenderer {
   private releaseGpuResources(gpu: GpuResources): void {
     const gl = this.gl;
     if (gpu.scene) disposeGpuScene(gl, gpu.scene);
-    for (const texture of gpu.sceneTextures) if (texture) gl.deleteTexture(texture);
+    for (const texture of new Set(gpu.sceneTextures)) if (texture) gl.deleteTexture(texture);
     for (const program of gpu.programs.all) gl.deleteProgram(program);
     gpu.targets?.dispose();
     this.releaseExactSamples(gpu);
