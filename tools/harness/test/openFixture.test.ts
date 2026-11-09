@@ -19,6 +19,8 @@ const failedRequest = (url: string, errorText: string): PageEvent => [
   'requestfailed',
   { url: () => url, failure: () => ({ errorText }) },
 ];
+const started = (url: string): PageEvent => ['request', { url: () => url }];
+const finished = (request: PageEvent): PageEvent => ['requestfinished', request[1]];
 const response = (url: string, status: number): PageEvent => ['response', { url: () => url, status: () => status }];
 const consoleMessage = (type: string, text: string): PageEvent => ['console', { type: () => type, text: () => text }];
 
@@ -84,6 +86,32 @@ describe('openFixture', () => {
     expect(warn).toHaveBeenCalledOnce();
     expect(warn.mock.calls[0]?.[0]).toMatch(/^\[fixture reload\] \/pt\.html did not boot/);
     expect(warn.mock.calls[0]?.[0]).toContain('failed requests: /src/pt.ts (net::ERR_ABORTED)');
+  });
+
+  it('keeps waiting while a request is in flight: a loaded machine is slow, not hung', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { page, calls, handlers } = stubPage(2, [started('/src/pt.ts')]);
+    await openFixture(page, '/pt.html');
+    expect(calls).toEqual(['goto', 'wait', 'wait', 'wait']);
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]?.[0]).toMatch(/^[fixture slow] /pt.html has 1 request(s) in flight after 20000 ms/);
+    expect(warn.mock.calls[0]?.[0]).toContain('/src/pt.ts');
+    expect(listening(handlers)).toBe(0);
+  });
+
+  it('a request that finished leaves a page that never ran its module hung: it reloads', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const request = started('/src/pt.ts');
+    const { page, calls } = stubPage(1, [request, finished(request)]);
+    await openFixture(page, '/pt.html');
+    expect(calls).toEqual(['goto', 'wait', 'reload', 'wait']);
+  });
+
+  it('gives up on a request that never ends after 5 waits, then reloads', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { page, calls } = stubPage(5, [started('/src/pt.ts')]);
+    await openFixture(page, '/pt.html');
+    expect(calls).toEqual(['goto', 'wait', 'wait', 'wait', 'wait', 'wait', 'reload', 'wait']);
   });
 
   it('a page error does not reload: it fails at once and names the error', async () => {
