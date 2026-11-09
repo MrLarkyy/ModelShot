@@ -164,7 +164,7 @@ evaluates). A wait that ends with requests still in flight is a slow page (a loa
 load), not a hung one: it prints `[fixture slow]` with the requests and waits again, up to 5 waits (100 s) in all. A wait
 that ends with nothing in flight never ran its module: it prints the page's failed requests, responses >= 400, console
 errors and page errors under `[fixture reload]`. If the page threw (a page error), it fails at once; otherwise it reloads
-once, and a second boot failure fails with that list. A test that opens several fixtures (the closed double-sided boxes
+once, and a second boot failure fails with that list. With the slow path a request stuck in flight lets one boot wait up to 5 x 20 s before the reload, about 200 s across both boots; a test on the 60 s default or a 120 s describe timeout is ended by the test timeout first, and the `[fixture slow]` line is then the only trace. A test that opens several fixtures (the closed double-sided boxes
 open up to 6) sets its own timeout with room for them under load, not the 60 s default. A page once loaded without running
 its module (pt-gltf-contact in a full `pathtracer.spec.ts` run); the cause is unknown, so the reload is a guard and the
 printed list is the trace to find it. The landing handoff test at the limit (32 files, 256 MiB) asserts outcomes (the app

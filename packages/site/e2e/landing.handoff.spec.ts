@@ -218,7 +218,7 @@ test('a page restored from the back/forward cache shows an empty picker and no o
 // the store. The margin of the timeouts over the measured times is pinned without a clock, in
 // packages/app/test/putTimeoutMs.test.ts. The durations are printed for a human; a loaded machine stretches them
 // (put 2.6 s and more under 30 CPU spinners) without any bug.
-test('32 files of 256 MiB in total are stored and opened well within the timeouts', async ({ page }) => {
+test('32 files of 256 MiB in total are stored and opened without a storage timeout', async ({ page }) => {
   test.setTimeout(180_000);
   await openLanding(page, 1440);
   const started = Date.now();
@@ -235,19 +235,18 @@ test('32 files of 256 MiB in total are stored and opened well within the timeout
   const dropped = Date.now();
   // The put has its own timeout (21 s at the limit) and then says so in the alert of the landing page; the poll's limit
   // is only the backstop for a page that does neither, and the last value names what the page said.
+  const state = async (): Promise<string> =>
+    APP_URL.test(page.url())
+      ? 'app'
+      : await page
+          .locator('#drop-error')
+          .textContent({ timeout: 1000 })
+          .then((text) => text || 'waiting')
+          .catch(() => 'waiting');
   await expect
-    .poll(
-      async () =>
-        APP_URL.test(page.url())
-          ? 'app'
-          : await page
-              .locator('#drop-error')
-              .textContent({ timeout: 1000 })
-              .then((text) => text || 'waiting')
-              .catch(() => 'waiting'),
-      { message: 'the landing page opens the app with the stored files', timeout: 150_000, intervals: [250] },
-    )
-    .toBe('app');
+    .poll(state, { message: 'the landing page opens the app or shows an alert', timeout: 150_000, intervals: [250] })
+    .not.toBe('waiting');
+  expect(await state(), 'the landing page opens the app with the stored files').toBe('app');
   const stored = Date.now();
   // 32 buffers and no model: the app took all of them and says what is missing; a take that timed out says so instead.
   await expect(page.getByRole('alert')).toContainText('No model file', { timeout: 60_000 });
