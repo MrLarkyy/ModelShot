@@ -99,7 +99,9 @@ export async function openFixture(page: Page, url: string): Promise<FixtureInfo>
           if (!stillLoading) throw error;
           if (wait === 1) {
             const urls = [...trace.inFlight].map((request) => request.url()).join(' | ');
-            console.warn(`[fixture slow] ${url} has ${trace.inFlight.size} request(s) in flight after ${FIXTURE_BOOT_MS} ms, still waiting: ${urls}`);
+            console.warn(
+              `[fixture slow] ${url} has ${trace.inFlight.size} request(s) in flight after ${FIXTURE_BOOT_MS} ms, still waiting: ${urls}`,
+            );
           }
         }
       }
