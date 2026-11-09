@@ -1079,15 +1079,16 @@ Every dome golden is unchanged: the trace, the bake and the preview take the dom
 byte for byte on `pt-preset-marketplace`, `pt-cutout-checker`, `pt-turntable-y030`, `rt-preset-marketplace` and
 `rt-bake-cutout-checker`). A `@timing` test (project `bench`) times 64 samples at 128 × 128 on the bench scene under
 Softbox and Marketplace (median of 3: 2079 to 2211 ms against 1739 to 1911 ms locally, ratio 1.16 to 1.20): at most
-15000 ms and 1.6 times Marketplace, constants of `hdriLook.spec.ts`. CI medians, Softbox / Marketplace: 4941 / 4298 ms on
-an AMD EPYC 9V74 (run 41938074241), 6812 / 5758 ms and 6791 / 5714 ms on an Intel Xeon Platinum 8573C (runs 42603995894,
-42609514376), ratio 1.15 to 1.19; re-measured locally on a later day in three runs: 1.21, 1.21 and 1.27 (Softbox 1282 to
-1458 ms; one earlier single run read 1.42, Softbox 1263 ms, Marketplace 892 ms, not reproduced). The earlier 4500 ms (2x the first local run) failed on both runner types: Marketplace alone runs 2.2 to 3.3x
-slower than locally on the same runners (4298 to 5758 ms on CI against 1739 to 1911 ms locally; `pt-bench-128-n256`
-16824 ms in run 42603995894 on an AMD EPYC 9V74 against 4970 to 6096 ms locally, 2.8 to 3.4x), so this is runner spread,
-not a Softbox slowdown. 15000 ms is 3.0x the fast runner's Softbox median and 2.2x the slowest (the 3-4x rule, at least
-1.8x the slowest). It hides no regression: the ratio did not move between the first local run, CI and a later local run
-(1.15 to 1.27), and its limit of 1.6 is the Softbox-specific guard: on the CI runners measured it fails at a Softbox-only
+15000 ms and 1.6 times Marketplace, constants of `hdriLook.spec.ts`. CI medians, Softbox / Marketplace: 4941 / 4298 ms
+on an AMD EPYC 9V74 (run 41938074241), 6812 / 5758 ms and 6791 / 5714 ms on an Intel Xeon Platinum 8573C (runs
+42603995894, 42609514376), ratio 1.15 to 1.19; re-measured locally on a later day in three runs: 1.21, 1.21 and 1.27
+(Softbox 1282 to 1458 ms; one earlier single run read 1.42, Softbox 1263 ms, Marketplace 892 ms, not reproduced). The
+earlier 4500 ms (2x the first local run) failed on both runner types: Marketplace alone runs 2.2 to 3.3x slower than
+locally on the same runners (4298 to 5758 ms on CI against 1739 to 1911 ms locally; `pt-bench-128-n256` 16824 ms in run
+42603995894 on an AMD EPYC 9V74 against 4970 to 6096 ms locally, 2.8 to 3.4x), so this is runner spread, not a Softbox
+slowdown. 15000 ms is 3.0x the fast runner's Softbox median and 2.2x the slowest (the 3-4x rule, at least 1.8x the
+slowest). It hides no regression: the ratio did not move between the first local run, CI and a later local run (1.15 to
+1.27), and its limit of 1.6 is the Softbox-specific guard: on the CI runners measured it fails at a Softbox-only
 slowdown of about 1.4x (1.39x from the EPYC's 1.15, 1.34x from the Xeon's 1.19). The absolute limit only catches a
 tracer-wide slowdown beyond 3x, which the `pt-bench-128-n256` budget (max 52000 ms, 3.1x its CI measure) and
 `pt-bench-128-n64-x2-denoised` (max 73000 ms) catch too.
