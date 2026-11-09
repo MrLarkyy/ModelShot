@@ -1,5 +1,6 @@
 import type { OrbitController, OrbitState } from '@modelshot/renderer-rt';
 import type { App } from './App';
+import type { NodeEdit } from './session/NodeEdit';
 
 interface Pixels {
   readonly width: number;
@@ -14,9 +15,25 @@ export interface MsAppHook {
   setWatchdogMs(ms: number): void;
   hangNextLoad(): void;
   failNextScene(): void;
+  /** The next scene the app sets comes back not applied, as when the scene changed meanwhile. */
+  refuseNextScene(): void;
+  /** The next scene the app sets waits until `releaseScene`; `sceneHeld` tells once it waits. */
+  holdNextScene(): void;
+  sceneHeld(): boolean;
+  releaseScene(): void;
+  /** What a gizmo release commits; resolves whether the scene took the edit. */
+  commitNodeEdit(edit: NodeEdit): Promise<boolean>;
+  /** Sets the editor's relight delay (`RELIGHT_DELAY_MS`); false before the editor tools loaded. */
+  setRelightDelayMs(ms: number): boolean;
   previewPixels(): Pixels;
   renderPixels(): Promise<Pixels | null>;
   loseContext(): boolean;
+  /** Median milliseconds of the overlay's last draws; null before the editor tools loaded. */
+  overlayMedianMs(): number | null;
+  /** Pixels of the overlay layer that are not transparent. */
+  overlayPixels(): number;
+  /** The gizmo handles in CSS pixels of the viewport: the end points of each handle's first segment. */
+  gizmoHandles(): { axis: number; from: { x: number; y: number }; to: { x: number; y: number } }[];
 }
 
 declare global {
@@ -37,12 +54,25 @@ export function installE2eHook(app: App): void {
   const { viewer } = internals;
   if (!viewer) return;
   const preview = document.getElementById('preview') as HTMLCanvasElement;
+  let hold: ReturnType<typeof internals.holdNextScene> | null = null;
   window.__msApp = {
     orbit: viewer.orbit,
     state: () => viewer.orbit.state(),
     setWatchdogMs: internals.setWatchdogMs,
     hangNextLoad: internals.hangNextLoad,
     failNextScene: internals.failNextScene,
+    refuseNextScene: internals.refuseNextScene,
+    holdNextScene: () => {
+      hold = internals.holdNextScene();
+    },
+    sceneHeld: () => hold?.reached() ?? false,
+    releaseScene: () => hold?.release(),
+    commitNodeEdit: internals.commitNodeEdit,
+    setRelightDelayMs: (ms) => {
+      const tools = internals.editorTools();
+      if (tools) tools.relightDelayMs = ms;
+      return tools !== null;
+    },
     previewPixels: () => {
       viewer.renderNow();
       const copy = document.createElement('canvas');
@@ -59,6 +89,20 @@ export function installE2eHook(app: App): void {
       const image = tracer.readImage();
       return image ? { width: image.width, height: image.height, data: base64(image.data) } : null;
     },
+    overlayMedianMs: () => internals.editorTools()?.overlay.medianDrawMs ?? null,
+    overlayPixels: () => {
+      const overlay = document.getElementById('overlay') as HTMLCanvasElement;
+      const data = overlay.getContext('2d')?.getImageData(0, 0, overlay.width, overlay.height).data;
+      let count = 0;
+      for (let i = 3; data && i < data.length; i += 4) if ((data[i] ?? 0) > 0) count += 1;
+      return count;
+    },
+    gizmoHandles: () =>
+      (internals.editorTools()?.overlay.handles ?? []).flatMap((handle) => {
+        const from = handle.polyline[0];
+        const to = handle.polyline[1];
+        return from && to ? [{ axis: handle.axis, from, to }] : [];
+      }),
     loseContext: () => {
       const extension = preview.getContext('webgl2')?.getExtension('WEBGL_lose_context');
       extension?.loseContext();

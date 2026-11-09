@@ -69,6 +69,62 @@ describe('readModelState', () => {
     expect(readModelState(value)).toBeNull();
   });
 
+  it('reads an older record without the editor fields, and none of them appear', () => {
+    const read = readModelState(model());
+    expect(read).not.toBeNull();
+    for (const field of ['names', 'lockedNodes', 'lockedMeshes', 'nodeEdits']) expect(read).not.toHaveProperty(field);
+  });
+
+  it('reads names, locks and node edits', () => {
+    const edit = { node: 2, translation: [1, 0, -1], rotation: [0, 90, 0] };
+    expect(
+      readModelState(
+        model({ names: { 'n:0': 'Body', 'm:3': 'Eye' }, lockedNodes: [1], lockedMeshes: [0, 2], nodeEdits: [edit] }),
+      ),
+    ).toMatchObject({
+      names: { 'n:0': 'Body', 'm:3': 'Eye' },
+      lockedNodes: [1],
+      lockedMeshes: [0, 2],
+      nodeEdits: [edit],
+    });
+  });
+
+  it('drops bad names one by one', () => {
+    const read = readModelState(
+      model({
+        names: { 'n:0': 'ok', 'x:1': 'wrong key', 'n:-1': 'negative', 'm:2': 5, 'n:3': 'x'.repeat(129), 'n:4': '  ' },
+      }),
+    );
+    expect(read?.names).toEqual({ 'n:0': 'ok' });
+  });
+
+  it('drops bad node edits one by one and keeps the first for a node', () => {
+    const good = { node: 0, translation: [0, 1, 0], rotation: [0, 0, 0] };
+    const read = readModelState(
+      model({
+        nodeEdits: [
+          good,
+          { ...good, node: 1, translation: [0, NaN, 0] },
+          { ...good, node: 2, rotation: [0, 2e6, 0] },
+          { ...good, node: -1 },
+          { ...good, node: 3, translation: [1, 2] },
+          { ...good, translation: [9, 9, 9] },
+          'junk',
+        ],
+      }),
+    );
+    expect(read?.nodeEdits).toEqual([good]);
+  });
+
+  it('drops invalid locks and edit lists but keeps the rest of the record', () => {
+    const read = readModelState(model({ lockedNodes: [1.5], lockedMeshes: 'x', nodeEdits: 'x', names: [] }));
+    expect(read).not.toBeNull();
+    expect(read).not.toHaveProperty('lockedNodes');
+    expect(read).not.toHaveProperty('lockedMeshes');
+    expect(read).not.toHaveProperty('nodeEdits');
+    expect(read).not.toHaveProperty('names');
+  });
+
   it('refuses a record whose fields are getters, and never runs them', () => {
     let ran = false;
     const tampered = Object.defineProperty(model(), 'look', {

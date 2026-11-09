@@ -43,7 +43,7 @@ export async function exportClip(
   if (checked.kind === 'still') {
     throw new ExportError('INVALID_OPTION', 'kind must be turntable or animation for exportClip', 'kind');
   }
-  const { signal, onProgress } = run;
+  const { signal, onProgress, pose } = run;
   throwIfCancelled(signal);
   const { width, height, fps } = checked;
   const { probeFormats } = await import('./probeFormats');
@@ -59,7 +59,7 @@ export async function exportClip(
       message: `${format === 'mp4' ? 'MP4' : 'WebM'} video has no alpha here, so the clip was rendered opaque, over the backdrop.`,
     });
   }
-  const { frames, catcherBounds } = await planFrames(doc, checked, signal);
+  const { frames, catcherBounds } = await planFrames(doc, checked, signal, pose);
   sizeRenderer(renderer, width, height);
   const sceneOptions = catcherBounds ? { ...checked.scene, catcherBounds } : checked.scene;
   const progress = new ProgressReporter(frames.length, checked.samples, onProgress);
@@ -80,7 +80,7 @@ export async function exportClip(
     for (const frame of frames) {
       // Each pose is built right before it is shown; a still document is shown once.
       if (checked.kind === 'animation') {
-        await showScene(renderer, framePose(doc, checked, frame.time), sceneOptions, signal);
+        await showScene(renderer, framePose(doc, checked, frame.time, pose), sceneOptions, signal);
       } else if (frame.index === 0) {
         await showScene(renderer, doc, sceneOptions, signal);
       }

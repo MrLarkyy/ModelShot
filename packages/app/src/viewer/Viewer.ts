@@ -42,11 +42,13 @@ export interface ViewerOptions {
   readonly view?: ViewerView;
   /**
    * A light bake of the shown document started (a new document or look); `onBakeSettled` follows unless another bake
-   * starts first. Both are called for the latest bake only.
+   * starts first or a `setDocument` with `bake: false` drops it. Both are called for the latest bake only.
    */
   readonly onBakeStarted?: () => void;
   /** A light bake settled: `lit` when the preview carries its light, false when it shows unbaked light. */
   readonly onBakeSettled?: (lit: boolean) => void;
+  /** A frame was drawn (`renderNow` included) with this camera: what an overlay on top of the canvas projects with. */
+  readonly onFrame?: (camera: SceneCamera) => void;
 }
 
 // The realtime preview of the app: renderer, orbit camera and input, light bake. No panel DOM, so the embed reuses it.
@@ -61,6 +63,7 @@ export class Viewer {
   private frame = 0;
   private lastTime = 0;
   private disposed = false;
+  private documentsPending = 0;
   private readonly cleanups: (() => void)[] = [];
 
   private constructor(
@@ -100,12 +103,29 @@ export class Viewer {
     return this.look;
   }
 
+  /** A `setDocument` is under way: its document replaces the one shown, which a bake now would light. */
+  get settingDocument(): boolean {
+    return this.documentsPending > 0;
+  }
+
   /**
    * Shows `doc`. `reframe` takes its bounds as the camera's reference and frames them from the default angles; without
-   * it the camera stays (a visibility change). The renderer keeps the previous scene when this rejects.
+   * it the camera stays (a visibility change). The renderer keeps the previous scene when this rejects. `bake: false`
+   * leaves the light to the caller, who bakes next anyway (a look) or shows another pose and relights that: a bake of
+   * `doc` would only be superseded, and a bake under way is dropped with it.
    */
-  async setDocument(doc: SceneDocument, reframe: boolean): Promise<SetSceneResult> {
-    const result = await this.renderer.setScene(doc);
+  async setDocument(
+    doc: SceneDocument,
+    reframe: boolean,
+    options: { readonly bake?: boolean } = {},
+  ): Promise<SetSceneResult> {
+    this.documentsPending++;
+    let result: SetSceneResult;
+    try {
+      result = await this.renderer.setScene(doc);
+    } finally {
+      this.documentsPending--;
+    }
     if (!result.applied || this.disposed) return result;
     this.doc = doc;
     if (reframe) {
@@ -115,8 +135,29 @@ export class Viewer {
       this.orbit.reset(this.bounds);
     }
     this.changed();
-    void this.bake();
+    if (options.bake ?? true) void this.bake();
+    else this.bakeGeneration++;
     return result;
+  }
+
+  /**
+   * Shows another pose of the shown document (an animation frame, a node drag) on the renderer's pose-only path: nothing
+   * is decoded, uploaded or baked and the camera stays. `doc` must share the shown document's meshes, materials and
+   * textures arrays; await `setDocument` first. While a `setDocument` is under way the pose is not taken (`applied:
+   * false`, the renderer untouched): it would supersede the decode of that document.
+   */
+  async setPose(doc: SceneDocument): Promise<SetSceneResult> {
+    if (this.documentsPending > 0) return { applied: false, warnings: [] };
+    const result = await this.renderer.setScene(doc);
+    if (!result.applied || this.disposed) return result;
+    this.doc = doc;
+    this.requestRender();
+    return result;
+  }
+
+  /** Bakes the light again for the document as shown, a pose included: the preview carries the shadows of what it shows. */
+  relight(): void {
+    void this.bake();
   }
 
   /** Changes the angles `resetView` and the angles and field of view the next model starts at; the camera stays. */
@@ -137,12 +178,16 @@ export class Viewer {
     this.changed();
   }
 
-  /** Draws with `look` and bakes the light under it. */
-  setLook(look: LookPreset): void {
+  /**
+   * Draws with `look` and bakes the light under it; `bake: false` leaves the bake to the caller, who bakes or relights
+   * next (a scene that changes with the look), and drops a bake under way.
+   */
+  setLook(look: LookPreset, options: { readonly bake?: boolean } = {}): void {
     this.look = look;
     this.renderer.setLook(look);
     this.changed();
-    void this.bake();
+    if (options.bake ?? true) void this.bake();
+    else this.bakeGeneration++;
   }
 
   /** Called after something moved the orbit controller from outside (a panel, a shortcut, restored state). */
@@ -167,6 +212,7 @@ export class Viewer {
     this.orbit.update(1e9);
     this.renderer.setCamera(this.orbit.camera());
     renderSettled(this.renderer);
+    this.options.onFrame?.(this.orbit.camera());
   }
 
   dispose(): void {
@@ -186,6 +232,7 @@ export class Viewer {
     const moving = this.orbit.update(dt);
     this.renderer.setCamera(this.orbit.camera());
     this.renderer.render();
+    this.options.onFrame?.(this.orbit.camera());
     if (moving) this.options.onChange();
     if (moving || this.renderer.needsRender) this.requestRender();
     else this.lastTime = 0;

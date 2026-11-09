@@ -4,6 +4,7 @@
     "gradient-256": { "max": 5 },
     "rt-bench-512": { "max": 6000 },
     "rt-bench-order-512": { "max": 5000 },
+    "rt-pose-step-512": { "max": 10200 },
     "rt-frame-partial-edge-512": { "max": 1500 },
     "rt-load-first-frame-200k-order": { "max": 7000 },
     "rt-load-first-frame-200k-edges": { "max": 7000 },
@@ -22,8 +23,8 @@
     "pt-bench-128-n64-x2-denoised": { "max": 73000 }
   },
   "bundleGzipBytes": {
-    "app": { "max": 204000 },
-    "app-entry": { "max": 66100 },
+    "app": { "max": 223100 },
+    "app-entry": { "max": 79600 },
     "embed": { "max": 3200 },
     "embed-frame": { "max": 180400 },
     "site": { "max": 11600 },

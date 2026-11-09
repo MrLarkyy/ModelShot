@@ -1,5 +1,7 @@
 import { el } from '../ui/dom';
-import { SHORTCUTS } from './shortcutAction';
+import { SHORTCUTS, type ShortcutGroup } from './shortcutAction';
+
+const GROUPS: readonly ShortcutGroup[] = ['File', 'View', 'Selection', 'Timeline'];
 
 const VIEWPORT_KEYS: readonly [string, string][] = [
   ['Arrows', 'Orbit (in the 3D view)'],
@@ -19,8 +21,10 @@ export class HelpDialog {
     close.addEventListener('click', () => this.close());
     dialog.replaceChildren(
       el('h2', { id: 'help-title', text: 'Keyboard shortcuts' }),
-      el('h3', { text: 'Anywhere' }),
-      el('dl', {}, rows(SHORTCUTS.map((s) => [s.keys, s.label]))),
+      ...GROUPS.flatMap((group) => [
+        el('h3', { text: group }),
+        el('dl', {}, rows(SHORTCUTS.filter((s) => s.group === group).map((s) => [s.keys, s.label]))),
+      ]),
       el('h3', { text: 'In the 3D view' }),
       el('dl', {}, rows(VIEWPORT_KEYS)),
       close,

@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
-import { fixture } from './appTest';
+import { fixture, openTab } from './appTest';
 
 // No request filter here: the service worker's own requests must work, and the network is cut with setOffline.
 test('after the first load the whole flow works offline, export included', async ({ page, context }) => {
@@ -27,6 +27,8 @@ test('after the first load the whole flow works offline, export included', async
   await page.locator('#file-input').setInputFiles([fixture('bbmodel', 'single-cube.bbmodel')]);
   await expect(page.getByRole('status')).toContainText('Opened single-cube.bbmodel', { timeout: 30_000 });
   await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 60_000 });
+
+  await openTab(page, 'Render');
 
   const samples = page.locator('#render-panel').getByLabel('Samples');
   await samples.fill('4');

@@ -1,4 +1,4 @@
-import { expect, fixture, openApp, openFiles, pixelAt, test, waitForModel } from './appTest';
+import { expect, fixture, openApp, openFiles, openTab, pixelAt, test, waitForModel } from './appTest';
 import type { Page } from '@playwright/test';
 
 const CUBE = fixture('bbmodel', 'single-cube.bbmodel');
@@ -9,6 +9,7 @@ async function openCube(page: Page): Promise<void> {
   await openApp(page);
   await openFiles(page, [CUBE], 'single-cube.bbmodel');
   await waitForModel(page);
+  await openTab(page, 'Render');
 }
 
 test('starts at the three-quarter view, yaw 210 and pitch 20', async ({ page }) => {

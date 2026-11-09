@@ -1150,8 +1150,20 @@ preview (baked) vs render within 3.3 levels (measured 92.92 / 95.56, x 1.25; `li
 Every dome golden is unchanged: the trace, the bake and the preview take the dome's branch of a uniform kind (checked
 byte for byte on `pt-preset-marketplace`, `pt-cutout-checker`, `pt-turntable-y030`, `rt-preset-marketplace` and
 `rt-bake-cutout-checker`). A `@timing` test (project `bench`) times 64 samples at 128 × 128 on the bench scene under
-Softbox and Marketplace (median of 3: 2079 to 2211 ms against 1739 to 1911 ms, ratio 1.16 to 1.20): at most 4500 ms and
-1.6 times Marketplace, constants of `hdriLook.spec.ts`.
+Softbox and Marketplace (median of 3: 2079 to 2211 ms against 1739 to 1911 ms locally, ratio 1.16 to 1.20): at most
+15000 ms and 1.6 times Marketplace, constants of `hdriLook.spec.ts`. CI medians, Softbox / Marketplace: 4941 / 4298 ms
+on an AMD EPYC 9V74 (run 41938074241), 6812 / 5758 ms and 6791 / 5714 ms on an Intel Xeon Platinum 8573C (runs
+42603995894, 42609514376), ratio 1.15 to 1.19; re-measured locally on a later day in three runs: 1.21, 1.21 and 1.27
+(Softbox 1282 to 1458 ms; one earlier single run read 1.42, Softbox 1263 ms, Marketplace 892 ms, not reproduced). The
+earlier 4500 ms (2x the first local run) failed on both runner types: Marketplace alone runs 2.2 to 3.3x slower than
+locally on the same runners (4298 to 5758 ms on CI against 1739 to 1911 ms locally; `pt-bench-128-n256` 16824 ms in run
+42603995894 on an AMD EPYC 9V74 against 4970 to 6096 ms locally, 2.8 to 3.4x), so this is runner spread, not a Softbox
+slowdown. 15000 ms is 3.0x the fast runner's Softbox median and 2.2x the slowest (the 3-4x rule, at least 1.8x the
+slowest). It hides no regression: the ratio did not move between the first local run, CI and a later local run (1.15 to
+1.27), and its limit of 1.6 is the Softbox-specific guard: on the CI runners measured it fails at a Softbox-only
+slowdown of about 1.4x (1.39x from the EPYC's 1.15, 1.34x from the Xeon's 1.19). The absolute limit only catches a
+tracer-wide slowdown beyond 3x, which the `pt-bench-128-n256` budget (max 52000 ms, 3.1x its CI measure) and
+`pt-bench-128-n64-x2-denoised` (max 73000 ms) catch too.
 
 The look review page `review.html` (harness only, no build ships it) renders a `.bbmodel` the user picks (read from
 the file input, nothing fetched; none: the harness player with a held cube) under a preset, side by side: the baked
@@ -1599,6 +1611,18 @@ round 7); its max was 750 ms then.
 - `bundleGzipBytes` `app` 204 000, `app-entry` 66 100 and `embed-frame` 180 400 (MS-85: the shipped builds strip GLSL
   comments and redundant whitespace; measured before 215 145, 70 139 and 193 867 B, after 185 394, 60 087 and 163 921 B,
   gzip level 9, plus 10 %, rounded up to 100; the other rows are unchanged).
+- `bundleGzipBytes` `app` 223 100 and `app-entry` 79 600 (MS-34, 2026-11-04: the editor layout, outliner, inspector,
+  layout store and dark stylesheet; the overlay, picking, gizmo and timeline are a lazy chunk and count only in `app`.
+  Measured on origin/main eb38591 185 746 and 60 094 B, with MS-34 203 043 and 72 291 B, gzip level 9; each max is the
+  old max plus the measured growth plus 10 %, rounded up to 100. `embed-frame` 165 081 to 165 115 B, within its max.)
+- `frameTimeMs.rt-pose-step-512` (MS-34): one playback frame of the editor on the bench scene (128 group nodes, a
+  rotation channel per node): `animateScene`, the renderer's pose-only `setScene` (no decode, upload or bake) and the
+  render at 512 x 512, each timed until the GPU finished; median of 11 frames after 4 (`renderPoseFrames`, installed by
+  `installPoseBench` in `fixtures/src/bench.ts`, which also throws when the renderer's `lightmapLayout` changes, so a
+  frame that left the pose-only path fails whatever its time). Local SwiftShader medians 849.9, 1060.2 and 1017.5 ms against 947 to 983 ms for
+  `rt-bench-512` in the same sessions (the pose step costs no more than the frame, so playback is not a load or an
+  upload); max 10 200 ms, 10x the middle run, rounded up. The app's own frame cost is asserted in
+  `e2e/app.motion.spec.ts`: the overlay's median draw time at most 2 ms.
 - `bakeTimeMs.bake-bench-n16` (MS-16): `LightBaker.bake` of the benchmark scene in its worker, 16 samples with the
   shadow catcher (lightmap 2048 wide, catcher 512 x 512), from the call to the final lighting, median of 3. Local
   SwiftShader 22 873, 22 113 and 22 141 ms; max 222 000 ms (10x the middle run, rounded up). Each run is asserted

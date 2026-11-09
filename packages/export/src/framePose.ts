@@ -6,9 +6,15 @@ import { ExportError } from './ExportError';
  * The pose of an animation export at playback `time`, computed from the rest pose (`animateScene`), so frame i is
  * what a seek to that time shows. A malformed animation throws `ExportError` `INVALID_OPTION` naming `animation`.
  */
-export function framePose(doc: SceneDocument, options: CheckedAnimationOptions, time: number): SceneDocument {
+export function framePose(
+  doc: SceneDocument,
+  options: CheckedAnimationOptions,
+  time: number,
+  pose?: (pose: SceneDocument) => SceneDocument,
+): SceneDocument {
+  let sampled: SceneDocument;
   try {
-    return animateScene(doc, { animation: options.animation, time, loop: options.loop }).document;
+    sampled = animateScene(doc, { animation: options.animation, time, loop: options.loop }).document;
   } catch (error) {
     throw new ExportError(
       'INVALID_OPTION',
@@ -17,4 +23,5 @@ export function framePose(doc: SceneDocument, options: CheckedAnimationOptions, 
       { cause: error },
     );
   }
+  return pose ? pose(sampled) : sampled;
 }

@@ -1,3 +1,4 @@
+import type { SceneDocument } from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
 import { ExportError } from '../src/ExportError';
 import type { ExportProgress } from '../src/ExportOptions';
@@ -209,6 +210,25 @@ describe('exportClip', () => {
     const gif = decodeGif(await blobBytes(result.blob));
     expect(gif.frames).toHaveLength(4);
     expect(gif.frames.map((f) => f.delayCs)).toEqual([25, 25, 25, 25]);
+  });
+
+  it('applies the pose step to every sampled frame and to the bounds of the shadow catcher', async () => {
+    const renderer = new FakeRenderer();
+    const lift = (pose: SceneDocument): SceneDocument => ({
+      ...pose,
+      nodes: pose.nodes.map((node) => ({ ...node, translation: [node.translation[0], node.translation[1] + 10, 0] })),
+    });
+    await exportClip(
+      renderer,
+      doc,
+      { ...STILL, kind: 'animation', format: 'gif', fps: 4, animation: 'slide', seconds: 1 },
+      { pose: lift },
+    );
+    expect(renderer.scenes).toHaveLength(4);
+    // The clip is sampled first (x slides), then the step lifts every frame.
+    expect(renderer.scenes.map((s) => s.nodes[0]?.translation[0])).toEqual([0, 0.5, 1, 1.5]);
+    for (const s of renderer.scenes) expect(s.nodes[0]?.translation[1]).toBe(10);
+    expect(renderer.sceneOptions[0]?.catcherBounds?.min[1]).toBe(9);
   });
 
   it('falls back along the chain where the browser lacks an encoder, and renders video opaque', async () => {

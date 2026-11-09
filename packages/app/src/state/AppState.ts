@@ -3,6 +3,7 @@ import type { SceneTextureFilter } from '@modelshot/scene';
 import type { ExportSettings } from '../export/ExportSettings';
 import type { PlayerArmsChoice } from '../intake/LoadMessages';
 import type { RenderSettingsValues } from '../render/RenderSettings';
+import type { NodeEdit } from '../session/NodeEdit';
 
 export const APP_STATE_VERSION = 1;
 export const APP_DB = 'modelshot-app';
@@ -31,6 +32,13 @@ export interface ModelState {
   /** Filter per `SceneDocument.textures` index; absent in records saved before the control existed. */
   readonly textureFilters?: readonly SceneTextureFilter[];
   readonly arms?: PlayerArmsChoice;
+  /** App labels by "n:<node index>" and "m:<mesh index>"; the scene document keeps its own names. Absent in older records. */
+  readonly names?: Readonly<Record<string, string>>;
+  /** Indices of locked nodes and meshes (no picking, no transform). Absent in older records. */
+  readonly lockedNodes?: readonly number[];
+  readonly lockedMeshes?: readonly number[];
+  /** Rest-space transforms the user gave nodes with the gizmo or the Object tab. Absent in older records. */
+  readonly nodeEdits?: readonly NodeEdit[];
   readonly render: RenderSettingsValues;
   readonly export?: ExportSettings;
   readonly savedAt: number;
