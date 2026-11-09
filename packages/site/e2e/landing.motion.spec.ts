@@ -59,7 +59,7 @@ for (const width of [360, 1440]) {
     const before = await layoutShiftTotal(page);
     // A fixed observation window over the ambient loops (up to 8 s); not a wait for a result.
     await page.waitForTimeout(4000);
-    expect(await layoutShiftTotal(page) - before).toBe(0);
+    expect((await layoutShiftTotal(page)) - before).toBe(0);
   });
 }
 
