@@ -6,7 +6,14 @@ uploaded ([privacy](#privacy)).
 
 ## Flow
 
-1. Files arrive by drop on the page, the Open button (Ctrl/Cmd+O) or the landing page's handoff ([site.md](site.md)).
+1. Files arrive by drop on the page, the Open button (Ctrl/Cmd+O) or the landing page's handoff ([site.md](site.md)). With
+   no model open the stage is the empty state: a card that says what to open (Blockbench, glTF/GLB and OBJ models with
+   their textures, player skins), that the file stays in the tab and is never uploaded, a primary Open… with its
+   shortcut, and three entry cards (Blockbench model, Player skin, glTF or OBJ) that open the picker narrowed to their
+   kind. A drag of files over the page highlights the card (a dashed blue border); with a model open the full "Drop to
+   open" overlay shows instead. A drop takes the same path as the picker: the dialog and export guard, `checkIntake`,
+   the same limits and errors. After the first model opens, a one-time row names the keys worth knowing; its close
+   button dismisses it for good.
 2. `intake/checkIntake.ts` applies the handoff limits to every path. `intake/groupFiles.ts` turns the files into one
    load request: one model (`.bbmodel .gltf .glb .obj`) with its resources (`.bin .png .jpg .jpeg .mtl`), or a lone
    `.png`, which is a player skin on the player model (a lone `.jpg` is `NO_MODEL`: skins are PNG). Several models are
@@ -45,7 +52,9 @@ renderer's pose-only path (no decode, upload or bake).
 
 ## Files and limits
 
-At most 32 files, 256 MiB in total, extensions `.bbmodel .gltf .glb .bin .obj .mtl .png .jpg .jpeg`. Error codes, shown
+At most 32 files, 256 MiB in total, extensions `.bbmodel .gltf .glb .bin .obj .mtl .png .jpg .jpeg`. The picker's `accept`
+is that list (`intake/pickerAccept.ts`, a test pins `#file-input` to it); an entry card narrows it to its kind (a skin
+to `.png`), and every opener sets it before the click, so a cancelled narrow pick never leaks into the next Open. Error codes, shown
 in a `role="alert"` element within 5 s: `EMPTY`, `TOO_MANY`, `TOO_LARGE`, `UNSUPPORTED_TYPE` (limits),
 `MULTIPLE_MODELS`, `NO_MODEL`, `LOAD_TIMEOUT` (30 s), `LOAD_FAILED` (worker crash), and the code of the loader that
 refused the file (its own limits: elements, triangles, texture size, nesting). A model never triggers a request;
@@ -66,6 +75,13 @@ in the middle, the inspector on the right and the timeline below.
   it. Rows: Open… (Ctrl+O), Export… (Ctrl+E), Shortcuts (?), a separator, then "Forget local data" (the destructive
   class); the shortcut hints are keycaps hidden from assistive technology (`aria-keyshortcuts` is on the File
   button), and the privacy note is a footer paragraph that Tab skips.
+- **Empty state**: the card sits on the stage over a token gradient (the stage is `#viewport[data-empty]`; the preview
+  canvas keeps its box but is not shown, so the render size stays valid and the realtime backdrop and the render are
+  untouched). The chips and the stats are hidden while empty. The Outliner, Inspector and Timeline each say what opens
+  them. The timeline is a one-row bar without its separator when no model is open or the model has no animation
+  (`#timeline[data-empty]`), and the full panel for one with clips.
+- **First-run row**: `#first-run-hint` (a region "Shortcut hints") over the view, below the chips: keys from
+  `SHORTCUTS`, drag to orbit and scroll to zoom. Dismissing it moves the focus to the 3D view.
 - **Model dot**: next to the model name, `#model-state` is a dot (lit, lighting, or unbaked) whose text, such as
   "Preview lit.", is kept for assistive technology (`aria-live="polite"`, not a status role).
 - **Render bar**: floats at the bottom centre of the view: Render (primary) with the sample count from the Render tab
@@ -160,6 +176,9 @@ list in the app (`?`, grouped File, View, Selection, Timeline) is built from `SH
 
 ## Local state v1
 
+The dismissed shortcut hint is one flag in `localStorage` key `modelshot-hints-v1` (`state/HintStore.ts`; a blocked store
+never throws). "Forget local data" clears it and the dialog names it, so the row shows again after the next open.
+
 IndexedDB `modelshot-app`, version 1, on this device only:
 
 - store `session`, key `current`: `{ v: 1, files, modelKey, savedAt }`, the files of the last open model, reopened on
@@ -194,7 +213,7 @@ Content Security Policy (`default-src 'self'`, `worker-src 'self'`, no inline co
 
 No request carries a body or leaves the origin; no analytics, fonts or scripts from elsewhere. Models, skins and state
 stay in the browser (`test/localFirst.test.ts`, `e2e/app.network.spec.ts`). Share hands a PNG to the operating system's
-share sheet on a click; the app makes no request for it. The File menu footer says where the data is kept.
+share sheet on a click; the app makes no request for it. The empty state says it in one line: "Your file stays in this browser tab and is never uploaded." The File menu footer says where the data is kept.
 
 ## Visual system
 
@@ -212,7 +231,7 @@ Three layers, so a screen picks classes and never a colour (MS-101; MS-102..110 
 
 Type: Manrope 500 at 13 px for the body, 700 for labels and buttons, 12 px for captions and hints, an 11 px uppercase
 overline for panel headings (`.overline`, `.panel-head h2`), IBM Plex Mono for numbers (readouts, number fields,
-stats, keycaps), Unbounded only for the logo and the drop overlay (the empty message is Manrope). Controls inherit the
+stats, keycaps), Unbounded only for the logo, the drop overlay and the title of the empty card. Controls inherit the
 font (`font: inherit`).
 
 Element defaults (no class needed): `button` is the secondary button (transparent, 1 px `--ed-line-strong` border, 32
@@ -242,6 +261,9 @@ buttons are blue on the real screens.
 
 ## Accessibility
 
+The empty card is a section named by its heading, Open carries `aria-keyshortcuts`, and the entry cards are buttons; the
+first-run row is a named region whose dismiss button hands the focus to the 3D view.
+
 Landmarks (header, outliner `nav`, view `main`, inspector `aside`, timeline `section`, the toast and error line over the view),
 every control labelled, visible focus (a 3 px `--ms-color-blue-mid` ring, 2 px off the control, on every control of
 the dark workspace; the viewport chips sit over the 3D view, so their ring has a ground halo under it), errors in
@@ -259,6 +281,9 @@ flow, formats, camera, persistence, hostile files, offline, network, handoff, ac
 and the editor: `app.editor.spec.ts` (outliner, picking, gizmo, undo, names and locks), `app.timeline.spec.ts`,
 `app.topbar.spec.ts` (one row from 1440 to 900 px, More below, one primary, the File menu from the keyboard, the forget
 dialog), `app.render.spec.ts` (render start, Stop and Esc, numbers, result line, the view keeps its size),
+`app.empty.spec.ts` (the empty state at 1440 and 375 px, keyboard Open, entry cards and their accept, drag-over and drop,
+unsupported and truncated files, no band under the canvas, the empty panels and the timeline bar, the first-run row;
+the `firstRunHint` fixture option shows the row, otherwise every spec starts with it dismissed),
 `app.layout.spec.ts` (1280, 1440, 1920 and 900 px with screenshots in `test-results` for review, resize, collapse,
 drawers), `app.overlay.spec.ts` (toggles; overlays never in the preview, render or export), `app.motion.spec.ts`
 (reduced motion, overlay draw time) and `app.system.spec.ts` (the control specimen and its goldens, blue only on

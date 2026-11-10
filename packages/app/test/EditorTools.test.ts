@@ -31,6 +31,7 @@ class FakeElement {
   setAttribute(): void {}
   append(): void {}
   replaceChildren(): void {}
+  toggleAttribute(): void {}
   addEventListener(type: string, listener: Listener): void {
     this.listeners.set(type, listener);
   }

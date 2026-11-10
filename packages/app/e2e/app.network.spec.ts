@@ -81,3 +81,19 @@ test('the page makes no request while a model is dropped on it, and a dropped fi
   await expect(page.getByRole('alert')).toContainText('dropped.bbmodel');
   expect(requests.filter((url) => !url.includes('/assets/'))).toEqual([]);
 });
+
+test.describe('first run hint', () => {
+  test.use({ firstRunHint: true });
+
+  test('showing and dismissing the shortcut hint makes no request', async ({ page }) => {
+    await openApp(page);
+    await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
+    const requests: string[] = [];
+    page.on('request', (request) => requests.push(request.url()));
+    const hint = page.getByRole('region', { name: 'Shortcut hints' });
+    await expect(hint).toBeVisible();
+    await hint.getByRole('button', { name: 'Dismiss shortcut hints' }).click();
+    await expect(hint).toBeHidden();
+    expect(requests.filter((url) => !url.includes('/assets/'))).toEqual([]);
+  });
+});

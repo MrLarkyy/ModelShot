@@ -36,7 +36,7 @@ function armsControl(arms: PlayerArmsChoice, onChange: (arms: PlayerArmsChoice) 
 // The Object tab: label, visibility and lock of the selected node or element, the position and rotation of its node,
 // and the player arms of a skin.
 export function buildObjectTab(model: InspectorModel | null, host: ObjectTabHost): HTMLElement[] {
-  if (!model) return [el('p', { className: 'hint', text: 'No model open.' })];
+  if (!model) return [el('p', { className: 'hint', text: 'Open a model to edit its objects, materials and light.' })];
   const parts: HTMLElement[] = [];
   const target = model.selection;
   if (model.player) parts.push(armsControl(model.player.arms, host.setArms));

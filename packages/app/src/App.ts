@@ -10,6 +10,9 @@ import { describeHandoff } from './handoff/describeHandoff';
 import { takeHandoffFiles } from './handoff/fileHandoff';
 import { UndoStack } from './history/UndoStack';
 import { bindDrop } from './intake/bindDrop';
+import { PICKER_ACCEPT, entryAccept, type EntryKind } from './intake/pickerAccept';
+import { HintStore } from './state/HintStore';
+import { FirstRunHint } from './ui/FirstRunHint';
 import { checkIntake } from './intake/checkIntake';
 import { groupFiles, type LoadRequest } from './intake/groupFiles';
 import { IntakeError } from './intake/IntakeError';
@@ -116,6 +119,10 @@ export class App {
   private renderDoneSamples = 0;
   private readonly progress = byId('progress', HTMLProgressElement);
   private readonly fileInput = byId('file-input', HTMLInputElement);
+  private readonly emptyCard = byId('empty', HTMLElement);
+  private readonly stageView = byId('viewport', HTMLElement);
+  private readonly hintStore: HintStore;
+  private readonly firstRunHint: FirstRunHint;
   private viewer: Viewer | null = null;
   private tools: EditorTools | null = null;
   private toolsLoading = false;
@@ -164,6 +171,10 @@ export class App {
       undefined,
       () => this.layoutStore.reset(),
     );
+    this.hintStore = new HintStore(browserStorage(), (message) => this.notices.storage(message));
+    this.firstRunHint = new FirstRunHint(byId('first-run-hint', HTMLElement), this.hintStore, () =>
+      byId('preview', HTMLCanvasElement).focus(),
+    );
     this.panelLayout = new PanelLayout(this.layoutStore);
     try {
       this.viewer = Viewer.create(byId('preview', HTMLCanvasElement), {
@@ -209,7 +220,7 @@ export class App {
         setLocked: (kind, index, locked) => this.setLocked(kind, index, locked),
         rename: (kind, index, name) => this.rename(kind, index, name),
         selectLight: (light) => this.showLight(light),
-        openFiles: () => this.fileInput.click(),
+        openFiles: () => this.openPicker(),
       },
       byId('add-menu', HTMLElement),
     );
@@ -514,6 +525,7 @@ export class App {
     viewer.changed();
     this.modelName.textContent = open.loaded.name;
     this.modelName.title = open.loaded.name;
+    this.firstRunHint.show();
     this.showPanels();
     void this.startTools();
     const notes = [...open.loaded.warnings, ...result.warnings.map((w) => w.message)];
@@ -587,7 +599,11 @@ export class App {
 
   private showPanels(): void {
     const open = this.open;
-    byId('empty', HTMLElement).hidden = open !== null;
+    this.emptyCard.hidden = open !== null;
+    // The preview canvas keeps its box while empty (the size stays valid); the stage shows the token gradient instead.
+    this.stageView.toggleAttribute('data-empty', open === null);
+    if (open === null) byId('timeline', HTMLElement).setAttribute('data-empty', '');
+    if (open === null) this.firstRunHint.hide();
     this.scenePanel.show(
       open && this.base
         ? {
@@ -1049,6 +1065,12 @@ export class App {
     });
   }
 
+  // Every opener sets the accept list first, so a narrowed pick that was cancelled never leaks into the next one.
+  private openPicker(kind?: EntryKind): void {
+    this.fileInput.accept = kind ? entryAccept(kind) : PICKER_ACCEPT;
+    this.fileInput.click();
+  }
+
   private askForget(): void {
     if (!this.forgetDialog.open) this.forgetDialog.showModal();
   }
@@ -1056,6 +1078,7 @@ export class App {
   private async forget(): Promise<void> {
     try {
       await this.persistence.forget();
+      this.hintStore.reset();
       this.notices.status('Local data deleted: the last model and your settings are gone from this browser.');
     } catch (error) {
       this.notices.alert(`Could not delete the local data: ${error instanceof Error ? error.message : String(error)}`);
@@ -1077,7 +1100,15 @@ export class App {
     bindTopBar();
     bindDisclosure(byId('file-menu-button', HTMLButtonElement), byId('file-menu', HTMLElement));
     bindDisclosure(byId('add-menu-button', HTMLButtonElement), byId('add-menu', HTMLElement));
-    openButton.addEventListener('click', () => this.fileInput.click());
+    openButton.addEventListener('click', () => this.openPicker());
+    byId('empty-open', HTMLButtonElement).addEventListener('click', () => this.openPicker());
+    for (const [id, kind] of [
+      ['entry-bbmodel', 'bbmodel'],
+      ['entry-skin', 'skin'],
+      ['entry-gltf', 'gltf-obj'],
+    ] as const) {
+      byId(id, HTMLButtonElement).addEventListener('click', () => this.openPicker(kind));
+    }
     this.fileInput.addEventListener('change', () => {
       const files = [...(this.fileInput.files ?? [])];
       this.fileInput.value = '';
@@ -1117,16 +1148,24 @@ export class App {
       this.notices.clearAlert();
       byId('file-menu-button', HTMLButtonElement).focus();
     });
-    bindDrop(window, byId('drop-overlay', HTMLElement), (files) => {
-      if (this.exporting || document.querySelector('dialog[open]')) {
-        this.notices.status('Close the dialog and wait for the export to finish before opening files.');
-        return;
-      }
-      void this.openFiles(files);
-    });
+    const dropOverlay = byId('drop-overlay', HTMLElement);
+    bindDrop(
+      window,
+      (active) => {
+        if (this.open === null) this.emptyCard.toggleAttribute('data-drag', active);
+        else dropOverlay.hidden = !active;
+      },
+      (files) => {
+        if (this.exporting || document.querySelector('dialog[open]')) {
+          this.notices.status('Close the dialog and wait for the export to finish before opening files.');
+          return;
+        }
+        void this.openFiles(files);
+      },
+    );
     const panel = (id: PanelId) => () => this.panelLayout.toggle(id);
     bindShortcuts(document, {
-      open: () => this.fileInput.click(),
+      open: () => this.openPicker(),
       render: () => this.render(),
       export: () => this.openExport(),
       cancel: () => this.renderSession.cancel(),

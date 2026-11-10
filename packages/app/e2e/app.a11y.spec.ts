@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
-import { expect, fixture, openApp, openFileMenu, openFiles, openTab, test, waitForEditor } from './appTest';
+import { dragFiles, expect, fixture, openApp, openFileMenu, openFiles, openTab, test, waitForEditor } from './appTest';
 
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
@@ -285,4 +285,34 @@ test('the status line is one role=status and an error stays in role=alert until 
   await page.getByRole('button', { name: 'Dismiss the error' }).click();
   await expect(alert).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'File', exact: true })).toBeFocused();
+});
+
+for (const [width, height] of [
+  [1440, 900],
+  [375, 667],
+] as const) {
+  test(`axe finds no violation on the empty state at ${width} px, in the drag state and with the error`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height });
+    await openApp(page);
+    expect(await violations(page), 'empty').toEqual([]);
+    await dragFiles(page, 'enter', [{ name: 'a.bbmodel', text: '{}' }]);
+    await expect(page.locator('#empty')).toHaveAttribute('data-drag', '');
+    expect(await violations(page), 'drag over').toEqual([]);
+    await dragFiles(page, 'drop', [{ name: 'notes.txt', text: 'hello' }]);
+    await expect(page.getByRole('alert')).toBeVisible();
+    expect(await violations(page), 'error').toEqual([]);
+  });
+}
+
+test.describe('first run hint', () => {
+  test.use({ firstRunHint: true });
+
+  test('axe finds no violation with the shortcut hint row', async ({ page }) => {
+    await openApp(page);
+    await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
+    await expect(page.getByRole('region', { name: 'Shortcut hints' })).toBeVisible();
+    expect(await violations(page, true)).toEqual([]);
+  });
 });

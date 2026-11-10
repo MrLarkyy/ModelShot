@@ -32,7 +32,7 @@ export class Timeline {
   private wasPlaying = false;
 
   constructor(
-    root: HTMLElement,
+    private readonly root: HTMLElement,
     private readonly host: TimelineHost,
     clock: PlaybackClock = BROWSER_CLOCK,
   ) {
@@ -125,6 +125,8 @@ export class Timeline {
       ),
     );
     this.empty.hidden = animations.length > 0;
+    // No clip to play: the panel is a one-row bar.
+    this.root.toggleAttribute('data-empty', animations.length === 0);
     this.drawMarkers();
     this.sync();
   }

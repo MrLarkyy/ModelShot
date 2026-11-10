@@ -707,11 +707,146 @@ button:disabled {
 .empty {
   position: absolute;
   inset: 0;
+  z-index: 1;
   display: grid;
   place-items: center;
-  margin: 0;
-  color: var(--ms-color-slate);
+  /* The render bar sits at the bottom of the view: the card keeps clear of it. */
+  padding: var(--ms-space-3) var(--ms-space-3) 4.5rem;
+  overflow: auto;
   pointer-events: none;
+}
+
+.empty-card {
+  display: grid;
+  gap: var(--ms-space-3);
+  justify-items: center;
+  width: min(100%, 40rem);
+  max-height: 100%;
+  padding: var(--ms-space-5) var(--ms-space-4);
+  overflow: auto;
+  text-align: center;
+  color: var(--ed-text-2);
+  background: var(--ed-raised);
+  border: 2px dashed var(--ed-line-strong);
+  border-radius: var(--ms-radius-tile);
+  pointer-events: auto;
+}
+
+.empty-card h2 {
+  color: var(--ed-text);
+  font: var(--ms-weight-heavy) var(--ms-size-h2) var(--ms-font-display);
+  letter-spacing: -0.04em;
+}
+
+.empty-card p {
+  max-width: 32rem;
+  margin: 0;
+}
+
+.empty-card .empty-drop {
+  color: var(--ed-text-3);
+  font-size: var(--ms-size-caption);
+}
+
+.empty[data-drag] .empty-card {
+  background: linear-gradient(var(--ed-accent-soft), var(--ed-accent-soft)), var(--ed-raised);
+  border-color: var(--ed-accent-hi);
+}
+
+.entry-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ms-space-2);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entry-card {
+  display: grid;
+  gap: var(--ms-space-1);
+  align-content: start;
+  justify-items: start;
+  width: 100%;
+  height: 100%;
+  padding: var(--ms-space-3);
+  line-height: 1.35;
+  text-align: left;
+}
+
+.entry-card span {
+  color: var(--ed-text-2);
+  font-size: var(--ms-size-caption);
+  font-weight: var(--ms-weight-medium);
+}
+
+@media (max-width: 599px) {
+  .entry-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* No model: the stage is the editor's own ground, the canvas keeps its box but is not shown, and nothing that acts on a model
+   is in the way of the card. */
+.viewport[data-empty] {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--ms-color-blue-deep) 40%, var(--ed-ground)),
+    var(--ed-ground)
+  );
+}
+
+.viewport[data-empty] #preview,
+.viewport[data-empty] #viewport-chips,
+.viewport[data-empty] #stats {
+  visibility: hidden;
+}
+
+.first-run-hint {
+  position: absolute;
+  z-index: 2;
+  top: 3.25rem;
+  right: var(--ms-space-2);
+  left: var(--ms-space-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ms-space-2);
+  padding: var(--ms-space-2) var(--ms-space-3);
+  color: var(--ed-text-2);
+  background: var(--ed-panel);
+  border: 1px solid var(--ed-line-strong);
+  border-radius: var(--ed-radius-ui);
+  font-size: var(--ms-size-caption);
+}
+
+.hint-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ms-space-1) var(--ms-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One row, no separator: nothing to scrub. */
+.timeline[data-empty] {
+  height: auto;
+}
+
+body:has(.timeline[data-empty]) #timeline-separator {
+  display: none;
+}
+
+.timeline[data-empty] .timeline-controls,
+.timeline[data-empty] .markers,
+.timeline[data-empty] .keyframe-count {
+  display: none;
+}
+
+.timeline[data-empty] .hint {
+  margin: 0;
 }
 
 .drop-overlay {
@@ -1388,8 +1523,15 @@ progress {
   }
 
   .toast,
-  .render-bar {
+  .render-bar,
+  .empty-card,
+  .first-run-hint {
     border-color: CanvasText;
+  }
+
+  .empty[data-drag] .empty-card {
+    border-style: solid;
+    border-color: Highlight;
   }
 }
 

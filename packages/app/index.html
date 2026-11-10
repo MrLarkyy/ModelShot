@@ -103,7 +103,7 @@
         class="visually-hidden"
         type="file"
         multiple
-        accept=".bbmodel,.gltf,.glb,.bin,.obj,.mtl,.png,.jpg,.jpeg"
+        accept=".bbmodel,.gltf,.glb,.obj,.bin,.png,.jpg,.jpeg,.mtl"
         aria-label="Choose model files"
         tabindex="-1"
       />
@@ -117,7 +117,7 @@
             <div id="add-menu" class="menu-list" hidden></div>
           </div>
         </div>
-        <div id="scene-panel"><p class="hint">No model open.</p></div>
+        <div id="scene-panel"><p class="hint">Open a model to list its groups, meshes and lights.</p></div>
       </nav>
       <div
         id="outliner-separator"
@@ -142,7 +142,38 @@
             </div>
           </div>
           <p id="stats" class="chips chips-bottom stats" hidden></p>
-          <p id="empty" class="empty">Drop a model here, or choose Open…</p>
+          <section id="empty" class="empty" aria-labelledby="empty-title">
+            <div class="empty-card">
+              <h2 id="empty-title">Open a model</h2>
+              <p>
+                ModelShot opens Blockbench (.bbmodel), glTF/GLB and OBJ models with their PNG or JPEG textures, and
+                Minecraft player skins.
+              </p>
+              <p class="empty-local">Your file stays in this browser tab and is never uploaded.</p>
+              <p class="empty-drop">Drop files here to open them.</p>
+              <button id="empty-open" class="primary" type="button" aria-keyshortcuts="Control+O">
+                Open…<kbd aria-hidden="true">Ctrl+O</kbd>
+              </button>
+              <ul class="entry-cards">
+                <li>
+                  <button id="entry-bbmodel" class="entry-card" type="button">
+                    <strong>Blockbench model</strong><span>.bbmodel with its textures</span>
+                  </button>
+                </li>
+                <li>
+                  <button id="entry-skin" class="entry-card" type="button">
+                    <strong>Player skin</strong><span>A PNG skin on the player model</span>
+                  </button>
+                </li>
+                <li>
+                  <button id="entry-gltf" class="entry-card" type="button">
+                    <strong>glTF or OBJ</strong><span>.gltf, .glb or .obj with its files</span>
+                  </button>
+                </li>
+              </ul>
+            </div>
+          </section>
+          <div id="first-run-hint" class="first-run-hint" role="region" aria-label="Shortcut hints" hidden></div>
           <div id="drop-overlay" class="drop-overlay" hidden>Drop to open</div>
           <div class="render-bar">
             <div id="render-idle" class="render-idle">
@@ -191,13 +222,16 @@
       aria-label="Resize the timeline"
       tabindex="0"
     ></div>
-    <section id="timeline" class="panel timeline" aria-label="Timeline"></section>
+    <section id="timeline" class="panel timeline" aria-label="Timeline" data-empty>
+      <p class="hint">Animations of the open model play here.</p>
+    </section>
     <dialog id="export-dialog" aria-labelledby="export-title"></dialog>
     <dialog id="forget-dialog" aria-labelledby="forget-title" aria-describedby="forget-body">
       <h2 id="forget-title">Forget local data?</h2>
       <p id="forget-body">
         This deletes what is stored in this browser: the files of the last model, the view and settings you chose for
-        each model, and the panel layout, which goes back to its default sizes. Files on your disk are not touched.
+        each model, the panel layout, which goes back to its default sizes, and the dismissed shortcut hint. Files on
+        your disk are not touched.
       </p>
       <div class="dialog-actions">
         <button id="forget-cancel" type="button" autofocus>Cancel</button>

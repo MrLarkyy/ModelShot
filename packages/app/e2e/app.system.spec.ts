@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import type { Locator, Page } from '@playwright/test';
-import { expect, fixture, openApp, openFileMenu, openFiles, openTab, test, waitForEditor } from './appTest';
+import { dragFiles, expect, fixture, openApp, openFileMenu, openFiles, openTab, test, waitForEditor } from './appTest';
 
 const SHOT_BLUE = 'rgb(47, 75, 255)';
 const BLUE_HOVER = 'rgb(26, 51, 214)';
@@ -331,4 +331,18 @@ test('forced colours keep a visible border on the model dot and the toast', asyn
       .evaluate((n) => [getComputedStyle(n).borderTopStyle, getComputedStyle(n).borderTopWidth]);
     expect(border, selector).toEqual(['solid', '1px']);
   }
+});
+
+test('forced colours keep the empty card and the drag state visible', async ({ page }) => {
+  await page.emulateMedia({ forcedColors: 'active' });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openApp(page);
+  const border = (): Promise<string[]> =>
+    page
+      .locator('.empty-card')
+      .evaluate((n) => [getComputedStyle(n).borderTopStyle, getComputedStyle(n).borderTopWidth]);
+  expect(await border()).toEqual(['dashed', '2px']);
+  await dragFiles(page, 'enter', [{ name: 'a.bbmodel', text: '{}' }]);
+  await expect(page.locator('#empty')).toHaveAttribute('data-drag', '');
+  expect(await border()).toEqual(['solid', '2px']);
 });
