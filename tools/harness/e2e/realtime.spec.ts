@@ -796,7 +796,7 @@ test.describe('anti-aliased partial-alpha seams in the OIT pass (MS-60)', () => 
  * quad opaque, drawn by the opaque pass) does too: a limit of the sample count on any silhouette, not of the
  * transparency pass. Both measured exactly the backdrop (held to 1 level). `PARTIAL_EDGE_SLIVER_NEIGHBOURS`, one pixel along
  * the outline, hold one sample on the face in both: linear-light shares measured 0.253 (partial) and 0.251 (twin) at
- * each, held to 0.01 apart. A coverage finer than the 4 samples is a follow-up.
+ * each, held to 0.01 apart. A coverage finer than the 4 samples is MS-112 (sub-sample silhouette coverage).
  */
 const PARTIAL_EDGE_SLIVER_PIXELS = [
   [49, 194],

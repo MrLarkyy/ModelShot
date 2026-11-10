@@ -348,7 +348,7 @@ anti-alias silhouettes like raster frames`): `turntable-y030` at `aa=0`, framed 
   shadow, plane 197), equally unmixed; the render (seed 1) 126, 127, 132 at 64 samples and 113, 125, 127 at 128, its
   twin 113, 131, 134: the face covers about 28-33 % of each pixel in a sliver that holds none of the 4 samples. With the
   OIT pass single-sampled (`oitMsaaActive` false) the mixed neighbours turn hard while these stay, so the transparency
-  pass is multisampled and drops nothing: a limit of the sample count (docs/realtime-renderer.md), a follow-up.
+  pass is multisampled and drops nothing: a limit of the sample count (docs/realtime-renderer.md), MS-112 (sub-sample silhouette coverage).
 - Context loss through `WEBGL_lose_context`: the image after the restore matches `rt-turntable-y030`, without a
   reload or a page error.
 - Device pixel ratio 2 doubles the backing store; an element resize reallocates and keeps the projection unstretched.

@@ -45,7 +45,7 @@ Float path (needs `EXT_color_buffer_float`):
    Limit (MS-88): a silhouette pixel the face covers only in a sliver that holds none of the 4 samples stays what lies
    behind, opaque and partial faces alike, where the path tracer blends it by area: on the `partial-edge` view three
    outline pixels the render covers by about 28-33 % (realtime.spec checks the opaque twin `partial-edge-opaque` leaves
-   them backdrop too). Coverage finer than the samples is a follow-up.
+   them backdrop too). Coverage finer than the samples is MS-112 (sub-sample silhouette coverage).
 
 3. Composite of the transparency average over the opaque image.
 4. Present: AgX and the display encoding into the canvas.
