@@ -743,6 +743,7 @@ export class RealtimeRenderer {
     this.releaseExactSamples(gpu);
     for (const program of gpu.programs.all) gl.deleteProgram(program);
     gpu.programs = createRendererPrograms(gl, false);
+    if (gpu.scene) this.linkLinearPrograms(gpu, gpu.scene);
     gpu.capabilities = { ...gpu.capabilities, path: 'fallback', msaaSamples: 0 };
   }
 
@@ -781,7 +782,19 @@ export class RealtimeRenderer {
         alpha.map((texture) => texture?.opacity ?? 'opaque'),
       );
     }
-    gpu.scene = this.uploadGeometry(loaded);
+    const scene = this.uploadGeometry(loaded);
+    try {
+      this.linkLinearPrograms(gpu, scene);
+    } catch (error) {
+      disposeGpuScene(gl, scene);
+      throw error;
+    }
+    gpu.scene = scene;
+  }
+
+  /** Links the linear mesh programs when `scene` draws a linear texture, here and not on a frame's first use. */
+  private linkLinearPrograms(gpu: GpuResources, scene: GpuScene): void {
+    if (scene.opaque.some((item) => item.linear)) gpu.programs.linkLinear();
   }
 
   /** Uploads the loaded scene's geometry with its sharp edges under the current angle. */

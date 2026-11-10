@@ -44,10 +44,16 @@ export type MeshPassName = 'opaque' | 'oitAccum' | 'fallback';
 export interface RendererPrograms {
   /**
    * A mesh pass of this path in a depth-key variant (a frame uses one for all its passes) and a texel-filter variant
-   * (per draw). The nearest ones are linked with the path; a linear one on its first use, so a scene without a linear
-   * texture never links it, and then kept in `all`. Undefined for a pass the path does not draw.
+   * (per draw). The nearest ones are linked with the path; the linear ones by `linkLinear`, so a scene without a linear
+   * texture never links them (a linear request before that gives `undefined`). Undefined for a pass the path does not
+   * draw.
    */
   meshPass(depthKey: DepthKeyMode, name: MeshPassName, filter: TexelFilterVariant): MeshProgram | undefined;
+  /**
+   * Links the linear variants of every mesh pass of this path (once; they join `all`). Throws the link error of a
+   * variant that fails: call it where a scene with a linear texture is uploaded, never while drawing.
+   */
+  linkLinear(): void;
   /** `presentSamples`: the present pass of an exact-key frame's sample history (`exactSampleCount`). */
   readonly fullscreen: Readonly<
     Partial<Record<'oitComposite' | 'present' | 'presentSamples' | 'backdrop', FullscreenProgram>>
@@ -125,28 +131,31 @@ export function createRendererPrograms(gl: WebGL2RenderingContext, floatPath: bo
       );
       return { program, uniforms, look: lookLocations(program) };
     };
-    const meshPasses = (names: readonly MeshPassName[]): RendererPrograms['meshPass'] => {
+    const meshPasses = (names: readonly MeshPassName[]): Pick<RendererPrograms, 'meshPass' | 'linkLinear'> => {
       const nearest = new Map(
         DEPTH_KEY_MODES.flatMap((depthKey) =>
           names.map((name) => [`${depthKey} ${name}`, meshProgram(name, depthKey)]),
         ),
       );
       const linear = new Map<string, MeshProgram>();
-      return (depthKey, name, filter) => {
-        const key = `${depthKey} ${name}`;
-        const program = nearest.get(key);
-        if (!program || filter === 'nearest') return program;
-        let linked = linear.get(key);
-        if (!linked) {
-          linked = meshProgram(name, depthKey, 'linear');
-          linear.set(key, linked);
-        }
-        return linked;
+      return {
+        meshPass: (depthKey, name, filter) => {
+          const key = `${depthKey} ${name}`;
+          return filter === 'nearest' ? nearest.get(key) : linear.get(key);
+        },
+        linkLinear: () => {
+          for (const depthKey of DEPTH_KEY_MODES) {
+            for (const name of names) {
+              const key = `${depthKey} ${name}`;
+              if (!linear.has(key)) linear.set(key, meshProgram(name, depthKey, 'linear'));
+            }
+          }
+        },
       };
     };
     if (floatPath) {
       return {
-        meshPass: meshPasses(['opaque', 'oitAccum']),
+        ...meshPasses(['opaque', 'oitAccum']),
         fullscreen: {
           oitComposite: fullscreenProgram('oitComposite'),
           present: fullscreenProgram('present'),
@@ -158,7 +167,7 @@ export function createRendererPrograms(gl: WebGL2RenderingContext, floatPath: bo
       };
     }
     return {
-      meshPass: meshPasses(['fallback']),
+      ...meshPasses(['fallback']),
       fullscreen: { backdrop: fullscreenProgram('backdrop') },
       catcher: fullscreenProgram('catcher'),
       all,

@@ -32,6 +32,8 @@ export interface FakeWebGlOptions {
   readonly float?: FakeWebGlFloat;
   /** `readPixels` fills its buffer with this byte (every channel; a texture's alpha readback); default 0. */
   readonly pixelByte?: number;
+  /** A program whose shader sources this returns true for fails to link (`LINK_STATUS` false). */
+  readonly linkFails?: (sources: readonly string[]) => boolean;
 }
 
 export function fakeWebGl(options: FakeWebGlOptions = {}): FakeWebGl {
@@ -69,13 +71,21 @@ export function fakeWebGl(options: FakeWebGlOptions = {}): FakeWebGl {
       textureRejected || renderbufferRejected ? 'FRAMEBUFFER_INCOMPLETE_ATTACHMENT' : 'FRAMEBUFFER_COMPLETE',
     );
   };
+  const shaderSources = new Map<unknown, string>();
+  const programSources = new Map<unknown, string[]>();
   const results: Readonly<Record<string, (...args: unknown[]) => unknown>> = {
+    shaderSource: (shader, source) => {
+      shaderSources.set(shader, String(source));
+    },
+    attachShader: (program, shader) => {
+      programSources.set(program, [...(programSources.get(program) ?? []), shaderSources.get(shader) ?? '']);
+    },
     getExtension: (name) => (float && name === 'EXT_color_buffer_float' ? {} : null),
     getParameter: parameter,
     getInternalformatParameter: () => (float ? new Int32Array([float.samples]) : null),
     getShaderPrecisionFormat: () => ({ precision: 23, rangeMin: 127, rangeMax: 127 }),
     getShaderParameter: () => true,
-    getProgramParameter: () => true,
+    getProgramParameter: (program) => !options.linkFails?.(programSources.get(program) ?? []),
     getShaderInfoLog: () => '',
     getProgramInfoLog: () => '',
     isContextLost: () => false,
