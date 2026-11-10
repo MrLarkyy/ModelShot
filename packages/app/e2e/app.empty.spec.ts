@@ -65,15 +65,30 @@ test('Open works from the keyboard, the entry cards narrow the picker and a late
   await page.keyboard.press('Control+o');
   await viaCtrl;
 
-  const skin = page.waitForEvent('filechooser');
-  await page.getByRole('button', { name: 'Player skin' }).click();
-  await skin;
-  expect(await accept()).toBe('.png');
+  for (const [name, narrowed] of [
+    ['Blockbench model', '.bbmodel,.png,.jpg,.jpeg'],
+    ['Player skin', '.png'],
+    ['glTF or OBJ', '.gltf,.glb,.bin,.obj,.mtl,.png,.jpg,.jpeg'],
+  ] as const) {
+    const chosen = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name }).click();
+    await chosen;
+    expect(await accept(), name).toBe(narrowed);
+    const later = page.waitForEvent('filechooser');
+    await page.locator('#empty-open').click();
+    await later;
+    expect(await accept(), `Open after ${name}`).toBe(full);
+  }
+});
 
-  const later = page.waitForEvent('filechooser');
-  await page.locator('#empty-open').click();
-  await later;
-  expect(await accept()).toBe(full);
+test('a drag is not highlighted while a dialog would refuse the drop', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openApp(page);
+  await page.keyboard.press('?');
+  await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeVisible();
+  await dragFiles(page, 'enter', [{ name: 'a.bbmodel', text: '{}' }]);
+  await expect(page.locator('#empty')).not.toHaveAttribute('data-drag', '');
+  await dragFiles(page, 'leave', [{ name: 'a.bbmodel', text: '{}' }]);
 });
 
 test('a drag over the empty page highlights the card, a drop opens the model', async ({ page }, testInfo) => {
@@ -109,10 +124,12 @@ test('an unsupported or truncated file shows the existing error and the page sta
   await page.screenshot({ animations: 'disabled', path: testInfo.outputPath('empty-error.png') });
   await page.getByRole('button', { name: 'Dismiss the error' }).click();
   await dragFiles(page, 'drop', [{ name: 'broken.glb', text: 'glTF\u0002\u0000\u0000\u0000truncated' }]);
-  await expect(page.getByRole('alert')).toBeVisible({ timeout: 30_000 });
+  // The page answers while the reader works, and the error is the loader's, not the 30 s watchdog's.
   const started = Date.now();
   expect(await page.evaluate(() => 1 + 1)).toBe(2);
   expect(Date.now() - started).toBeLessThan(1000);
+  await expect(page.getByRole('alert')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('alert')).not.toContainText('took longer than');
   await expect(page.locator('#empty')).toBeVisible();
 });
 

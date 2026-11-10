@@ -13,6 +13,11 @@ describe('pickerAccept', () => {
       for (const extension of entryAccept(kind).split(',')) expect(all.has(extension)).toBe(true);
   });
 
+  it('gives each entry card the list the e2e spec expects', () => {
+    expect(entryAccept('bbmodel')).toBe('.bbmodel,.png,.jpg,.jpeg');
+    expect(entryAccept('gltf-obj')).toBe('.gltf,.glb,.bin,.obj,.mtl,.png,.jpg,.jpeg');
+  });
+
   it('narrows a skin to PNG', () => {
     expect(entryAccept('skin')).toBe('.png');
   });
