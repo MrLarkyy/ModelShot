@@ -17,9 +17,13 @@ uploaded ([privacy](#privacy)).
 4. The viewer draws the scene with `RealtimeRenderer`, orbit controls ([camera.md](camera.md)) and the baked lighting
    of the chosen look, re-baked when the scene, look or visibility changes.
 5. Render runs the path tracer on the main thread (seed 1; samples, supersampling and denoise from the Render
-   tab), with a progress element: one `step(4)` per animation frame while a denoised request draws its guide, else
-   slices of about 8 ms; Esc cancels. The result canvas is hidden from the Render click until the first sample, and
-   stays hidden after a cancel or a failure; a finished render stays until the camera or scene changes.
+   tab); the render bar floats at the bottom of the view and swaps "Render · N samples" for a progress element, the
+   text "128 / 256 samples · 50 % · 0:12" (samples, percent, elapsed; the elapsed time ticks every second) and Stop.
+   It takes one `step(4)` per animation frame while a denoised request draws its guide, else slices of about 8 ms;
+   Esc or Stop cancels. The result canvas is hidden from the Render click until the first sample, and stays hidden
+   after a cancel or a failure; a finished render stays until the camera or scene changes, with its output size,
+   samples and time ("1920 × 1080 px · 256 samples · 0:24") in the bar. Messages are toasts over the view (see Editor
+   layout): nothing a render shows resizes the view, which would cancel it.
 6. Export opens a dialog: still PNG (transparent), turntable or animation (only for a model with animations) as GIF,
    APNG or the other clip formats of [export.md](export.md). Options are checked with `checkExportOptions`; a
    failure names the field. The file is a download of a Blob URL, revoked afterwards.
@@ -52,16 +56,31 @@ external glTF URIs and OBJ `mtllib` resolve only against the files chosen.
 The page is a dark Ink workspace (colours from the brand tokens only): a top bar, the outliner on the left, the 3D view
 in the middle, the inspector on the right and the timeline below.
 
-- **Top bar**: the panel toggles (Outliner, Inspector, Timeline, each with `aria-expanded`), the File menu (Open,
-  Export, "Forget local data", Shortcuts), Undo and Redo, the Preview / Render switch, Render, Share and Export.
-  Preview shows the live view; the Render switch shows the finished render (it starts one when there is none). The File
-  menu is a disclosure of buttons, not an ARIA menu: Tab moves through it and Esc closes it.
+- **Top bar**: one row at every width. In order: the logo, the File menu, Undo and Redo (icon buttons), the panel
+  toggles (Outliner, Inspector, Timeline: icon buttons with `aria-expanded`), the Preview / Path traced switch, the
+  model name with a status dot, Share (secondary; where the browser can share files it keeps its place and only
+  disappears, so Export never moves) and Export, the only primary of the bar. There is no Render label in the bar.
+  Preview shows the live view; Path traced shows the finished render (it starts one when there is none). Below 900 px
+  the history, panel and mode groups sit behind a More button (`aria-expanded`, Esc closes it); the model name is cut
+  with an ellipsis. The File menu is a disclosure of buttons, not an ARIA menu: Tab moves through it and Esc closes
+  it. Rows: Open… (Ctrl+O), Export… (Ctrl+E), Shortcuts (?), a separator, then "Forget local data" (the destructive
+  class); the shortcut hints are keycaps hidden from assistive technology (`aria-keyshortcuts` is on the File
+  button), and the privacy note is a footer paragraph that Tab skips.
+- **Model dot**: next to the model name, `#model-state` is a dot (lit, lighting, or unbaked) whose text, such as
+  "Preview lit.", is kept for assistive technology (`aria-live="polite"`, not a status role).
+- **Render bar**: floats at the bottom centre of the view: Render (primary) with the sample count from the Render tab
+  while idle; progress, the numbers and Stop while running; the result line after a render. It is shown and disabled
+  with no model open.
+- **Toasts**: `#status` (`role="status"`, always present) holds exactly the latest message, one at a time, and fades
+  after 5 s while keeping its text; it floats at the top centre of the view, above the drawers, so it never takes
+  height from the view. An error goes to `#alert` (`role="alert"`, with a Dismiss button) and stays until it is
+  dismissed, which gives the focus to the File button; a storage failure is such an error.
 - **Resize and collapse**: the separators between the panels are focusable (`role="separator"` with
   `aria-valuenow`): drag them, or use the arrow keys (16 px), Home and End. Widths are clamped (outliner 180-480 px,
   inspector 260-520, timeline 96-320). A toggle collapses a panel. Sizes, collapsed panels, the overlay toggles and the
   inspector tab are kept in this browser (`localStorage` key `modelshot.layout.v1`, at most 2 KB, parsed defensively;
   an unreadable or blocked store means the defaults). "Forget local data" removes it too.
-- **Below 1024 px** the outliner and the inspector are drawers over the view (never over the status line below it):
+- **Below 1024 px** the outliner and the inspector are drawers over the view (a toast stays above them):
   the toggles open one at a time, Esc closes it and returns the focus to its toggle, and the timeline shrinks to one
   row without the keyframe markers. The view keeps the whole width.
 - **Outliner**: the node tree (at most 500 rows are listed) with, per row, a visibility checkbox, a name button that
@@ -127,7 +146,7 @@ list in the app (`?`, grouped File, View, Selection, Timeline) is built from `SH
 | Ctrl/Cmd+Z               | undo                                                                 |
 | Ctrl/Cmd+Shift+Z, Ctrl+Y | redo                                                                 |
 | R                        | render                                                               |
-| Esc                      | cancel the render, close dialogs, menus and drawers                  |
+| Esc                      | stop the render, close dialogs, menus and drawers                    |
 | 1, 2, 3, 4               | front, side, three-quarter, iso                                      |
 | L                        | next look                                                            |
 | G                        | all overlays off, or back on                                         |
@@ -156,8 +175,9 @@ The panel layout is not in this database: it is `localStorage` `modelshot.layout
 
 Saves are debounced by 500 ms. Reads are validated as untrusted (`state/readAppState.ts`: own properties, `v === 1`,
 finite values in range, a known look, real `File` objects) and never throw; an invalid record is ignored. A full disk
-or a failing database shows a non-blocking notice and the app goes on. "Forget local data" deletes the database and
-the stored layout. New fields are optional; a breaking change bumps the version and ships a migration or discards the
+or a failing database shows a notice and the app goes on. "Forget local data" first asks in a dialog that names what goes
+(the files of the last model, the view and settings kept per model, the panel layout); Escape and Cancel keep
+everything and return the focus to the File button, and confirming deletes the database and the stored layout. New fields are optional; a breaking change bumps the version and ships a migration or discards the
 old record.
 
 ## Offline
@@ -174,7 +194,7 @@ Content Security Policy (`default-src 'self'`, `worker-src 'self'`, no inline co
 
 No request carries a body or leaves the origin; no analytics, fonts or scripts from elsewhere. Models, skins and state
 stay in the browser (`test/localFirst.test.ts`, `e2e/app.network.spec.ts`). Share hands a PNG to the operating system's
-share sheet on a click; the app makes no request for it.
+share sheet on a click; the app makes no request for it. The File menu footer says where the data is kept.
 
 ## Visual system
 
@@ -201,8 +221,8 @@ px thumb, number, text, search and select are 30 px fields on `--ed-field` (the 
 `data:` image), `kbd` a keycap, `.segmented` / `.segment` a field track whose checked segment is raised, a selected
 tab is raised with a blue light bottom bar. `[hidden]` always wins over a component's `display`.
 
-Classes (stable names): `.primary` (the only button fill in Shot Blue: Render, Export and the dialog Export, one per
-view; a checked toggle's track is the one other use), `.ghost` (no border, secondary text), `.destructive` (Flash
+Classes (stable names): `.primary` (the only button fill in Shot Blue: Render in the render bar, Export in the top bar
+and the dialog Export; a checked toggle's track is the one other use), `.ghost` (no border, secondary text), `.destructive` (Flash
 border and text), `.icon-button` 32 px and `.icon-button.small` 26 px (an icon alone; the helper sets `aria-label`),
 `.small` (a 26 px text button), `.on`, `[aria-pressed='true']` and `.bar-toggle[aria-expanded='true']` (the active
 state: soft blue wash, blue light text), `.slider` (a range with its number field), `.axis-field` + `.x`/`.y`/`.z` (a
@@ -210,7 +230,7 @@ number field with its axis letter in an `<i>`), `.toggle-row` (label left, toggl
 control keeps its fill at 40 % opacity with `cursor: not-allowed`, so it never looks like an active one.
 
 Icons: `src/ui/icon.ts` draws `ICON_NAMES` (eye, lock, chevron-down, -right, -left, -up, plus, undo, redo, search,
-cube, sun, camera, play, loop, frame, share, download, more) as a 16 px (or 14 px) SVG on a 16 grid, stroke 1.7, round
+cube, sun, camera, play, loop, frame, share, download, more, panel-left, panel-right, panel-bottom, close) as a 16 px (or 14 px) SVG on a 16 grid, stroke 1.7, round
 caps, `currentColor`, `aria-hidden`, built with `createElementNS` (never `innerHTML`); `src/ui/iconButton.ts` wraps
 one in a named button. The paths are drawn for the project: no icon set, no licence entry.
 
@@ -222,10 +242,11 @@ buttons are blue on the real screens.
 
 ## Accessibility
 
-Landmarks (header, outliner `nav`, view `main`, inspector `aside`, timeline `section`, a focusable messages region),
+Landmarks (header, outliner `nav`, view `main`, inspector `aside`, timeline `section`, the toast and error line over the view),
 every control labelled, visible focus (a 3 px `--ms-color-blue-mid` ring, 2 px off the control, on every control of
 the dark workspace; the viewport chips sit over the 3D view, so their ring has a ground halo under it), errors in
-`role="alert"`, progress in `role="status"`, native controls and dialogs, tabs and separators with their ARIA
+`role="alert"` until dismissed (the Dismiss button sits beside it, not inside), one `role="status"` line, the render progress as
+a `progress` with `aria-valuetext`, the forget dialog with its focus back on File, native controls and dialogs, tabs and separators with their ARIA
 patterns, the overlay canvas `aria-hidden`, colours only from the brand tokens ([brand.md](brand.md)). In forced
 colours the native checkbox, radio and select return and every active state (`.on`, pressed, the checked segment, the
 selected tab, the current outliner row) gets a system-colour outline or bar. Every panel is reachable by keyboard; the
@@ -236,7 +257,9 @@ shortcut list is the cheat sheet.
 Vitest in `packages/app/test`; Playwright in `packages/app/e2e` (`pnpm --filter @modelshot/app run test:browser`):
 flow, formats, camera, persistence, hostile files, offline, network, handoff, accessibility and preview/render parity,
 and the editor: `app.editor.spec.ts` (outliner, picking, gizmo, undo, names and locks), `app.timeline.spec.ts`,
+`app.topbar.spec.ts` (one row from 1440 to 900 px, More below, one primary, the File menu from the keyboard, the forget
+dialog), `app.render.spec.ts` (render start, Stop and Esc, numbers, result line, the view keeps its size),
 `app.layout.spec.ts` (1280, 1440, 1920 and 900 px with screenshots in `test-results` for review, resize, collapse,
 drawers), `app.overlay.spec.ts` (toggles; overlays never in the preview, render or export), `app.motion.spec.ts`
 (reduced motion, overlay draw time) and `app.system.spec.ts` (the control specimen and its goldens, blue only on
-primaries, chip focus ring, forced colours). Bundle budgets: [testing.md](testing.md#budgets).
+primaries, chip focus ring, forced colours, the dot and toast borders). Bundle budgets: [testing.md](testing.md#budgets).
