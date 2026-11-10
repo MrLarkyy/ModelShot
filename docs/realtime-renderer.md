@@ -213,7 +213,7 @@ without depth test lets the model cover it in either depth-key variant. A scene 
   `texelFilterColor` chunk: `texelFilterNearest.glsl` holds no linear code, `texelFilterLinear.glsl` the blend above);
   each draw takes the variant of its batch's `TEXTURE_FLAG_LINEAR`, and the linear programs are linked when a
   scene with a linear texture is uploaded (`setScene`, a restored context, the fallback switch), never inside a frame: a
-  link failure rejects that `setScene` once (`SHADER_LINK`), and a restore's failure is caught with the restore. With the blend behind a branch in one program, SwiftShader drew the nearest-textured bench
+  link failure rejects that `setScene` once (`SHADER_LINK`), the fallback switch's and a restore's failures are caught and reach `onError` once (a frame draws the linear batches with the nearest program; after a failed restore nothing is drawn). With the blend behind a branch in one program, SwiftShader drew the nearest-textured bench
   frames 1.27x (raster) and 1.24x (exact key) slower (MS-90, docs/testing.md); the images are byte-identical.
 
 ## Transparency, sides and render order
