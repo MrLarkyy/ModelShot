@@ -127,7 +127,8 @@ test('says where the settings are kept, and keeps working when the browser refus
   });
   await openFiles(page, [CUBE], 'single-cube.bbmodel');
   await waitForModel(page);
-  await expect(page.getByRole('status')).toContainText('not being kept on this device', { timeout: 10_000 });
+  await expect(page.locator('#storage-chip')).toContainText('not being kept on this device', { timeout: 10_000 });
+  await expect(page.getByRole('status')).not.toContainText('not being kept');
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Render' })).toBeEnabled();
 });

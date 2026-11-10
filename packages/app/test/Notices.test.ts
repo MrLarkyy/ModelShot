@@ -17,10 +17,12 @@ function setup() {
   const elements = {
     status: new FakeElement(),
     state: new FakeElement(),
+    storageChip: new FakeElement(),
     alertBox: new FakeElement(),
     alertText: new FakeElement(),
   };
   elements.alertBox.hidden = true;
+  elements.storageChip.hidden = true;
   const timers = new Map<number, { callback: () => void; ms: number }>();
   let next = 1;
   const notices = new Notices(
@@ -77,14 +79,25 @@ describe('Notices', () => {
     expect([...timers.values()][0]?.ms).toBe(TOAST_MS);
   });
 
-  it('lets a storage failure follow the latest message, not replace it', () => {
+  it('puts a storage failure in its own chip and leaves the status line alone', () => {
     const { elements, notices } = setup();
     notices.status('Opened a.bbmodel.');
     notices.storage('Your settings are not being kept.');
-    expect(elements.status.textContent).toBe('Opened a.bbmodel. Your settings are not being kept.');
     notices.status('Render done.');
-    expect(elements.status.textContent).toBe('Render done. Your settings are not being kept.');
+    expect(elements.status.textContent).toBe('Render done.');
+    expect(elements.storageChip.textContent).toBe('Your settings are not being kept.');
+    expect(elements.storageChip.hidden).toBe(false);
     expect(elements.alertBox.hidden).toBe(true);
+  });
+
+  it('follows the viewer when the bake settles', () => {
+    const { elements, notices } = setup();
+    notices.lighting('Lighting the preview…');
+    notices.bakeSettled(true);
+    expect(elements.state.dataset['state']).toBe('lit');
+    expect(elements.state.textContent).toBe('Preview lit.');
+    notices.bakeSettled(false);
+    expect(elements.state.dataset['state']).toBe('warn');
   });
 
   it('keeps an alert through later statuses until it is cleared', () => {

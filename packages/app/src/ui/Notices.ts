@@ -15,6 +15,8 @@ export interface NoticeElements {
   readonly status: HTMLElement;
   /** The model dot: the lasting lighting state. */
   readonly state: HTMLElement;
+  /** The saving-failure chip: a lasting state beside the status line, not part of it. */
+  readonly storageChip: HTMLElement;
   readonly alertBox: HTMLElement;
   readonly alertText: HTMLElement;
 }
@@ -23,8 +25,6 @@ export interface NoticeElements {
 // messages carry file names.
 export class Notices {
   private timer: unknown = null;
-  private message = '';
-  private storageNote = '';
 
   constructor(
     private readonly elements: NoticeElements,
@@ -35,15 +35,8 @@ export class Notices {
   /** Replaces the message. The text stays after the fade so the line still reads as the last thing that happened. */
   status(message: string): void {
     const line = this.elements.status;
-    this.message = message;
-    this.show();
-    this.fade(line, message === '' && this.storageNote === '');
-  }
-
-  private show(): void {
-    this.elements.status.textContent = clip(
-      this.storageNote === '' ? this.message : `${this.message} ${this.storageNote}`.trim(),
-    );
+    line.textContent = clip(message);
+    this.fade(line, message === '');
   }
 
   private fade(line: HTMLElement, empty: boolean): void {
@@ -65,14 +58,16 @@ export class Notices {
     this.elements.state.dataset['state'] = lightingState(message);
   }
 
-  /**
-   * A saving failure the app works around: not an error. It follows the latest message instead of replacing it, so it
-   * can neither hide "Opened x" nor be hidden by it. The one case where the line holds two facts.
-   */
+  /** A saving failure the app works around: not an error. It stays in its own chip until the page reloads. */
   storage(message: string): void {
-    this.storageNote = message;
-    this.show();
-    this.fade(this.elements.status, false);
+    this.elements.storageChip.textContent = clip(message);
+    this.elements.storageChip.hidden = false;
+  }
+
+  /** The bake settled: the dot follows the viewer's signal, whatever message came with it. */
+  bakeSettled(lit: boolean): void {
+    if (lit) this.lighting('Preview lit.');
+    else if (this.elements.state.dataset['state'] !== 'warn') this.lighting('The preview shows unbaked light.');
   }
 
   alert(message: string): void {

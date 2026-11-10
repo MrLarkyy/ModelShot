@@ -804,6 +804,11 @@ button:disabled {
   border-color: transparent;
 }
 
+.toast-chip {
+  opacity: 1;
+  color: var(--ed-text-2);
+}
+
 .toast-alert {
   display: flex;
   align-items: center;

@@ -153,6 +153,7 @@ export class App {
     this.notices = new Notices({
       status: byId('status', HTMLElement),
       state: this.modelState,
+      storageChip: byId('storage-chip', HTMLElement),
       alertBox: byId('alert-box', HTMLElement),
       alertText: byId('alert', HTMLElement),
     });
@@ -182,6 +183,7 @@ export class App {
         onChange: () => this.cameraChanged(),
         onFrame: (camera) => this.tools?.frame(camera),
         onBakeStarted: () => this.tools?.bakeStarted(),
+        onBakeSettled: (lit) => this.notices.bakeSettled(lit),
         preserveDrawingBuffer: import.meta.env.MODE === 'e2e',
       });
     } catch (error) {
