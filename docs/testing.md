@@ -1740,7 +1740,10 @@ round 7); its max was 750 ms then.
   blocked fill ray casts one more shadow ray) measured origin/main and the branch alternately on the local machine while
   other test runs shared it, medians in ms: 26 662 / 34 282, 24 259 / 45 314 (a load spike: heartbeat lag 61 ms),
   25 715 / 33 274, 20 329 / 32 548; the branch without the bounce's shadow ray 27 680 against 25 442. So about 1.3x,
-  1.6x on the quietest pair, far inside the max; the budget is unchanged. Each run is asserted
+  1.6x on the quietest pair, far inside the max; the budget is unchanged. Measured again on the final batch tree (with
+  MS-90 and MS-88), same method, one session: 25 342 / 31 660 (1.249), 25 712 / 35 648 (1.386, a load spike: heartbeat
+  lag 31.1 ms, rerun as 25 415 / 34 385, 1.353), 25 569 / 34 588 (1.353); medians with the rerun 25 415 / 34 385, so the
+  bounce costs 1.35x (criterion at most 1.4x), all of it the bounce's shadow ray. Each run is asserted
   against the max as it completes, and the bake section's timeout is 3 x that max + 120 s (MS-81), a backstop; on CI the bake
   section runs on shard 2 beside only the three realtime tests, so bakes of over about 220 s each (inside the budget) are
   stopped by the section timeout on a slow runner, the per-bake log lines showing the finished bakes; the 17-minute
