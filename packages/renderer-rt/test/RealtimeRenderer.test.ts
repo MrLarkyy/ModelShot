@@ -653,3 +653,97 @@ describe('RealtimeRenderer OIT pass: partial seam coverage and multisampled targ
     renderer.dispose();
   });
 });
+
+describe('RealtimeRenderer texel filter program variants (MS-90)', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(() => Promise.resolve({ width: 16, height: 16, close: () => undefined })),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** The quad split into two batches: triangle 0 with the nearest texture 0, triangle 1 with the linear texture 1. */
+  function mixedFilterQuad(): SceneDocument {
+    const doc = quadScene();
+    const [mesh] = doc.meshes;
+    if (!mesh) throw new Error('quad mesh missing');
+    return {
+      ...doc,
+      meshes: [
+        {
+          ...mesh,
+          groups: [
+            { material: 0, start: 0, count: 3 },
+            { material: 1, start: 3, count: 3 },
+          ],
+        },
+      ],
+      materials: [
+        { name: 'nearest', texture: 0, alphaMode: 'blend', alphaCutoff: 0.5 / 255 },
+        { name: 'linear', texture: 1, alphaMode: 'blend', alphaCutoff: 0.5 / 255 },
+      ],
+      textures: [testTexture({ name: 'nearest.png' }), testTexture({ name: 'linear.png', filter: 'linear' })],
+    };
+  }
+
+  /** Per mesh-pass draw since call index `from`: whether its program's fragment shader holds the linear filter. */
+  function meshDrawsLinear(fake: FakeWebGl, from = 0): boolean[] {
+    const sources = new Map<unknown, string>();
+    const programs = new Map<unknown, string[]>();
+    let current: unknown = null;
+    const draws: boolean[] = [];
+    for (const [index, [name, args]] of fake.history().entries()) {
+      if (name === 'shaderSource') sources.set(args[0], String(args[1]));
+      else if (name === 'attachShader')
+        programs.set(args[0], [...(programs.get(args[0]) ?? []), sources.get(args[1]) ?? '']);
+      else if (name === 'useProgram') current = args[0];
+      else if (index >= from && (name === 'drawElements' || name === 'drawArrays')) {
+        const linked = programs.get(current) ?? [];
+        if (!linked.some((source) => source.includes('in float a_textureFlags;'))) continue;
+        draws.push(linked.some((source) => source.includes('linearTexelColor(')));
+      }
+    }
+    return draws;
+  }
+
+  const linearPrograms = (fake: FakeWebGl): number =>
+    fake.calls('shaderSource').filter(([, source]) => String(source).includes('linearTexelColor(')).length;
+
+  it('draws a linear texture with the linear program and a nearest one without the linear code', async () => {
+    for (const path of ['float', 'fallback'] as const) {
+      const fake = fakeWebGl({ ...(path === 'float' ? { float: { samples: 4, maxSize: 4096 } } : {}), pixelByte: 255 });
+      const renderer = RealtimeRenderer.create(fake.canvas);
+      renderer.setCamera(camera);
+      await renderer.setScene(quadScene());
+      renderer.render();
+      // A scene without a linear texture never links the linear variants.
+      expect(meshDrawsLinear(fake), path).toEqual([false]);
+      expect(linearPrograms(fake), path).toBe(0);
+
+      await renderer.setScene(mixedFilterQuad());
+      const from = fake.history().length;
+      renderer.render();
+      expect(renderer.capabilities?.path).toBe(path);
+      // Document order kept: the nearest batch, then the linear one, each with its own program.
+      expect(meshDrawsLinear(fake, from), path).toEqual([false, true]);
+      renderer.render();
+      expect(linearPrograms(fake), `${path}: linked once`).toBe(1);
+
+      // A restored context links them again, and dispose deletes every program of the live context.
+      fake.fire('webglcontextlost');
+      const createdBefore = fake.count('createProgram');
+      fake.fire('webglcontextrestored');
+      const restored = fake.history().length;
+      renderer.render();
+      expect(meshDrawsLinear(fake, restored), `${path} restored`).toEqual([false, true]);
+      expect(linearPrograms(fake), `${path} restored`).toBe(2);
+      const deletedBefore = fake.count('deleteProgram');
+      renderer.dispose();
+      expect(fake.count('deleteProgram') - deletedBefore, path).toBe(fake.count('createProgram') - createdBefore);
+    }
+  });
+});

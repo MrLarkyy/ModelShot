@@ -1,3 +1,4 @@
+import { TEXTURE_FLAG_LINEAR } from '@modelshot/looks';
 import {
   mat4NormalMatrix,
   meshVisible,
@@ -23,6 +24,8 @@ export interface DrawItem {
   readonly texture: number;
   /** The texture's size in texels as the lightmap layout saw it (`SceneTexture` width, height; 1 × 1 untextured). */
   readonly textureSize: readonly [number, number];
+  /** The batch's texture flags carry TEXTURE_FLAG_LINEAR: drawn by the mesh passes' linear variant (`meshPass`). */
+  readonly linear: boolean;
   readonly alpha: BatchAlpha;
   /** Single-sided: back faces culled in every pass. */
   readonly cull: boolean;
@@ -123,6 +126,7 @@ export function uploadScene(
       count: batch.indices.length,
       texture: batch.texture,
       textureSize: [doc.textures[batch.texture]?.width || 1, doc.textures[batch.texture]?.height || 1],
+      linear: ((batch.textureFlags[0] ?? 0) & TEXTURE_FLAG_LINEAR) !== 0,
       alpha: batch.alpha,
       cull: !batch.doubleSided,
       renderOrder: batch.renderOrder,

@@ -41,6 +41,7 @@ import {
   createRendererPrograms,
   type LookLocations,
   type MeshPassName,
+  type MeshProgram,
   type RendererPrograms,
 } from './rendererPrograms';
 import { RendererError } from './RendererError';
@@ -855,7 +856,8 @@ export class RealtimeRenderer {
   }
 
   /**
-   * Draws `items` (sorted by render order, descending) with the frame's variant of `passName`. Per render order: the
+   * Draws `items` (sorted by render order, descending) with the frame's variant of `passName`, an item of a linear
+   * texture with its linear variant (bound when the filter changes from one item to the next). Per render order: the
    * front faces of every item (back faces culled), then the back faces of double-sided items (front faces culled).
    * Exact frames key each fragment by `order` (a back face `order + BACK_SIDE_RENDER_ORDER`) in the shader. Raster
    * frames carry only order 0: the front pass is drawn as is and the back pass gets `polygonOffset(4, 4)`, a
@@ -873,31 +875,40 @@ export class RealtimeRenderer {
     alphaToCoverage = false,
     seamCoverage: OitSeamCoverageMode = 0,
   ): void {
-    const pass = gpu.programs.meshPasses[frame.mode][passName];
-    if (!pass) return;
+    const nearest = gpu.programs.meshPass(frame.mode, passName, 'nearest');
+    if (!nearest) return;
     const gl = this.gl;
-    gl.useProgram(pass.program);
-    this.uploadLook(pass.look, frame.viewport[1], frame.lookView);
-    gl.uniformMatrix4fv(pass.view, false, frame.view);
-    gl.uniformMatrix4fv(pass.viewProjection, false, frame.viewProjection);
-    gl.uniformMatrix4fv(pass.inverseProjection, false, frame.inverseProjection);
-    gl.uniform2f(pass.viewportSize, frame.viewport[0], frame.viewport[1]);
     const [depthOffset, depthScale] = exactDepthRange(frame.far);
-    gl.uniform2f(pass.depthRange, depthOffset, depthScale);
+    const bind = (program: MeshProgram): MeshProgram => {
+      gl.useProgram(program.program);
+      this.uploadLook(program.look, frame.viewport[1], frame.lookView);
+      gl.uniformMatrix4fv(program.view, false, frame.view);
+      gl.uniformMatrix4fv(program.viewProjection, false, frame.viewProjection);
+      gl.uniformMatrix4fv(program.inverseProjection, false, frame.inverseProjection);
+      gl.uniform2f(program.viewportSize, frame.viewport[0], frame.viewport[1]);
+      gl.uniform2f(program.depthRange, depthOffset, depthScale);
+      gl.uniform1i(program.texture, 0);
+      gl.uniform1i(program.texelAntialias, this.options.texelAntialias === false ? 0 : 1);
+      gl.uniform1i(program.alphaToCoverage, alphaToCoverage ? 1 : 0);
+      gl.uniform1i(program.seamCoverage, seamCoverage);
+      gl.uniform1i(program.lightmap, 1);
+      gl.uniform1i(program.bakeOn, gpu.lighting ? 1 : 0);
+      gl.uniform1f(program.edgeWidth, this.edges.width);
+      return program;
+    };
+    let pass = bind(nearest);
+    let linear = false;
     const exact = frame.mode === 'exact' ? gpu.scene?.exact : null;
     const noPull = new Float32Array(4);
-    gl.uniform1i(pass.texture, 0);
-    gl.uniform1i(pass.texelAntialias, this.options.texelAntialias === false ? 0 : 1);
-    gl.uniform1i(pass.alphaToCoverage, alphaToCoverage ? 1 : 0);
-    gl.uniform1i(pass.seamCoverage, seamCoverage);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, gpu.lighting?.lightmap ?? gpu.unbakedLight);
-    gl.uniform1i(pass.lightmap, 1);
-    gl.uniform1i(pass.bakeOn, gpu.lighting ? 1 : 0);
-    gl.uniform1f(pass.edgeWidth, this.edges.width);
     gl.activeTexture(gl.TEXTURE0);
     gl.enable(gl.CULL_FACE);
     const draw = (item: DrawItem, order: number): void => {
+      if (item.linear !== linear) {
+        linear = item.linear;
+        pass = bind(linear ? (gpu.programs.meshPass(frame.mode, passName, 'linear') ?? nearest) : nearest);
+      }
       gl.uniform4fv(pass.depthPull, exact ? noPull : depthPull(frame.projection, order));
       gl.uniform1f(pass.orderPull, order * RENDER_ORDER_TIE_DISTANCE);
       gl.uniform1i(pass.alphaMode, item.alpha.modeId);
