@@ -788,4 +788,50 @@ describe('RealtimeRenderer texel filter program variants (MS-90)', () => {
       second.dispose();
     }
   });
+
+  it('reports a linear link failure of the fallback switch once and draws the batch with the nearest program', async () => {
+    let broken = false;
+    const fake = fakeWebGl({
+      float: { samples: 4, maxSize: 4096, rejects: (width) => width === 80 },
+      pixelByte: 255,
+      linkFails: (sources) => broken && sources.some((source) => source.includes('linearTexelColor(')),
+    });
+    const renderer = RealtimeRenderer.create(fake.canvas);
+    const errors: unknown[] = [];
+    renderer.onError((error) => errors.push(error));
+    renderer.setCamera(camera);
+    await renderer.setScene(mixedFilterQuad());
+    renderer.render();
+    broken = true;
+    fake.canvas.width = 80;
+    const from = fake.history().length;
+    expect(() => renderer.render()).not.toThrow();
+    expect(() => renderer.render()).not.toThrow();
+    expect(renderer.capabilities?.path).toBe('fallback');
+    expect(meshDrawsLinear(fake, from).slice(0, 2)).toEqual([false, false]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ code: 'SHADER_LINK' });
+    renderer.dispose();
+  });
+
+  it('reports a program link failure of a context restore to the error listener', async () => {
+    let broken = false;
+    const fake = fakeWebGl({
+      float: { samples: 4, maxSize: 4096 },
+      pixelByte: 255,
+      linkFails: (sources) => broken && sources.some((source) => source.includes('linearTexelColor(')),
+    });
+    const renderer = RealtimeRenderer.create(fake.canvas);
+    const errors: unknown[] = [];
+    renderer.onError((error) => errors.push(error));
+    renderer.setCamera(camera);
+    await renderer.setScene(mixedFilterQuad());
+    fake.fire('webglcontextlost');
+    broken = true;
+    fake.fire('webglcontextrestored');
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ code: 'SHADER_LINK' });
+    expect(() => renderer.render()).not.toThrow();
+    renderer.dispose();
+  });
 });

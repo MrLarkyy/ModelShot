@@ -211,6 +211,7 @@ export class RealtimeRenderer {
   /** Kept on the CPU so a lost context gets it back. */
   private lighting: BakedLighting | null = null;
   private readonly restoredListeners = new Set<() => void>();
+  private readonly errorListeners = new Set<(error: RendererError) => void>();
   /** The look drawn with, but for its edges, which are `edges` (`setEdges` changes them alone). */
   private lookPreset: LookPreset;
   private edges: EdgeLook;
@@ -476,6 +477,24 @@ export class RealtimeRenderer {
   }
 
   /**
+   * Called with a failure that happens outside a call of the caller's: a linear program that does not link when the
+   * fallback path takes over or the context comes back (the frame draws those batches with the nearest program;
+   * after a failed restore nothing is drawn). Returns a function that removes the listener.
+   */
+  onError(listener: (error: RendererError) => void): () => void {
+    this.errorListeners.add(listener);
+    return () => this.errorListeners.delete(listener);
+  }
+
+  private reportError(error: unknown): void {
+    const reported =
+      error instanceof RendererError
+        ? error
+        : new RendererError('SHADER_LINK', error instanceof Error ? error.message : String(error));
+    for (const listener of [...this.errorListeners]) listener(reported);
+  }
+
+  /**
    * Draws one frame now. A no-op while the context is lost or after `dispose()`. A still exact-key frame on the float
    * path draws one shifted pass per call into its sample history and shows the mean of the passes so far
    * (`needsRender` stays true until all are in); any change starts the history again.
@@ -599,6 +618,7 @@ export class RealtimeRenderer {
     if (this.gpu && !this.lost) this.releaseGpuResources(this.gpu);
     this.gpu = null;
     this.restoredListeners.clear();
+    this.errorListeners.clear();
   }
 
   private isCurrent(generation: number): boolean {
@@ -743,7 +763,14 @@ export class RealtimeRenderer {
     this.releaseExactSamples(gpu);
     for (const program of gpu.programs.all) gl.deleteProgram(program);
     gpu.programs = createRendererPrograms(gl, false);
-    if (gpu.scene) this.linkLinearPrograms(gpu, gpu.scene);
+    if (gpu.scene) {
+      try {
+        this.linkLinearPrograms(gpu, gpu.scene);
+      } catch (error) {
+        // A frame never throws: the linear batches draw with the nearest program.
+        this.reportError(error);
+      }
+    }
     gpu.capabilities = { ...gpu.capabilities, path: 'fallback', msaaSamples: 0 };
   }
 
@@ -855,8 +882,9 @@ export class RealtimeRenderer {
       this.gpu = this.createGpuResources();
       this.uploadLoadedScene(this.gpu);
       this.uploadLighting(this.gpu);
-    } catch {
+    } catch (error) {
       this.gpu = null;
+      this.reportError(error);
       return;
     }
     this.render();
