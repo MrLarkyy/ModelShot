@@ -62,6 +62,21 @@ export async function openFileMenu(page: Page): Promise<void> {
   await expect(page.locator('#file-menu')).toBeVisible();
 }
 
+/** Waits until the preview is lit: the model dot carries the lighting state, the status line only the last message. */
+export async function expectLit(page: Page, timeout = 120_000): Promise<void> {
+  await expect(page.locator('#model-state')).toContainText('Preview lit', { timeout });
+}
+
+/** Forget local data through the File menu; `confirm` false cancels the dialog instead. */
+export async function forgetLocalData(page: Page, confirm = true): Promise<void> {
+  await openFileMenu(page);
+  await page.getByRole('button', { name: 'Forget local data' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Forget local data?' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: confirm ? 'Forget local data' : 'Cancel' }).click();
+  await expect(dialog).toBeHidden();
+}
+
 /** Waits until the editor tools (overlay, picking, gizmo, timeline) are loaded. */
 export async function waitForEditor(page: Page): Promise<void> {
   await page.waitForFunction(() => document.body.dataset['editor'] === 'ready');

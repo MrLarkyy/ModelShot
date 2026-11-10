@@ -56,7 +56,7 @@ test('no button is blue unless it is primary; Export and Render are the only pri
     expectOnlyPrimariesBlue(await visibleButtons(page), tab);
   }
   const main = (await visibleButtons(page)).filter((b) => b.primary).map((b) => b.name);
-  expect(main).toEqual(['Render', 'Export…']);
+  expect(main).toEqual(['Export…', 'Render']);
   await openFileMenu(page);
   expectOnlyPrimariesBlue(await visibleButtons(page), 'File menu');
   await page.keyboard.press('Escape');
@@ -317,4 +317,18 @@ test('forced colours mark the selected tab, an open panel toggle and the current
       .evaluate((n) => [getComputedStyle(n).outlineStyle, getComputedStyle(n).outlineWidth]);
   expect(await outline('#outliner-toggle[aria-expanded=true]')).toEqual(['solid', '2px']);
   expect(await outline('.outliner-row .name[aria-current=true]')).toEqual(['solid', '2px']);
+});
+
+test('forced colours keep a visible border on the model dot and the toast', async ({ page }) => {
+  await page.emulateMedia({ forcedColors: 'active' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'nested-groups.bbmodel')], 'nested-groups.bbmodel');
+  await expect(page.locator('#model-state')).toHaveAttribute('data-state', /lit|busy/, { timeout: 120_000 });
+  for (const selector of ['#model-state', '#status']) {
+    const border = await page
+      .locator(selector)
+      .evaluate((n) => [getComputedStyle(n).borderTopStyle, getComputedStyle(n).borderTopWidth]);
+    expect(border, selector).toEqual(['solid', '1px']);
+  }
 });

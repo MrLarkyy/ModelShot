@@ -1,4 +1,4 @@
-import { expect, fixture, openApp, openFiles, openTab, test } from './appTest';
+import { expect, fixture, openApp, openFiles, openTab, test, expectLit } from './appTest';
 
 interface Seen {
   readonly method: string;
@@ -30,7 +30,7 @@ test('opening, rendering and exporting make only same-origin GET requests withou
   );
 
   await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
-  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 60_000 });
+  await expectLit(page, 60_000);
   const afterOpen = seen.slice(initial).map((r) => new URL(r.url).pathname.split('/').pop() ?? '');
   expect(afterOpen.some((name) => name.startsWith('loadWorker'))).toBe(true);
   expect(afterOpen.some((name) => name.startsWith('bakeWorker'))).toBe(true);

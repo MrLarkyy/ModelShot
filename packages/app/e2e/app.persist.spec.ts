@@ -3,6 +3,7 @@ import {
   expect,
   fixture,
   openApp,
+  forgetLocalData,
   openFileMenu,
   openFiles,
   openTab,
@@ -13,6 +14,7 @@ import {
   type Rgba,
   waitForModel,
   waitForStored,
+  expectLit,
 } from './appTest';
 
 const CUBE = fixture('bbmodel', 'single-cube.bbmodel');
@@ -99,8 +101,7 @@ test('Forget local data deletes the database, and the next start has no model an
   await openFiles(page, [CUBE], 'single-cube.bbmodel');
   await changeView(page);
   await waitForStored(page, () => true);
-  await openFileMenu(page);
-  await page.getByRole('button', { name: 'Forget local data' }).click();
+  await forgetLocalData(page);
   await expect(page.getByRole('status')).toContainText('Local data deleted');
   const names = await page.evaluate(async () => (await indexedDB.databases()).map((d) => d.name));
   expect(names).not.toContain('modelshot-app');
@@ -163,7 +164,7 @@ test('the texture filter follows in the preview and the render, is saved and res
   const select = page.locator('#inspector').getByRole('combobox', { name: TEXTURE });
   await expect(select).toHaveCount(1);
   await expect(select).toHaveValue('nearest');
-  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
+  await expectLit(page, 120_000);
   const nearestPreview = await waitForModel(page);
   const nearestRender = await renderOnce(page, 1);
 
@@ -172,7 +173,7 @@ test('the texture filter follows in the preview and the render, is saved and res
   await expect
     .poll(async () => (await previewImage(page)).data.equals(nearestPreview.data), { timeout: 20_000 })
     .toBe(false);
-  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
+  await expectLit(page, 120_000);
   const linearPreview = await waitForModel(page);
   const linearRender = await renderOnce(page, 2);
   expect(linearRender.data.equals(nearestRender.data), 'the render follows the filter').toBe(false);
@@ -181,7 +182,7 @@ test('the texture filter follows in the preview and the render, is saved and res
   await page.reload();
   await expect(page.getByRole('status')).toContainText('Opened single-cube.bbmodel', { timeout: 30_000 });
   await expect(page.locator('#inspector').getByRole('combobox', { name: TEXTURE })).toHaveValue('linear');
-  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
+  await expectLit(page, 120_000);
   const restored = await waitForModel(page);
   expect(restored.data.equals(nearestPreview.data), 'the restored preview is not the nearest look').toBe(false);
   // The restored preview sits within lighting noise of the linear one and far from the nearest one.

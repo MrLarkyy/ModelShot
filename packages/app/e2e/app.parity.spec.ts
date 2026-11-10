@@ -12,6 +12,7 @@ import {
   test,
   waitForEditor,
   type Rgba,
+  expectLit,
 } from './appTest';
 
 function toPng(image: Rgba): Buffer {
@@ -28,10 +29,10 @@ test('the preview and the render of the same view agree within the path tracer p
   await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
   await openTab(page, 'Look');
   await page.getByRole('radio', { name: 'Marketplace' }).check();
-  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
+  await expectLit(page, 120_000);
   // The Marketplace bake replaced the Studio one: wait for the bake that ends after the look change.
   await page.waitForTimeout(500);
-  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
+  await expectLit(page, 120_000);
   const preview = await previewImage(page);
 
   await openTab(page, 'Render');

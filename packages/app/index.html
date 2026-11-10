@@ -17,45 +17,86 @@
     <a class="skip-link" href="#viewport">Skip to the 3D view</a>
     <header class="top-bar">
       <h1 id="title"></h1>
-      <div class="bar-group" role="group" aria-label="Panels">
-        <button id="outliner-toggle" class="bar-toggle" type="button" aria-controls="outliner" aria-expanded="true">
-          Outliner
-        </button>
-        <button id="inspector-toggle" class="bar-toggle" type="button" aria-controls="inspector" aria-expanded="true">
-          Inspector
-        </button>
-        <button id="timeline-toggle" class="bar-toggle" type="button" aria-controls="timeline" aria-expanded="true">
-          Timeline
-        </button>
-      </div>
       <div class="menu">
-        <button id="file-menu-button" type="button" aria-expanded="false" aria-controls="file-menu">File</button>
+        <button
+          id="file-menu-button"
+          type="button"
+          aria-expanded="false"
+          aria-controls="file-menu"
+          aria-keyshortcuts="Control+O"
+        >
+          File
+        </button>
         <div id="file-menu" class="menu-list" hidden>
-          <button id="open-button" type="button">Open…</button>
-          <button id="menu-export-button" type="button" disabled>Export…</button>
-          <p class="hint">
+          <button id="open-button" type="button">Open…<kbd aria-hidden="true">Ctrl+O</kbd></button>
+          <button id="menu-export-button" type="button" disabled>Export…<kbd aria-hidden="true">Ctrl+E</kbd></button>
+          <button id="help-button" type="button">Shortcuts<kbd aria-hidden="true">?</kbd></button>
+          <hr class="menu-separator" />
+          <button id="forget-button" class="destructive" type="button">Forget local data</button>
+          <p class="menu-foot">
             Everything stays in this browser. The last model and your settings are kept here so the app can reopen them.
           </p>
-          <button id="forget-button" type="button">Forget local data</button>
-          <button id="help-button" type="button">Shortcuts</button>
         </div>
       </div>
-      <div class="bar-group" role="group" aria-label="History">
-        <button id="undo-button" type="button" disabled>Undo</button>
-        <button id="redo-button" type="button" disabled>Redo</button>
+      <div id="bar-overflow" class="bar-overflow">
+        <div class="bar-group" role="group" aria-label="History">
+          <button id="undo-button" class="icon-button" type="button" aria-label="Undo" title="Undo" disabled></button>
+          <button id="redo-button" class="icon-button" type="button" aria-label="Redo" title="Redo" disabled></button>
+        </div>
+        <div class="bar-group" role="group" aria-label="Panels">
+          <button
+            id="outliner-toggle"
+            class="icon-button bar-toggle"
+            type="button"
+            aria-label="Outliner"
+            title="Outliner"
+            aria-controls="outliner"
+            aria-expanded="true"
+          ></button>
+          <button
+            id="inspector-toggle"
+            class="icon-button bar-toggle"
+            type="button"
+            aria-label="Inspector"
+            title="Inspector"
+            aria-controls="inspector"
+            aria-expanded="true"
+          ></button>
+          <button
+            id="timeline-toggle"
+            class="icon-button bar-toggle"
+            type="button"
+            aria-label="Timeline"
+            title="Timeline"
+            aria-controls="timeline"
+            aria-expanded="true"
+          ></button>
+        </div>
+        <fieldset class="segmented" aria-label="Viewport mode">
+          <label class="segment"
+            ><input id="mode-preview" type="radio" name="mode" value="preview" checked /><span>Preview</span></label
+          >
+          <label class="segment"
+            ><input id="mode-render" type="radio" name="mode" value="render" disabled /><span>Path traced</span></label
+          >
+        </fieldset>
       </div>
-      <fieldset class="segmented" aria-label="Viewport mode">
-        <label class="segment"
-          ><input id="mode-preview" type="radio" name="mode" value="preview" checked /><span>Preview</span></label
-        >
-        <label class="segment"
-          ><input id="mode-render" type="radio" name="mode" value="render" disabled /><span>Render</span></label
-        >
-      </fieldset>
-      <div class="toolbar bar-end" role="toolbar" aria-label="Main actions">
-        <button id="render-button" class="primary" type="button" disabled>Render</button>
+      <p class="model-line">
+        <span id="model-name" class="model-name"></span>
+        <span id="model-state" class="model-state" aria-live="polite" data-state="none"></span>
+      </p>
+      <div class="bar-end">
         <button id="share-button" type="button" hidden>Share</button>
         <button id="export-button" class="primary" type="button" disabled>Export…</button>
+        <button
+          id="bar-more-button"
+          class="icon-button"
+          type="button"
+          aria-label="More"
+          title="More"
+          aria-expanded="false"
+          aria-controls="bar-overflow"
+        ></button>
       </div>
       <input
         id="file-input"
@@ -103,15 +144,29 @@
           <p id="stats" class="chips chips-bottom stats" hidden></p>
           <p id="empty" class="empty">Drop a model here, or choose Open…</p>
           <div id="drop-overlay" class="drop-overlay" hidden>Drop to open</div>
-        </div>
-        <div class="messages" role="region" aria-label="Status and messages" tabindex="0">
-          <div id="status" role="status">
-            <span id="status-main"></span> <span id="status-lighting"></span> <span id="status-storage"></span>
+          <div class="render-bar">
+            <div id="render-idle" class="render-idle">
+              <button id="render-button" class="primary" type="button" disabled>Render</button>
+              <span id="render-meta" class="render-meta"></span>
+            </div>
+            <div id="render-progress" class="render-progress" hidden>
+              <progress id="progress" max="1" value="0" aria-label="Render progress"></progress>
+              <button id="cancel-button" type="button">Stop</button>
+            </div>
+            <p id="render-info" class="render-info render-result" hidden></p>
           </div>
-          <div id="alert" role="alert" hidden></div>
-          <div class="render-progress" id="render-progress" hidden>
-            <progress id="progress" max="1" value="0" aria-label="Render progress"></progress>
-            <button id="cancel-button" type="button">Cancel</button>
+          <div class="toasts">
+            <div id="status" class="toast" role="status"></div>
+            <div id="alert-box" class="toast toast-alert" hidden>
+              <div id="alert" role="alert"></div>
+              <button
+                id="alert-close"
+                class="icon-button"
+                type="button"
+                aria-label="Dismiss the error"
+                title="Dismiss the error"
+              ></button>
+            </div>
           </div>
         </div>
       </main>
@@ -137,6 +192,17 @@
     ></div>
     <section id="timeline" class="panel timeline" aria-label="Timeline"></section>
     <dialog id="export-dialog" aria-labelledby="export-title"></dialog>
+    <dialog id="forget-dialog" aria-labelledby="forget-title" aria-describedby="forget-body">
+      <h2 id="forget-title">Forget local data?</h2>
+      <p id="forget-body">
+        This deletes what is stored in this browser: the files of the last model, the view and settings you chose for
+        each model, and the panel layout, which goes back to its default sizes. Files on your disk are not touched.
+      </p>
+      <div class="dialog-actions">
+        <button id="forget-cancel" type="button" autofocus>Cancel</button>
+        <button id="forget-confirm" class="destructive" type="button">Forget local data</button>
+      </div>
+    </dialog>
     <dialog id="help-dialog" aria-labelledby="help-title"></dialog>
     <script type="module" src="/src/main.ts"></script>
   </body>

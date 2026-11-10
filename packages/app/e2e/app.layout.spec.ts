@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, fixture, openApp, openFileMenu, openFiles, test, waitForEditor } from './appTest';
+import { expect, expectLit, fixture, forgetLocalData, openApp, openFiles, test, waitForEditor } from './appTest';
 
 const NESTED = fixture('bbmodel', 'nested-groups.bbmodel');
 
@@ -63,19 +63,15 @@ test('below 1024 px the panels are drawers over a usable view', async ({ page },
   await toggle.click();
   await expect(page.locator('#outliner')).toBeVisible();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-  // An open drawer covers the view only: the status line keeps its left edge and stays on top at its start.
+  // An open drawer covers the view only; a toast stays above it.
   const drawer = await box(page, '#outliner');
-  const status = await box(page, '#status');
-  expect(status.x).toBeGreaterThanOrEqual(0);
-  expect(drawer.y + drawer.height).toBeLessThanOrEqual(status.y + 1);
-  const statusOnTop = await page.evaluate(
-    ({ x, y }) => {
-      const hit = document.elementFromPoint(x, y);
-      return hit !== null && document.getElementById('status')?.closest('.messages')?.contains(hit) === true;
-    },
-    { x: status.x + 4, y: status.y + 4 },
-  );
-  expect(statusOnTop, 'the start of the status line is not under the drawer').toBe(true);
+  const stage = await box(page, '.stage');
+  expect(drawer.y + drawer.height).toBeLessThanOrEqual(stage.y + stage.height + 1);
+  const layers = await page.evaluate(() => ({
+    toast: Number(getComputedStyle(document.querySelector('.toasts')!).zIndex),
+    drawer: Number(getComputedStyle(document.getElementById('outliner')!).zIndex),
+  }));
+  expect(layers.toast, 'the toast layer is above the drawer').toBeGreaterThan(layers.drawer);
   await page.screenshot({ animations: 'disabled', path: testInfo.outputPath('editor-900-drawer.png') });
   await page.keyboard.press('Escape');
   await expect(page.locator('#outliner')).toBeHidden();
@@ -137,10 +133,23 @@ test('Forget local data also resets the layout', async ({ page }) => {
   await page.keyboard.press('End');
   await page.getByRole('button', { name: 'Inspector', exact: true }).click();
   await expect(page.locator('#inspector')).toBeHidden();
-  await openFileMenu(page);
-  await page.getByRole('button', { name: 'Forget local data' }).click();
+  await forgetLocalData(page);
   await expect(page.getByRole('status')).toContainText('Local data deleted');
   await expect(page.locator('#inspector')).toBeVisible();
   await expect(separator).toHaveAttribute('aria-valuenow', start ?? '');
   expect(await page.evaluate(() => localStorage.getItem('modelshot.layout.v1'))).toBeNull();
+});
+
+test('the view takes the height the status band used to hold, and the status line is the last message only', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await openApp(page);
+  await openFiles(page, [NESTED], 'nested-groups.bbmodel');
+  await expectLit(page, 120_000);
+  const viewport = await box(page, '#viewport');
+  const stage = await box(page, '.stage');
+  expect(viewport.y + viewport.height).toBeCloseTo(stage.y + stage.height, 0);
+  await expect(page.getByRole('status')).toHaveText('Opened nested-groups.bbmodel.');
+  expect(await page.locator('.messages').count()).toBe(0);
 });

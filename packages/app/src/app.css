@@ -13,7 +13,6 @@ body {
   --outliner-w: 260px;
   --inspector-w: 320px;
   --timeline-h: 132px;
-  --messages-h: 5.5rem;
 
   /* Editor aliases of the brand tokens: components read these, never a raw colour (docs/app.md, Visual system). */
   --ed-ground: var(--ms-color-ground);
@@ -122,30 +121,139 @@ h3 {
   top: var(--ms-space-2);
 }
 
+/* One row at every width: the groups below 900 px move into the More list instead of wrapping. */
 .top-bar {
+  position: relative;
   grid-row: 1;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: var(--ms-space-2) var(--ms-space-3);
+  gap: var(--ms-space-3);
   padding: var(--ms-space-2) var(--ms-space-4);
   background: var(--ed-panel);
   border-bottom: 1px solid var(--ed-line);
 }
 
 .top-bar h1 {
+  flex: 0 1 auto;
+  min-width: 0;
   margin-right: var(--ms-space-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.top-bar > *,
+.bar-group,
+.bar-end {
+  flex-shrink: 0;
+}
+
+.top-bar > h1,
+.top-bar > .model-line {
+  flex-shrink: 1;
 }
 
 .bar-group,
-.toolbar {
+.bar-end,
+.bar-overflow {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   gap: var(--ms-space-2);
+}
+
+.bar-overflow {
+  gap: var(--ms-space-3);
+}
+
+.top-bar .segmented {
+  flex: none;
 }
 
 .bar-end {
   margin-left: auto;
+}
+
+.model-line {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ms-space-2);
+  min-width: 0;
+  margin: 0;
+}
+
+.model-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ed-text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The state is the dot; its text stays for assistive technology. */
+.model-state {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  overflow: hidden;
+  font-size: 0;
+  color: transparent;
+  border: 1px solid var(--ed-line-strong);
+  border-radius: 50%;
+}
+
+.model-state[data-state='none'] {
+  display: none;
+}
+
+.model-state[data-state='lit'] {
+  background: var(--ed-ok);
+}
+
+.model-state[data-state='busy'] {
+  background: var(--ed-sun);
+}
+
+.model-state[data-state='warn'] {
+  background: var(--ed-flash);
+}
+
+#bar-more-button {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  /* The group is inline here whatever the More button left it at. */
+  .bar-overflow[hidden] {
+    display: flex !important;
+  }
+}
+
+@media (max-width: 899px) {
+  .top-bar {
+    gap: var(--ms-space-2);
+    padding-inline: var(--ms-space-2);
+  }
+
+  #bar-more-button {
+    display: inline-flex;
+  }
+
+  .bar-overflow {
+    position: absolute;
+    z-index: 15;
+    top: calc(100% + var(--ms-space-1));
+    right: var(--ms-space-2);
+    flex-direction: column;
+    align-items: flex-start;
+    padding: var(--ms-space-3);
+    background: var(--ed-raised);
+    border: 1px solid var(--ed-line-strong);
+    border-radius: var(--ed-radius-ui);
+    box-shadow: 0 14px 32px -12px color-mix(in srgb, var(--ms-color-ink) 80%, transparent);
+  }
 }
 
 /* Native [hidden] loses to any author display value; the buttons and rows below set one. */
@@ -301,11 +409,6 @@ button:disabled {
   justify-content: flex-start;
   border-color: transparent;
   text-align: left;
-}
-
-.menu-list .hint {
-  max-width: 16rem;
-  margin: 0;
 }
 
 .segmented {
@@ -497,7 +600,7 @@ button:disabled {
 
 .stage {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   min-width: 0;
 }
@@ -624,32 +727,109 @@ button:disabled {
   pointer-events: none;
 }
 
-.messages {
-  /* A fixed height: a message or the progress bar appearing must not resize the view and stop a render. */
-  height: var(--messages-h);
-  overflow: auto;
-  padding: var(--ms-space-2) var(--ms-space-4);
+.render-bar {
+  position: absolute;
+  z-index: 3;
+  bottom: var(--ms-space-3);
+  left: 50%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ms-space-2) var(--ms-space-3);
+  max-width: calc(100% - var(--ms-space-5));
+  padding: var(--ms-space-2) var(--ms-space-3);
   background: var(--ed-panel);
-  border-top: 1px solid var(--ed-line);
+  border: 1px solid var(--ed-line-strong);
+  border-radius: var(--ed-radius-ui);
+  transform: translateX(-50%);
 }
 
-#alert {
-  margin: var(--ms-space-1) 0;
-  padding: var(--ms-space-1) var(--ms-space-3);
-  background: var(--ms-color-paper);
-  border: 2px solid var(--ms-color-flash);
-  border-radius: var(--ms-radius-control);
-  color: var(--ms-color-ink);
-}
-
+.render-idle,
 .render-progress {
   display: flex;
   align-items: center;
   gap: var(--ms-space-3);
 }
 
+.render-meta,
+.render-info {
+  margin: 0;
+  color: var(--ed-text-2);
+  font: var(--ms-weight-medium) var(--ms-size-caption) var(--ms-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 .render-progress progress {
-  flex: 1;
+  width: 8rem;
+  max-width: 100%;
+}
+
+/* Over the view and the drawers, never in the layout: a message must not resize the view and stop a render. */
+.toasts {
+  position: absolute;
+  z-index: 12;
+  top: var(--ms-space-3);
+  left: 50%;
+  display: grid;
+  gap: var(--ms-space-2);
+  justify-items: center;
+  width: max-content;
+  max-width: calc(100% - var(--ms-space-5));
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.toast {
+  padding: var(--ms-space-2) var(--ms-space-3);
+  background: var(--ed-raised);
+  border: 1px solid var(--ed-line-strong);
+  border-radius: var(--ed-radius-ui);
+  overflow-wrap: anywhere;
+  opacity: 0;
+  transition: opacity var(--ms-motion-ui) var(--ms-motion-ease);
+}
+
+.toast.toast-shown {
+  opacity: 1;
+}
+
+.toast:empty {
+  border-color: transparent;
+}
+
+.toast-alert {
+  display: flex;
+  align-items: center;
+  gap: var(--ms-space-2);
+  border: 2px solid var(--ed-flash);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.menu-list button kbd {
+  margin-left: auto;
+}
+
+.menu-list .menu-separator {
+  width: 100%;
+  margin: var(--ms-space-1) 0;
+  border: 0;
+  border-top: 1px solid var(--ed-line);
+}
+
+.menu-foot {
+  max-width: 16rem;
+  margin: var(--ms-space-1) var(--ms-space-2);
+  color: var(--ed-text-3);
+  font-size: var(--ms-size-caption);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--ms-space-2);
+  margin-top: var(--ms-space-4);
 }
 
 .hint {
@@ -1097,13 +1277,13 @@ progress {
     grid-column: 1;
   }
 
-  /* A drawer covers the view, never the status and messages below it. */
+  /* A drawer covers the view; the toasts stay above it. */
   #outliner,
   #inspector {
     position: absolute;
     z-index: 10;
     top: 0;
-    bottom: var(--messages-h);
+    bottom: 0;
     width: min(20rem, 85%);
     border: 1px solid var(--ed-line-strong);
     animation: drawer-in var(--ms-motion-ui) var(--ms-motion-ease);
@@ -1183,6 +1363,22 @@ progress {
 
   [role='tab'][aria-selected='true'] {
     border-bottom: 3px solid Highlight;
+  }
+}
+
+@media (forced-colors: active) {
+  .model-state {
+    border-color: CanvasText;
+  }
+
+  .model-state[data-state='lit'] {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
+
+  .toast,
+  .render-bar {
+    border-color: CanvasText;
   }
 }
 

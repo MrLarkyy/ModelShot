@@ -11,6 +11,7 @@ import {
   test,
   waitForEditor,
   waitForModel,
+  expectLit,
 } from './appTest';
 
 const NESTED = fixture('bbmodel', 'nested-groups.bbmodel');
@@ -60,7 +61,7 @@ test('each overlay toggle hides its layer', async ({ page }) => {
 
 test('the overlay, a selection and the gizmo never reach the preview, the render or an export', async ({ page }) => {
   await openNested(page);
-  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
+  await expectLit(page, 120_000);
   await openTab(page, 'Render');
   const samples = page.locator('#render-panel').getByLabel('Samples');
   await samples.fill('4');

@@ -11,6 +11,7 @@ import {
   waitForStored,
   waitForEditor,
   waitForModel,
+  expectLit,
 } from './appTest';
 
 const NESTED = fixture('bbmodel', 'nested-groups.bbmodel');
@@ -284,7 +285,7 @@ test('a look picked while a model without a saved look opens is kept and lit', a
   await page.evaluate(() => window.__msApp!.releaseScene());
   await expect(page.getByRole('status')).toContainText('Opened single-cube.bbmodel', { timeout: 30_000 });
   await expect(page.getByRole('radio', { name: 'Marketplace' })).toBeChecked();
-  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
+  await expectLit(page, 120_000);
   await waitForStored(page, (record) => record['look'] === 'marketplace');
 });
 

@@ -16,6 +16,7 @@ import {
   waitForEditor,
   waitForModel,
   type Rgba,
+  expectLit,
 } from './appTest';
 
 const ANIMATED = fixture('bbmodel', 'animated.bbmodel');
@@ -164,7 +165,7 @@ test('scrubbing during a render cancels it', async ({ page }) => {
 // Records every lighting status from here on, so a relight is counted without waiting on it.
 async function watchLighting(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const status = document.getElementById('status-lighting');
+    const status = document.getElementById('model-state');
     const seen: string[] = [];
     (window as unknown as { statusSeen: string[] }).statusSeen = seen;
     if (status) {
@@ -182,10 +183,10 @@ const lightingSeen = (page: Page): Promise<string[]> =>
 
 test('a scene change at a scrubbed pose relights it at once, not after the relight delay', async ({ page }) => {
   await openAnimated(page);
-  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
+  await expectLit(page, 120_000);
   await playhead(page).fill('0.5');
   await page.waitForTimeout(1000);
-  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
+  await expectLit(page, 120_000);
   // A relight that waits for the delay would not come within this test: only one at once is seen.
   expect(await page.evaluate(() => window.__msApp!.setRelightDelayMs(600_000))).toBe(true);
   await watchLighting(page);
@@ -195,7 +196,7 @@ test('a scene change at a scrubbed pose relights it at once, not after the relig
       timeout: 30_000,
     })
     .toBe(true);
-  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
+  await expectLit(page, 120_000);
 });
 
 function toPng(image: Rgba): Buffer {
@@ -211,9 +212,9 @@ test('a pose that stays is lit for that pose: preview and render at 0.5 s agree 
   await openAnimated(page);
   await openTab(page, 'Look');
   await page.getByRole('radio', { name: 'Marketplace' }).check();
-  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
+  await expectLit(page, 120_000);
   await page.waitForTimeout(500);
-  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
+  await expectLit(page, 120_000);
   await watchLighting(page);
   // "bob" at 0.5 s lifts the body 2 to 4 units off the catcher: the light baked at rest differs from the render at
   // 0.0876 of the pixels, 7.7 x the pair limit (measured with the relight switched off), the relit pose at 0.0016.
@@ -221,7 +222,7 @@ test('a pose that stays is lit for that pose: preview and render at 0.5 s agree 
   // The scrub ended: a relight starts 0.2 s later (RELIGHT_DELAY_MS). The pixels below decide whether it lit this pose;
   // the status is only waited on to take the preview after the bake, never as the check.
   await page.waitForTimeout(2000);
-  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 120_000 });
+  await expectLit(page, 120_000);
   await waitForModel(page);
   const preview = await previewImage(page);
   const seen = await lightingSeen(page);

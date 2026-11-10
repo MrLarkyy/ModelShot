@@ -138,6 +138,7 @@ test('every control can be reached with Tab, has a name and shows where the focu
     'Outliner',
     'Inspector',
     'Timeline',
+    'Undo',
     'File',
     'Render',
     'Export…',
@@ -249,4 +250,40 @@ test('a reduced-motion setting turns the view damping off', async ({ page }) => 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await openApp(page);
   expect(await page.evaluate(() => window.__msApp!.orbit.damping)).toBe(false);
+});
+
+test('axe finds no violation with a toast, the File menu, the forget dialog and More open', async ({ page }) => {
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'nested-groups.bbmodel')], 'nested-groups.bbmodel');
+  await expect(page.getByRole('status')).toHaveClass(/toast-shown/);
+  expect(await violations(page), 'toast').toEqual([]);
+  await openFileMenu(page);
+  expect(await violations(page, true), 'file menu').toEqual([]);
+  await page.getByRole('button', { name: 'Forget local data' }).click();
+  await expect(page.getByRole('dialog', { name: 'Forget local data?' })).toBeVisible();
+  expect(await violations(page), 'forget dialog').toEqual([]);
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.getByRole('button', { name: 'More' }).click();
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeVisible();
+  expect(await violations(page, true), 'More at 375 px').toEqual([]);
+});
+
+test('the status line is one role=status and an error stays in role=alert until it is dismissed', async ({ page }) => {
+  await openApp(page);
+  await expect(page.getByRole('status')).toHaveCount(1);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await openFiles(page, [fixture('bbmodel', 'nested-groups.bbmodel')], 'nested-groups.bbmodel');
+  await page
+    .locator('#file-input')
+    .setInputFiles({ name: 'x.bbmodel', mimeType: 'application/json', buffer: Buffer.from('x') });
+  const alert = page.getByRole('alert');
+  await expect(alert).toBeVisible();
+  await page.getByRole('status').evaluate((n) => n.classList.remove('toast-shown'));
+  await expect(alert).toBeVisible();
+  await expect(page.getByRole('status')).toHaveCount(1);
+  expect(await violations(page), 'alert with dismiss').toEqual([]);
+  await page.getByRole('button', { name: 'Dismiss the error' }).click();
+  await expect(alert).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'File', exact: true })).toBeFocused();
 });
