@@ -111,8 +111,7 @@ test('a lost graphics context comes back with the model drawn again', async ({ p
   await openApp(page);
   await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
   await waitForEditor(page);
-  await page.waitForTimeout(500);
-  expect(await page.evaluate(() => window.__msApp!.overlayPixels())).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => window.__msApp!.overlayPixels()), { timeout: 15_000 }).toBeGreaterThan(0);
   await page.evaluate(() => {
     const overlay = document.getElementById('overlay') as HTMLCanvasElement;
     overlay.getContext('2d')?.clearRect(0, 0, overlay.width, overlay.height);

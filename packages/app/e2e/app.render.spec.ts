@@ -22,16 +22,17 @@ test('the render bar names the sample count', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Render', exact: true })).toBeEnabled();
 });
 
-for (const stop of ['Escape', 'Stop'] as const) {
-  test(`a render shows samples, percent and time, and ${stop} cancels it cleanly`, async ({ page }) => {
-    await openApp(page);
-    await openFiles(page, [CUBE], 'single-cube.bbmodel');
-    await waitForEditor(page);
-    await setSamples(page, 4096);
-    const before = await viewportBox(page);
+// One page for both ways out: a second page right after a cancelled 4096-sample render waits on the GPU process draining it.
+test('a render shows samples, percent and time, and Esc and Stop each cancel it cleanly', async ({ page }) => {
+  await openApp(page);
+  await openFiles(page, [CUBE], 'single-cube.bbmodel');
+  await waitForEditor(page);
+  await setSamples(page, 4096);
+  const before = await viewportBox(page);
+  const info = page.locator('#render-info');
+  for (const stop of ['Escape', 'Stop'] as const) {
     await page.locator('#preview').focus();
     await page.keyboard.press('r');
-    const info = page.locator('#render-info');
     await expect(info).toHaveText(RUNNING, { timeout: 30_000 });
     await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible();
     await expect(page.locator('#progress')).toHaveAttribute('aria-valuetext', RUNNING);
@@ -47,8 +48,8 @@ for (const stop of ['Escape', 'Stop'] as const) {
     await expect(page.locator('#result')).toBeHidden();
     await expect(page.getByRole('alert')).toHaveCount(0);
     expect(await viewportBox(page)).toEqual(before);
-  });
-}
+  }
+});
 
 test('a finished render shows its size, samples and time', async ({ page }) => {
   await openApp(page);
