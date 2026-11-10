@@ -134,7 +134,10 @@ if (lighting) renderer.setLighting(lighting);
   (the key's coloured bounce in that channel is lost; carrying it would need a channel of its own); and the bounce is
   baked under the key colour of the look baked under, which `lightingKey` does not include, so light baked under a look
   of the same key but another key colour shows the old bounce until it is baked again (the app and the embed bake again
-  on every look change). Texels of no chart and vertices of no triangle hold 1, so an anti-aliasing tap outside a face, or
+  on every look change). The ratio is stored finite (`toFiniteHalf`): a value above 65504 is stored as 65504. Under a
+  near-black sky and ground with a key light the fill is tiny and the bounce over it large (`chartMean` about 1990 in the
+  near-black test), so the cut can leave the preview darker than the render there, like the dark-channel limit above.
+  Texels of no chart and vertices of no triangle hold 1, so an anti-aliasing tap outside a face, or
   a degenerate triangle, never darkens. The shadow catcher's lightmap stores the same form over `hemisphereFill(up)` (Shadow
   catcher, below). `shadeBaked` (`shading.glsl`) is `albedo × (hemisphereFill(n) × rgb +
 u_lookKeyColor × max(n·u_lookKeyDirection, 0) × a + fillLight(n)) + rimLight(n, v, albedo)`, v toward the eye
