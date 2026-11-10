@@ -1224,7 +1224,8 @@ widened.
   64-pixel tiles within 0.5 levels of its TS mirror (limit 2, as at 1x).
 - **Determinism**: the denoised 2x turntable (16 samples) gives the bytes of a one-pass reference rendered in the same
   run in batches of 7, 3 and 1, in 64-pixel tiles, and after a context loss and restore, also one in the middle of the
-  guide (MS-56; the whole guide, 256 tiles, is drawn again). The guide is spread over steps: guide draws per `step(1)`
+  guide (MS-56; the whole guide, 256 tiles, is drawn again); each drawing is its own test with its own reference (MS-111:
+  as one test the five renders took 2.2-2.6 minutes of the 300 s and ran past it on a loaded machine). The guide is spread over steps: guide draws per `step(1)`
   and `step(4)`, tile 256 and 64, stay within the budget bound and add up to every guide tile, no sample is drawn
   before the last, a guide-only step returns 0 with `guiding` true and traces and presents nothing and leaves the
   default framebuffer bound.

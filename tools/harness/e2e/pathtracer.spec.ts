@@ -304,16 +304,11 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
     expect(worst).toBeLessThanOrEqual(2);
   });
 
-  test('a denoised 2x render gives the same bytes in batches of 7 and 3, 64-pixel tiles and after a restore', async ({
-    page,
-  }) => {
+  // One test per drawing, two renders each: as one test the five renders took 2.2-2.6 minutes of the 300 s and ran past
+  // it on a loaded machine (MS-111).
+  test('a denoised 2x render gives the same bytes after a context restore', async ({ page }) => {
     const reference = await referencePixels(page, TURNTABLE_X2_DENOISED);
     const query = 'variant=turntable-y030&seed=1&samples=16&supersample=2&denoise=1';
-    for (const extra of ['batch=7', 'batch=3&tile=64', 'tile=64']) {
-      const { image, info } = await render(page, `${query}&${extra}`);
-      expect(info.samplesDone, extra).toBe(16);
-      expect(image.data.equals(reference), extra).toBe(true);
-    }
     const info = await openFixture(page, `/pt.html?${query}`);
     const rendered = await page.evaluate(async () => {
       const ptc = window.__msFixture!.pt!;
@@ -325,7 +320,7 @@ test.describe('render quality: supersampling, denoising, convergence', () => {
     expect(decodePng(await readPng(page, info)).data.equals(reference), 'after a context restore').toBe(true);
   });
 
-  for (const extra of ['batch=1', 'batch=1&tile=64']) {
+  for (const extra of ['batch=1', 'batch=1&tile=64', 'batch=7', 'batch=3&tile=64', 'tile=64']) {
     test(`a denoised 2x render drawn by ${extra} gives the one-pass reference bytes`, async ({ page }) => {
       const reference = await referencePixels(page, TURNTABLE_X2_DENOISED);
       const { image, info } = await render(
