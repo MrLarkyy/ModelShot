@@ -126,7 +126,7 @@ run 39878163371's).
 
 Why: the shard holding the baked tests ran into the 20-minute job limit with 4 shards (cancelled in runs 39612706830 and
 39624802150; the 23 baked lighting tests alone took 13-15 minutes on the slow VM of the second), and the 6 pairing tests
-alone are about 11 minutes together on a normal VM. The VMs differ in speed by up to about 2x on the same image (the bench's bakes, the same work every run, took 48.5-51.7 s a bake in runs 40918637235 and 40960128489, 70.8-72.5 s in 40945330892, 41064336939, 41097803096 and 41122837420, 99.6-100.2 s in 40883379594 and 41115750426: 2.0x, all eight on runner image ubuntu-26 version 20261021.618; the two runs with the bench's runner line logged `AMD EPYC 7763 64-Core Processor x4` and `AMD EPYC 9V74 80-Core Processor x4`, so a slow number can be told from a slow CPU model. The realtime frame benches read more than that spread, `rt-bench-512` 1070 to 4140 ms, because they also grew about 1.5-1.8x on runners of equal speed, a regression, see Budgets) (the
+alone are about 11 minutes together on a normal VM. The VMs differ in speed by up to about 2x on the same image (the bench's bakes, the same work every run, took 48.5-51.7 s a bake in runs 40918637235 and 40960128489, 70.8-72.5 s in 40945330892, 41064336939, 41097803096 and 41122837420, 99.6-100.2 s in 40883379594 and 41115750426: 2.0x, all eight on runner image ubuntu-26 version 20261021.618; the two runs with the bench's runner line logged `AMD EPYC 7763 64-Core Processor x4` and `AMD EPYC 9V74 80-Core Processor x4`, so a slow number can be told from a slow CPU model. The realtime frame benches read more than that spread, `rt-bench-512` 1070 to 4140 ms, because they also grew about 1.5-1.8x on runners of equal speed, a regression MS-90 bisected to MS-38's linear filter (fixed) and MS-60's multisampled transparency pass (accepted), see Budgets) (the
 cut-out checker bake took 1.3 minutes on one, 39 s on another), so a shard needs room for the slow case; the bench no
 longer shares a VM with the bakes.
 
@@ -1552,7 +1552,7 @@ Measured on the local Windows dev machine (SwiftShader, 3 runs) when the budgets
 textured cubes, 2,048 cubes, 24,576 triangles, one mesh per cube in 128 group nodes of 4 x 4 cubes as the Blockbench
 loader produces a grouped model, so 512 draw calls per frame after batching per node (checked by the spec), every
 seventh with a partial-alpha face; 512 x 512, 4x MSAA, front and back face passes, opaque and transparency passes),
-median of 11 frames after 4 warm-up frames (MS-81: 4 warm frames are one cycle of an exact frame's sample history, 11 is an exact odd median; it was 30 after 5, which took 6.1 minutes on the slowest runner; `gradient-256` keeps 30 after 5, its 0.1 ms timer ticks need them). Max 6000 ms (MS-81: 2000 ms from MS-44 failed runs 40945330892 and 41064336939, medians 2105 and 3140; 4500 ms then held 4140 in run 41115750426 at 1.09x). The 2000 ms derivation, from the CI medians of the `bench` job: 608.5 ms on
+median of 11 frames after 4 warm-up frames (MS-81: 4 warm frames are one cycle of an exact frame's sample history, 11 is an exact odd median; it was 30 after 5, which took 6.1 minutes on the slowest runner; `gradient-256` keeps 30 after 5, its 0.1 ms timer ticks need them). Max 5600 ms (MS-90, derivation below; MS-81 had 6000 ms after 2000 ms from MS-44 failed runs 40945330892 and 41064336939, medians 2105 and 3140, and 4500 ms then held 4140 in run 41115750426 at 1.09x). The 2000 ms derivation, from the CI medians of the `bench` job: 608.5 ms on
 a normal runner (run 39594658979) and 944.4 ms on a runner about 1.55x slower on this bench (1.71x on the other rt-bench row; 1.33-1.46x on the remaining benches) (run 39650722835,
 where the earlier max of 750 ms failed). 2000 ms was 3.3x the normal CI median and 2.1x the slow one, the 3-4x-CI-median
 rule of `timeToSamplesMs`. MS-81: the medians grew more than the runners differ, a regression, not runner spread.
@@ -1561,12 +1561,51 @@ CI). At equal bake time `rt-bench-512` grew from 2104.95 ms (40945330892, bakes 
 3838.6 ms (41064336939, 41097803096, 41122837420, bakes 70.8-72.5 s), 1.49-1.83x; locally from 401.95-409.75 ms (full
 tests of 2026-10-29, bakes 17.2-18.0 s) to 741.55-828.55 ms (2026-10-30, bakes 17.8-20.9 s), about 1.9x, with MS-38's
 branch at 641.25-665.95 ms (bakes 18.7-21.9 s, about 1.6x) and MS-60's at 748.5-769.55 ms (bakes 18.0-19.7 s, about
-1.2x more). MS-90 bisects it (a3a1144..ab09aae, MS-38 and MS-60) and re-derives this max and `rt-bench-order-512`'s.
-Until then 6000 ms is a documented temporary acceptance, a deliberate exception to the 3-4x rule: 5.6x and 4.5x the
-fast medians of 1070.2 and 1347.95 ms (runs 40918637235 and 40960128489, bakes 48.5-51.7 s, before the growth), 2.9x
-the mid median 2104.95 (40945330892), 1.9x 3139.6 (41064336939), 1.56x 3855.65 (41097803096) and 1.45x the slowest
-seen, 4140 ms (41115750426, bakes 99.8-100.2 s). Against the medians before the growth it fails only at 2.9x and
-above, so the 1.5-2x growth passed it and a 2x regression is not detected on a fast or mid runner until MS-90. The 4500 ms of MS-81's first round (4.2x and 3.3x the fast medians, 1.43x the 3139.6 then slowest) and the 2000 ms ratios above are history. The last local
+1.2x more). The 4500 ms of MS-81's first round, its 6000 ms (5.6x and 4.5x the fast medians of 1070.2 and 1347.95 ms,
+runs 40918637235 and 40960128489, which caught only 2.9x) and the 2000 ms ratios above are history.
+
+MS-90 bisected the growth (a3a1144..ab09aae) on the local SwiftShader machine: each point a scratch worktree of that
+commit, the frame scenes `bench` and `bench-order` at 512 px with the tree's own frame counts (5 + 30 before MS-81,
+4 + 11 after), 3 runs per point interleaved round-robin with `gradient-256` (0.3-0.5 ms in every run) as the speed
+proxy; the machine was shared with other test runs throughout, so medians move about ±5 % run to run. Medians in ms:
+
+| point                         | sha     | `rt-bench-512` | `rt-bench-order-512` | `gradient-256` |
+| ----------------------------- | ------- | -------------- | -------------------- | -------------- |
+| before the growth (MS-61)     | a3a1144 | 548.2          | 480.8                | 0.3-0.4        |
+| MS-74 (serial bench phase)    | fa1a443 | 554.6          | 473.5                | 0.3-0.4        |
+| MS-38's base                  | 48c4e08 | 564.1          | 474.5                | 0.3-0.4        |
+| MS-38 first commit (linear)   | 463352c | 822.4          | 679.5                | 0.4            |
+| MS-38 seam-free linear taps   | ece5b88 | 819.5          | 687.0                | 0.3-0.4        |
+| MS-38 merge                   | c0c55bf | 794.2          | 679.0                | 0.3-0.5        |
+| MS-73, MS-75, MS-69 merged    | 6ea9597 | 801.0          | 668.3                | 0.3-0.4        |
+| MS-60's base                  | 8ed2a38 | 540.6          | 459.6                | 0.3-0.4        |
+| MS-60 first commit (OIT MSAA) | c6d31ba | 679.4          | 490.2                | 0.3-0.4        |
+| MS-60 merge                   | d0dae68 | 989.8          | 712.2                | 0.3-0.4        |
+| MS-81 merge (4 + 11 frames)   | 14367e2 | 996.8          | 695.5                | 0.35-0.4       |
+| MS-86 merge                   | ab09aae | 1000.2         | 709.8                | 0.3-0.4        |
+
+Attribution: MS-38's 463352c 1.46x and 1.43x; MS-60's c6d31ba 1.26x on the raster row (its merge 1.24x over 6ea9597),
+1.07x on the exact one, within the spread; MS-74, MS-73, MS-75, MS-69 and MS-81's frame counts move neither row. The
+same session, on the MS-57 tree with one change at a time: compiling the linear block out of `sampleTexels` 971.1 ->
+761.8 and 679.5 -> 548.5 ms (1.27x, 1.24x), the OIT pass single-sampled (`oitMsaaActive` false) 971.1 -> 782.9 ms (1.24x)
+on the raster row, the opaque pass's alpha-to-coverage alpha of before c6d31ba no change. Fix: the linear branch of
+MS-38 ran in every fragment on SwiftShader although no bench texture is linear, so the mesh passes now come in a
+nearest and a linear program variant per texture filter (docs/realtime-renderer.md, linear textures): 758.5 and 552.6
+ms after it, every realtime golden and the linear and fallback views byte-identical. Accepted: MS-60's multisampled
+transparency pass, about 1.24x (190 ms locally) of the raster frame, which every seventh cube's partial face takes per
+sample (anti-aliased partial outlines are product behaviour, MS-60); `rt-frame-partial-edge-512` measures that pass alone.
+
+Derivation (MS-90), on the final MS-57 batch tree in one session with a3a1144, 3 runs each, the same probe: local_pre
+555.3 and 465.2 ms (a3a1144), local_final 768.5 and 532.4 ms, so the frames are 1.38x and 1.14x the pre-growth ones.
+max = ceil100(1.9 x CI-mid x local_final / local_pre), CI-mid the pre-growth median of the mid runner class (bakes about
+71 s, run 40945330892): 2104.95 ms here, 1878.5 ms for `rt-bench-order-512`, so 5600 and 4100 ms. 1.9 leaves room for
+the slowest runner class (bakes about 100 s, about 1.4x the mid one on the bench rows) times the 1.09x spread of one
+class (MS-81, 4140 against 3800 ms), 1.53x. A 2x regression on a mid or slow runner fails (2 x 2913 = 5826 ms, 2 x 2149
+= 4298 ms); on the fast class (bakes about 50 s, 1070.2 and 936.85 ms before the growth) it does not, as the runners
+span 2.0x and one absolute max cannot catch 2x on both ends. The frames section's timeout (`bench.spec.ts`, 15 frames
+at the maxima of the four 512 px rows plus 120 s) falls from 535.5 to 502.5 s; 15 frames at the slowest runner's medians of the raster, both exact and the
+partial-edge rows (4140, 2 x 2962.6, 339.9 ms; its pose row is not logged) are 156 s. In the same session the real frames section read `rt-bench-512` 692.2, 732.2, 759.3 ms and
+`rt-bench-order-512` 548.1, 597.0, 539.8 ms. The last local
 SwiftShader median is 375.2 ms (`budgets-measured.json` of the full build test of 2026-10-21). History: the first
 local medians were 68.9, 70.2 and 80.7 ms (3 runs, 128 group nodes batched per node) and the max of 750 ms was 10x the
 middle run, rounded up; renderer work since (MS-12's double-sided cubes and coverage per texel tap, MS-15's rounded
@@ -1604,7 +1643,7 @@ and 3.2x, 1.9x). A return of the first detection (2 s more on `edges-200k`, belo
 detection's work cap and sorted matching are pinned by `sharpEdges.test.ts`.
 
 `frameTimeMs.rt-bench-order-512` is the same scene with one mesh at render order 1, so every frame uses the exact
-depth key (fragment depth, de-indexed geometry); max 5000 ms (MS-81, from 2000 ms of MS-44, then 4500): CI medians 936.85 and 1170.3 ms fast (runs 40918637235, 40960128489), 1878.5 mid (40945330892), 2714.95 and 2924.3 slow (41064336939, 41057545063) and 2962.6 on the slowest runner (41115750426), so 5.3x and 4.3x the fast medians, 2.7x the mid and 1.69x the slowest, the raster bench's documented temporary acceptance until MS-90: at equal bake time this bench grew 1.45-1.52x (1878.5 in 40945330892 against 2714.95, 2855.6 and 2849.6 in 41064336939, 41097803096 and 41122837420, bakes 70.8-72.5 s; 2180.6 in 40883379594 against 2962.6 in 41115750426, bakes 99.6-100.2 s, 1.36x; locally 342.35-347.4 against 518.35-592.2 ms, see the raster bench), the same regression, not runner spread, and against the medians before the growth 5000 ms fails only at 2.7x and above, so a 2x regression is not detected on a fast or mid runner until MS-90 re-derives it; MS-44's 537.9 and 919.5 ms (runs 39594658979, 39650722835, 3.7x and 2.2x of 2000 ms) are history; last local
+depth key (fragment depth, de-indexed geometry); max 4100 ms (MS-90, derived with `rt-bench-512`'s, see there; MS-81 had 5000 ms, from 2000 ms of MS-44, then 4500): CI medians 936.85 and 1170.3 ms fast (runs 40918637235, 40960128489), 1878.5 mid (40945330892), 2714.95 and 2924.3 slow (41064336939, 41057545063) and 2962.6 on the slowest runner (41115750426), of which MS-81's 5000 ms was 5.3x and 4.3x, 2.7x and 1.69x; at equal bake time this bench grew 1.45-1.52x (1878.5 in 40945330892 against 2714.95, 2855.6 and 2849.6 in 41064336939, 41097803096 and 41122837420, bakes 70.8-72.5 s; 2180.6 in 40883379594 against 2962.6 in 41115750426, bakes 99.6-100.2 s, 1.36x; locally 342.35-347.4 against 518.35-592.2 ms, see the raster bench), the same regression (MS-38's linear branch, fixed by MS-90), not runner spread; MS-44's 537.9 and 919.5 ms (runs 39594658979, 39650722835, 3.7x and 2.2x of 2000 ms) are history; last local
 median 326.8 ms (`budgets-measured.json`, 2026-10-21). MS-35: a still exact frame draws one rotated-grid pass of its
 sample history per `render()`, so the bench pins its draws to those of the single-sampled frame (`msaa=0`, 519 both)
 and its median to at most 1.25x that frame's, measured alongside: local 349.3 ms against 340.0 ms (2026-10-27; the
