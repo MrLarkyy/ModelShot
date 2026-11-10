@@ -86,6 +86,9 @@ export class Viewer {
         this.options.onStatus('The graphics context was restored.');
         this.requestRender();
       }),
+      renderer.onError((error) => {
+        this.options.onStatus(`The preview could not use the graphics driver: ${error.message}`);
+      }),
     );
   }
 

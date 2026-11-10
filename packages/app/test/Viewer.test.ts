@@ -8,6 +8,11 @@ class FakeRenderer {
   restored: () => void = () => undefined;
   finishScene: () => void = () => undefined;
   readonly needsRender = false;
+  failed: (error: Error) => void = () => undefined;
+  onError(listener: (error: Error) => void): () => void {
+    this.failed = listener;
+    return () => undefined;
+  }
   onContextRestored(listener: () => void): () => void {
     this.restored = listener;
     return () => undefined;
@@ -69,6 +74,12 @@ afterEach(() => {
 });
 
 describe('Viewer', () => {
+  it('a renderer error reported outside a call reaches onStatus once', () => {
+    const { renderer, statuses } = viewer();
+    renderer.failed(new Error('linear: program link failed'));
+    expect(statuses).toEqual(['The preview could not use the graphics driver: linear: program link failed']);
+  });
+
   it('a restored graphics context draws again and bakes nothing: the renderer kept the baked light', () => {
     const onBakeStarted = vi.fn();
     const { renderer, statuses } = viewer({ onBakeStarted });
