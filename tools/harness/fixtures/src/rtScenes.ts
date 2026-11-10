@@ -89,6 +89,7 @@ export const RT_SCENE_NAMES = [
   'partial-edge-under',
   'partial-edge-pair',
   'partial-edge-linear',
+  'partial-edge-opaque',
   'lightmap-overflow',
   'edges',
   'edges-200k',
@@ -458,6 +459,8 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return partialEdge(load(showcaseSource), { pair: true });
     case 'partial-edge-linear':
       return partialEdge(load(showcaseSource), { linear: true });
+    case 'partial-edge-opaque':
+      return partialEdge(load(showcaseSource), { opaque: true });
     case 'lightmap-overflow':
       return lightmapOverflow(load(showcaseSource));
     case 'edges-200k':
