@@ -3,8 +3,8 @@
 `@modelshot/pathtracer` renders a `SceneDocument` by path tracing in a WebGL2 fragment shader: the final render, with
 global illumination and soft, texel-shaped shadows. It reads the same camera, materials, alpha rule, sides, render
 order, light rig and tone mapping as the realtime preview ([realtime-renderer.md](realtime-renderer.md)), so the two
-images of a view agree apart from interreflection and noise once the preview has its baked light (`LightBaker`,
-below), and apart from shadows too without it. The package is private and not yet wired into
+images of a view agree apart from interreflection past the first bounce (the bake carries one, MS-57) and noise once
+the preview has its baked light (`LightBaker`, below), and apart from shadows and all interreflection without it. The package is private and not yet wired into
 the app or the embed; `@modelshot/export` ([export.md](export.md)) drives it to export images and clips.
 
 ```ts
@@ -496,13 +496,20 @@ DEFAULT_LOOK, onProgress })` resolves `{ applied, warnings, lighting }`. The loo
   triangles' corners in chart-local texels in a corners texture, 2 texels per triangle, whose first entry the record
   holds): the UV of the texel point, or for a world chart the point itself, then the barycentrics of the triangle
   that holds it (else the one it is nearest to inside), `surfaceAt`, one key ray in the cone (`shadowTransmittance`, skipping the texel's triangle, only where its
-  side faces the key) and one cosine-weighted fill ray around the shading normal. No interreflection. Model texels (MS-87) store the path
+  side faces the key) and one cosine-weighted fill ray around the shading normal, plus one bounce where that ray is blocked (below). Model texels (MS-87) store the path
   tracer's control variate, as catcher texels do (MS-63): rgb = 1 − the `environmentRadiance` the fill ray lost, over
   `hemisphereFill(n)`, with the trace's own rule for a cosine ray under the geometric side of a smooth or bent normal:
   it is mirrored (`aboveSurface`, `pathSampling.glsl`), so the mirrored ray, not the original, is cast. One that escapes
   loses `environmentRadiance(d) − environmentRadiance(mirrored)` (0 for a ray above the side, so a flat face is
-  exactly 1; it may be negative where the mirror sees more sky); one a blocker stops loses `environmentRadiance(d)`. No
-  random dimension is added, the key bytes did not move. Catcher texels trace the same key ray and fill ray on the plane, normal up, and store the same:
+  exactly 1; it may be negative where the mirror sees more sky); one a blocker stops loses `environmentRadiance(d)` less
+  what the blocker sends back along it (MS-57, `bounceLight`, the trace's first bounce vertex): its emission + its albedo ×
+  (`u_lookKeyColor` × cos × the visibility of one shadow ray in the key cone from the blocker, skipping its triangle,
+  under the trace's gate (`cos > 0` and the hit side facing the key), + `hemisphereFill` at its normal, unshadowed). So
+  the bake has one diffuse bounce; a face beside a bright neighbour can exceed 1. The bounce cone's randoms are new
+  dimensions 7-8 after 0-1 (point), 2-3 (key cone), 4-5 (fill direction) and 6 (partial texels), so a texel whose fill
+  rays nothing blocked and every key byte are as before. A partial blocker stops the ray with probability alpha
+  (`closestHit`), so it sends back that share; a cut-out texel is never a blocker. One more shadow traversal per
+  blocked ray. A channel whose `hemisphereFill` is 0 holds 1 (`lostShare`): its bounce is not baked. Catcher texels trace the same key ray and fill ray on the plane, normal up, and store the same:
   rgb = 1 − the `environmentRadiance` a blocked fill ray would have brought, over `hemisphereFill(up)` (no side test: a
   cosine direction about up never points below the plane), a = key visibility. The model texel keeps the rays and random
   dimensions of the plain estimate, so its key bytes did not move (pinned by hash). A texel none of whose fill rays was lost
@@ -567,6 +574,6 @@ measured on real hardware yet.
 Temporal (video) denoising, emission from the scene format (MS-32), user lights (MS-33; the look's key,
 accents and environment here), a user-supplied environment image (only bundled ones, MS-47), geometric
 bevels (edges are rounded in shading only), a GPU or WASM build of the render's BVH, glossy or
-transmissive materials, an environment as a visible background (the bundled image is a lighting source only), and WebGPU. The bake has no interreflection and no animated GI;
+transmissive materials, an environment as a visible background (the bundled image is a lighting source only), and WebGPU. The bake has one bounce, no further interreflection (and no shadow or occlusion at the bounce point) and no animated GI;
 untextured and smooth meshes of more than 4096 triangles are still baked per vertex (world-density charts, MS-41,
 stop at that gate).

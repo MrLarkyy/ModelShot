@@ -817,6 +817,22 @@ under Studio, 5 352 shadowed model texels; before, 0 / 0 turned every texel into
 the `bakeCatcherStats` hook; source pins of the bake and catcher shaders and the preview form over baked rgb in
 [−0.25, 1] (`catcherShade.test.ts`).
 
+MS-57 bakes one diffuse bounce (path-tracer.md, light baker): a model texel's fill ray that a blocker stops gains what
+the blocker sends back, its emission and albedo × (the key through one more shadow ray in the cone, + its unshadowed
+`hemisphereFill`), as the trace's first bounce vertex has it. The catcher has none, as in the trace. New randoms only in
+dimensions 7-8, so the key bytes (hashes below) and every texel whose rays nothing blocked are unchanged. The `bake>0`
+goldens that left their tolerance were regenerated (seed 1, 64 samples; changed pixels, max channel delta, mean delta
+per channel against the committed file before MS-57): `rt-bake-gltf-contact` 41 880 px, 111, 6.553 (its box sides lit
+by the ground as in `pt-gltf-contact`); `rt-bake-alpha-plane` 26 823, 28, 1.205; `rt-bake-cutout-checker` 5 722, 123,
+0.385 and `-fallback` 5 279, 123, 0.408 (the checker texels half a unit from the box, dark brown before, take the
+box's light, orange as in `pt-cutout-checker`); `rt-preset-marketplace` 8 888, 40, 0.285, `-fallback` 8 608, 55, 0.311;
+`rt-preset-rim` 8 126, 44, 0.215; `rt-preset-softbox` 10 283, 92, 0.433 (the crevices between the player's limbs and
+body). Every changed pixel is brighter but about 30 per preset view (AgX mixes the channels). `rt-bake-turntable-y030`
+moved within its tolerance and stays; every `pt-*` golden passed unchanged (the trace's program is not touched).
+Judged as images (old, new, render side by side): the box sides of the glTF scene go from a dark falloff to the
+render's pink, the shadow on the ground keeps its shape, the grain is texel-scale like the render's noise; no speckle,
+no cut-out texel lit, no shadow shape moved, the catcher unchanged.
+
 MS-87 gave the model lightmap texels the same control variate (path-tracer.md, light baker): rgb = 1 − the fill the
 ray lost over `hemisphereFill(n)`, so a texel nothing blocked is exactly 1 and the preview, whose texel and world taps
 now blend with the shared exact `lerpExact` chunk, shades it as `hemisphereFill(n)` exactly. A cosine ray under the
@@ -945,6 +961,23 @@ test extended (the cube stays exactly 1 under a zero blue channel, no non-finite
 as before (below-side rays on smooth faces are now traced, mirrored, where they used to be skipped), so the bench bake
 time budget is not expected to move.
 
+MS-57 (one bounce in the bake): a generated `bounce-wall` scene (no file: a 16 x 16 grey floor at y = 0 and an 8-unit
+single-sided wall on its west edge facing east, toward Studio's key, its 8 x 8 texture opaque white or black, partial
+white or black at alpha 128, cut out, or the wall without triangles) and `bakeMeshTexels(scene, samples, mesh, look)`
+(the half-float texels of one mesh's charts, `bakedMeshTexels.ts`). realtime.spec "a bounce comes from what blocks the
+fill ray: opaque, partial by its alpha, never a cut-out texel" bakes the floor at 256 samples, seed 1: the cut-out wall
+gives the floor byte for byte what no wall gives (every channel exactly 1); the white wall's gain over the black one
+(the same rays and blocks) is 0.2339 on average, and the floor beside it reaches 1.335; the partial wall's gain is
+0.1168, ratio 0.4996 against alpha 0.5020, the residual per texel -0.00056 with a standard error of 0.00120 (limit 3
+standard errors); a wall turned from the key (the key mirrored in x) bakes the same floor rgb bytes under half the key
+colour, a wall turned to it a brighter floor under the full one; under a look whose dome has no blue the floor's blue
+is exactly 1 everywhere (the dark-channel limit) while its red still exceeds 1. "one bounce lights the low west side of
+the glTF box from the bright ground, as the render does": world (8, 4, -8), 5 x 5 mean luminance baked 132.7 (sd 3.4),
+render 125.2 (sd 3.9), 5.9 % apart (limit 15 %; 62.9 before MS-57). The key hashes above and the convex cube's exact 1s
+did not move. Source pins: `bounceLight` has the trace's key gate, cosine and colour, its shadow ray skips the
+blocker's triangle, its only randoms are dimensions 7-8, `bakeCatcher` has none, and the bounce enters only through
+`lost` (a share of the fill). A blocked fill ray costs one more shadow traversal (the node-cap test counts it too).
+
 - Tolerance: an override of `threshold 0` only (its reason in the spec); `maxDiffRatio 0.001` and `maxMeanDelta 1`
   stay the defaults. The tracer converges, so at the default threshold 0.1 another seed or one sample more or less
   still passes (seed 2 at 64 samples: 7 of 65 536 pixels, mean delta 0.30; 63 samples: 0 pixels, mean delta 0.027). At
@@ -996,31 +1029,41 @@ before MS-19 the top-left pixel) must agree on every pixel off the silhouette (a
 both classes) that the two images draw more than 2 levels apart (a dark texel near the backdrop colour falls on either
 side of the mask test, with the same colour in both views); 0 mismatches is the limit. Radiance, catcher on both: pixelmatch `threshold 0.1` with `maxDiffRatio`
 and `maxMeanDelta` = measured x 1.25 and never above the previous limit, never widened; the one exception is a limit re-measured x 1.25 after a deliberate change whose pixels all moved toward the render (MS-63: `partial-edge`, one silhouette edge pixel on row 194, x about 50, where the preview steps 101 to 174 and the render blends about 126 because the plane partly covers it, flipped over pixelmatch's OKLab threshold as the added blue raised the chroma difference), with the change named beside it; the render differs where it
-has interreflection and noise. Logged as `[pt pair] <view>: ...`, values in `test-results/pt-pair-<view>.json`.
+has interreflection past the bake's one bounce (MS-57) and noise. Logged as `[pt pair] <view>: ...`, values in `test-results/pt-pair-<view>.json`.
 Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with rounded edges and the mirrored bounce
 (MS-16's values in brackets; every limit stayed, none widened, `edges` is new at measured x 1.25):
 
-| view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta                                               | limit: `maxDiffRatio`, `maxMeanDelta`      |
-| -------------------------- | ----------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------ |
-| `turntable-y030`           | 0 (1 627)                           | 131, 0.00200, 0.675 (MS-87; 123, 0.00188, 0.697 MS-60; MS-54 142, 0.00217, 0.723) | 0.00235, 0.871 (MS-60; was 0.00271, 0.904) |
-| `iso`                      | 0 (1 517)                           | 263, 0.00401, 0.850 (MS-87; 250, 0.00381, 0.869 MS-60; MS-54 266, 0.00406, 0.888) | 0.00476, 1.086 (MS-60; was 0.00508, 1.111) |
-| `alpha-plane`              | 0 (692)                             | 213, 0.00325, 1.321 (MS-87; 232, 0.00354, 1.335 MS-54; MS-30 232, 0.00354, 1.334) | 0.00443, 1.669 (MS-54; was 0.00443, 1.67)  |
-| `player-hold-34`           | 0 (1 322)                           | 690, 0.01053, 0.975 (MS-87; 683, 0.01042, 0.999 MS-35; 1 208, 0.01843, 1.293)     | 0.01304, 1.25 (MS-35; was 0.0232, 1.62)    |
-| `cutout-checker`           | 0 (3 295)                           | 245, 0.00374, 0.605 (MS-87; 223, 0.00340, 0.611 MS-60; MS-30 223, 0.00340, 0.623) | 0.00426, 0.764 (MS-60; was 0.00426, 0.78)  |
-| `edges`                    | 0 (1 971)                           | 46, 0.00070, 0.349 (MS-87; 41, 0.00063, 0.373 MS-60; MS-54 41, 0.00063, 0.386)    | 0.00079, 0.466 (MS-60; was 0.00079, 0.483) |
-| `preset-marketplace`       | 0 (1 322)                           | 600, 0.00916, 0.787 (MS-87; 598, 0.00912, 0.793 MS-35; 1 269, 0.01936, 1.237)     | 0.01141, 0.992 (MS-35; was 0.0223, 1.43)   |
-| `preset-rim`               | 0 (1 322)                           | 851, 0.01299, 0.701 (MS-87; 860, 0.01312, 0.704 MS-35; 1 407, 0.02147, 1.109)     | 0.01641, 0.881 (MS-35; was 0.0241, 1.13)   |
-| `preset-softbox`           | 0 (1 322)                           | 916, 0.01398, 1.000 (MS-47, new)                                                  | 0.01748, 1.25                              |
-| `preset-marketplace-yaw30` | 0 (1 304)                           | 747, 0.01140, 0.837 (MS-87; 723, 0.01103, 0.856 MS-35; 1 387, 0.02116, 1.281)     | 0.0138, 1.071 (MS-35; was 0.0265, 1.52)    |
-| `outline-hull`             | 0 (1 448)                           | 170, 0.00259, 0.395 (MS-87; 172, 0.00262, 0.423 MS-60; MS-54 172, 0.00262, 0.437) | 0.00329, 0.529 (MS-60; was 0.00329, 0.547) |
-| `gltf-contact`             | 0 (629)                             | 6 330, 0.09659, 4.971 (MS-87; 6 987, 0.10661, 5.627 MS-41, new, no catcher)       | 0.133, 7.03                                |
-| `obj-shapes-y030`          | 0 (1 852)                           | 245, 0.00374, 0.447 (MS-87; 241, 0.00368, 0.455 MS-60; MS-54 246, 0.00375, 0.469) | 0.0046, 0.569 (MS-60; was 0.00468, 0.587)  |
-| `gltf-nodes-y030`          | 0 (2 218)                           | 256, 0.00391, 0.930 (MS-87; 291, 0.00444, 0.943 MS-60; MS-54 319, 0.00487, 0.955) | 0.00555, 1.179 (MS-60; was 0.00609, 1.194) |
-| `gltf-jpeg-y030`           | 0 (1 476)                           | 36, 0.00055, 0.339 (MS-87; 36, 0.00055, 0.409 MS-83, new)                         | 0.00069, 0.511                             |
-| `obj-jpeg-y030`            | 0 (1 476)                           | 70, 0.00107, 0.350 (MS-87; 71, 0.00108, 0.420 MS-83, new)                         | 0.00135, 0.525                             |
-| `texture-wrap`             | 0 (3 444)                           | 58, 0.00089, 0.594 (MS-87; 46, 0.00070, 0.671 MS-52, new; textureWrap.spec.ts)    | 0.00111, 0.839 (MS-87; was 0.00088, 0.839) |
-| `partial-edge`             | 0 (3 844)                           | 3, 0.00005, 1.102 (MS-87; 3, 0.00005, 1.120 MS-63; MS-60 2, 0.00003, 1.124)       | 0.00006, 1.4 (MS-63; was 0.00004, 1.405)   |
-| `texture-filter`           | 0 (2 600)                           | 6, 0.00009, 0.353 (MS-87; MS-60 0.390; MS-38 7, 0.00011, 0.396)                   | 0.00011, 0.488 (MS-60; was 0.00014, 0.495) |
+| view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta                                                  | limit: `maxDiffRatio`, `maxMeanDelta`      |
+| -------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------ |
+| `turntable-y030`           | 0 (1 627)                           | 114, 0.00174, 0.577 (MS-57; 131, 0.00200, 0.675 MS-87; 123, 0.00188, 0.697 MS-60)    | 0.00218, 0.722 (MS-57; was 0.00235, 0.871) |
+| `iso`                      | 0 (1 517)                           | 304, 0.00464, 0.772 (MS-57; 263, 0.00401, 0.850 MS-87; 250, 0.00381, 0.869 MS-60)    | 0.00476, 0.965 (MS-57; was 0.00476, 1.086) |
+| `alpha-plane`              | 0 (692)                             | 133, 0.00203, 0.543 (MS-57; 213, 0.00325, 1.321 MS-87; 232, 0.00354, 1.335 MS-54)    | 0.00254, 0.679 (MS-57; was 0.00443, 1.669) |
+| `player-hold-34`           | 0 (1 322)                           | 437, 0.00667, 0.832 (MS-57; 690, 0.01053, 0.975 MS-87; 683, 0.01042, 0.999 MS-35)    | 0.00834, 1.04 (MS-57; was 0.01304, 1.25)   |
+| `cutout-checker`           | 0 (3 295)                           | 2, 0.00003, 0.415 (MS-57; 245, 0.00374, 0.605 MS-87; 223, 0.00340, 0.611 MS-60)      | 0.00004, 0.519 (MS-57; was 0.00426, 0.764) |
+| `edges`                    | 0 (1 971)                           | 37, 0.00056, 0.277 (MS-57; 46, 0.00070, 0.349 MS-87; 41, 0.00063, 0.373 MS-60)       | 0.00071, 0.346 (MS-57; was 0.00079, 0.466) |
+| `preset-marketplace`       | 0 (1 322)                           | 509, 0.00777, 0.737 (MS-57; 600, 0.00916, 0.787 MS-87; 598, 0.00912, 0.793 MS-35)    | 0.00971, 0.922 (MS-57; was 0.01141, 0.992) |
+| `preset-rim`               | 0 (1 322)                           | 665, 0.01015, 0.634 (MS-57; 851, 0.01299, 0.701 MS-87; 860, 0.01312, 0.704 MS-35)    | 0.01269, 0.793 (MS-57; was 0.01641, 0.881) |
+| `preset-softbox`           | 0 (1 322)                           | 573, 0.00874, 0.846 (MS-57; 916, 0.01398, 1.000 MS-47, new)                          | 0.01093, 1.059 (MS-57; was 0.01744, 1.254) |
+| `preset-marketplace-yaw30` | 0 (1 304)                           | 506, 0.00772, 0.729 (MS-57; 747, 0.01140, 0.837 MS-87; 723, 0.01103, 0.856 MS-35)    | 0.00966, 0.911 (MS-57; was 0.0138, 1.071)  |
+| `outline-hull`             | 0 (1 448)                           | 167, 0.00255, 0.400 (MS-57; 170, 0.00259, 0.395 MS-87; 172, 0.00262, 0.423 MS-60)    | 0.00319, 0.529 (MS-57; was 0.00329, 0.529) |
+| `gltf-contact`             | 0 (629)                             | 34, 0.00052, 0.804 (MS-57; 6 330, 0.09659, 4.971 MS-87; 6 987, 0.10661, 5.627 MS-41) | 0.00065, 1.005 (MS-57; was 0.133, 7.03)    |
+| `obj-shapes-y030`          | 0 (1 852)                           | 112, 0.00171, 0.265 (MS-57; 245, 0.00374, 0.447 MS-87; 241, 0.00368, 0.455 MS-60)    | 0.00214, 0.331 (MS-57; was 0.0046, 0.569)  |
+| `gltf-nodes-y030`          | 0 (2 218)                           | 78, 0.00119, 0.433 (MS-57; 256, 0.00391, 0.930 MS-87; 291, 0.00444, 0.943 MS-60)     | 0.00149, 0.541 (MS-57; was 0.00555, 1.179) |
+| `gltf-jpeg-y030`           | 0 (1 476)                           | 36, 0.00055, 0.338 (MS-57; 36, 0.00055, 0.339 MS-87; 36, 0.00055, 0.409 MS-83)       | 0.00069, 0.511                             |
+| `obj-jpeg-y030`            | 0 (1 476)                           | 70, 0.00107, 0.349 (MS-57; 70, 0.00107, 0.350 MS-87; 71, 0.00108, 0.420 MS-83)       | 0.00135, 0.525                             |
+| `texture-wrap`             | 0 (3 444)                           | 25, 0.00038, 0.568 (MS-57; 58, 0.00089, 0.594 MS-87; textureWrap.spec.ts)            | 0.00048, 0.711 (MS-57; was 0.00111, 0.839) |
+| `partial-edge`             | 0 (3 844)                           | 2, 0.00003, 1.103 (MS-57; 3, 0.00005, 1.102 MS-87; 3, 0.00005, 1.120 MS-63)          | 0.00004, 1.4 (MS-57; was 0.00006, 1.4)     |
+| `texture-filter`           | 0 (2 600)                           | 7, 0.00011, 0.353 (MS-57; 6, 0.00009, 0.353 MS-87; MS-38 7, 0.00011, 0.396)          | 0.00011, 0.488 (MS-60; was 0.00014, 0.495) |
+
+MS-57 (one bounce in the bake) re-measured every pair (rows above): every value that fell is tightened to measured x
+1.25 (exact values from `test-results/pt-pair-<view>.json`, rounded up), most of all `gltf-contact`, whose box sides
+now take the ground's bounce (6 330 px to 34), and `cutout-checker` (the checker texels beside the box). Three values
+rose within their limits and keep them: `iso`'s ratio (263 px to 304, 0.00464 of 0.00476; its mean delta fell), and the
+mean deltas of `outline-hull` (0.395 to 0.400) and `partial-edge` (1.102 to 1.103); `texture-filter` rose one pixel (6
+to 7, 0.000107, at its 0.00011 limit, which passes). `gltf-jpeg-y030` and `obj-jpeg-y030` measured as before (0.001 of
+mean delta) and keep theirs. The Softbox head probe (hdriLook.spec.ts) went from 2.64 to 0.07 levels (preview 95.63,
+render 95.56), `HEAD_LIMIT` 0.09. The app's parity tests, which take `preset-marketplace`'s limit, measured 0.00086 /
+0.244 and posed 0.00108 / 0.217.
 
 MS-60 (anti-aliased partial seams, opaque|partial seams and partial outlines in the preview's raster frames)
 re-measured every pair: `turntable-y030`, `iso`, `cutout-checker`, `edges`, `outline-hull`, `obj-shapes-y030` and
@@ -1069,7 +1112,9 @@ world-charted and shows the render's shadows; before 2 083, 0.03178, 2.187), so 
 `gltf-contact` (catcher off on both sides, `PAIR_WITHOUT_CATCHER`, as its render has none): 6 987 px, 0.10661, 5.627,
 limit 0.133, 7.03. Its ground agrees; the box's sides do not: the render lights them with the bounce of the bright
 ground and the bake has no interreflection (box top, lit alike: 207, 176, 162 in both; west side low 85 baked, 132
-unbaked, 150 rendered). Same albedo in both, so no material difference.
+unbaked, 150 rendered). Same albedo in both, so no material difference. MS-57 bakes that bounce: low on the west face
+(world 8, 4, -8) the 5 x 5 mean luminance is 132.7 baked (sd 3.4), 102.9 unbaked, 125.2 rendered (sd 3.9), 62.9 in the
+bake before; the realtime spec holds it within 15 % of the render.
 
 MS-39: `obj-shapes-y030` and `gltf-nodes-y030` (128 samples, catcher on) are new at measured x 1.25. The first
 measurement of `gltf-nodes-y030` was 2 931 px, 0.04472, 2.305, the ground 157 rendered against 188 baked: its ground
@@ -1638,7 +1683,11 @@ round 7); its max was 750 ms then.
   `e2e/app.motion.spec.ts`: the overlay's median draw time at most 2 ms.
 - `bakeTimeMs.bake-bench-n16` (MS-16): `LightBaker.bake` of the benchmark scene in its worker, 16 samples with the
   shadow catcher (lightmap 2048 wide, catcher 512 x 512), from the call to the final lighting, median of 3. Local
-  SwiftShader 22 873, 22 113 and 22 141 ms; max 222 000 ms (10x the middle run, rounded up). Each run is asserted
+  SwiftShader 22 873, 22 113 and 22 141 ms; max 222 000 ms (10x the middle run, rounded up). MS-57 (one bounce: a
+  blocked fill ray casts one more shadow ray) measured origin/main and the branch alternately on the local machine while
+  other test runs shared it, medians in ms: 26 662 / 34 282, 24 259 / 45 314 (a load spike: heartbeat lag 61 ms),
+  25 715 / 33 274, 20 329 / 32 548; the branch without the bounce's shadow ray 27 680 against 25 442. So about 1.3x,
+  1.6x on the quietest pair, far inside the max; the budget is unchanged. Each run is asserted
   against the max as it completes, and the bake section's timeout is 3 x that max + 120 s (MS-81), a backstop; on CI the bake
   section runs on shard 2 beside only the three realtime tests, so bakes of over about 220 s each (inside the budget) are
   stopped by the section timeout on a slow runner, the per-bake log lines showing the finished bakes; the 17-minute

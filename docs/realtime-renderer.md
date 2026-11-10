@@ -114,9 +114,21 @@ if (lighting) renderer.setLighting(lighting);
   allocating anything. A scene without a world-charted mesh lays out exactly as before world charts existed (same
   `layoutKey`).
 - **Values.** RGBA16F (`BakedLighting`): rgb 1 less the fill lost over the unoccluded fill `hemisphereFill(n)` (MS-87: the
-  path tracer's control variate; a blocked bake ray loses the environment along it, so a texel nothing blocked is
-  exactly 1; a cosine ray under a smooth face's geometric side is mirrored as the trace does, so such a texel is near
-  but not exactly 1 and a mirror that sees more sky may lift it slightly above 1), a the key's visibility. Texels of no chart and vertices of no triangle hold 1, so an anti-aliasing tap outside a face, or
+  path tracer's control variate; a cosine ray under a smooth face's geometric side is mirrored as the trace does, so
+  such a texel is near but not exactly 1 and a mirror that sees more sky may lift it slightly above 1), a the key's
+  visibility. A blocked bake ray loses the environment along it and gains what the blocker sends back (MS-57: one
+  diffuse bounce, the trace's first bounce vertex): the blocker's emission plus its albedo × (the key, with the trace's
+  gate and cosine and a shadow ray in the key cone from the blocker, + the blocker's unshadowed `hemisphereFill`). So a
+  face beside a bright neighbour takes its interreflection (rgb can exceed 1 there), a texel whose rays nothing blocked
+  is still exactly 1, and the key channel is unchanged (the bounce draws its own random dimensions, 7-8). A cut-out
+  texel is no blocker and sends back nothing; a partial one is a blocker with probability alpha, so it sends back that
+  share. No bounce reaches the shadow catcher (the trace's catcher shade has none), and the bounce point's own fill is
+  not shadowed, so a deep pocket can come out slightly brighter than the render. Two limits: rgb is a ratio over the
+  fill, so a channel whose `hemisphereFill` is 0 (a look whose dome leaves it at 0) holds 1 and its bounce is not baked
+  (the key's coloured bounce in that channel is lost; carrying it would need a channel of its own); and the bounce is
+  baked under the key colour of the look baked under, which `lightingKey` does not include, so light baked under a look
+  of the same key but another key colour shows the old bounce until it is baked again (the app and the embed bake again
+  on every look change). Texels of no chart and vertices of no triangle hold 1, so an anti-aliasing tap outside a face, or
   a degenerate triangle, never darkens. The shadow catcher's lightmap stores the same form over `hemisphereFill(up)` (Shadow
   catcher, below). `shadeBaked` (`shading.glsl`) is `albedo × (hemisphereFill(n) × rgb +
 u_lookKeyColor × max(n·u_lookKeyDirection, 0) × a + fillLight(n)) + rimLight(n, v, albedo)`, v toward the eye
