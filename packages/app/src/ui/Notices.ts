@@ -23,6 +23,8 @@ export interface NoticeElements {
 // messages carry file names.
 export class Notices {
   private timer: unknown = null;
+  private message = '';
+  private storageNote = '';
 
   constructor(
     private readonly elements: NoticeElements,
@@ -33,10 +35,21 @@ export class Notices {
   /** Replaces the message. The text stays after the fade so the line still reads as the last thing that happened. */
   status(message: string): void {
     const line = this.elements.status;
-    line.textContent = clip(message);
+    this.message = message;
+    this.show();
+    this.fade(line, message === '' && this.storageNote === '');
+  }
+
+  private show(): void {
+    this.elements.status.textContent = clip(
+      this.storageNote === '' ? this.message : `${this.message} ${this.storageNote}`.trim(),
+    );
+  }
+
+  private fade(line: HTMLElement, empty: boolean): void {
     if (this.timer !== null) this.cancel(this.timer);
     this.timer = null;
-    if (message === '') {
+    if (empty) {
       line.classList.remove('toast-shown');
       return;
     }
@@ -52,9 +65,14 @@ export class Notices {
     this.elements.state.dataset['state'] = lightingState(message);
   }
 
-  /** A saving failure the app works around: a status like any other, not an error. */
+  /**
+   * A saving failure the app works around: not an error. It follows the latest message instead of replacing it, so it
+   * can neither hide "Opened x" nor be hidden by it. The one case where the line holds two facts.
+   */
   storage(message: string): void {
-    this.status(message);
+    this.storageNote = message;
+    this.show();
+    this.fade(this.elements.status, false);
   }
 
   alert(message: string): void {

@@ -77,10 +77,13 @@ describe('Notices', () => {
     expect([...timers.values()][0]?.ms).toBe(TOAST_MS);
   });
 
-  it('shows a storage failure as a status, not as an error', () => {
+  it('lets a storage failure follow the latest message, not replace it', () => {
     const { elements, notices } = setup();
-    notices.storage('Your settings are not being kept on this device.');
-    expect(elements.status.textContent).toBe('Your settings are not being kept on this device.');
+    notices.status('Opened a.bbmodel.');
+    notices.storage('Your settings are not being kept.');
+    expect(elements.status.textContent).toBe('Opened a.bbmodel. Your settings are not being kept.');
+    notices.status('Render done.');
+    expect(elements.status.textContent).toBe('Render done. Your settings are not being kept.');
     expect(elements.alertBox.hidden).toBe(true);
   });
 
