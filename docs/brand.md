@@ -144,9 +144,13 @@ sample renders.
 
 - Fonts: SIL Open Font License 1.1, `fonts/<family>/OFL.txt`.
 - Marks, icons, illustration and social preview: our own work, © 2026 MrLarkyy (the holder named in the root
-  `LICENSE`), all rights reserved (`assets/LICENSE`). The repository's MIT licence (root `LICENSE`) covers the code and
-  docs, not these files or the artwork the generator sources draw (`markSvg.ts`, `heroIslandSvg.ts`, the social
-  preview page): that code is MIT, its output is not. Nobody may use the name or the marks so that work looks like it is
-  ModelShot.
+  `LICENSE`), all rights reserved except the fork permission below (`assets/LICENSE`). The repository's MIT licence
+  (root `LICENSE`) covers the code and docs, not these files or the artwork the generator sources draw (`markSvg.ts`,
+  `heroIslandSvg.ts`, the social preview page): that code is MIT, its output is not.
+- Forks and redistributions of the repository may keep the brand assets unchanged, together with `assets/LICENSE`, in
+  the repository and in what it builds. They may not modify them, use them on their own, or use the name or marks to
+  brand a different product or to suggest that ModelShot made or endorses the fork; a fork published, deployed or
+  distributed as its own product or under another name replaces them with its own. Anything else needs written
+  permission from the holder; a link or a mention of ModelShot in text needs none.
 - Package metadata: `@modelshot/brand` declares `(MIT AND OFL-1.1 AND LicenseRef-ModelShot-Brand)`, one term per kind of
   file it ships (code, fonts, reserved brand assets).
