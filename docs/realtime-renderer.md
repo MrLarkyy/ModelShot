@@ -41,6 +41,12 @@ Float path (needs `EXT_color_buffer_float`):
    the per-pixel mean of every sample's sums, so the outline of a face with only partial texels is anti-aliased like
    an opaque one; above the cap, without MSAA and in exact-key frames the pass stays single-sampled and those outlines
    hard.
+
+   Limit (MS-88): a silhouette pixel the face covers only in a sliver that holds none of the 4 samples stays what lies
+   behind, opaque and partial faces alike, where the path tracer blends it by area: on the `partial-edge` view three
+   outline pixels the render covers by about 28-33 % (realtime.spec checks the opaque twin `partial-edge-opaque` leaves
+   them backdrop too). Coverage finer than the samples is a follow-up.
+
 3. Composite of the transparency average over the opaque image.
 4. Present: AgX and the display encoding into the canvas.
 

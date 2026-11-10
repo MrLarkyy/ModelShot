@@ -2,9 +2,7 @@ import type { CompareOptions } from './compareImages';
 
 /**
  * Preview vs render of the same view, the preview baked (64 samples, seed 1): `maxDiffRatio` and `maxMeanDelta` are
- * measured values x 1.25 (docs/testing.md, path-tracer pair table), never widened later; the one exception is a re-measure x 1.25 after a
- * deliberate change whose pixels all moved toward the render (`partial-edge`, MS-63: one silhouette edge pixel flipped
- * over pixelmatch's threshold). The render adds
+ * measured values x 1.25 (docs/testing.md, path-tracer pair table), never widened later. The render adds
  * interreflection past the first bounce and noise; the bake adds the occlusion and soft shadows the unbaked preview
  * lacked (MS-16) and one bounce (MS-57), so the limits fell with each. Framing is compared without the shadow catcher
  * on both sides (the catcher's edge fades into the backdrop and would count as model) and against a preview without
@@ -56,8 +54,9 @@ export const PT_PAIR_TOLERANCE: Readonly<Record<string, CompareOptions>> = {
   // 0.00055 / 0.409 and 0.00108 / 0.420, x 1.25; below obj-shapes-y030 as the plan bounds them.
   'gltf-jpeg-y030': { threshold: 0.1, maxDiffRatio: 0.00069, maxMeanDelta: 0.511 },
   'obj-jpeg-y030': { threshold: 0.1, maxDiffRatio: 0.00135, maxMeanDelta: 0.525 },
-  // MS-60: anti-aliased partial seams and a partial outline in the preview's raster frames, measured 2 px (0.00003) /
-  // 1.124, x 1.25. MS-63: the baked catcher moved one partial-alpha pixel toward the render, measured 3 px (0.0000458)
-  // / 1.120, x 1.25.
-  'partial-edge': { threshold: 0.1, maxDiffRatio: 0.00004, maxMeanDelta: 1.4 },
+  // MS-60: anti-aliased partial seams and a partial outline in the preview's raster frames. MS-88 re-measured 2 px
+  // (0.0000305) / 1.103, x 1.25. They are outline pixels the render covers by about 28-33 % in a sliver that holds none
+  // of the preview's 4 MSAA samples, so the preview leaves them backdrop; the opaque twin of the quad does the same
+  // (realtime.spec.ts, MS-88 probe): a limit of the sample count on any silhouette.
+  'partial-edge': { threshold: 0.1, maxDiffRatio: 0.00004, maxMeanDelta: 1.379 },
 };

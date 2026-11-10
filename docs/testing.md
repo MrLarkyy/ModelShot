@@ -339,6 +339,16 @@ anti-alias silhouettes like raster frames`): `turntable-y030` at `aa=0`, framed 
   `partial-edge` within 1 level, with and without MSAA. The fallback keeps the same model/backdrop map with and without texel AA, and `breakFramebuffers`
   with partial geometry switches to it without a page error. `scene=partial-edge-pair` (a second quad overlapping
   the first) is byte-identical with `reverse=1` at 4 samples, `msaa=0`, `depth=inside` and both.
+  MS-88: three outline pixels of `partial-edge`, (49, 194), (119, 213) and (202, 228), stay exactly the backdrop at 4
+  samples (held to 1 level), and so does `partial-edge-opaque` (the same quad, every texel opaque under alpha mode
+  OPAQUE, drawn by the opaque pass); one pixel along the outline, (49, 193), (120, 213) and (203, 228), both mix by the
+  same sample share (linear light 0.253 partial, 0.251 twin, held to 0.01 apart), and the cut-out texel centres stay
+  exactly the backdrop. Why (diagnosis, pair view with the bake and catcher, red / blue): preview 101/110, 101/110 and
+  103/112 (the catcher in the plane's shadow, no plane colour); the opaque twin 82/90, 84/92, 89/97 (its own darker
+  shadow, plane 197), equally unmixed; the render (seed 1) 126, 127, 132 at 64 samples and 113, 125, 127 at 128, its
+  twin 113, 131, 134: the face covers about 28-33 % of each pixel in a sliver that holds none of the 4 samples. With the
+  OIT pass single-sampled (`oitMsaaActive` false) the mixed neighbours turn hard while these stay, so the transparency
+  pass is multisampled and drops nothing: a limit of the sample count (docs/realtime-renderer.md), a follow-up.
 - Context loss through `WEBGL_lose_context`: the image after the restore matches `rt-turntable-y030`, without a
   reload or a page error.
 - Device pixel ratio 2 doubles the backing store; an element resize reallocates and keeps the projection unstretched.
@@ -807,7 +817,7 @@ all 49 296 (1 040 before). Pairs before -> after (ratio / mean delta), limits un
 0.591; `alpha-plane`, `player-hold-34`, `preset-rim`, `preset-marketplace-yaw30` and `gltf-contact` unchanged.
 `partial-edge` went from 2 to 3 pixels (0.00005 against the old limit 0.00004; mean 1.124 -> 1.120): one
 silhouette edge pixel (row 194, x about 50: the preview steps 101 to 174 where the render blends about 126) moved by
-1 level in blue towards the render, which crosses pixelmatch's OKLab threshold. Its limit was re-measured, x 1.25: 0.00006 / 1.4 (was 0.00004 / 1.405); no other
+1 level in blue towards the render, which crosses pixelmatch's OKLab threshold. Its limit was re-measured, x 1.25: 0.00006 / 1.4 (was 0.00004 / 1.405; MS-57 and MS-88 brought it back below, see the pair table); no other
 limit changed. New: realtime.spec "nothing blocks" (the `cutout-ghost` scene, the checker geometry with every texel
 cut out: every catcher texel exactly 1 in all four channels, the preview
 byte-identical with and without the catcher; it failed before with 1 040 of 49 296), "the lit catcher is exact away
@@ -1028,7 +1038,7 @@ look's backdrop in that row, `agxToneMap(backdropColor(look, y), look.toneMappin
 before MS-19 the top-left pixel) must agree on every pixel off the silhouette (a pixel whose 3 x 3 neighbourhood in the preview holds
 both classes) that the two images draw more than 2 levels apart (a dark texel near the backdrop colour falls on either
 side of the mask test, with the same colour in both views); 0 mismatches is the limit. Radiance, catcher on both: pixelmatch `threshold 0.1` with `maxDiffRatio`
-and `maxMeanDelta` = measured x 1.25 and never above the previous limit, never widened; the one exception is a limit re-measured x 1.25 after a deliberate change whose pixels all moved toward the render (MS-63: `partial-edge`, one silhouette edge pixel on row 194, x about 50, where the preview steps 101 to 174 and the render blends about 126 because the plane partly covers it, flipped over pixelmatch's OKLab threshold as the added blue raised the chroma difference), with the change named beside it; the render differs where it
+and `maxMeanDelta` = measured x 1.25 and never above the previous limit, never widened (MS-63's re-measure of `partial-edge` above its limit was the one exception; MS-88 removed it); the render differs where it
 has interreflection past the bake's one bounce (MS-57) and noise. Logged as `[pt pair] <view>: ...`, values in `test-results/pt-pair-<view>.json`.
 Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with rounded edges and the mirrored bounce
 (MS-16's values in brackets; every limit stayed, none widened, `edges` is new at measured x 1.25):
@@ -1052,7 +1062,7 @@ Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with r
 | `gltf-jpeg-y030`           | 0 (1 476)                           | 36, 0.00055, 0.338 (MS-57; 36, 0.00055, 0.339 MS-87; 36, 0.00055, 0.409 MS-83)       | 0.00069, 0.511                             |
 | `obj-jpeg-y030`            | 0 (1 476)                           | 70, 0.00107, 0.349 (MS-57; 70, 0.00107, 0.350 MS-87; 71, 0.00108, 0.420 MS-83)       | 0.00135, 0.525                             |
 | `texture-wrap`             | 0 (3 444)                           | 25, 0.00038, 0.568 (MS-57; 58, 0.00089, 0.594 MS-87; textureWrap.spec.ts)            | 0.00048, 0.711 (MS-57; was 0.00111, 0.839) |
-| `partial-edge`             | 0 (3 844)                           | 2, 0.00003, 1.103 (MS-57; 3, 0.00005, 1.102 MS-87; 3, 0.00005, 1.120 MS-63)          | 0.00004, 1.4 (MS-57; was 0.00006, 1.4)     |
+| `partial-edge`             | 0 (3 844)                           | 2, 0.00003, 1.103 (MS-88, MS-57; 3, 0.00005, 1.102 MS-87; 3, 0.00005, 1.120 MS-63)   | 0.00004, 1.379 (MS-88; was 0.00004, 1.4)   |
 | `texture-filter`           | 0 (2 600)                           | 7, 0.00011, 0.353 (MS-57; 6, 0.00009, 0.353 MS-87; MS-38 7, 0.00011, 0.396)          | 0.00011, 0.488 (MS-60; was 0.00014, 0.495) |
 
 MS-57 (one bounce in the bake) re-measured every pair (rows above): every value that fell is tightened to measured x
@@ -1064,6 +1074,10 @@ to 7, 0.000107, at its 0.00011 limit, which passes). `gltf-jpeg-y030` and `obj-j
 mean delta) and keep theirs. The Softbox head probe (hdriLook.spec.ts) went from 2.64 to 0.07 levels (preview 95.63,
 render 95.56), `HEAD_LIMIT` 0.09. The app's parity tests, which take `preset-marketplace`'s limit, measured 0.00086 /
 0.244 and posed 0.00108 / 0.217.
+
+MS-88 re-measured `partial-edge` with no renderer change (every rt and pt golden byte-identical): 2 px, 0.0000305 /
+1.103, so its mean delta limit is 1.379 (x 1.25; was 1.4) and its ratio limit stays 0.00004. The 2 px are outline pixels
+the render covers in a sliver no 4x MSAA sample reaches, as the opaque twin shows (realtime.spec MS-88 probe, above).
 
 MS-60 (anti-aliased partial seams, opaque|partial seams and partial outlines in the preview's raster frames)
 re-measured every pair: `turntable-y030`, `iso`, `cutout-checker`, `edges`, `outline-hull`, `obj-shapes-y030` and

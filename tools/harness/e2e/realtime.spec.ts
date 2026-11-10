@@ -754,7 +754,62 @@ test.describe('anti-aliased partial-alpha seams in the OIT pass (MS-60)', () => 
       expect(pixelsApart(linear, nearest, 1), `pixels over 1 level apart${extra}`).toBe(0);
     }
   });
+
+  test('outline pixels whose sliver holds no MSAA sample stay backdrop as in the opaque twin (MS-88)', async ({
+    page,
+  }) => {
+    const backdrop = (await render(page, 'scene=empty&look=edge')).image;
+    const hard = (await render(page, 'variant=partial-edge&aa=0&msaa=0')).image;
+    const twin = (await render(page, 'scene=partial-edge-opaque&look=edge')).image;
+    const partial = (await render(page, 'variant=partial-edge')).image;
+    expect(await page.evaluate(() => window.__msFixture?.rt?.msaaSamples)).toBe(4);
+    // Linear-light coverage of a pixel between the backdrop and the face's own colour at an outline texel's centre.
+    const [cx, cy] = await projectPoint(page, cutoutEdgePoint(0.5, 2.5));
+    const coverage = (image: Image, x: number, y: number): number => {
+      const [p, b, f] = [pixel(image, x, y), pixel(backdrop, x, y), pixel(image, cx, cy)].map(studioLinear);
+      return (
+        [0, 1, 2].reduce((sum, c) => sum + ((p?.[c] ?? 0) - (b?.[c] ?? 0)) / ((f?.[c] ?? 0) - (b?.[c] ?? 0)), 0) / 3
+      );
+    };
+    for (const [x, y] of PARTIAL_EDGE_SLIVER_PIXELS) {
+      expect(near(pixel(twin, x, y), pixel(backdrop, x, y), PARTIAL_EDGE_SLIVER_LEVELS), `twin ${x}, ${y}`).toBe(true);
+      expect(near(pixel(partial, x, y), pixel(backdrop, x, y), PARTIAL_EDGE_SLIVER_LEVELS), `partial ${x}, ${y}`).toBe(
+        true,
+      );
+    }
+    // Their neighbours along the outline hold samples on the face: both mix, by the same sample share.
+    const shares: string[] = [];
+    for (const [x, y] of PARTIAL_EDGE_SLIVER_NEIGHBOURS) {
+      const [a, b] = [coverage(partial, x, y), coverage(twin, x, y)];
+      shares.push(`${x}, ${y}: partial ${a.toFixed(3)}, twin ${b.toFixed(3)}`);
+      expect(Math.min(a, b), `${x}, ${y}`).toBeGreaterThan(0.1);
+      expect(Math.abs(a - b), `${x}, ${y}`).toBeLessThanOrEqual(PARTIAL_EDGE_SLIVER_SHARE);
+    }
+    console.log(`[rt probe] partial-edge outline sample shares: ${shares.join('; ')}`);
+    await expectPartialTexelCentres(page, partial, hard, backdrop);
+  });
 });
+
+/**
+ * MS-88: outline pixels of the `partial-edge` view (4x MSAA) the face covers by about 28-33 % in the render, in a sliver
+ * that holds none of the 4 samples, so the preview leaves them backdrop. The opaque twin (`partial-edge-opaque`, the same
+ * quad opaque, drawn by the opaque pass) does too: a limit of the sample count on any silhouette, not of the
+ * transparency pass. Both measured exactly the backdrop (held to 1 level). `PARTIAL_EDGE_SLIVER_NEIGHBOURS`, one pixel along
+ * the outline, hold one sample on the face in both: linear-light shares measured 0.253 (partial) and 0.251 (twin) at
+ * each, held to 0.01 apart. A coverage finer than the 4 samples is a follow-up.
+ */
+const PARTIAL_EDGE_SLIVER_PIXELS = [
+  [49, 194],
+  [119, 213],
+  [202, 228],
+] as const;
+const PARTIAL_EDGE_SLIVER_NEIGHBOURS = [
+  [49, 193],
+  [120, 213],
+  [203, 228],
+] as const;
+const PARTIAL_EDGE_SLIVER_LEVELS = 1;
+const PARTIAL_EDGE_SLIVER_SHARE = 0.01;
 
 /** Pixels where some channel of `a` and `b` differs by more than `levels`. */
 function pixelsApart(a: Image, b: Image, levels: number): number {
