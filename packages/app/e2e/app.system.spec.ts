@@ -346,3 +346,19 @@ test('forced colours keep the empty card and the drag state visible', async ({ p
   await expect(page.locator('#empty')).toHaveAttribute('data-drag', '');
   expect(await border()).toEqual(['solid', '2px']);
 });
+
+test('forced colours tell the three model dot states apart without colour', async ({ page }) => {
+  await page.emulateMedia({ forcedColors: 'active' });
+  await openApp(page);
+  const looks: string[] = [];
+  for (const state of ['lit', 'busy', 'warn']) {
+    looks.push(
+      await page.locator('#model-state').evaluate((node, value) => {
+        node.setAttribute('data-state', value);
+        const style = getComputedStyle(node);
+        return [style.borderTopStyle, style.borderTopLeftRadius, style.backgroundColor].join(' ');
+      }, state),
+    );
+  }
+  expect(new Set(looks).size).toBe(3);
+});

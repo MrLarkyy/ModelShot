@@ -22,8 +22,11 @@ test('the render bar names the sample count', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Render', exact: true })).toBeEnabled();
 });
 
-// One page for both ways out: a second page right after a cancelled 4096-sample render waits on the GPU process draining it.
-test('a render shows samples, percent and time, and Esc and Stop each cancel it cleanly', async ({ page }) => {
+// The running state is checked at the start and the render is stopped at once: a long run leaves queued GPU work that stalls
+// the next page of the worker.
+test('a render shows its target, keeps it when the settings change, and Esc and Stop each cancel it', async ({
+  page,
+}) => {
   await openApp(page);
   await openFiles(page, [CUBE], 'single-cube.bbmodel');
   await waitForEditor(page);
@@ -36,11 +39,19 @@ test('a render shows samples, percent and time, and Esc and Stop each cancel it 
     await expect(info).toHaveText(RUNNING, { timeout: 30_000 });
     await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible();
     await expect(page.locator('#progress')).toHaveAttribute('aria-valuetext', RUNNING);
-    const first = (await info.textContent()) ?? '';
-    await expect.poll(async () => (await info.textContent()) ?? '', { timeout: 15_000 }).not.toBe(first);
+    if (stop === 'Escape') {
+      // The setting changes under a running render: the run's own target stays on show.
+      await page.locator('#render-panel').getByLabel('Samples').fill('8');
+      await page.locator('#render-panel').getByLabel('Samples').dispatchEvent('change');
+      await expect(info).toHaveText(RUNNING);
+    }
     expect(await viewportBox(page), 'the view keeps its size during the render').toEqual(before);
-    if (stop === 'Escape') await page.keyboard.press('Escape');
-    else await page.getByRole('button', { name: 'Stop' }).click();
+    if (stop === 'Escape') {
+      await page.locator('#preview').focus();
+      await page.keyboard.press('Escape');
+    } else {
+      await page.getByRole('button', { name: 'Stop' }).click();
+    }
     await expect(page.getByRole('status')).toContainText('Render cancelled', { timeout: 30_000 });
     await expect(page.getByRole('button', { name: 'Render', exact: true })).toBeEnabled();
     await expect(page.getByRole('button', { name: 'Stop' })).toBeHidden();
@@ -48,7 +59,21 @@ test('a render shows samples, percent and time, and Esc and Stop each cancel it 
     await expect(page.locator('#result')).toBeHidden();
     await expect(page.getByRole('alert')).toHaveCount(0);
     expect(await viewportBox(page)).toEqual(before);
+    if (stop === 'Escape') await setSamples(page, 4096);
   }
+});
+
+test('the focus follows the render bar: Render to Stop and back', async ({ page }) => {
+  await openApp(page);
+  await openFiles(page, [CUBE], 'single-cube.bbmodel');
+  await waitForEditor(page);
+  await setSamples(page, 4096);
+  const render = page.getByRole('button', { name: 'Render', exact: true });
+  await render.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: 'Stop' })).toBeFocused({ timeout: 30_000 });
+  await page.keyboard.press('Enter');
+  await expect(render).toBeFocused({ timeout: 30_000 });
 });
 
 test('a finished render shows its size, samples and time', async ({ page }) => {

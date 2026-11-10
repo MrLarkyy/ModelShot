@@ -3,6 +3,7 @@ import { Notices, TOAST_MS, type NoticeElements } from '../src/ui/Notices';
 
 class FakeElement {
   textContent = '';
+  title = '';
   hidden = false;
   dataset: Record<string, string> = {};
   private readonly names = new Set<string>();
@@ -18,11 +19,12 @@ function setup() {
     status: new FakeElement(),
     state: new FakeElement(),
     storageChip: new FakeElement(),
+    storageClose: new FakeElement(),
     alertBox: new FakeElement(),
     alertText: new FakeElement(),
   };
   elements.alertBox.hidden = true;
-  elements.storageChip.hidden = true;
+  elements.storageClose.hidden = true;
   const timers = new Map<number, { callback: () => void; ms: number }>();
   let next = 1;
   const notices = new Notices(
@@ -47,19 +49,21 @@ describe('Notices', () => {
   it('keeps the lighting state off the status line', () => {
     const { elements, notices } = setup();
     notices.status('Opened a.bbmodel.');
-    notices.lighting('Lighting the preview…');
-    notices.lighting('Preview lit.');
+    notices.lighting('busy');
+    notices.lighting('lit');
     expect(elements.status.textContent).toBe('Opened a.bbmodel.');
     expect(elements.state.textContent).toBe('Preview lit.');
     expect(elements.state.dataset['state']).toBe('lit');
   });
 
-  it('marks a failed bake apart from a bake in progress', () => {
+  it('gives each lighting state its own text, title and state', () => {
     const { elements, notices } = setup();
-    notices.lighting('Lighting the preview…');
+    notices.lighting('busy');
     expect(elements.state.dataset['state']).toBe('busy');
-    notices.lighting('The preview shows unbaked light: no GPU');
+    notices.lighting('warn');
     expect(elements.state.dataset['state']).toBe('warn');
+    expect(elements.state.title).toBe(elements.state.textContent);
+    expect(elements.state.textContent).toContain('unbaked');
   });
 
   it('shows the toast, then fades it and keeps the text', () => {
@@ -86,18 +90,16 @@ describe('Notices', () => {
     notices.status('Render done.');
     expect(elements.status.textContent).toBe('Render done.');
     expect(elements.storageChip.textContent).toBe('Your settings are not being kept.');
-    expect(elements.storageChip.hidden).toBe(false);
+    expect(elements.storageClose.hidden).toBe(false);
     expect(elements.alertBox.hidden).toBe(true);
   });
 
-  it('follows the viewer when the bake settles', () => {
+  it('clears the storage chip when it is dismissed', () => {
     const { elements, notices } = setup();
-    notices.lighting('Lighting the preview…');
-    notices.bakeSettled(true);
-    expect(elements.state.dataset['state']).toBe('lit');
-    expect(elements.state.textContent).toBe('Preview lit.');
-    notices.bakeSettled(false);
-    expect(elements.state.dataset['state']).toBe('warn');
+    notices.storage('Your settings are not being kept.');
+    notices.dismissStorage();
+    expect(elements.storageChip.textContent).toBe('');
+    expect(elements.storageClose.hidden).toBe(true);
   });
 
   it('keeps an alert through later statuses until it is cleared', () => {

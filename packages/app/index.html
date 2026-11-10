@@ -18,18 +18,14 @@
     <header class="top-bar">
       <h1 id="title"></h1>
       <div class="menu">
-        <button
-          id="file-menu-button"
-          type="button"
-          aria-expanded="false"
-          aria-controls="file-menu"
-          aria-keyshortcuts="Control+O"
-        >
-          File
-        </button>
+        <button id="file-menu-button" type="button" aria-expanded="false" aria-controls="file-menu">File</button>
         <div id="file-menu" class="menu-list" hidden>
-          <button id="open-button" type="button">Open…<kbd aria-hidden="true">Ctrl+O</kbd></button>
-          <button id="menu-export-button" type="button" disabled>Export…<kbd aria-hidden="true">Ctrl+E</kbd></button>
+          <button id="open-button" type="button" aria-keyshortcuts="Control+O Meta+O">
+            Open…<kbd aria-hidden="true">Ctrl+O</kbd>
+          </button>
+          <button id="menu-export-button" type="button" aria-keyshortcuts="Control+E Meta+E" disabled>
+            Export…<kbd aria-hidden="true">Ctrl+E</kbd>
+          </button>
           <button id="help-button" type="button">Shortcuts<kbd aria-hidden="true">?</kbd></button>
           <hr class="menu-separator" />
           <button id="forget-button" class="destructive" type="button">Forget local data</button>
@@ -38,6 +34,15 @@
           </p>
         </div>
       </div>
+      <button
+        id="bar-more-button"
+        class="icon-button"
+        type="button"
+        aria-label="More"
+        title="More"
+        aria-expanded="false"
+        aria-controls="bar-overflow"
+      ></button>
       <div id="bar-overflow" class="bar-overflow">
         <div class="bar-group" role="group" aria-label="History">
           <button id="undo-button" class="icon-button" type="button" aria-label="Undo" title="Undo" disabled></button>
@@ -88,15 +93,6 @@
       <div class="bar-end">
         <button id="share-button" type="button" hidden>Share</button>
         <button id="export-button" class="primary" type="button" disabled>Export…</button>
-        <button
-          id="bar-more-button"
-          class="icon-button"
-          type="button"
-          aria-label="More"
-          title="More"
-          aria-expanded="false"
-          aria-controls="bar-overflow"
-        ></button>
       </div>
       <input
         id="file-input"
@@ -151,7 +147,7 @@
               </p>
               <p class="empty-local">Your file stays in this browser tab and is never uploaded.</p>
               <p class="empty-drop">Drop files here to open them.</p>
-              <button id="empty-open" class="primary" type="button" aria-keyshortcuts="Control+O">
+              <button id="empty-open" class="primary" type="button" aria-keyshortcuts="Control+O Meta+O">
                 Open…<kbd aria-hidden="true">Ctrl+O</kbd>
               </button>
               <ul class="entry-cards">
@@ -188,7 +184,17 @@
           </div>
           <div class="toasts">
             <div id="status" class="toast" role="status"></div>
-            <p id="storage-chip" class="toast toast-chip" aria-live="polite" hidden></p>
+            <div class="toast toast-chip">
+              <p id="storage-chip" class="storage-text" aria-live="polite"></p>
+              <button
+                id="storage-close"
+                class="icon-button small"
+                type="button"
+                aria-label="Dismiss the notice"
+                title="Dismiss the notice"
+                hidden
+              ></button>
+            </div>
             <div id="alert-box" class="toast toast-alert" hidden>
               <div id="alert" role="alert"></div>
               <button

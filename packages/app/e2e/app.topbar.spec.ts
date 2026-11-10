@@ -157,3 +157,31 @@ test('the File menu works from the keyboard and Forget local data asks first', a
   await expect(file).toBeFocused();
   expect(await page.evaluate((key) => localStorage.getItem(key), LAYOUT_KEY)).toBeNull();
 });
+
+test('at 375 px More is reached with Tab, opens onto its first control and Escape gives the focus back', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await openApp(page);
+  await openFiles(page, [CUBE], 'single-cube.bbmodel');
+  const more = page.getByRole('button', { name: 'More' });
+  await page.getByRole('button', { name: 'File', exact: true }).focus();
+  await page.keyboard.press('Tab');
+  await expect(more).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(more).toHaveAttribute('aria-expanded', 'true');
+  const outliner = page.getByRole('button', { name: 'Outliner', exact: true });
+  await expect(outliner).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Inspector', exact: true })).toBeFocused();
+  await page.keyboard.press('Tab');
+  const timeline = page.getByRole('button', { name: 'Timeline', exact: true });
+  await expect(timeline).toBeFocused();
+  const before = await timeline.getAttribute('aria-expanded');
+  await page.keyboard.press('Enter');
+  await expect(timeline).not.toHaveAttribute('aria-expanded', before ?? '');
+  await expect(timeline).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#bar-overflow')).toBeHidden();
+  await expect(more).toBeFocused();
+});

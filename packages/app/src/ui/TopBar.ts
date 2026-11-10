@@ -10,6 +10,7 @@ const ICON_BUTTONS: readonly (readonly [id: string, name: IconName])[] = [
   ['timeline-toggle', 'panel-bottom'],
   ['bar-more-button', 'more'],
   ['alert-close', 'close'],
+  ['storage-close', 'close'],
 ];
 
 /** Puts the icons on the static top-bar buttons and binds the More list that holds the groups below 900 px. */
@@ -18,5 +19,6 @@ export function bindTopBar(): void {
   const overflow = byId('bar-overflow', HTMLElement);
   // Closed at first; the stylesheet shows the group inline from 900 px up whatever this says.
   overflow.hidden = true;
-  bindDisclosure(byId('bar-more-button', HTMLButtonElement), overflow);
+  // Opening moves the focus into the list, and Escape gives it back to the button.
+  bindDisclosure(byId('bar-more-button', HTMLButtonElement), overflow, { focusFirst: true });
 }

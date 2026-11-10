@@ -33,6 +33,8 @@ export const DEFAULT_VIEW: ViewerView = {
 export interface ViewerOptions {
   /** Short messages about the lighting bake and the context. */
   readonly onStatus: (message: string) => void;
+  /** The graphics context came back; when set, the context message is not sent to `onStatus`. */
+  readonly onContextRestored?: () => void;
   /** The canvas was resized (CSS size and pixel ratio); the render canvas follows. */
   readonly onResize: (size: CanvasCssSize) => void;
   /** The camera or scene shown changed, so a finished render no longer matches. */
@@ -83,7 +85,8 @@ export class Viewer {
         this.requestRender();
       }),
       renderer.onContextRestored(() => {
-        this.options.onStatus('The graphics context was restored.');
+        if (this.options.onContextRestored) this.options.onContextRestored();
+        else this.options.onStatus('The graphics context was restored.');
         this.requestRender();
       }),
     );

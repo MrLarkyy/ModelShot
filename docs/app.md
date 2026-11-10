@@ -70,11 +70,13 @@ in the middle, the inspector on the right and the timeline below.
   model name with a status dot, Share (secondary; where the browser can share files it keeps its place and only
   disappears, so Export never moves) and Export, the only primary of the bar. There is no Render label in the bar.
   Preview shows the live view; Path traced shows the finished render (it starts one when there is none). Below 900 px
-  the history, panel and mode groups sit behind a More button (`aria-expanded`, Esc closes it); the model name is cut
+  the history, panel and mode groups sit behind a More button (`aria-expanded`; it follows the File menu in the page
+  order so Tab reaches it before its list, opening moves the focus to the first control, the list stays open while its
+  controls are used, and Esc closes it and returns the focus to More); the model name is cut
   with an ellipsis. The File menu is a disclosure of buttons, not an ARIA menu: Tab moves through it and Esc closes
   it. Rows: Open… (Ctrl+O), Export… (Ctrl+E), Shortcuts (?), a separator, then "Forget local data" (the destructive
-  class); the shortcut hints are keycaps hidden from assistive technology (`aria-keyshortcuts` is on the File
-  button), and the privacy note is a footer paragraph that Tab skips.
+  class); the shortcut hints are keycaps hidden from assistive technology (`aria-keyshortcuts` is on the Open… and
+  Export… rows and on the empty card's Open…, with the Control and Meta forms), and the privacy note is a footer paragraph that Tab skips.
 - **Empty state**: the card sits on the stage over a token gradient (the stage is `#viewport[data-empty]`; the preview
   canvas keeps its box but is not shown, so the render size stays valid and the realtime backdrop and the render are
   untouched). The chips and the stats are hidden while empty. The Outliner, Inspector and Timeline each say what opens
@@ -82,15 +84,16 @@ in the middle, the inspector on the right and the timeline below.
   (`#timeline[data-empty]`), and the full panel for one with clips.
 - **First-run row**: `#first-run-hint` (a region "Shortcut hints") over the view, below the chips: keys from
   `SHORTCUTS`, drag to orbit and scroll to zoom. Dismissing it moves the focus to the 3D view.
-- **Model dot**: next to the model name, `#model-state` is a dot (lit, lighting, or unbaked) whose text, such as
-  "Preview lit.", is kept for assistive technology (`aria-live="polite"`, not a status role).
+- **Model dot**: next to the model name, `#model-state` is a dot with a shape per state, not colour alone (filled
+  circle lit, dashed ring lighting, filled square unbaked) and a tooltip, driven by the viewer's `onBakeStarted` and
+  `onBakeSettled`; its text, such as "Preview lit.", is kept for assistive technology (`aria-live="polite"`, not a status role).
 - **Render bar**: floats at the bottom centre of the view: Render (primary) with the sample count from the Render tab
-  while idle; progress, the numbers and Stop while running; the result line after a render. It is shown and disabled
+  while idle; progress, the numbers and Stop while running (the focus moves from Render to Stop and back); the result line after a render. It is shown and disabled
   with no model open.
 - **Toasts**: `#status` (`role="status"`, always present) holds exactly the latest message, one at a time, and fades
   after 5 s while keeping its text; it floats at the top centre of the view, above the drawers, so it never takes
   height from the view. An error goes to `#alert` (`role="alert"`, with a Dismiss button) and stays until it is
-  dismissed, which gives the focus to the File button. A saving failure is not an error and not a status: it shows in its own chip (`#storage-chip`, no live role beyond `aria-live="polite"`) beside the status line until the page reloads, and the app goes on. The model dot follows the viewer's bake-settled signal.
+  dismissed, which gives the focus to the File button. A saving failure is not an error and not a status: it shows in its own chip (`#storage-chip`, a polite live region that is always in the tree and collapses when empty) under the status line, with a Dismiss button, until dismissed or the page reloads, and the app goes on. The graphics-context message is a status, sent by `ViewerOptions.onContextRestored`.
 - **Resize and collapse**: the separators between the panels are focusable (`role="separator"` with
   `aria-valuenow`): drag them, or use the arrow keys (16 px), Home and End. Widths are clamped (outliner 180-480 px,
   inspector 260-520, timeline 96-320). A toggle collapses a panel. Sizes, collapsed panels, the overlay toggles and the
@@ -195,7 +198,7 @@ The panel layout is not in this database: it is `localStorage` `modelshot.layout
 Saves are debounced by 500 ms. Reads are validated as untrusted (`state/readAppState.ts`: own properties, `v === 1`,
 finite values in range, a known look, real `File` objects) and never throw; an invalid record is ignored. A full disk
 or a failing database shows a notice and the app goes on. "Forget local data" first asks in a dialog that names what goes
-(the files of the last model, the view and settings kept per model, the panel layout); Escape and Cancel keep
+(the files of the last model, the view and settings kept per model, the panel layout, the dismissed shortcut hint); Escape and Cancel keep
 everything and return the focus to the File button, and confirming deletes the database and the stored layout. New fields are optional; a breaking change bumps the version and ships a migration or discards the
 old record.
 
@@ -264,7 +267,8 @@ buttons are blue on the real screens.
 The empty card is a section named by its heading, Open carries `aria-keyshortcuts`, and the entry cards are buttons; the
 first-run row is a named region whose dismiss button hands the focus to the 3D view.
 
-Landmarks (header, outliner `nav`, view `main`, inspector `aside`, timeline `section`, the toast and error line over the view),
+Landmarks (header, outliner `nav`, view `main`, inspector `aside`, timeline `section`, the empty card `section` named by its
+heading, the Shortcut hints region; the toasts are live regions, not landmarks),
 every control labelled, visible focus (a 3 px `--ms-color-blue-mid` ring, 2 px off the control, on every control of
 the dark workspace; the viewport chips sit over the 3D view, so their ring has a ground halo under it), errors in
 `role="alert"` until dismissed (the Dismiss button sits beside it, not inside), one `role="status"` line, the render progress as

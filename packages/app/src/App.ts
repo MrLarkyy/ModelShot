@@ -117,6 +117,9 @@ export class App {
   private renderStartedAt = 0;
   private renderClock: ReturnType<typeof setInterval> | null = null;
   private renderDoneSamples = 0;
+  /** The sample count of the run on show: the settings may change while it runs. */
+  private renderTarget = 0;
+  private refocusRender = false;
   private readonly progress = byId('progress', HTMLProgressElement);
   private readonly fileInput = byId('file-input', HTMLInputElement);
   private readonly emptyCard = byId('empty', HTMLElement);
@@ -161,6 +164,7 @@ export class App {
       status: byId('status', HTMLElement),
       state: this.modelState,
       storageChip: byId('storage-chip', HTMLElement),
+      storageClose: byId('storage-close', HTMLElement),
       alertBox: byId('alert-box', HTMLElement),
       alertText: byId('alert', HTMLElement),
     });
@@ -178,9 +182,8 @@ export class App {
     this.panelLayout = new PanelLayout(this.layoutStore);
     try {
       this.viewer = Viewer.create(byId('preview', HTMLCanvasElement), {
-        // The context message is an event; the bake messages are the lasting state of the model dot.
-        onStatus: (message) =>
-          message.startsWith('The graphics context') ? this.notices.status(message) : this.notices.lighting(message),
+        onStatus: () => undefined,
+        onContextRestored: () => this.notices.status('The graphics context was restored.'),
         onResize: (size) => {
           const previous = this.cssSize;
           this.cssSize = size;
@@ -193,8 +196,11 @@ export class App {
         },
         onChange: () => this.cameraChanged(),
         onFrame: (camera) => this.tools?.frame(camera),
-        onBakeStarted: () => this.tools?.bakeStarted(),
-        onBakeSettled: (lit) => this.notices.bakeSettled(lit),
+        onBakeStarted: () => {
+          this.notices.lighting('busy');
+          this.tools?.bakeStarted();
+        },
+        onBakeSettled: (lit) => this.notices.lighting(lit ? 'lit' : 'warn'),
         preserveDrawingBuffer: import.meta.env.MODE === 'e2e',
       });
     } catch (error) {
@@ -634,6 +640,11 @@ export class App {
     this.menuExportButton.disabled = !ready || !idle;
     this.modeRender.disabled = !ready || !idle;
     this.syncMode();
+    // Stop was focused and has hidden: the Render button takes the focus back once it can.
+    if (this.refocusRender && !this.renderButton.disabled && !this.renderIdle.hidden) {
+      this.refocusRender = false;
+      this.renderButton.focus();
+    }
   }
 
   private syncHistoryButtons(): void {
@@ -919,12 +930,15 @@ export class App {
     this.resultCanvas.hidden = true;
     this.shareFile = null;
     this.progressBox.hidden = false;
+    // The Render button that was just pressed is about to hide: Stop takes the focus instead of the page body.
+    if (this.renderIdle.contains(document.activeElement)) byId('cancel-button', HTMLButtonElement).focus();
     this.renderIdle.hidden = true;
+    this.renderTarget = this.renderValues.samples;
     this.progress.value = 0;
     this.renderStartedAt = performance.now();
     this.renderDoneSamples = 0;
-    this.showRunningInfo(0, this.renderValues.samples);
-    this.renderClock = setInterval(() => this.showRunningInfo(this.renderDoneSamples, this.renderValues.samples), 1000);
+    this.showRunningInfo(0, this.renderTarget);
+    this.renderClock = setInterval(() => this.showRunningInfo(this.renderDoneSamples, this.renderTarget), 1000);
     this.notices.status('Rendering: preparing the scene…');
     this.setActionsEnabled();
     void this.renderSession.render().finally(() => this.setActionsEnabled());
@@ -944,6 +958,7 @@ export class App {
 
   private renderIdleBar(): void {
     this.stopRenderClock();
+    this.refocusRender = this.progressBox.contains(document.activeElement);
     this.progressBox.hidden = true;
     this.renderIdle.hidden = false;
   }
@@ -952,6 +967,7 @@ export class App {
     if (done > 0) this.resultCanvas.hidden = false;
     this.progress.value = target > 0 ? done / target : 0;
     this.renderDoneSamples = done;
+    if (target > 0) this.renderTarget = target;
     this.showRunningInfo(done, target);
     this.syncMode();
   }
@@ -966,7 +982,7 @@ export class App {
     this.renderInfo.textContent = resultText(
       this.resultCanvas.width,
       this.resultCanvas.height,
-      this.renderValues.samples,
+      this.renderTarget,
       elapsed,
     );
     this.notices.status(warnings.length > 0 ? `Render done. ${warnings.join(' ')}` : 'Render done.');
@@ -1071,6 +1087,10 @@ export class App {
     this.fileInput.click();
   }
 
+  private dropRefused(): boolean {
+    return this.exporting || document.querySelector('dialog[open]') !== null;
+  }
+
   private askForget(): void {
     if (!this.forgetDialog.open) this.forgetDialog.showModal();
   }
@@ -1144,6 +1164,10 @@ export class App {
     });
     // Cancel, Escape and confirm all end here: the menu item hid with its menu, so the visible trigger gets the focus.
     this.forgetDialog.addEventListener('close', () => byId('file-menu-button', HTMLButtonElement).focus());
+    byId('storage-close', HTMLButtonElement).addEventListener('click', () => {
+      this.notices.dismissStorage();
+      byId('file-menu-button', HTMLButtonElement).focus();
+    });
     byId('alert-close', HTMLButtonElement).addEventListener('click', () => {
       this.notices.clearAlert();
       byId('file-menu-button', HTMLButtonElement).focus();
@@ -1152,11 +1176,13 @@ export class App {
     bindDrop(
       window,
       (active) => {
-        if (this.open === null) this.emptyCard.toggleAttribute('data-drag', active);
-        else dropOverlay.hidden = !active;
+        // A drop that would be refused (a dialog or an export under way) gets no highlight.
+        const shown = active && !this.dropRefused();
+        if (this.open === null) this.emptyCard.toggleAttribute('data-drag', shown);
+        else dropOverlay.hidden = !shown;
       },
       (files) => {
-        if (this.exporting || document.querySelector('dialog[open]')) {
+        if (this.dropRefused()) {
           this.notices.status('Close the dialog and wait for the export to finish before opening files.');
           return;
         }

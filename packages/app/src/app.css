@@ -192,15 +192,16 @@ h3 {
   white-space: nowrap;
 }
 
-/* The state is the dot; its text stays for assistive technology. */
+/* The state is the dot, and each state has its own shape as well as its colour: a filled circle (lit), a dashed ring
+   (lighting), a filled square (unbaked). The text stays for assistive technology and the tooltip. */
 .model-state {
   flex: none;
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   overflow: hidden;
   font-size: 0;
   color: transparent;
-  border: 1px solid var(--ed-line-strong);
+  border: 2px solid var(--ed-line-strong);
   border-radius: 50%;
 }
 
@@ -213,11 +214,13 @@ h3 {
 }
 
 .model-state[data-state='busy'] {
-  background: var(--ed-sun);
+  border-color: var(--ed-sun);
+  border-style: dashed;
 }
 
 .model-state[data-state='warn'] {
   background: var(--ed-flash);
+  border-radius: 2px;
 }
 
 #bar-more-button {
@@ -237,8 +240,14 @@ h3 {
     padding-inline: var(--ms-space-2);
   }
 
+  /* More follows the File menu in the source, so Tab reaches it before its list; it sits at the end of the row. */
   #bar-more-button {
     display: inline-flex;
+    order: 2;
+  }
+
+  .bar-end {
+    order: 1;
   }
 
   .bar-overflow {
@@ -940,8 +949,25 @@ body:has(.timeline[data-empty]) #timeline-separator {
 }
 
 .toast-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--ms-space-2);
   opacity: 1;
   color: var(--ed-text-2);
+  pointer-events: auto;
+}
+
+.storage-text {
+  margin: 0;
+}
+
+/* Kept in the tree so the text is announced when it is set; empty, it takes no room. */
+.toast-chip:has(.storage-text:empty) {
+  height: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  pointer-events: none;
 }
 
 .toast-alert {
@@ -1514,12 +1540,20 @@ progress {
 
 @media (forced-colors: active) {
   .model-state {
+    forced-color-adjust: none;
     border-color: CanvasText;
   }
 
   .model-state[data-state='lit'] {
-    forced-color-adjust: none;
     background: Highlight;
+  }
+
+  .model-state[data-state='busy'] {
+    background: Canvas;
+  }
+
+  .model-state[data-state='warn'] {
+    background: CanvasText;
   }
 
   .toast,
