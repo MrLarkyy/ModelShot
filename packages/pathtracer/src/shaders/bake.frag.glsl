@@ -14,11 +14,13 @@ precision highp sampler2DArray;
 
 // One sample of the light bake per lightmap texel, with the path tracer's own rules for every ray (bvhTraverse): the
 // key's visibility through shadowTransmittance in the key cone, the fill as the environment along one cosine-weighted
-// direction that escapes. No interreflection: the bake is what the preview's lighting lacks, occlusion. Pass sums:
-// rgb 1 less the fill the ray lost over hemisphereFill(n), a the key visibility; texels of no chart add 1 (unbaked).
-// The loss is what a blocker took of the environment along the ray, a ray under the surface counting as the trace does
-// (mirrored, bakePoint): the path tracer's control variate (trace.frag.glsl catcherShadeAt), exactly 1 where nothing is
-// lost, unclamped, so a texel's mean may dip below 0 (fully blocked) or above 1 (mirrored rays see a brighter sky).
+// direction. The bake is what the preview's lighting lacks: occlusion, and one diffuse bounce off a model surface the
+// fill ray meets (bounceLight, the trace's first bounce). Pass sums: rgb 1 less the fill the ray lost over
+// hemisphereFill(n), a the key visibility; texels of no chart add 1 (unbaked). The loss is what a blocker took of the
+// environment along the ray less the light it sends back, a ray under the surface counting as the trace does (mirrored,
+// bakePoint): the path tracer's control variate (trace.frag.glsl catcherShadeAt), exactly 1 where no ray is blocked,
+// unclamped, so a texel's mean may dip below 0 (fully blocked by dark faces) or rise above 1 (a bright neighbour, or
+// mirrored rays that see a brighter sky). A channel whose fill is 0 stays 1 (lostShare): its bounce is not baked.
 
 // The running sum of earlier samples (AccumulationTargets).
 uniform highp sampler2D u_previous;
@@ -46,10 +48,12 @@ const int CHART_MODE_VERTEX = 1;
 const int CHART_MODE_WORLD = 2;
 const int CORNER_TEXELS = 2;
 const int MAX_CHART_TRIANGLES = 32;
-// Random dimensions: 0-1 the point in the texel, 2-3 the key cone, 4-5 the fill direction, 6 partial texels.
+// Random dimensions: 0-1 the point in the texel, 2-3 the key cone, 4-5 the fill direction, 6 partial texels, 7-8 the
+// key cone at the bounce point. Appended, so a texel whose fill ray no blocker stops draws what it always drew.
 const uint KEY_DIMENSION = 2u;
 const uint FILL_DIMENSION = 4u;
 const uint ALPHA_DIMENSION = 6u;
+const uint BOUNCE_KEY_DIMENSION = 7u;
 
 vec2 cornerUv(int triangle, int corner) {
   int base = triangle * TRIANGLE_ATTRIBUTE_TEXELS;
@@ -99,10 +103,28 @@ float bakeKey(vec3 origin, vec3 side, int skip, uint key) {
   return shadowTransmittance(origin, cone, skip);
 }
 
+// What the blocker a fill ray met sends back along it, as the trace's first bounce vertex adds it: its emission and its
+// albedo times the key (the trace's gate, cosine and a shadow ray in the cone, skipping the blocker) and the fill. That
+// fill is hemisphereFill unshadowed: one bounce, no second ray. A partial texel is a blocker with probability alpha
+// (closestHit), so it sends back that share on average; a cut-out texel is never one.
+vec3 bounceLight(Hit blocker, uint key) {
+  Surface b = surfaceAt(blocker);
+  vec3 incoming = hemisphereFill(b.normal);
+  float cosKey = dot(b.normal, u_lookKeyDirection);
+  if (cosKey > 0.0 && dot(b.side, u_lookKeyDirection) > 0.0) {
+    vec3 cone = keyConeDirection(unitRandom(key, BOUNCE_KEY_DIMENSION, 0u),
+      unitRandom(key, BOUNCE_KEY_DIMENSION + 1u, 0u));
+    float visible = shadowTransmittance(leave(b.position, b.side), cone, blocker.triangle);
+    incoming += u_lookKeyColor * (cosKey * visible);
+  }
+  return b.emission + b.albedo * incoming;
+}
+
 // The light of one model surface point: rgb 1 less the fill lost over hemisphereFill(normal), a the key visibility. The
 // trace mirrors a cosine ray under the surface (aboveSurface), so one that escapes after the mirror loses only the
-// difference of the environment along the two, and a ray a blocker stops loses what it carried: exactly 0 lost for a
-// ray above the surface that escapes, so a flat face nothing blocks is exactly 1.
+// difference of the environment along the two, and a ray a blocker stops loses what it carried less what the blocker
+// sends back (bounceLight): exactly 0 lost for a ray above the surface that escapes, so a flat face nothing blocks is
+// exactly 1.
 vec4 bakePoint(vec3 position, vec3 normal, vec3 side, int skip, uint key) {
   vec3 origin = leave(position, side);
   float keyT = bakeKey(origin, side, skip, key);
@@ -111,7 +133,9 @@ vec4 bakePoint(vec3 position, vec3 normal, vec3 side, int skip, uint key) {
   vec3 lost = escapeRadiance(d);
   if (dot(mirrored, side) > 0.0) {
     Hit blocker;
-    if (!closestHit(origin, mirrored, 0.0, 3.0e38, 1.0, skip, key, ALPHA_DIMENSION, blocker)) {
+    if (closestHit(origin, mirrored, 0.0, 3.0e38, 1.0, skip, key, ALPHA_DIMENSION, blocker)) {
+      lost = lost - bounceLight(blocker, key);
+    } else {
       lost = lost - escapeRadiance(mirrored);
     }
   }

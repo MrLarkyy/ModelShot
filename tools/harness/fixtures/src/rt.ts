@@ -21,6 +21,7 @@ import { readDrawingBufferBase64 } from './context';
 import { spinMainThread, startEventLoopLag } from './eventLoopLag';
 import type { MsFixture, RtBakeOutcome, RtBakeRequest, RtControls } from './fixtureApi';
 import { bakedCatcherStats } from './bakedCatcherStats';
+import { bakedMeshTexels } from './bakedMeshTexels';
 import { breakFramebuffers } from './breakFramebuffers';
 import { decodeProbe } from './decodeProbe';
 import { recordDrawStates } from './drawStates';
@@ -413,6 +414,16 @@ async function start(): Promise<void> {
       const { lighting } = await baker.bake(doc, { samples, seed: 1, ...(look ? { look } : {}) });
       if (!lighting) throw new Error('bake not applied');
       return bakedCatcherStats(lighting, lightmapLayout(doc));
+    },
+    bakeMeshTexels: async (name, samples, mesh, look) => {
+      if (!isRtSceneName(name)) throw new Error(`unknown scene "${name}"`);
+      baker ??= LightBaker.create({ testHooks: true });
+      const doc = rtScene(name);
+      const index = doc.meshes.findIndex((candidate) => candidate.name === mesh);
+      if (index < 0) throw new Error(`scene "${name}" has no mesh "${mesh}"`);
+      const { lighting } = await baker.bake(doc, { samples, seed: 1, ...(look ? { look } : {}) });
+      if (!lighting) throw new Error('bake not applied');
+      return bakedMeshTexels(lighting, lightmapLayout(doc), index);
     },
     uploadStates: async () => {
       baker ??= LightBaker.create({ testHooks: true });

@@ -31,6 +31,8 @@ import { OUTLINE_HULL_BOARD_LEVELS, outlineHullProbe } from '../src/outlineHullP
 import { edgesSceneSharpEdges } from '../fixtures/src/edgesScene';
 import { CUTOUT_EDGE_TEXELS, cutoutEdgeOpaque, cutoutEdgePoint } from '../fixtures/src/cutoutEdge';
 import { PARTIAL_EDGE_STRIP_ROW, PARTIAL_EDGE_TEXELS, partialEdgeTexel } from '../fixtures/src/partialEdge';
+import { BOUNCE_WALL_ALPHA, BOUNCE_WALL_FLOOR_TEXELS } from '../fixtures/src/bounceWall';
+import { halfToNumber } from '../fixtures/src/halfToNumber';
 import { agxInverse } from '../src/agxInverse';
 import { cutoutSeams } from '../src/cutoutSeams';
 import type {
@@ -1647,6 +1649,152 @@ test.describe('baked lighting', () => {
     expect(Math.abs(open - plainOpen), 'the open ground keeps its unbaked light').toBeLessThanOrEqual(0.03 * plainOpen);
     expect(ptContact, 'the path tracer has the shadow there too').toBeLessThanOrEqual(0.8 * ptOpen);
     expect(Math.abs(contact - ptContact), 'as dark as the path tracer').toBeLessThanOrEqual(0.1 * ptContact);
+  });
+
+  test('one bounce lights the low west side of the glTF box from the bright ground, as the render does', async ({
+    page,
+  }) => {
+    // Low on the west face (x = 8: glTF units x 16), mid-depth, where about half the hemisphere sees the ground.
+    const point = [8, 4, -8] as const;
+    const around = (image: Image, [x, y]: readonly [number, number]): { mean: number; sd: number } => {
+      const values: number[] = [];
+      for (let dy = -2; dy <= 2; dy++)
+        for (let dx = -2; dx <= 2; dx++) values.push(luminance(pixel(image, x + dx, y + dy)));
+      const mean = values.reduce((a, b) => a + b, 0) / values.length;
+      return { mean, sd: Math.sqrt(values.reduce((a, v) => a + (v - mean) ** 2, 0) / values.length) };
+    };
+    const unbaked = await render(page, 'variant=gltf-contact');
+    const baked = await render(page, 'variant=bake-gltf-contact');
+    const at = await page.evaluate((p) => window.__msFixture!.rt!.project(...p), point);
+    const pt = decodePng(
+      readFileSync(
+        goldenPath({
+          kind: 'pathtraced',
+          fixture: 'pt',
+          name: 'pt-gltf-contact',
+          variant: 'gltf-contact',
+          seed: 1,
+          samples: 128,
+        }),
+      ),
+    );
+    const levels = { unbaked: around(unbaked.image, at), baked: around(baked.image, at), pt: around(pt, at) };
+    console.log(`[rt probe] gltf-contact box west side low at ${JSON.stringify(at)}: ${JSON.stringify(levels)}`);
+    // MS-41 measured 85 baked, 132 unbaked, 150 rendered: the bake lost the share of the fill the ground blocks and got
+    // nothing back for it. With the ground's bounce it is within 15 % of the render.
+    expect(Math.abs(levels.baked.mean - levels.pt.mean), 'as bright as the render').toBeLessThanOrEqual(
+      0.15 * levels.pt.mean,
+    );
+  });
+
+  test('a bounce comes from what blocks the fill ray: opaque, partial by its alpha, never a cut-out texel', async ({
+    page,
+  }) => {
+    // Ten 256-sample bakes of a small scene.
+    test.setTimeout(600_000);
+    await openFixture(page, '/rt.html?variant=turntable-y030');
+    const studio = lookPresetFile('studio');
+    const keyed = (direction: readonly [number, number, number], scale: number): LookPreset => ({
+      ...studio,
+      lights: {
+        ...studio.lights,
+        key: {
+          ...studio.lights.key,
+          direction: [direction[0], direction[1], direction[2]],
+          color: [
+            studio.lights.key.color[0] * scale,
+            studio.lights.key.color[1] * scale,
+            studio.lights.key.color[2] * scale,
+          ],
+        },
+      },
+    });
+    const [kx, ky, kz] = studio.lights.key.direction;
+    const darkBlue: LookPreset = {
+      ...studio,
+      environment: {
+        ...studio.environment,
+        sky: [studio.environment.sky[0], studio.environment.sky[1], 0],
+        ground: [studio.environment.ground[0], studio.environment.ground[1], 0],
+      },
+    };
+    const floors = await page.evaluate(
+      async ({ behind, behindHalf, half, darkBlue }) => {
+        const rt = window.__msFixture!.rt!;
+        const floor = (scene: string, look?: LookPreset) => rt.bakeMeshTexels(scene, 256, 'floor', look);
+        return {
+          white: await floor('bounce-wall'),
+          black: await floor('bounce-wall-black'),
+          partialWhite: await floor('bounce-wall-partial'),
+          partialBlack: await floor('bounce-wall-partial-black'),
+          cutout: await floor('bounce-wall-cutout'),
+          none: await floor('bounce-wall-none'),
+          halfKey: await floor('bounce-wall', half),
+          behind: await floor('bounce-wall', behind),
+          behindHalfKey: await floor('bounce-wall', behindHalf),
+          darkBlue: await floor('bounce-wall', darkBlue),
+        };
+      },
+      {
+        behind: keyed([-kx, ky, kz], 1),
+        behindHalf: keyed([-kx, ky, kz], 0.5),
+        half: keyed([kx, ky, kz], 0.5),
+        darkBlue,
+      },
+    );
+    const HALF_ONE = 0x3c00;
+    const channel = (halves: readonly number[], c: number): number[] => halves.filter((_, i) => i % 4 === c);
+    const rgbMean = (halves: readonly number[]): number[] => {
+      const [r, g, b] = [0, 1, 2].map((c) => channel(halves, c).map(halfToNumber));
+      return r!.map((v, i) => (v + g![i]! + b![i]!) / 3);
+    };
+    const rgbHalves = (halves: readonly number[]): number[] => halves.filter((_, i) => i % 4 !== 3);
+    const mean = (values: readonly number[]): number => values.reduce((a, b) => a + b, 0) / values.length;
+    for (const [name, halves] of Object.entries(floors)) {
+      expect(halves.length, name).toBe(BOUNCE_WALL_FLOOR_TEXELS * BOUNCE_WALL_FLOOR_TEXELS * 4);
+    }
+
+    // A cut-out wall is no blocker: the floor bakes byte for byte as without a wall, every channel exactly 1.
+    expect(floors.cutout).toEqual(floors.none);
+    expect(floors.none.every((h) => h === HALF_ONE)).toBe(true);
+
+    // The white wall sends back light the black one does not, along the same rays (the same draws, the same blocks).
+    const white = rgbMean(floors.white);
+    const black = rgbMean(floors.black);
+    const opaqueGain = white.map((v, i) => v - black[i]!);
+    // The partial wall stops a ray with probability alpha, with the same draws in its white and black versions, so its
+    // gain per texel is alpha x the opaque gain plus zero-mean noise, independent between texels.
+    const partialGain = rgbMean(floors.partialWhite).map((v, i) => v - rgbMean(floors.partialBlack)[i]!);
+    const residual = partialGain.map((g, i) => g - BOUNCE_WALL_ALPHA * opaqueGain[i]!);
+    const residualMean = mean(residual);
+    const standardError =
+      Math.sqrt(residual.reduce((a, r) => a + (r - residualMean) ** 2, 0) / (residual.length - 1)) /
+      Math.sqrt(residual.length);
+    // Texel column 0 of the floor lies against the wall.
+    const besideWall = white.filter((_, i) => i % BOUNCE_WALL_FLOOR_TEXELS === 0);
+    console.log(
+      `[rt probe] bounce-wall floor (256 samples): opaque gain ${mean(opaqueGain).toFixed(4)}, partial gain ` +
+        `${mean(partialGain).toFixed(4)} (ratio ${(mean(partialGain) / mean(opaqueGain)).toFixed(4)}, alpha ` +
+        `${BOUNCE_WALL_ALPHA.toFixed(4)}; residual ${residualMean.toFixed(5)}, standard error ` +
+        `${standardError.toFixed(5)}); white wall: beside it ${mean(besideWall).toFixed(4)}, max ` +
+        `${Math.max(...white).toFixed(4)}; black wall: min ${Math.min(...black).toFixed(4)}`,
+    );
+    expect(mean(opaqueGain), 'the white wall lights the floor').toBeGreaterThan(0.05);
+    expect(Math.min(...opaqueGain), 'no texel loses light to a brighter wall').toBeGreaterThanOrEqual(0);
+    expect(Math.max(...white), 'beside the bright wall the floor gains more than it loses').toBeGreaterThan(1);
+    expect(Math.abs(residualMean), 'partial gain = alpha x opaque gain').toBeLessThanOrEqual(3 * standardError);
+
+    // The key's share of the bounce has the trace's gate: a wall turned from the key sends back only fill, whatever the
+    // key colour; turned to it, the key colour shows in the floor.
+    expect(rgbHalves(floors.behind)).toEqual(rgbHalves(floors.behindHalfKey));
+    expect(mean(white), 'a stronger key lights the wall and so the floor more').toBeGreaterThan(
+      mean(rgbMean(floors.halfKey)),
+    );
+
+    // The dark-channel limit: rgb is a share of the fill, so a channel the dome leaves at 0 bakes exactly 1 and its
+    // bounce is not baked, while the other channels keep theirs.
+    expect(channel(floors.darkBlue, 2).every((h) => h === HALF_ONE)).toBe(true);
+    expect(Math.max(...channel(floors.darkBlue, 0).map(halfToNumber)), 'red still takes the bounce').toBeGreaterThan(1);
   });
 
   test('texel anti-aliasing still halves shimmer against nearest sampling with baked light', async ({ page }) => {

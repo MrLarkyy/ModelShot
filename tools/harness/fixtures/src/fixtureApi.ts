@@ -112,6 +112,8 @@ export interface RtControls {
   bakeCapped: (name: string, samples: number) => Promise<{ texels: number; error: string }>;
   /** Bakes a named scene (seed 1, catcher on) under `look` (default Studio, checked by the baker): its texel counts. */
   bakeCatcherStats: (name: string, samples: number, look?: LookPreset) => Promise<BakedCatcherStats>;
+  /** Bakes a named scene (seed 1, catcher on) under `look` (default Studio): the half-float texels of mesh `mesh`'s charts. */
+  bakeMeshTexels: (name: string, samples: number, mesh: string, look?: LookPreset) => Promise<number[]>;
   /**
    * Bakes the shown document's textures with lightmap-overflow's meshes (refused with SCENE_TOO_LARGE after the bytes
    * were posted), then the shown document with the same textures array: both outcomes.

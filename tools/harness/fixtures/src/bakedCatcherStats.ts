@@ -1,4 +1,5 @@
 import type { BakedLighting, LightmapLayout } from '@modelshot/renderer-rt';
+import { halfToNumber } from './halfToNumber';
 
 /** IEEE half 1.0. */
 const HALF_ONE = 0x3c00;
@@ -35,14 +36,6 @@ export interface BakedCatcherStats {
 }
 
 const NEGATIVE = 0x8000;
-
-function halfToNumber(half: number): number {
-  const sign = half & NEGATIVE ? -1 : 1;
-  const exponent = (half >> 10) & 31;
-  const fraction = half & 0x3ff;
-  if (exponent === 0) return sign * fraction * 2 ** -24;
-  return sign * (1 + fraction / 1024) * 2 ** (exponent - 15);
-}
 
 const finite = (half: number): boolean => (half & HALF_EXPONENT) !== HALF_EXPONENT;
 
