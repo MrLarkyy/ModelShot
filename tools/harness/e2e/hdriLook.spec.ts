@@ -33,9 +33,10 @@ const PT_SOFTBOX: GoldenSpec = {
 const HEAD_THROUGH_HAT_HOLE: readonly [number, number, number] = [-1.5, 29.5, -4];
 /**
  * Preview vs render at that point, 5 x 5 mean luminance in levels: measured 2.64 (preview baked 64: 92.92, render seed 1
- * at 64 samples: 95.56, its interreflection the brighter), x 1.25.
+ * at 64 samples: 95.56, its interreflection the brighter), x 1.25; MS-57, with one bounce in the bake: 0.07 (preview
+ * 95.63), x 1.25.
  */
-const HEAD_LIMIT = 3.3;
+const HEAD_LIMIT = 0.09;
 
 /**
  * Path-tracer cost of the image (one more shadow ray per vertex): the median of 3 runs of 64 samples at 128 x 128 on the
