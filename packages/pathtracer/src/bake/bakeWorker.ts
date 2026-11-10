@@ -20,7 +20,7 @@ import { sampleTiles } from '../sampleSchedule';
 import { progressSamples, type BakeReply, type BakeRequest } from './bakeMessages';
 import { BakeSession, type BakeLimits, type BakePass, type BakeScene } from './BakeSession';
 import { buildChartTable } from './chartTable';
-import { toHalf } from './halfFloat';
+import { toFiniteHalf } from './halfFloat';
 import { MeshAssembler } from './meshStream';
 
 interface WorkerScope {
@@ -157,7 +157,7 @@ function errorReply(id: number, error: unknown): BakeReply {
 
 function halves(sums: Float32Array, samples: number): Uint16Array {
   const out = new Uint16Array(sums.length);
-  for (let i = 0; i < sums.length; i++) out[i] = toHalf((sums[i] ?? 0) / samples);
+  for (let i = 0; i < sums.length; i++) out[i] = toFiniteHalf((sums[i] ?? 0) / samples);
   return out;
 }
 

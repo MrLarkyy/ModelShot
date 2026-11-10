@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fromHalf, toHalf } from '../src/bake/halfFloat';
+import { fromHalf, toFiniteHalf, toHalf } from '../src/bake/halfFloat';
 
 describe('half floats', () => {
   it('encodes exact values', () => {
@@ -35,6 +35,14 @@ describe('half floats', () => {
     expect(toHalf(65520)).toBe(0x7c00);
     expect(toHalf(-1e9)).toBe(0xfc00);
     expect(Number.isNaN(fromHalf(toHalf(NaN)))).toBe(true);
+  });
+
+  it('holds an overflow to the largest finite half, never Infinity', () => {
+    expect(toFiniteHalf(1e9)).toBe(0x7bff);
+    expect(toFiniteHalf(-1e9)).toBe(0xfbff);
+    expect(toFiniteHalf(Infinity)).toBe(0x7bff);
+    expect(toFiniteHalf(0.5)).toBe(0x3800);
+    expect(Number.isNaN(fromHalf(toFiniteHalf(NaN)))).toBe(true);
   });
 
   it('round-trips every half value', () => {

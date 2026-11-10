@@ -837,7 +837,9 @@ by the ground as in `pt-gltf-contact`); `rt-bake-alpha-plane` 26 823, 28, 1.205;
 0.385 and `-fallback` 5 279, 123, 0.408 (the checker texels half a unit from the box, dark brown before, take the
 box's light, orange as in `pt-cutout-checker`); `rt-preset-marketplace` 8 888, 40, 0.285, `-fallback` 8 608, 55, 0.311;
 `rt-preset-rim` 8 126, 44, 0.215; `rt-preset-softbox` 10 283, 92, 0.433 (the crevices between the player's limbs and
-body). Every changed pixel is brighter but about 30 per preset view (AgX mixes the channels). `rt-bake-turntable-y030`
+body). Every changed pixel is brighter in luminance but a few: 9 (`rt-preset-marketplace`), 10 (`-fallback`), 0
+(`rt-preset-rim`) and 11 (`rt-preset-softbox`) pixels, and 0 on the four `rt-bake-*` views (Rec. 709 luminance, old
+against new file); 184, 234, 0 and 213 pixels of the preset views have one channel lower (AgX mixes the channels). `rt-bake-turntable-y030`
 moved within its tolerance and stays; every `pt-*` golden passed unchanged (the trace's program is not touched).
 Judged as images (old, new, render side by side): the box sides of the glTF scene go from a dark falloff to the
 render's pink, the shadow on the ground keeps its shape, the grain is texel-scale like the render's noise; no speckle,
@@ -1068,12 +1070,24 @@ Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with r
 MS-57 (one bounce in the bake) re-measured every pair (rows above): every value that fell is tightened to measured x
 1.25 (exact values from `test-results/pt-pair-<view>.json`, rounded up), most of all `gltf-contact`, whose box sides
 now take the ground's bounce (6 330 px to 34), and `cutout-checker` (the checker texels beside the box). Three values
-rose within their limits and keep them: `iso`'s ratio (263 px to 304, 0.00464 of 0.00476; its mean delta fell), and the
+rose within their limits and keep them: `iso`'s ratio (263 px to 304, 0.00464 of 0.00476; its mean delta fell; cause
+below), and the
 mean deltas of `outline-hull` (0.395 to 0.400) and `partial-edge` (1.102 to 1.103); `texture-filter` rose one pixel (6
 to 7, 0.000107, at its 0.00011 limit, which passes). `gltf-jpeg-y030` and `obj-jpeg-y030` measured as before (0.001 of
 mean delta) and keep theirs. The Softbox head probe (hdriLook.spec.ts) went from 2.64 to 0.07 levels (preview 95.63,
-render 95.56), `HEAD_LIMIT` 0.09. The app's parity tests, which take `preset-marketplace`'s limit, measured 0.00086 /
+render 95.56), a signed difference near zero, so `HEAD_LIMIT` is the larger of measured x 1.25 (0.09) and one level
+(the least an 8-bit frame resolves): 1. The app's parity tests, which take `preset-marketplace`'s limit, measured 0.00086 /
 0.244 and posed 0.00108 / 0.217.
+
+`iso`'s 41 extra pixels (diff images of origin/main's bake shader and the branch's, same render, seed 1, 64 samples):
+304 px differ now, 263 before, 181 in both. 123 are new and 82 left the diff. All 123 new ones lie in the two dark pits
+in the grass top (x 122-145, y 83-115) and the preview is brighter than the render in every one (none darker): render
+0 to 14 levels, preview 20 to 38 (10 before the bounce), which crosses the 0.1 colour threshold. The 82 that left were
+pixels of the same pits' rims and walls where the old preview was 13 to 45 levels darker than the render, which the
+bounce lifted into agreement. So the bounce moved the error in the pits from too dark to a little too bright: the
+blocker's returned fill is `hemisphereFill` unshadowed (one bounce, no second ray), which overstates the light a wall
+inside a one-texel-wide pit gets, where the render's next bounce meets the opposite wall. This is the documented limit
+of the single unshadowed bounce (path-tracer.md), not a defect, and the pair keeps its limit (never widened).
 
 MS-88 re-measured `partial-edge` with no renderer change (every rt and pt golden byte-identical): 2 px, 0.0000305 /
 1.103, so its mean delta limit is 1.379 (x 1.25; was 1.4) and its ratio limit stays 0.00004. The 2 px are outline pixels
@@ -1742,7 +1756,7 @@ round 7); its max was 750 ms then.
   blocked fill ray casts one more shadow ray) measured origin/main and the branch alternately on the local machine while
   other test runs shared it, medians in ms: 26 662 / 34 282, 24 259 / 45 314 (a load spike: heartbeat lag 61 ms),
   25 715 / 33 274, 20 329 / 32 548; the branch without the bounce's shadow ray 27 680 against 25 442. So about 1.3x,
-  1.6x on the quietest pair, far inside the max; the budget is unchanged. Measured again on the final batch tree (with
+  1.6x on the pair with the highest ratio (its origin/main run was the quiet one, 20 329 ms; the branch's 32 548 ms is the same as the others), far inside the max; the budget is unchanged. Measured again on the final batch tree (with
   MS-90 and MS-88), same method, one session: 25 342 / 31 660 (1.249), 25 712 / 35 648 (1.386, a load spike: heartbeat
   lag 31.1 ms, rerun as 25 415 / 34 385, 1.353), 25 569 / 34 588 (1.353); medians with the rerun 25 415 / 34 385, so the
   bounce costs 1.35x (criterion at most 1.4x), most of it the bounce's shadow ray (1.09x without it, above). Each run is asserted

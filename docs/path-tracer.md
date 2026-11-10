@@ -574,6 +574,6 @@ measured on real hardware yet.
 Temporal (video) denoising, emission from the scene format (MS-32), user lights (MS-33; the look's key,
 accents and environment here), a user-supplied environment image (only bundled ones, MS-47), geometric
 bevels (edges are rounded in shading only), a GPU or WASM build of the render's BVH, glossy or
-transmissive materials, an environment as a visible background (the bundled image is a lighting source only), and WebGPU. The bake has one bounce, no further interreflection (and no shadow or occlusion at the bounce point) and no animated GI;
+transmissive materials, an environment as a visible background (the bundled image is a lighting source only), and WebGPU. The bake has one bounce, no further interreflection (and at the bounce point the fill is unshadowed, though the key there is shadowed) and no animated GI;
 untextured and smooth meshes of more than 4096 triangles are still baked per vertex (world-density charts, MS-41,
 stop at that gate).

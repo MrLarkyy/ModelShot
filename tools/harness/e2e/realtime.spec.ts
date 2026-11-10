@@ -118,6 +118,12 @@ const SMOOTH_MEAN_OLD = 0.9976;
 /** MS-87: FNV-1a of the key visibility halves of the 64-sample lightmaps at seed 1, recorded from 84b54d8. */
 const CHART_KEY_HASH = { showcase: 939820550, 'convex-cube': 2696078789, 'smooth-sphere': 85915365 };
 
+/**
+ * MS-57: FNV-1a of every half of the 64-sample catcher lightmaps at seed 1, computed with origin/main's bake shader
+ * (93bc22c): the bounce touches only the model lightmap, so the catcher stays byte-identical.
+ */
+const CATCHER_HASH = { showcase: 4045614386, 'convex-cube': 31314707, 'smooth-sphere': 589252247 };
+
 async function render(page: Page, query: string): Promise<{ png: Buffer; image: Image; info: FixtureInfo }> {
   const info = await openFixture(page, `/rt.html?${query}`);
   const png = encodeFlipped(info);
@@ -1626,6 +1632,40 @@ test.describe('baked lighting', () => {
     expect(hashes).toEqual(CHART_KEY_HASH);
   });
 
+  test('the bounce leaves the catcher lightmap byte-identical to origin/main', async ({ page }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030');
+    const hashes = await page.evaluate(async () => {
+      const rt = window.__msFixture!.rt!;
+      return {
+        showcase: (await rt.bakeCatcherStats('showcase', 64)).catcherHash,
+        'convex-cube': (await rt.bakeCatcherStats('convex-cube', 64)).catcherHash,
+        'smooth-sphere': (await rt.bakeCatcherStats('smooth-sphere', 64)).catcherHash,
+      };
+    });
+    console.log(`[rt probe] catcher hashes: ${JSON.stringify(hashes)}`);
+    expect(hashes).toEqual(CATCHER_HASH);
+  });
+
+  test('a near-black sky and ground with a key bakes finite halves', async ({ page }) => {
+    await openFixture(page, '/rt.html?variant=turntable-y030');
+    const studio = lookPresetFile('studio');
+    const faint: LookPreset = {
+      ...studio,
+      environment: { ...studio.environment, sky: [1e-6, 1e-6, 1e-6], ground: [1e-6, 1e-6, 1e-6] },
+    };
+    const stats = await page.evaluate(async (look) => {
+      const rt = window.__msFixture!.rt!;
+      return {
+        showcase: await rt.bakeCatcherStats('showcase', 64, look),
+        cube: await rt.bakeCatcherStats('convex-cube', 64, look),
+      };
+    }, faint);
+    console.log(`[rt probe] near-black dome: ${JSON.stringify(stats)}`);
+    expect(stats.showcase.chartNonFinite).toBe(0);
+    expect(stats.cube.chartNonFinite).toBe(0);
+    expect(stats.showcase.nonFinite).toBe(0);
+  });
+
   test('a look with a zero channel keeps its baked key shadow', async ({ page }) => {
     await openFixture(page, '/rt.html?variant=turntable-y030');
     const studio = lookPresetFile('studio');
@@ -1745,7 +1785,7 @@ test.describe('baked lighting', () => {
   test('a bounce comes from what blocks the fill ray: opaque, partial by its alpha, never a cut-out texel', async ({
     page,
   }) => {
-    // Ten 256-sample bakes of a small scene.
+    // Ten 64-sample bakes of a small scene (256 samples took 2.0 min alone and over 10 min with the bakes sharing the machine).
     test.setTimeout(600_000);
     await openFixture(page, '/rt.html?variant=turntable-y030');
     const studio = lookPresetFile('studio');
@@ -1776,7 +1816,7 @@ test.describe('baked lighting', () => {
     const floors = await page.evaluate(
       async ({ behind, behindHalf, half, darkBlue }) => {
         const rt = window.__msFixture!.rt!;
-        const floor = (scene: string, look?: LookPreset) => rt.bakeMeshTexels(scene, 256, 'floor', look);
+        const floor = (scene: string, look?: LookPreset) => rt.bakeMeshTexels(scene, 64, 'floor', look);
         return {
           white: await floor('bounce-wall'),
           black: await floor('bounce-wall-black'),
@@ -1828,7 +1868,7 @@ test.describe('baked lighting', () => {
     // Texel column 0 of the floor lies against the wall.
     const besideWall = white.filter((_, i) => i % BOUNCE_WALL_FLOOR_TEXELS === 0);
     console.log(
-      `[rt probe] bounce-wall floor (256 samples): opaque gain ${mean(opaqueGain).toFixed(4)}, partial gain ` +
+      `[rt probe] bounce-wall floor (64 samples): opaque gain ${mean(opaqueGain).toFixed(4)}, partial gain ` +
         `${mean(partialGain).toFixed(4)} (ratio ${(mean(partialGain) / mean(opaqueGain)).toFixed(4)}, alpha ` +
         `${BOUNCE_WALL_ALPHA.toFixed(4)}; residual ${residualMean.toFixed(5)}, standard error ` +
         `${standardError.toFixed(5)}); white wall: beside it ${mean(besideWall).toFixed(4)}, max ` +
