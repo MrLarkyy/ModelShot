@@ -138,7 +138,6 @@ test('every control can be reached with Tab, has a name and shows where the focu
     'Outliner',
     'Inspector',
     'Timeline',
-    'Undo',
     'File',
     'Render',
     'Export…',

@@ -52,9 +52,9 @@ export class Notices {
     this.elements.state.dataset['state'] = lightingState(message);
   }
 
-  /** A lasting failure: later statuses do not wipe it. */
+  /** A saving failure the app works around: a status like any other, not an error. */
   storage(message: string): void {
-    this.alert(message);
+    this.status(message);
   }
 
   alert(message: string): void {

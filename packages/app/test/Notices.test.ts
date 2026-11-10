@@ -20,6 +20,7 @@ function setup() {
     alertBox: new FakeElement(),
     alertText: new FakeElement(),
   };
+  elements.alertBox.hidden = true;
   const timers = new Map<number, { callback: () => void; ms: number }>();
   let next = 1;
   const notices = new Notices(
@@ -76,11 +77,18 @@ describe('Notices', () => {
     expect([...timers.values()][0]?.ms).toBe(TOAST_MS);
   });
 
-  it('sends a storage failure to the alert, and later statuses leave it', () => {
+  it('shows a storage failure as a status, not as an error', () => {
     const { elements, notices } = setup();
-    notices.storage('Storage is full.');
+    notices.storage('Your settings are not being kept on this device.');
+    expect(elements.status.textContent).toBe('Your settings are not being kept on this device.');
+    expect(elements.alertBox.hidden).toBe(true);
+  });
+
+  it('keeps an alert through later statuses until it is cleared', () => {
+    const { elements, notices } = setup();
+    notices.alert('The render failed.');
     notices.status('Opened a.bbmodel.');
-    expect(elements.alertText.textContent).toBe('Storage is full.');
+    expect(elements.alertText.textContent).toBe('The render failed.');
     expect(elements.alertBox.hidden).toBe(false);
     notices.clearAlert();
     expect(elements.alertBox.hidden).toBe(true);

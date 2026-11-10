@@ -74,7 +74,7 @@ in the middle, the inspector on the right and the timeline below.
 - **Toasts**: `#status` (`role="status"`, always present) holds exactly the latest message, one at a time, and fades
   after 5 s while keeping its text; it floats at the top centre of the view, above the drawers, so it never takes
   height from the view. An error goes to `#alert` (`role="alert"`, with a Dismiss button) and stays until it is
-  dismissed, which gives the focus to the File button; a storage failure is such an error.
+  dismissed, which gives the focus to the File button. A saving failure is only a status: the app goes on.
 - **Resize and collapse**: the separators between the panels are focusable (`role="separator"` with
   `aria-valuenow`): drag them, or use the arrow keys (16 px), Home and End. Widths are clamped (outliner 180-480 px,
   inspector 260-520, timeline 96-320). A toggle collapses a panel. Sizes, collapsed panels, the overlay toggles and the

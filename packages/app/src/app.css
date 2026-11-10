@@ -760,6 +760,12 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+/* A fixed width: text that changes length would move the Stop button under the pointer. */
+.render-info {
+  min-width: 36ch;
+  max-width: 100%;
+}
+
 .render-progress progress {
   width: 8rem;
   max-width: 100%;

@@ -133,7 +133,7 @@ test('the File menu works from the keyboard and Forget local data asks first', a
   await page.keyboard.press('Tab');
   expect(await page.evaluate(() => document.activeElement?.closest('#file-menu') === null)).toBe(true);
   expect(await page.locator('#file-menu kbd').allTextContents()).toEqual(['Ctrl+O', 'Ctrl+E', '?']);
-  await expect(page.getByRole('button', { name: 'Open…', exact: true })).toBeAttached();
+  await expect(page.locator('#open-button')).toHaveAccessibleName('Open…');
   await expect(page.locator('#file-menu .menu-foot')).toContainText('Everything stays in this browser');
 
   await page.evaluate((key) => localStorage.setItem(key, localStorage.getItem(key) ?? '{"v":1}'), LAYOUT_KEY);

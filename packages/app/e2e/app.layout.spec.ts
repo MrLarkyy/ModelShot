@@ -150,6 +150,8 @@ test('the view takes the height the status band used to hold, and the status lin
   const viewport = await box(page, '#viewport');
   const stage = await box(page, '.stage');
   expect(viewport.y + viewport.height).toBeCloseTo(stage.y + stage.height, 0);
-  await expect(page.getByRole('status')).toHaveText('Opened nested-groups.bbmodel.');
+  const status = (await page.getByRole('status').textContent()) ?? '';
+  expect(status).toMatch(/^Opened nested-groups.bbmodel/);
+  expect(status).not.toMatch(/lit|Lighting/i);
   expect(await page.locator('.messages').count()).toBe(0);
 });

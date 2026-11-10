@@ -166,7 +166,9 @@ export class App {
     this.panelLayout = new PanelLayout(this.layoutStore);
     try {
       this.viewer = Viewer.create(byId('preview', HTMLCanvasElement), {
-        onStatus: (message) => this.notices.lighting(message),
+        // The context message is an event; the bake messages are the lasting state of the model dot.
+        onStatus: (message) =>
+          message.startsWith('The graphics context') ? this.notices.status(message) : this.notices.lighting(message),
         onResize: (size) => {
           const previous = this.cssSize;
           this.cssSize = size;
