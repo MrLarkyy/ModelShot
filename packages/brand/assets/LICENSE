@@ -20,7 +20,9 @@ this repository, and in what it builds without changes to them, as long as all o
    advertise a different product, service or project, and not in a way that suggests ModelShot or the holder made,
    endorses or supports your fork. A fork that you publish, deploy or distribute as your own product or service, or
    under another name, replaces the brand assets with its own.
-4. This file stays next to them.
+4. In a copy of the repository this file stays next to them. A build may carry them where the unchanged build
+   configuration of this repository places them (for example the icons and the social preview copied from public/ to
+   the build root, or the logo inlined into a page), without this file.
 
 Any other use, copy, modification or distribution of the brand assets needs written permission from the holder.
 Nominative references to ModelShot as a project, such as a link or a mention in text, need no permission. The
