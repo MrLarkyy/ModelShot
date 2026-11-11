@@ -1539,7 +1539,11 @@ progress {
 }
 
 @media (forced-colors: active) {
-  .model-state {
+  /* The ring is a system colour in every state: a state rule above would otherwise keep its author colour here. */
+  .model-state,
+  .model-state[data-state='lit'],
+  .model-state[data-state='busy'],
+  .model-state[data-state='warn'] {
     forced-color-adjust: none;
     border-color: CanvasText;
   }

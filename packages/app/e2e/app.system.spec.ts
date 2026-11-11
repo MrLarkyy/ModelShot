@@ -319,17 +319,32 @@ test('forced colours mark the selected tab, an open panel toggle and the current
   expect(await outline('.outliner-row .name[aria-current=true]')).toEqual(['solid', '2px']);
 });
 
+// A system colour as the browser resolves it on this page, to compare a computed colour with.
+const systemColour = (page: Page, name: string): Promise<string> =>
+  page.evaluate((value) => {
+    const probe = document.createElement('span');
+    probe.style.color = value;
+    document.body.append(probe);
+    const colour = getComputedStyle(probe).color;
+    probe.remove();
+    return colour;
+  }, name);
+
 test('forced colours keep a visible border on the model dot and the toast', async ({ page }) => {
   await page.emulateMedia({ forcedColors: 'active' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await openApp(page);
   await openFiles(page, [fixture('bbmodel', 'nested-groups.bbmodel')], 'nested-groups.bbmodel');
   await expect(page.locator('#model-state')).toHaveAttribute('data-state', /lit|busy/, { timeout: 120_000 });
+  const canvasText = await systemColour(page, 'CanvasText');
   for (const selector of ['#model-state', '#status']) {
-    const border = await page
-      .locator(selector)
-      .evaluate((n) => [getComputedStyle(n).borderTopStyle, getComputedStyle(n).borderTopWidth]);
-    expect(border, selector).toEqual(['solid', '1px']);
+    const border = await page.locator(selector).evaluate((n) => {
+      const style = getComputedStyle(n);
+      return { style: style.borderTopStyle, width: parseFloat(style.borderTopWidth), colour: style.borderTopColor };
+    });
+    expect(['solid', 'dashed'], selector).toContain(border.style);
+    expect(border.width, selector).toBeGreaterThanOrEqual(1);
+    expect(border.colour, selector).toBe(canvasText);
   }
 });
 
@@ -350,15 +365,21 @@ test('forced colours keep the empty card and the drag state visible', async ({ p
 test('forced colours tell the three model dot states apart without colour', async ({ page }) => {
   await page.emulateMedia({ forcedColors: 'active' });
   await openApp(page);
+  const canvasText = await systemColour(page, 'CanvasText');
   const looks: string[] = [];
   for (const state of ['lit', 'busy', 'warn']) {
-    looks.push(
-      await page.locator('#model-state').evaluate((node, value) => {
-        node.setAttribute('data-state', value);
-        const style = getComputedStyle(node);
-        return [style.borderTopStyle, style.borderTopLeftRadius, style.backgroundColor].join(' ');
-      }, state),
-    );
+    const look = await page.locator('#model-state').evaluate((node, value) => {
+      node.setAttribute('data-state', value);
+      const style = getComputedStyle(node);
+      // The shape alone (ring style and corner), then the fill: two states never share both.
+      return {
+        shape: [style.borderTopStyle, style.borderTopLeftRadius, style.backgroundColor].join(' '),
+        ring: style.borderTopColor,
+      };
+    }, state);
+    looks.push(look.shape);
+    // Not the author's yellow ring on a white Canvas: every state draws its ring in the system text colour.
+    expect(look.ring, state).toBe(canvasText);
   }
   expect(new Set(looks).size).toBe(3);
 });
