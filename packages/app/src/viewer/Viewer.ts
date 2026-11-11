@@ -33,6 +33,8 @@ export const DEFAULT_VIEW: ViewerView = {
 export interface ViewerOptions {
   /** Short messages about the lighting bake and the context. */
   readonly onStatus: (message: string) => void;
+  /** A failure the renderer reports outside a call (a graphics driver that cannot link or restore); `onStatus` when absent. */
+  readonly onError?: (message: string) => void;
   /** The canvas was resized (CSS size and pixel ratio); the render canvas follows. */
   readonly onResize: (size: CanvasCssSize) => void;
   /** The camera or scene shown changed, so a finished render no longer matches. */
@@ -87,7 +89,8 @@ export class Viewer {
         this.requestRender();
       }),
       renderer.onError((error) => {
-        this.options.onStatus(`The preview could not use the graphics driver: ${error.message}`);
+        const message = `The preview could not use the graphics driver: ${error.message}`;
+        (this.options.onError ?? this.options.onStatus)(message);
       }),
     );
   }

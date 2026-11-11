@@ -80,6 +80,14 @@ describe('Viewer', () => {
     expect(statuses).toEqual(['The preview could not use the graphics driver: linear: program link failed']);
   });
 
+  it('a renderer error goes to onError when given, not to onStatus', () => {
+    const onError = vi.fn();
+    const { renderer, statuses } = viewer({ onError });
+    renderer.failed(new Error('restore failed'));
+    expect(onError).toHaveBeenCalledWith('The preview could not use the graphics driver: restore failed');
+    expect(statuses).toEqual([]);
+  });
+
   it('a restored graphics context draws again and bakes nothing: the renderer kept the baked light', () => {
     const onBakeStarted = vi.fn();
     const { renderer, statuses } = viewer({ onBakeStarted });

@@ -478,8 +478,9 @@ export class RealtimeRenderer {
 
   /**
    * Called with a failure that happens outside a call of the caller's: a linear program that does not link when the
-   * fallback path takes over or the context comes back (the frame draws those batches with the nearest program;
-   * after a failed restore nothing is drawn). Returns a function that removes the listener.
+   * fallback path takes over (the frame draws those batches with the nearest program), or any failure while the
+   * context comes back (nothing is drawn, `onContextRestored` is not called). An error that is not a `RendererError`
+   * is reported as `SHADER_LINK`. Returns a function that removes the listener.
    */
   onError(listener: (error: RendererError) => void): () => void {
     this.errorListeners.add(listener);

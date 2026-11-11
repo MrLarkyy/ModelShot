@@ -272,7 +272,8 @@ names a missing `Access-Control-Allow-Origin` as a possible cause.
 
 The iframe is titled with `label`. Inside, the canvas is focusable and named; arrow keys, drag and wheel turn and zoom
 as in the app. Loading and lighting progress is announced in a `role="status"` element (visible while loading, for
-screen readers only once the model shows); errors in a `role="alert"` element. `autorotate` never starts when the
+screen readers only once the model shows); errors in a `role="alert"` element, which also shows a failure of the graphics driver (a context that cannot be
+restored) as text, without a message to the host page. `autorotate` never starts when the
 visitor prefers reduced motion, stops when that setting turns on and stops for good on the first pointer, wheel or
 key input in the frame. An error stops it (nothing turns behind the alert); it starts again once a model is shown
 with `autorotate`. The light bake runs only when a model is shown; the renderer and orbit easing follow

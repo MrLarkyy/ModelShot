@@ -143,6 +143,11 @@ export function showEmbed(page: EmbedPage, hash: string, env: EmbedEnvironment):
         onStatus: (message) => {
           page.status.textContent = message;
         },
+        // Seen by sighted visitors too (the frame can stay blank); only the frame shows it, nothing is posted.
+        onError: (message) => {
+          page.alert.textContent = message;
+          page.alert.hidden = false;
+        },
         // `data-light` on the stage tells a test (and a stylesheet) where the bake is: baking, lit or unbaked.
         onBakeStarted: () => {
           settled = false;

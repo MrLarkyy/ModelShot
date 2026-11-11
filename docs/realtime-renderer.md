@@ -477,5 +477,8 @@ On `webglcontextlost` the renderer prevents the default (so the browser may rest
 no-op. On `webglcontextrestored` it queries the limits again, rebuilds programs, targets, buffers and textures from
 the retained scene, decoded images and baked lighting (no re-decode, no re-bake, no reload; the sharp-edge attributes
 come from the per-mesh cache), redraws and calls the
-`onContextRestored` listeners. `dispose()` deletes every GL object it created (lightmaps and the catcher's quad
+`onContextRestored` listeners. If the restore fails (a program does not link, a resource cannot be rebuilt), nothing is
+redrawn, `onContextRestored` is not called and the `onError(listener)` listeners get the `RendererError` once (an
+error that is not one is reported as `SHADER_LINK`); `onError` also reports a failed fallback switch. Like
+`onContextRestored` it returns a function that removes the listener. `dispose()` deletes every GL object it created (lightmaps and the catcher's quad
 included), closes every decoded image and removes its listeners.
