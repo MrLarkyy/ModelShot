@@ -31,6 +31,7 @@ export interface NoticeElements {
 // messages carry file names.
 export class Notices {
   private timer: unknown = null;
+  private toastedReason: string | null = null;
 
   constructor(
     private readonly elements: NoticeElements,
@@ -57,7 +58,8 @@ export class Notices {
 
   /**
    * The dot: a shape per state (colour is not the only cue), the text for assistive technology and the tooltip.
-   * `detail` is why the light is not baked: the dot is 12 px, so a reason is also said once in the status line.
+   * `detail` is why the light is not baked: the dot is 12 px, so a reason is also said once in the status line,
+   * until the preview is lit again.
    */
   lighting(state: LightingState, detail?: string): void {
     const dot = this.elements.state;
@@ -65,7 +67,11 @@ export class Notices {
     dot.textContent = text;
     dot.title = text;
     dot.dataset['state'] = state;
-    if (detail) this.status(text);
+    if (state === 'lit') this.toastedReason = null;
+    if (detail && detail !== this.toastedReason) {
+      this.toastedReason = detail;
+      this.status(text);
+    }
   }
 
   /** A saving failure the app works around: not an error. It stays in its own chip until dismissed or the page reloads. */

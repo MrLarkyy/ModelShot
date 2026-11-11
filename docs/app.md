@@ -88,7 +88,7 @@ in the middle, the inspector on the right and the timeline below.
   circle lit, dashed ring lighting, filled square unbaked) and a tooltip, driven by the viewer's `onBakeStarted` and
   `onBakeSettled`; its text, such as "Preview lit.", is kept for assistive technology (`aria-live="polite"`, not a status role).
   When the light cannot be baked for a reason (the path tracer did not load, the bake failed), the dot's text and
-  tooltip name it, "The preview shows unbaked light: <reason>", and the same line is shown once as a toast. In forced
+  tooltip name it, "The preview shows unbaked light: <reason>", and the same line is shown once as a toast (again only for a different reason or after the preview was lit). In forced
   colours the ring is `CanvasText` in every state.
 - **Render bar**: floats at the bottom centre of the view: Render (primary) with the sample count from the Render tab
   while idle; progress, the numbers and Stop while running (the focus moves from Render to Stop and back); the result line after a render. It is shown and disabled

@@ -78,6 +78,21 @@ describe('Notices', () => {
     expect(elements.status.classList.contains('toast-shown')).toBe(true);
   });
 
+  it('toasts a failure reason once until the preview is lit, and again for a different reason', () => {
+    const { elements, notices } = setup();
+    notices.lighting('warn', 'the worker stopped');
+    notices.status('Render done.');
+    notices.lighting('warn', 'the worker stopped');
+    expect(elements.status.textContent).toBe('Render done.');
+    expect(elements.state.title).toBe('The preview shows unbaked light: the worker stopped');
+    notices.lighting('warn', 'out of memory');
+    expect(elements.status.textContent).toBe('The preview shows unbaked light: out of memory');
+    notices.lighting('lit');
+    notices.status('Opened a.bbmodel.');
+    notices.lighting('warn', 'out of memory');
+    expect(elements.status.textContent).toBe('The preview shows unbaked light: out of memory');
+  });
+
   it('drops the failure reason with the next lighting state and says nothing for a bake that just did not apply', () => {
     const { elements, notices } = setup();
     notices.lighting('warn', 'the worker stopped');
