@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
-import { expect, fixture, openApp, openFileMenu, openFiles, openTab, test, waitForEditor } from './appTest';
+import { dragFiles, expect, fixture, openApp, openFileMenu, openFiles, openTab, test, waitForEditor } from './appTest';
 
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
@@ -209,6 +209,8 @@ test('the shortcuts work from the keyboard and never override the view keys', as
   const samples = page.locator('#render-panel').getByLabel('Samples');
   await samples.fill('4096');
   await samples.dispatchEvent('change');
+  // Held before its first sample: the shortcut is what is checked, and a cancelled long render leaves queued GPU work.
+  await page.evaluate(() => window.__msApp!.holdRenders());
   await page.locator('#preview').focus();
   await page.keyboard.press('r');
   await expect(page.getByRole('status')).toContainText('Rendering', { timeout: 30_000 });
@@ -249,4 +251,70 @@ test('a reduced-motion setting turns the view damping off', async ({ page }) => 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await openApp(page);
   expect(await page.evaluate(() => window.__msApp!.orbit.damping)).toBe(false);
+});
+
+test('axe finds no violation with a toast, the File menu, the forget dialog and More open', async ({ page }) => {
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'nested-groups.bbmodel')], 'nested-groups.bbmodel');
+  await expect(page.getByRole('status')).toHaveClass(/toast-shown/);
+  expect(await violations(page), 'toast').toEqual([]);
+  await openFileMenu(page);
+  expect(await violations(page, true), 'file menu').toEqual([]);
+  await page.getByRole('button', { name: 'Forget local data' }).click();
+  await expect(page.getByRole('dialog', { name: 'Forget local data?' })).toBeVisible();
+  expect(await violations(page), 'forget dialog').toEqual([]);
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.getByRole('button', { name: 'More' }).click();
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeVisible();
+  expect(await violations(page, true), 'More at 375 px').toEqual([]);
+});
+
+test('the status line is one role=status and an error stays in role=alert until it is dismissed', async ({ page }) => {
+  await openApp(page);
+  await expect(page.getByRole('status')).toHaveCount(1);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await openFiles(page, [fixture('bbmodel', 'nested-groups.bbmodel')], 'nested-groups.bbmodel');
+  await page
+    .locator('#file-input')
+    .setInputFiles({ name: 'x.bbmodel', mimeType: 'application/json', buffer: Buffer.from('x') });
+  const alert = page.getByRole('alert');
+  await expect(alert).toBeVisible();
+  await page.getByRole('status').evaluate((n) => n.classList.remove('toast-shown'));
+  await expect(alert).toBeVisible();
+  await expect(page.getByRole('status')).toHaveCount(1);
+  expect(await violations(page), 'alert with dismiss').toEqual([]);
+  await page.getByRole('button', { name: 'Dismiss the error' }).click();
+  await expect(alert).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'File', exact: true })).toBeFocused();
+});
+
+for (const [width, height] of [
+  [1440, 900],
+  [375, 667],
+] as const) {
+  test(`axe finds no violation on the empty state at ${width} px, in the drag state and with the error`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height });
+    await openApp(page);
+    expect(await violations(page), 'empty').toEqual([]);
+    await dragFiles(page, 'enter', [{ name: 'a.bbmodel', text: '{}' }]);
+    await expect(page.locator('#empty')).toHaveAttribute('data-drag', '');
+    expect(await violations(page), 'drag over').toEqual([]);
+    await dragFiles(page, 'drop', [{ name: 'notes.txt', text: 'hello' }]);
+    await expect(page.getByRole('alert')).toBeVisible();
+    expect(await violations(page), 'error').toEqual([]);
+  });
+}
+
+test.describe('first run hint', () => {
+  test.use({ firstRunHint: true });
+
+  test('axe finds no violation with the shortcut hint row', async ({ page }) => {
+    await openApp(page);
+    await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
+    await expect(page.getByRole('region', { name: 'Shortcut hints' })).toBeVisible();
+    expect(await violations(page, true)).toEqual([]);
+  });
 });

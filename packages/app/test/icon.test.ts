@@ -35,6 +35,10 @@ describe('icon', () => {
         'share',
         'download',
         'more',
+        'panel-left',
+        'panel-right',
+        'panel-bottom',
+        'close',
       ].sort(),
     );
   });

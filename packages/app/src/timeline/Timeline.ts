@@ -32,7 +32,7 @@ export class Timeline {
   private wasPlaying = false;
 
   constructor(
-    root: HTMLElement,
+    private readonly root: HTMLElement,
     private readonly host: TimelineHost,
     clock: PlaybackClock = BROWSER_CLOCK,
   ) {
@@ -83,7 +83,6 @@ export class Timeline {
       ]),
       this.markers,
       this.count,
-      this.empty,
     );
     this.show([]);
   }
@@ -124,7 +123,11 @@ export class Timeline {
         el('option', { text: animation.name || `Clip ${index + 1}`, attributes: { value: String(index) } }),
       ),
     );
-    this.empty.hidden = animations.length > 0;
+    // The reason is in the panel only while it holds: with clips it is not left behind as hidden text.
+    if (animations.length === 0) this.root.append(this.empty);
+    else this.empty.remove();
+    // No clip to play: the panel is a one-row bar.
+    this.root.toggleAttribute('data-empty', animations.length === 0);
     this.drawMarkers();
     this.sync();
   }

@@ -1,7 +1,8 @@
 import type { Page } from '@playwright/test';
-import { expect, fixture, openApp, openFileMenu, openFiles, test, waitForEditor } from './appTest';
+import { expect, expectLit, fixture, forgetLocalData, openApp, openFiles, test, waitForEditor } from './appTest';
 
 const NESTED = fixture('bbmodel', 'nested-groups.bbmodel');
+const ANIMATED = fixture('bbmodel', 'animated.bbmodel');
 
 interface Box {
   readonly x: number;
@@ -50,32 +51,29 @@ test('below 1024 px the panels are drawers over a usable view', async ({ page },
   await expect(page.locator('#inspector')).toBeHidden();
   const viewport = await box(page, '#viewport');
   expect(viewport.width).toBeGreaterThanOrEqual(900 * 0.5);
-  // The timeline keeps a readable clip choice and says why it is empty; its controls stay inside the page.
-  const clip = await box(page, '#timeline select');
-  expect(clip.width).toBeGreaterThanOrEqual(100);
+  // Without clips the timeline is a bar: it says why it is empty beside the disabled Play, inside the page.
   await expect(page.locator('#timeline')).toContainText('This model has no animations.');
+  await expect(page.locator('#timeline').getByRole('button', { name: 'Play' })).toBeDisabled();
+  await expect(page.locator('#timeline select')).toBeHidden();
   const controls = await box(page, '.timeline-controls');
   expect(controls.x).toBeGreaterThanOrEqual(0);
   expect(controls.x + controls.width).toBeLessThanOrEqual(900);
+  expect((await box(page, '#timeline')).height, 'the timeline is one row').toBeLessThan(60);
   await page.screenshot({ animations: 'disabled', path: testInfo.outputPath('editor-900.png') });
 
   const toggle = page.getByRole('button', { name: 'Outliner', exact: true });
   await toggle.click();
   await expect(page.locator('#outliner')).toBeVisible();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-  // An open drawer covers the view only: the status line keeps its left edge and stays on top at its start.
+  // An open drawer covers the view only; a toast stays above it.
   const drawer = await box(page, '#outliner');
-  const status = await box(page, '#status');
-  expect(status.x).toBeGreaterThanOrEqual(0);
-  expect(drawer.y + drawer.height).toBeLessThanOrEqual(status.y + 1);
-  const statusOnTop = await page.evaluate(
-    ({ x, y }) => {
-      const hit = document.elementFromPoint(x, y);
-      return hit !== null && document.getElementById('status')?.closest('.messages')?.contains(hit) === true;
-    },
-    { x: status.x + 4, y: status.y + 4 },
-  );
-  expect(statusOnTop, 'the start of the status line is not under the drawer').toBe(true);
+  const stage = await box(page, '.stage');
+  expect(drawer.y + drawer.height).toBeLessThanOrEqual(stage.y + stage.height + 1);
+  const layers = await page.evaluate(() => ({
+    toast: Number(getComputedStyle(document.querySelector('.toasts')!).zIndex),
+    drawer: Number(getComputedStyle(document.getElementById('outliner')!).zIndex),
+  }));
+  expect(layers.toast, 'the toast layer is above the drawer').toBeGreaterThan(layers.drawer);
   await page.screenshot({ animations: 'disabled', path: testInfo.outputPath('editor-900-drawer.png') });
   await page.keyboard.press('Escape');
   await expect(page.locator('#outliner')).toBeHidden();
@@ -84,6 +82,33 @@ test('below 1024 px the panels are drawers over a usable view', async ({ page },
   await page.getByRole('button', { name: 'Inspector', exact: true }).click();
   await expect(page.locator('#inspector')).toBeVisible();
   await expect(page.locator('#outliner')).toBeHidden();
+});
+
+test('below 1024 px an animated model keeps a readable clip choice inside the page', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 700 });
+  await openApp(page);
+  await openFiles(page, [ANIMATED], 'animated.bbmodel');
+  await waitForEditor(page);
+  const clip = await box(page, '#timeline select');
+  expect(clip.width).toBeGreaterThanOrEqual(100);
+  await expect(page.locator('#timeline').getByRole('button', { name: 'Play' })).toBeEnabled();
+  await expect(page.locator('#timeline')).not.toContainText('This model has no animations.');
+  const controls = await box(page, '.timeline-controls');
+  expect(controls.x).toBeGreaterThanOrEqual(0);
+  expect(controls.x + controls.width).toBeLessThanOrEqual(900);
+});
+
+// A view resized after the model is shown stops a render and moves a restored camera off its saved framing (the
+// stored distances are relative to the fit of the view's aspect), so the bar is one control row from the start.
+test('opening a model without clips does not resize the view: the timeline bar keeps its height', async ({ page }) => {
+  await openApp(page);
+  const emptyBar = await box(page, '#timeline');
+  const emptyView = await box(page, '#viewport');
+  await openFiles(page, [NESTED], 'nested-groups.bbmodel');
+  await waitForEditor(page);
+  await expect(page.locator('#timeline').getByRole('button', { name: 'Play' })).toBeDisabled();
+  expect(await box(page, '#timeline')).toEqual(emptyBar);
+  expect(await box(page, '#viewport')).toEqual(emptyView);
 });
 
 test('a separator resizes a panel with the keyboard, and size and collapse survive a reload', async ({ page }) => {
@@ -137,10 +162,25 @@ test('Forget local data also resets the layout', async ({ page }) => {
   await page.keyboard.press('End');
   await page.getByRole('button', { name: 'Inspector', exact: true }).click();
   await expect(page.locator('#inspector')).toBeHidden();
-  await openFileMenu(page);
-  await page.getByRole('button', { name: 'Forget local data' }).click();
+  await forgetLocalData(page);
   await expect(page.getByRole('status')).toContainText('Local data deleted');
   await expect(page.locator('#inspector')).toBeVisible();
   await expect(separator).toHaveAttribute('aria-valuenow', start ?? '');
   expect(await page.evaluate(() => localStorage.getItem('modelshot.layout.v1'))).toBeNull();
+});
+
+test('the view takes the height the status band used to hold, and the status line is the last message only', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await openApp(page);
+  await openFiles(page, [NESTED], 'nested-groups.bbmodel');
+  await expectLit(page, 120_000);
+  const viewport = await box(page, '#viewport');
+  const stage = await box(page, '.stage');
+  expect(viewport.y + viewport.height).toBeCloseTo(stage.y + stage.height, 0);
+  const status = (await page.getByRole('status').textContent()) ?? '';
+  expect(status).toMatch(/^Opened nested-groups.bbmodel/);
+  expect(status).not.toMatch(/lit|Lighting/i);
+  expect(await page.locator('.messages').count()).toBe(0);
 });

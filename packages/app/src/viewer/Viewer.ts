@@ -30,9 +30,13 @@ export const DEFAULT_VIEW: ViewerView = {
   fovYDeg: DEFAULT_FOV_DEG,
 };
 
+const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
 export interface ViewerOptions {
   /** Short messages about the lighting bake and the context. */
   readonly onStatus: (message: string) => void;
+  /** The graphics context came back; when set, the context message is not sent to `onStatus`. */
+  readonly onContextRestored?: () => void;
   /** The canvas was resized (CSS size and pixel ratio); the render canvas follows. */
   readonly onResize: (size: CanvasCssSize) => void;
   /** The camera or scene shown changed, so a finished render no longer matches. */
@@ -45,8 +49,11 @@ export interface ViewerOptions {
    * starts first or a `setDocument` with `bake: false` drops it. Both are called for the latest bake only.
    */
   readonly onBakeStarted?: () => void;
-  /** A light bake settled: `lit` when the preview carries its light, false when it shows unbaked light. */
-  readonly onBakeSettled?: (lit: boolean) => void;
+  /**
+   * A light bake settled: `lit` when the preview carries its light, false when it shows unbaked light. `detail` is the
+   * reason of a failure (the path tracer did not load, the bake threw), absent where the bake just did not apply.
+   */
+  readonly onBakeSettled?: (lit: boolean, detail?: string) => void;
   /** A frame was drawn (`renderNow` included) with this camera: what an overlay on top of the canvas projects with. */
   readonly onFrame?: (camera: SceneCamera) => void;
 }
@@ -59,11 +66,13 @@ export class Viewer {
   private bounds: SceneBounds | null = null;
   private look: LookPreset = DEFAULT_LOOK;
   private baker: Promise<LightBaker | null> | null = null;
+  private bakerError: string | undefined;
   private bakeGeneration = 0;
   private frame = 0;
   private lastTime = 0;
   private disposed = false;
   private documentsPending = 0;
+  private cssSize: CanvasCssSize | null = null;
   private readonly cleanups: (() => void)[] = [];
 
   private constructor(
@@ -76,14 +85,10 @@ export class Viewer {
     this.orbit = new OrbitController({ yawDeg: view.yawDeg, pitchDeg: view.pitchDeg, fovYDeg: view.fovYDeg });
     this.cleanups.push(
       bindOrbitInput(canvas, this.orbit, { onChange: () => this.changed() }),
-      observeCanvasSize(canvas, (size) => {
-        const { width, height } = this.renderer.resize(size);
-        this.orbit.setAspect(width / height);
-        this.options.onResize(size);
-        this.requestRender();
-      }),
+      observeCanvasSize(canvas, (size) => this.resized(size)),
       renderer.onContextRestored(() => {
-        this.options.onStatus('The graphics context was restored.');
+        if (this.options.onContextRestored) this.options.onContextRestored();
+        else this.options.onStatus('The graphics context was restored.');
         this.requestRender();
       }),
     );
@@ -160,6 +165,23 @@ export class Viewer {
     void this.bake();
   }
 
+  /**
+   * Takes the size the canvas is laid out at now, ahead of the observer, which reports with the next frame. Call it
+   * after a layout change and before framing or restoring a camera: both are fitted to the aspect known at that moment.
+   * True when the size changed.
+   */
+  syncSize(): boolean {
+    const rect = this.canvas.getBoundingClientRect();
+    const devicePixelRatio = this.canvas.ownerDocument.defaultView?.devicePixelRatio || 1;
+    const last = this.cssSize;
+    if (!(rect.width > 0) || !(rect.height > 0)) return false;
+    if (last?.cssWidth === rect.width && last.cssHeight === rect.height && last.devicePixelRatio === devicePixelRatio) {
+      return false;
+    }
+    this.resized({ cssWidth: rect.width, cssHeight: rect.height, devicePixelRatio });
+    return true;
+  }
+
   /** Changes the angles `resetView` and the angles and field of view the next model starts at; the camera stays. */
   setView(view: ViewerView): void {
     this.fovYDeg = view.fovYDeg;
@@ -224,6 +246,14 @@ export class Viewer {
     this.renderer.dispose();
   }
 
+  private resized(size: CanvasCssSize): void {
+    this.cssSize = size;
+    const { width, height } = this.renderer.resize(size);
+    this.orbit.setAspect(width / height);
+    this.options.onResize(size);
+    this.requestRender();
+  }
+
   private tick(time: number): void {
     this.frame = 0;
     if (this.disposed) return;
@@ -242,9 +272,9 @@ export class Viewer {
     this.baker ??= loadPathTracer()
       .then(({ LightBaker }) => LightBaker.create())
       .catch((error: unknown) => {
-        this.options.onStatus(
-          `The preview shows unbaked light: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        // Kept: the load is tried once, and every later bake settles unbaked for this same reason.
+        this.bakerError = errorText(error);
+        this.options.onStatus(`The preview shows unbaked light: ${this.bakerError}`);
         return null;
       });
     return this.baker;
@@ -259,7 +289,7 @@ export class Viewer {
     const baker = await this.lightBaker();
     if (generation !== this.bakeGeneration || this.disposed) return;
     if (!baker) {
-      this.options.onBakeSettled?.(false);
+      this.options.onBakeSettled?.(false, this.bakerError);
       return;
     }
     this.options.onStatus('Lighting the preview…');
@@ -281,10 +311,9 @@ export class Viewer {
       this.options.onBakeSettled?.(true);
     } catch (error) {
       if (generation === this.bakeGeneration) {
-        this.options.onStatus(
-          `The preview shows unbaked light: ${error instanceof Error ? error.message : String(error)}`,
-        );
-        this.options.onBakeSettled?.(false);
+        const detail = errorText(error);
+        this.options.onStatus(`The preview shows unbaked light: ${detail}`);
+        this.options.onBakeSettled?.(false, detail);
       }
     }
   }

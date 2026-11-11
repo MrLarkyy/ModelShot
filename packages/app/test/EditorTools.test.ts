@@ -30,7 +30,9 @@ class FakeElement {
   readonly listeners = new Map<string, Listener>();
   setAttribute(): void {}
   append(): void {}
+  remove(): void {}
   replaceChildren(): void {}
+  toggleAttribute(): void {}
   addEventListener(type: string, listener: Listener): void {
     this.listeners.set(type, listener);
   }

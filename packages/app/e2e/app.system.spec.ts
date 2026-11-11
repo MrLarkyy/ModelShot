@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import type { Locator, Page } from '@playwright/test';
-import { expect, fixture, openApp, openFileMenu, openFiles, openTab, test, waitForEditor } from './appTest';
+import { dragFiles, expect, fixture, openApp, openFileMenu, openFiles, openTab, test, waitForEditor } from './appTest';
 
 const SHOT_BLUE = 'rgb(47, 75, 255)';
 const BLUE_HOVER = 'rgb(26, 51, 214)';
@@ -56,7 +56,7 @@ test('no button is blue unless it is primary; Export and Render are the only pri
     expectOnlyPrimariesBlue(await visibleButtons(page), tab);
   }
   const main = (await visibleButtons(page)).filter((b) => b.primary).map((b) => b.name);
-  expect(main).toEqual(['Render', 'Export…']);
+  expect(main).toEqual(['Export…', 'Render']);
   await openFileMenu(page);
   expectOnlyPrimariesBlue(await visibleButtons(page), 'File menu');
   await page.keyboard.press('Escape');
@@ -317,4 +317,69 @@ test('forced colours mark the selected tab, an open panel toggle and the current
       .evaluate((n) => [getComputedStyle(n).outlineStyle, getComputedStyle(n).outlineWidth]);
   expect(await outline('#outliner-toggle[aria-expanded=true]')).toEqual(['solid', '2px']);
   expect(await outline('.outliner-row .name[aria-current=true]')).toEqual(['solid', '2px']);
+});
+
+// A system colour as the browser resolves it on this page, to compare a computed colour with.
+const systemColour = (page: Page, name: string): Promise<string> =>
+  page.evaluate((value) => {
+    const probe = document.createElement('span');
+    probe.style.color = value;
+    document.body.append(probe);
+    const colour = getComputedStyle(probe).color;
+    probe.remove();
+    return colour;
+  }, name);
+
+test('forced colours keep a visible border on the model dot and the toast', async ({ page }) => {
+  await page.emulateMedia({ forcedColors: 'active' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'nested-groups.bbmodel')], 'nested-groups.bbmodel');
+  await expect(page.locator('#model-state')).toHaveAttribute('data-state', /lit|busy/, { timeout: 120_000 });
+  const canvasText = await systemColour(page, 'CanvasText');
+  for (const selector of ['#model-state', '#status']) {
+    const border = await page.locator(selector).evaluate((n) => {
+      const style = getComputedStyle(n);
+      return { style: style.borderTopStyle, width: parseFloat(style.borderTopWidth), colour: style.borderTopColor };
+    });
+    expect(['solid', 'dashed'], selector).toContain(border.style);
+    expect(border.width, selector).toBeGreaterThanOrEqual(1);
+    expect(border.colour, selector).toBe(canvasText);
+  }
+});
+
+test('forced colours keep the empty card and the drag state visible', async ({ page }) => {
+  await page.emulateMedia({ forcedColors: 'active' });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openApp(page);
+  const border = (): Promise<string[]> =>
+    page
+      .locator('.empty-card')
+      .evaluate((n) => [getComputedStyle(n).borderTopStyle, getComputedStyle(n).borderTopWidth]);
+  expect(await border()).toEqual(['dashed', '2px']);
+  await dragFiles(page, 'enter', [{ name: 'a.bbmodel', text: '{}' }]);
+  await expect(page.locator('#empty')).toHaveAttribute('data-drag', '');
+  expect(await border()).toEqual(['solid', '2px']);
+});
+
+test('forced colours tell the three model dot states apart without colour', async ({ page }) => {
+  await page.emulateMedia({ forcedColors: 'active' });
+  await openApp(page);
+  const canvasText = await systemColour(page, 'CanvasText');
+  const looks: string[] = [];
+  for (const state of ['lit', 'busy', 'warn']) {
+    const look = await page.locator('#model-state').evaluate((node, value) => {
+      node.setAttribute('data-state', value);
+      const style = getComputedStyle(node);
+      // The shape alone (ring style and corner), then the fill: two states never share both.
+      return {
+        shape: [style.borderTopStyle, style.borderTopLeftRadius, style.backgroundColor].join(' '),
+        ring: style.borderTopColor,
+      };
+    }, state);
+    looks.push(look.shape);
+    // Not the author's yellow ring on a white Canvas: every state draws its ring in the system text colour.
+    expect(look.ring, state).toBe(canvasText);
+  }
+  expect(new Set(looks).size).toBe(3);
 });

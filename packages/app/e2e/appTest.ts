@@ -1,4 +1,5 @@
-import { dirname, join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test as base, type Page } from '@playwright/test';
 
@@ -19,9 +20,18 @@ export interface Rgba {
 
 // Every page of every app spec: a request off the app origin, or any request but GET, fails the test, and so does an
 // uncaught page error. Local-first: opening, rendering and exporting a model never upload it.
-export const test = base.extend({
-  page: async ({ page, baseURL }, use) => {
+export const test = base.extend<{ firstRunHint: boolean }>({
+  // The one-time shortcut row would cover the chips in specs about something else: it starts dismissed unless a spec asks.
+  firstRunHint: [false, { option: true }],
+  page: async ({ page, baseURL, firstRunHint }, use) => {
     if (!baseURL) throw new Error('baseURL is not configured');
+    if (!firstRunHint) {
+      await page.addInitScript(() => {
+        if (sessionStorage.getItem('ms-hint-seeded')) return;
+        sessionStorage.setItem('ms-hint-seeded', '1');
+        localStorage.setItem('modelshot-hints-v1', '1');
+      });
+    }
     const origin = new URL(baseURL).origin;
     const refused: string[] = [];
     const errors: string[] = [];
@@ -60,6 +70,45 @@ export async function openTab(page: Page, name: 'Object' | 'Material' | 'Light' 
 export async function openFileMenu(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'File', exact: true }).click();
   await expect(page.locator('#file-menu')).toBeVisible();
+}
+
+/** Waits until the preview is lit: the model dot carries the lighting state, the status line only the last message. */
+export async function expectLit(page: Page, timeout = 120_000): Promise<void> {
+  await expect(page.locator('#model-state')).toContainText('Preview lit', { timeout });
+}
+
+/** Forget local data through the File menu; `confirm` false cancels the dialog instead. */
+export async function forgetLocalData(page: Page, confirm = true): Promise<void> {
+  await openFileMenu(page);
+  await page.getByRole('button', { name: 'Forget local data' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Forget local data?' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: confirm ? 'Forget local data' : 'Cancel' }).click();
+  await expect(dialog).toBeHidden();
+}
+
+/**
+ * The shown elements matching `controls` that the box of `over` intersects: none when it covers nothing. Boxes, not
+ * hit tests: a message that lets clicks through still hides what is under it.
+ */
+export function coveredBy(page: Page, over: string, controls: string): Promise<string[]> {
+  return page.evaluate(
+    ([overSelector, controlSelector]) => {
+      const top = document.querySelector(overSelector)?.getBoundingClientRect();
+      if (!top || top.width === 0 || top.height === 0) throw new Error(`${overSelector} has no box`);
+      const found = [...document.querySelectorAll<HTMLElement>(controlSelector)].filter(
+        (node) => node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden',
+      );
+      if (found.length === 0) throw new Error(`nothing shown matches ${controlSelector}`);
+      return found
+        .filter((node) => {
+          const box = node.getBoundingClientRect();
+          return box.left < top.right && top.left < box.right && box.top < top.bottom && top.top < box.bottom;
+        })
+        .map((node) => node.id || node.textContent?.trim() || node.tagName);
+    },
+    [over, controls] as const,
+  );
 }
 
 /** Waits until the editor tools (overlay, picking, gizmo, timeline) are loaded. */
@@ -213,4 +262,35 @@ export async function waitForStored(page: Page, test: (record: Record<string, un
   await expect
     .poll(async () => (await storedModels(page)).some(test), { timeout: 20_000, intervals: [250] })
     .toBe(true);
+}
+
+export interface DroppedFile {
+  readonly name: string;
+  readonly base64?: string;
+  readonly text?: string;
+}
+
+/** A fixture file on disk as a file to drop. */
+export function droppedFixture(path: string): DroppedFile {
+  return { name: basename(path), base64: readFileSync(path).toString('base64') };
+}
+
+/** Dispatches the drag events a file drag from the desktop produces on the window: 'enter', 'leave' or 'drop'. */
+export async function dragFiles(
+  page: Page,
+  phase: 'enter' | 'leave' | 'drop',
+  files: readonly DroppedFile[],
+): Promise<void> {
+  await page.evaluate(
+    ({ phase: which, files: list }) => {
+      const transfer = new DataTransfer();
+      for (const file of list) {
+        const bytes = file.base64 ? Uint8Array.from(atob(file.base64), (c) => c.charCodeAt(0)) : (file.text ?? '');
+        transfer.items.add(new File([bytes], file.name));
+      }
+      const type = which === 'enter' ? 'dragenter' : which === 'leave' ? 'dragleave' : 'drop';
+      window.dispatchEvent(new DragEvent(type, { dataTransfer: transfer, bubbles: true, cancelable: true }));
+    },
+    { phase, files },
+  );
 }

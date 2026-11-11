@@ -1,4 +1,4 @@
-import { expect, fixture, openApp, openFiles, openTab, test } from './appTest';
+import { expect, fixture, openApp, openFiles, openTab, test, expectLit } from './appTest';
 
 interface Seen {
   readonly method: string;
@@ -30,7 +30,7 @@ test('opening, rendering and exporting make only same-origin GET requests withou
   );
 
   await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
-  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 60_000 });
+  await expectLit(page, 60_000);
   const afterOpen = seen.slice(initial).map((r) => new URL(r.url).pathname.split('/').pop() ?? '');
   expect(afterOpen.some((name) => name.startsWith('loadWorker'))).toBe(true);
   expect(afterOpen.some((name) => name.startsWith('bakeWorker'))).toBe(true);
@@ -80,4 +80,20 @@ test('the page makes no request while a model is dropped on it, and a dropped fi
   });
   await expect(page.getByRole('alert')).toContainText('dropped.bbmodel');
   expect(requests.filter((url) => !url.includes('/assets/'))).toEqual([]);
+});
+
+test.describe('first run hint', () => {
+  test.use({ firstRunHint: true });
+
+  test('showing and dismissing the shortcut hint makes no request', async ({ page }) => {
+    await openApp(page);
+    await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
+    const requests: string[] = [];
+    page.on('request', (request) => requests.push(request.url()));
+    const hint = page.getByRole('region', { name: 'Shortcut hints' });
+    await expect(hint).toBeVisible();
+    await hint.getByRole('button', { name: 'Dismiss shortcut hints' }).click();
+    await expect(hint).toBeHidden();
+    expect(requests.filter((url) => !url.includes('/assets/'))).toEqual([]);
+  });
 });
