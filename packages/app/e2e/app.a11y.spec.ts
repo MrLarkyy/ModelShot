@@ -209,6 +209,8 @@ test('the shortcuts work from the keyboard and never override the view keys', as
   const samples = page.locator('#render-panel').getByLabel('Samples');
   await samples.fill('4096');
   await samples.dispatchEvent('change');
+  // Held before its first sample: the shortcut is what is checked, and a cancelled long render leaves queued GPU work.
+  await page.evaluate(() => window.__msApp!.holdRenders());
   await page.locator('#preview').focus();
   await page.keyboard.press('r');
   await expect(page.getByRole('status')).toContainText('Rendering', { timeout: 30_000 });

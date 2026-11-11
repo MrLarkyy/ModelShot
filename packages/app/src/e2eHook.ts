@@ -27,6 +27,11 @@ export interface MsAppHook {
   setRelightDelayMs(ms: number): boolean;
   previewPixels(): Pixels;
   renderPixels(): Promise<Pixels | null>;
+  /**
+   * Renders started from now on stay in their preparing phase: the bar, Stop and Esc work as in any render, and no
+   * sample is ever queued on the GPU (a cancelled long render leaves work that stalls the next page of the browser).
+   */
+  holdRenders(): void;
   loseContext(): boolean;
   /** Median milliseconds of the overlay's last draws; null before the editor tools loaded. */
   overlayMedianMs(): number | null;
@@ -90,6 +95,9 @@ export function installE2eHook(app: App): void {
       const tracer = await internals.renderSession.tracer();
       const image = tracer.readImage();
       return image ? { width: image.width, height: image.height, data: base64(image.data) } : null;
+    },
+    holdRenders: () => {
+      internals.renderSession.tracer = () => new Promise<never>(() => undefined);
     },
     overlayMedianMs: () => internals.editorTools()?.overlay.medianDrawMs ?? null,
     overlayPixels: () => {

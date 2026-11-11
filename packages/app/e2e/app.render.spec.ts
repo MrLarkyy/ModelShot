@@ -22,8 +22,8 @@ test('the render bar names the sample count', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Render', exact: true })).toBeEnabled();
 });
 
-// The running state is checked at the start and the render is stopped at once: a long run leaves queued GPU work that stalls
-// the next page of the worker.
+// The bar, the target and the cancels need no sample: the renders are held before the path tracer exists, since a
+// cancelled long run leaves queued GPU work that stalls the next page of the worker.
 test('a render shows its target, keeps it when the settings change, and Esc and Stop each cancel it', async ({
   page,
 }) => {
@@ -31,6 +31,7 @@ test('a render shows its target, keeps it when the settings change, and Esc and 
   await openFiles(page, [CUBE], 'single-cube.bbmodel');
   await waitForEditor(page);
   await setSamples(page, 4096);
+  await page.evaluate(() => window.__msApp!.holdRenders());
   const before = await viewportBox(page);
   const info = page.locator('#render-info');
   for (const stop of ['Escape', 'Stop'] as const) {
@@ -43,6 +44,9 @@ test('a render shows its target, keeps it when the settings change, and Esc and 
       // The setting changes under a running render: the run's own target stays on show.
       await page.locator('#render-panel').getByLabel('Samples').fill('8');
       await page.locator('#render-panel').getByLabel('Samples').dispatchEvent('change');
+      // The line is written again every second: the target is still the run's after the next writing.
+      const shown = (await info.textContent()) ?? '';
+      await expect(info).not.toHaveText(shown, { timeout: 10_000 });
       await expect(info).toHaveText(RUNNING);
     }
     expect(await viewportBox(page), 'the view keeps its size during the render').toEqual(before);
@@ -68,11 +72,13 @@ test('the focus follows the render bar: Render to Stop and back', async ({ page 
   await openFiles(page, [CUBE], 'single-cube.bbmodel');
   await waitForEditor(page);
   await setSamples(page, 4096);
+  await page.evaluate(() => window.__msApp!.holdRenders());
   const render = page.getByRole('button', { name: 'Render', exact: true });
   await render.focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('button', { name: 'Stop' })).toBeFocused({ timeout: 30_000 });
   await page.keyboard.press('Enter');
+  await expect(page.getByRole('status')).toContainText('Render cancelled', { timeout: 30_000 });
   await expect(render).toBeFocused({ timeout: 30_000 });
 });
 
