@@ -83,7 +83,10 @@ in the middle, the inspector on the right and the timeline below.
   them. The timeline is a one-row bar without its separator when no model is open or the model has no animation
   (`#timeline[data-empty]`), and the full panel for one with clips. The bar is one control row high with or without
   its Play button, so the view keeps its size when a model without clips opens: a resize after the model is shown
-  would stop a render and move a restored camera off its saved framing.
+  would stop a render and move a restored camera off its saved framing. For a model with clips the panel takes its
+  full size as the model is shown (not when the editor tools list the clips), and the viewer takes the view's new size
+  at once (`Viewer.syncSize`) before the camera is framed or restored, so a reload brings back the saved view in a
+  portrait view too.
 - **First-run row**: `#first-run-hint` (a region "Shortcut hints") over the view, below the chips: keys from
   `SHORTCUTS`, drag to orbit and scroll to zoom. Dismissing it moves the focus to the 3D view.
 - **Model dot**: next to the model name, `#model-state` is a dot with a shape per state, not colour alone (filled

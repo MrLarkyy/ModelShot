@@ -72,6 +72,7 @@ export class Viewer {
   private lastTime = 0;
   private disposed = false;
   private documentsPending = 0;
+  private cssSize: CanvasCssSize | null = null;
   private readonly cleanups: (() => void)[] = [];
 
   private constructor(
@@ -84,12 +85,7 @@ export class Viewer {
     this.orbit = new OrbitController({ yawDeg: view.yawDeg, pitchDeg: view.pitchDeg, fovYDeg: view.fovYDeg });
     this.cleanups.push(
       bindOrbitInput(canvas, this.orbit, { onChange: () => this.changed() }),
-      observeCanvasSize(canvas, (size) => {
-        const { width, height } = this.renderer.resize(size);
-        this.orbit.setAspect(width / height);
-        this.options.onResize(size);
-        this.requestRender();
-      }),
+      observeCanvasSize(canvas, (size) => this.resized(size)),
       renderer.onContextRestored(() => {
         if (this.options.onContextRestored) this.options.onContextRestored();
         else this.options.onStatus('The graphics context was restored.');
@@ -169,6 +165,23 @@ export class Viewer {
     void this.bake();
   }
 
+  /**
+   * Takes the size the canvas is laid out at now, ahead of the observer, which reports with the next frame. Call it
+   * after a layout change and before framing or restoring a camera: both are fitted to the aspect known at that moment.
+   * True when the size changed.
+   */
+  syncSize(): boolean {
+    const rect = this.canvas.getBoundingClientRect();
+    const devicePixelRatio = this.canvas.ownerDocument.defaultView?.devicePixelRatio || 1;
+    const last = this.cssSize;
+    if (!(rect.width > 0) || !(rect.height > 0)) return false;
+    if (last?.cssWidth === rect.width && last.cssHeight === rect.height && last.devicePixelRatio === devicePixelRatio) {
+      return false;
+    }
+    this.resized({ cssWidth: rect.width, cssHeight: rect.height, devicePixelRatio });
+    return true;
+  }
+
   /** Changes the angles `resetView` and the angles and field of view the next model starts at; the camera stays. */
   setView(view: ViewerView): void {
     this.fovYDeg = view.fovYDeg;
@@ -231,6 +244,14 @@ export class Viewer {
     for (const cleanup of this.cleanups) cleanup();
     void this.baker?.then((baker) => baker?.dispose());
     this.renderer.dispose();
+  }
+
+  private resized(size: CanvasCssSize): void {
+    this.cssSize = size;
+    const { width, height } = this.renderer.resize(size);
+    this.orbit.setAspect(width / height);
+    this.options.onResize(size);
+    this.requestRender();
   }
 
   private tick(time: number): void {

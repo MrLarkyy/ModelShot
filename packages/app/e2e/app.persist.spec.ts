@@ -12,6 +12,7 @@ import {
   storedModels,
   test,
   type Rgba,
+  waitForEditor,
   waitForModel,
   waitForStored,
   expectLit,
@@ -19,6 +20,7 @@ import {
 
 const CUBE = fixture('bbmodel', 'single-cube.bbmodel');
 const OTHER = fixture('bbmodel', 'flat-cube.bbmodel');
+const ANIMATED = fixture('bbmodel', 'animated.bbmodel');
 
 function waitForStoredView(page: Page, projection: string): Promise<void> {
   return waitForStored(page, (record) => (record['camera'] as { projection: string }).projection === projection);
@@ -191,6 +193,61 @@ test('the texture filter follows in the preview and the render, is saved and res
     sad(restored, nearestPreview),
   );
 });
+
+// A model with clips turns the timeline bar into the full panel, so the view is lower than at boot. A camera is framed
+// and stored relative to the fit of the view's aspect: applied before the view has that size, it was off wherever the
+// fit follows the width (a view higher than wide).
+async function openAnimated(page: Page, shape: 'portrait' | 'landscape'): Promise<void> {
+  await page.setViewportSize(shape === 'portrait' ? { width: 1100, height: 1100 } : { width: 1440, height: 900 });
+  await openApp(page);
+  await openFiles(page, [ANIMATED], 'animated.bbmodel');
+  await waitForEditor(page);
+  await expect(page.locator('#timeline select')).toBeVisible();
+  const view = await page.locator('#viewport').boundingBox();
+  expect(view!.width < view!.height, `the view is ${shape}`).toBe(shape === 'portrait');
+}
+
+test('an animated model is framed to fit the view it is shown in, the full timeline included', async ({ page }) => {
+  await openAnimated(page, 'portrait');
+  expect((await state(page)).distance).toBeCloseTo(1, 6);
+});
+
+for (const shape of ['portrait', 'landscape'] as const) {
+  test(`an animated model restores its camera on reload in a ${shape} view`, async ({ page }) => {
+    // Two light bakes of the animated model in the portrait case.
+    test.setTimeout(360_000);
+    await openAnimated(page, shape);
+    await page.locator('#preview').focus();
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('+');
+    const before = await state(page);
+    await waitForStored(page, (record) => {
+      const camera = record['camera'] as { yawDeg: number; distance: number };
+      return Math.abs(camera.yawDeg - before.yawDeg) < 1e-6 && Math.abs(camera.distance - before.distance) < 1e-6;
+    });
+    // The picture is compared where the zoom depended on the view's size; the camera values everywhere.
+    const picture = shape === 'portrait';
+    if (picture) await expectLit(page, 120_000);
+    const shown = picture ? await waitForModel(page) : null;
+
+    await page.reload();
+    await expect(page.getByRole('status')).toContainText('Opened animated.bbmodel', { timeout: 30_000 });
+    await waitForEditor(page);
+    await expect(page.locator('#timeline select')).toBeVisible();
+    // A resize the reload still owed would arrive with the next frame: the camera is read after it.
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const after = await state(page);
+    expect(after.yawDeg).toBeCloseTo(before.yawDeg, 6);
+    expect(after.pitchDeg).toBeCloseTo(before.pitchDeg, 6);
+    expect(after.distance, 'the same zoom as saved').toBeCloseTo(before.distance, 6);
+    if (!shown) return;
+    await expectLit(page, 120_000);
+    const restored = await waitForModel(page);
+    expect([restored.width, restored.height]).toEqual([shown.width, shown.height]);
+    // The same picture up to the noise of a second light bake: under a quarter of a level per byte on average.
+    expect(sad(restored, shown) / shown.data.length, 'the restored preview is the saved view').toBeLessThan(0.25);
+  });
+}
 
 test('a filter switch whose scene fails to build reverts the select and saves nothing', async ({ page }) => {
   await openApp(page);

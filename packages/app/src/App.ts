@@ -124,6 +124,7 @@ export class App {
   private readonly fileInput = byId('file-input', HTMLInputElement);
   private readonly emptyCard = byId('empty', HTMLElement);
   private readonly stageView = byId('viewport', HTMLElement);
+  private readonly timelinePanel = byId('timeline', HTMLElement);
   private readonly hintStore: HintStore;
   private readonly firstRunHint: FirstRunHint;
   private viewer: Viewer | null = null;
@@ -502,6 +503,11 @@ export class App {
         this.tools?.documentRefused();
         return false;
       }
+      // The timeline takes the size it has for this model now, not when the editor tools list the clips, and the viewer
+      // takes the view's new size at once: a camera framed or restored below is fitted to the aspect known then, and a
+      // view resized after it would show a restored camera at another zoom.
+      this.timelinePanel.toggleAttribute('data-empty', (rest.animations?.length ?? 0) === 0);
+      if (viewer.syncSize() && reframe) viewer.orbit.reset();
       // Taken after the wait: a look picked while the files were opening stays, unless the model has its own.
       this.look = applyLook(savedLook ?? this.look, [viewer, this.renderSession.existingTracer()]);
       if (this.open?.loaded.key !== open.loaded.key) this.selection.set(null);
@@ -609,7 +615,7 @@ export class App {
     this.emptyCard.hidden = open !== null;
     // The preview canvas keeps its box while empty (the size stays valid); the stage shows the token gradient instead.
     this.stageView.toggleAttribute('data-empty', open === null);
-    if (open === null) byId('timeline', HTMLElement).setAttribute('data-empty', '');
+    if (open === null) this.timelinePanel.setAttribute('data-empty', '');
     if (open === null) this.firstRunHint.hide();
     this.scenePanel.show(
       open && this.base
