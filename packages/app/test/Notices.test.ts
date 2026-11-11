@@ -66,6 +66,36 @@ describe('Notices', () => {
     expect(elements.state.textContent).toContain('unbaked');
   });
 
+  it('names why the light is unbaked on the dot, its tooltip and the status line', () => {
+    const { elements, notices } = setup();
+    notices.status('Opened a.bbmodel.');
+    notices.lighting('warn', 'EXT_color_buffer_float is missing');
+    const text = 'The preview shows unbaked light: EXT_color_buffer_float is missing';
+    expect(elements.state.textContent).toBe(text);
+    expect(elements.state.title).toBe(text);
+    expect(elements.state.dataset['state']).toBe('warn');
+    expect(elements.status.textContent).toBe(text);
+    expect(elements.status.classList.contains('toast-shown')).toBe(true);
+  });
+
+  it('drops the failure reason with the next lighting state and says nothing for a bake that just did not apply', () => {
+    const { elements, notices } = setup();
+    notices.lighting('warn', 'the worker stopped');
+    notices.status('Opened a.bbmodel.');
+    notices.lighting('busy');
+    expect(elements.state.title).toBe('Lighting the preview…');
+    notices.lighting('warn');
+    expect(elements.state.textContent).toBe('The preview shows unbaked light.');
+    expect(elements.status.textContent).toBe('Opened a.bbmodel.');
+  });
+
+  it('clips a long failure reason on the dot', () => {
+    const { elements, notices } = setup();
+    notices.lighting('warn', 'x'.repeat(2000));
+    expect(elements.state.textContent.length).toBe(600);
+    expect(elements.state.textContent.endsWith('…')).toBe(true);
+  });
+
   it('shows the toast, then fades it and keeps the text', () => {
     const { elements, notices, timers } = setup();
     notices.status('Render done.');

@@ -55,12 +55,17 @@ export class Notices {
     }, TOAST_MS);
   }
 
-  /** The dot: a shape per state (colour is not the only cue), the text for assistive technology and the tooltip. */
-  lighting(state: LightingState): void {
+  /**
+   * The dot: a shape per state (colour is not the only cue), the text for assistive technology and the tooltip.
+   * `detail` is why the light is not baked: the dot is 12 px, so a reason is also said once in the status line.
+   */
+  lighting(state: LightingState, detail?: string): void {
     const dot = this.elements.state;
-    dot.textContent = LIGHTING_TEXT[state];
-    dot.title = LIGHTING_TEXT[state];
+    const text = detail ? clip(`${LIGHTING_TEXT[state].replace(/\.$/, '')}: ${detail}`) : LIGHTING_TEXT[state];
+    dot.textContent = text;
+    dot.title = text;
     dot.dataset['state'] = state;
+    if (detail) this.status(text);
   }
 
   /** A saving failure the app works around: not an error. It stays in its own chip until dismissed or the page reloads. */

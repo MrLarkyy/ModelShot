@@ -21,9 +21,19 @@ class FakeRenderer {
     return { width: 1, height: 1 };
   }
   setCamera(): void {}
+  setLighting(): boolean {
+    return false;
+  }
   render(): void {}
   dispose(): void {}
 }
+
+type Bake = () => Promise<{ applied: boolean; warnings: string[]; lighting: null }>;
+const loaded = (bake: Bake): Promise<unknown> =>
+  Promise.resolve({ LightBaker: { create: () => ({ bake, dispose: () => undefined }) } });
+const notApplied: Bake = () => Promise.resolve({ applied: false, warnings: [], lighting: null });
+let loadPathTracer: () => Promise<unknown> = () => loaded(notApplied);
+vi.mock('../src/lazyPathTracer', () => ({ loadPathTracer: () => loadPathTracer() }));
 
 const quiet = { addEventListener: () => undefined, removeEventListener: () => undefined, matches: false };
 const canvas = {
@@ -59,6 +69,14 @@ function viewer(options: Partial<ViewerOptions> = {}) {
   return { shown, renderer, statuses };
 }
 
+type Settled = [lit: boolean, detail: string | undefined];
+
+async function show(shown: Viewer, renderer: FakeRenderer): Promise<void> {
+  const done = shown.setDocument(doc([node(-1, { meshes: [0] })], [boxMesh(0)]), false);
+  renderer.finishScene();
+  await done;
+}
+
 beforeEach(() => {
   vi.stubGlobal('requestAnimationFrame', () => 1);
   vi.stubGlobal('cancelAnimationFrame', () => undefined);
@@ -75,6 +93,52 @@ describe('Viewer', () => {
     renderer.restored();
     expect(statuses).toEqual(['The graphics context was restored.']);
     expect(onBakeStarted).not.toHaveBeenCalled();
+  });
+
+  it('tells a restored graphics context to onContextRestored instead of onStatus, and still draws', () => {
+    const frames = vi.fn(() => 1);
+    vi.stubGlobal('requestAnimationFrame', frames);
+    const onContextRestored = vi.fn();
+    const { renderer, statuses } = viewer({ onContextRestored });
+    expect(frames).not.toHaveBeenCalled();
+    renderer.restored();
+    expect(onContextRestored).toHaveBeenCalledTimes(1);
+    expect(statuses).toEqual([]);
+    expect(frames).toHaveBeenCalledTimes(1);
+  });
+
+  it('hands the reason of a bake that threw to onBakeSettled', async () => {
+    loadPathTracer = () => loaded(() => Promise.reject(new Error('the bake worker stopped')));
+    const settled: Settled[] = [];
+    const { shown, renderer, statuses } = viewer({ onBakeSettled: (lit, detail) => settled.push([lit, detail]) });
+    await show(shown, renderer);
+    await vi.waitFor(() => expect(settled).toEqual([[false, 'the bake worker stopped']]));
+    expect(statuses).toContain('The preview shows unbaked light: the bake worker stopped');
+  });
+
+  it('gives every bake the reason the path tracer did not load, and says it to onStatus once', async () => {
+    const load = vi.fn(() => Promise.reject(new Error('the chunk did not load')));
+    loadPathTracer = load;
+    const settled: Settled[] = [];
+    const { shown, renderer, statuses } = viewer({ onBakeSettled: (lit, detail) => settled.push([lit, detail]) });
+    await show(shown, renderer);
+    await vi.waitFor(() => expect(settled).toHaveLength(1));
+    shown.relight();
+    await vi.waitFor(() => expect(settled).toHaveLength(2));
+    expect(settled).toEqual([
+      [false, 'the chunk did not load'],
+      [false, 'the chunk did not load'],
+    ]);
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(statuses).toEqual(['The preview shows unbaked light: the chunk did not load']);
+  });
+
+  it('settles a bake that did not apply as unbaked without a reason', async () => {
+    loadPathTracer = () => loaded(notApplied);
+    const settled: Settled[] = [];
+    const { shown, renderer } = viewer({ onBakeSettled: (lit, detail) => settled.push([lit, detail]) });
+    await show(shown, renderer);
+    await vi.waitFor(() => expect(settled).toEqual([[false, undefined]]));
   });
 
   it('says a document is being set until the renderer has it', async () => {

@@ -182,6 +182,7 @@ export class App {
     this.panelLayout = new PanelLayout(this.layoutStore);
     try {
       this.viewer = Viewer.create(byId('preview', HTMLCanvasElement), {
+        // The bake reports through onBakeStarted/onBakeSettled (the model dot); the context through onContextRestored.
         onStatus: () => undefined,
         onContextRestored: () => this.notices.status('The graphics context was restored.'),
         onResize: (size) => {
@@ -200,7 +201,7 @@ export class App {
           this.notices.lighting('busy');
           this.tools?.bakeStarted();
         },
-        onBakeSettled: (lit) => this.notices.lighting(lit ? 'lit' : 'warn'),
+        onBakeSettled: (lit, detail) => this.notices.lighting(lit ? 'lit' : 'warn', lit ? undefined : detail),
         preserveDrawingBuffer: import.meta.env.MODE === 'e2e',
       });
     } catch (error) {
