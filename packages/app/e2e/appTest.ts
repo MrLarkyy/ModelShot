@@ -87,6 +87,30 @@ export async function forgetLocalData(page: Page, confirm = true): Promise<void>
   await expect(dialog).toBeHidden();
 }
 
+/**
+ * The shown elements matching `controls` that the box of `over` intersects: none when it covers nothing. Boxes, not
+ * hit tests: a message that lets clicks through still hides what is under it.
+ */
+export function coveredBy(page: Page, over: string, controls: string): Promise<string[]> {
+  return page.evaluate(
+    ([overSelector, controlSelector]) => {
+      const top = document.querySelector(overSelector)?.getBoundingClientRect();
+      if (!top || top.width === 0 || top.height === 0) throw new Error(`${overSelector} has no box`);
+      const found = [...document.querySelectorAll<HTMLElement>(controlSelector)].filter(
+        (node) => node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden',
+      );
+      if (found.length === 0) throw new Error(`nothing shown matches ${controlSelector}`);
+      return found
+        .filter((node) => {
+          const box = node.getBoundingClientRect();
+          return box.left < top.right && top.left < box.right && box.top < top.bottom && top.top < box.bottom;
+        })
+        .map((node) => node.id || node.textContent?.trim() || node.tagName);
+    },
+    [over, controls] as const,
+  );
+}
+
 /** Waits until the editor tools (overlay, picking, gizmo, timeline) are loaded. */
 export async function waitForEditor(page: Page): Promise<void> {
   await page.waitForFunction(() => document.body.dataset['editor'] === 'ready');

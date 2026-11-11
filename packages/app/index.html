@@ -138,72 +138,74 @@
             </div>
           </div>
           <p id="stats" class="chips chips-bottom stats" hidden></p>
-          <section id="empty" class="empty" aria-labelledby="empty-title">
-            <div class="empty-card">
-              <h2 id="empty-title">Open a model</h2>
-              <p>
-                ModelShot opens Blockbench (.bbmodel), glTF/GLB and OBJ models with their PNG or JPEG textures, and
-                Minecraft player skins.
-              </p>
-              <p class="empty-local">Your file stays in this browser tab and is never uploaded.</p>
-              <p class="empty-drop">Drop files here to open them.</p>
-              <button id="empty-open" class="primary" type="button" aria-keyshortcuts="Control+O Meta+O">
-                Open…<kbd aria-hidden="true">Ctrl+O</kbd>
-              </button>
-              <ul class="entry-cards">
-                <li>
-                  <button id="entry-bbmodel" class="entry-card" type="button">
-                    <strong>Blockbench model</strong><span>.bbmodel with its textures</span>
-                  </button>
-                </li>
-                <li>
-                  <button id="entry-skin" class="entry-card" type="button">
-                    <strong>Player skin</strong><span>A PNG skin on the player model</span>
-                  </button>
-                </li>
-                <li>
-                  <button id="entry-gltf" class="entry-card" type="button">
-                    <strong>glTF or OBJ</strong><span>.gltf, .glb or .obj with its files</span>
-                  </button>
-                </li>
-              </ul>
-            </div>
-          </section>
           <div id="first-run-hint" class="first-run-hint" role="region" aria-label="Shortcut hints" hidden></div>
           <div id="drop-overlay" class="drop-overlay" hidden>Drop to open</div>
-          <div class="render-bar">
-            <div id="render-idle" class="render-idle">
-              <button id="render-button" class="primary" type="button" disabled>Render</button>
-              <span id="render-meta" class="render-meta"></span>
+          <div class="viewport-dock">
+            <section id="empty" class="empty" aria-labelledby="empty-title">
+              <div class="empty-card">
+                <h2 id="empty-title">Open a model</h2>
+                <p>
+                  ModelShot opens Blockbench (.bbmodel), glTF/GLB and OBJ models with their PNG or JPEG textures, and
+                  Minecraft player skins.
+                </p>
+                <p class="empty-local">Your file stays in this browser tab and is never uploaded.</p>
+                <p class="empty-drop">Drop files here to open them.</p>
+                <button id="empty-open" class="primary" type="button" aria-keyshortcuts="Control+O Meta+O">
+                  Open…<kbd aria-hidden="true">Ctrl+O</kbd>
+                </button>
+                <ul class="entry-cards">
+                  <li>
+                    <button id="entry-bbmodel" class="entry-card" type="button">
+                      <strong>Blockbench model</strong><span>.bbmodel with its textures</span>
+                    </button>
+                  </li>
+                  <li>
+                    <button id="entry-skin" class="entry-card" type="button">
+                      <strong>Player skin</strong><span>A PNG skin on the player model</span>
+                    </button>
+                  </li>
+                  <li>
+                    <button id="entry-gltf" class="entry-card" type="button">
+                      <strong>glTF or OBJ</strong><span>.gltf, .glb or .obj with its files</span>
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            </section>
+            <div class="render-bar">
+              <div id="render-idle" class="render-idle">
+                <button id="render-button" class="primary" type="button" disabled>Render</button>
+                <span id="render-meta" class="render-meta"></span>
+              </div>
+              <div id="render-progress" class="render-progress" hidden>
+                <progress id="progress" max="1" value="0" aria-label="Render progress"></progress>
+                <button id="cancel-button" type="button">Stop</button>
+              </div>
+              <p id="render-info" class="render-info render-result" hidden></p>
             </div>
-            <div id="render-progress" class="render-progress" hidden>
-              <progress id="progress" max="1" value="0" aria-label="Render progress"></progress>
-              <button id="cancel-button" type="button">Stop</button>
-            </div>
-            <p id="render-info" class="render-info render-result" hidden></p>
-          </div>
-          <div class="toasts">
-            <div id="status" class="toast" role="status"></div>
-            <div class="toast toast-chip">
-              <p id="storage-chip" class="storage-text" aria-live="polite"></p>
-              <button
-                id="storage-close"
-                class="icon-button small"
-                type="button"
-                aria-label="Dismiss the notice"
-                title="Dismiss the notice"
-                hidden
-              ></button>
-            </div>
-            <div id="alert-box" class="toast toast-alert" hidden>
-              <div id="alert" role="alert"></div>
-              <button
-                id="alert-close"
-                class="icon-button"
-                type="button"
-                aria-label="Dismiss the error"
-                title="Dismiss the error"
-              ></button>
+            <div class="toasts">
+              <div id="status" class="toast" role="status"></div>
+              <div class="toast toast-chip">
+                <p id="storage-chip" class="storage-text" aria-live="polite"></p>
+                <button
+                  id="storage-close"
+                  class="icon-button small"
+                  type="button"
+                  aria-label="Dismiss the notice"
+                  title="Dismiss the notice"
+                  hidden
+                ></button>
+              </div>
+              <div id="alert-box" class="toast toast-alert" hidden>
+                <div id="alert" role="alert"></div>
+                <button
+                  id="alert-close"
+                  class="icon-button"
+                  type="button"
+                  aria-label="Dismiss the error"
+                  title="Dismiss the error"
+                ></button>
+              </div>
             </div>
           </div>
         </div>

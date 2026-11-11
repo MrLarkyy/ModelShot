@@ -1,8 +1,10 @@
 import type { Page } from '@playwright/test';
-import { expect, fixture, forgetLocalData, openApp, openFileMenu, openFiles, test } from './appTest';
+import { coveredBy, expect, fixture, forgetLocalData, openApp, openFileMenu, openFiles, test } from './appTest';
 
 const CUBE = fixture('bbmodel', 'single-cube.bbmodel');
 const LAYOUT_KEY = 'modelshot.layout.v1';
+// What a message over the view must leave free: the camera presets and Overlays at the top, the render bar below.
+const VIEW_CONTROLS = '#viewport-chips button, .render-bar button';
 
 interface Row {
   readonly centres: number[];
@@ -54,6 +56,8 @@ for (const width of [1440, 1280, 1024, 900]) {
     expect(row.scrollWidth).toBeLessThanOrEqual(row.innerWidth);
     expect(row.outside).toEqual([]);
     await expect(page.locator('#bar-more-button')).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Front view' })).toBeVisible();
+    expect(await coveredBy(page, '#status', VIEW_CONTROLS), 'the Opened message covers no view control').toEqual([]);
     await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`topbar-${width}.png`) });
   });
 }
@@ -63,6 +67,8 @@ for (const width of [768, 375]) {
     await page.setViewportSize({ width, height: 800 });
     await openApp(page);
     await openFiles(page, [CUBE], 'single-cube.bbmodel');
+    await expect(page.getByRole('button', { name: 'Front view' })).toBeVisible();
+    expect(await coveredBy(page, '#status', VIEW_CONTROLS), 'the Opened message covers no view control').toEqual([]);
     const long = `${'a-very-long-model-name-'.repeat(8)}.bbmodel`;
     await page.evaluate((name) => {
       document.getElementById('model-name')!.textContent = name;
@@ -93,6 +99,46 @@ for (const width of [768, 375]) {
 async function screenshot(page: Page, path: string): Promise<void> {
   await page.screenshot({ animations: 'disabled', path });
 }
+
+for (const [width, height] of [
+  [375, 667],
+  [768, 800],
+  [1440, 800],
+] as const) {
+  test(`the longest message and error cover no view control at ${width} px`, async ({ page }) => {
+    await page.setViewportSize({ width, height });
+    await openApp(page);
+    await openFiles(page, [CUBE], 'single-cube.bbmodel');
+    // The longest texts the notices show: they clip a message at 600 characters.
+    await page.evaluate(() => {
+      const long = 'A long message that names a file and why it failed. '.repeat(12).slice(0, 600);
+      document.getElementById('status')!.textContent = long;
+      document.getElementById('alert')!.textContent = long;
+      document.getElementById('alert-box')!.hidden = false;
+    });
+    await expect(page.getByRole('alert')).toBeVisible();
+    expect(await coveredBy(page, '.toasts', VIEW_CONTROLS)).toEqual([]);
+    const toasts = await page.locator('.toasts').boundingBox();
+    const view = await page.locator('#viewport').boundingBox();
+    expect(toasts!.x).toBeGreaterThanOrEqual(view!.x);
+    expect(toasts!.x + toasts!.width).toBeLessThanOrEqual(view!.x + view!.width);
+    expect(toasts!.y).toBeGreaterThanOrEqual(view!.y);
+  });
+}
+
+test.describe('with the first-run hint', () => {
+  test.use({ firstRunHint: true });
+
+  for (const width of [375, 1440]) {
+    test(`the Opened message leaves the shortcut hint and the view controls free at ${width} px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await openApp(page);
+      await openFiles(page, [CUBE], 'single-cube.bbmodel');
+      await expect(page.getByRole('region', { name: 'Shortcut hints' })).toBeVisible();
+      expect(await coveredBy(page, '#status', `${VIEW_CONTROLS}, #first-run-hint`)).toEqual([]);
+    });
+  }
+});
 
 test('the bar has one primary, Export, and no Render label; Share does not move Export', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });

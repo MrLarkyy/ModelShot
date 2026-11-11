@@ -713,16 +713,32 @@ button:disabled {
   font: var(--ms-weight-medium) var(--ms-size-caption) var(--ms-font-mono);
 }
 
-.empty {
+/* The empty card, the messages and the render bar share one column: a message takes its own room above the render bar,
+   so it covers neither that bar, the card nor the chips at the top of the view. Over the view and never in the layout: a
+   message must not resize the view and stop a render. No z-index here, so the toasts still stack above the drawers. */
+.viewport-dock {
   position: absolute;
   inset: 0;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  /* The render bar sits at the bottom of the view: the card keeps clear of it. */
-  padding: var(--ms-space-3) var(--ms-space-3) 4.5rem;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding: var(--ms-space-3);
   pointer-events: none;
+}
+
+.empty {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  align-self: stretch;
+  display: grid;
+  /* A track of the room that is left, not of the card: the card's max-height then caps it and it scrolls inside. */
+  grid-template-rows: minmax(0, 1fr);
+  place-items: center;
+  min-height: 0;
+  margin-bottom: var(--ms-space-2);
+  overflow: auto;
 }
 
 .empty-card {
@@ -799,6 +815,11 @@ button:disabled {
 @media (max-width: 599px) {
   .entry-cards {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* A phone shows the whole card above the render bar without scrolling it. */
+  .empty-card {
+    padding-block: var(--ms-space-4);
   }
 }
 
@@ -881,22 +902,23 @@ body:has(.timeline[data-empty]) #timeline-separator {
   pointer-events: none;
 }
 
+/* Last in the column, after the toasts, whatever the source order: the tab order keeps Render before a message's close. */
 .render-bar {
-  position: absolute;
+  position: relative;
   z-index: 3;
-  bottom: var(--ms-space-3);
-  left: 50%;
+  order: 1;
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: var(--ms-space-2) var(--ms-space-3);
-  max-width: calc(100% - var(--ms-space-5));
+  max-width: 100%;
   padding: var(--ms-space-2) var(--ms-space-3);
   background: var(--ed-panel);
   border: 1px solid var(--ed-line-strong);
   border-radius: var(--ed-radius-ui);
-  transform: translateX(-50%);
+  pointer-events: auto;
 }
 
 .render-idle,
@@ -925,22 +947,21 @@ body:has(.timeline[data-empty]) #timeline-separator {
   max-width: 100%;
 }
 
-/* Over the view and the drawers, never in the layout: a message must not resize the view and stop a render. */
+/* Above the render bar and over the drawers. Half the view at most: the longest message scrolls instead of climbing into
+   the chips at the top. */
 .toasts {
-  position: absolute;
+  position: relative;
   z-index: 12;
-  top: var(--ms-space-3);
-  left: 50%;
+  flex: none;
   display: grid;
-  gap: var(--ms-space-2);
   justify-items: center;
-  width: max-content;
-  max-width: calc(100% - var(--ms-space-5));
-  pointer-events: none;
-  transform: translateX(-50%);
+  max-width: 100%;
+  max-height: 50%;
+  overflow-y: auto;
 }
 
 .toast {
+  margin-bottom: var(--ms-space-2);
   padding: var(--ms-space-2) var(--ms-space-3);
   background: var(--ed-raised);
   border: 1px solid var(--ed-line-strong);
@@ -954,8 +975,11 @@ body:has(.timeline[data-empty]) #timeline-separator {
   opacity: 1;
 }
 
+/* Still rendered, so the first message is announced; without one it takes no room above the render bar. */
 .toast:empty {
-  border-color: transparent;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
 .toast-chip {
@@ -974,6 +998,7 @@ body:has(.timeline[data-empty]) #timeline-separator {
 /* Kept in the tree so the text is announced when it is set; empty, it takes no room. */
 .toast-chip:has(.storage-text:empty) {
   height: 0;
+  margin: 0;
   padding: 0;
   overflow: hidden;
   border: 0;

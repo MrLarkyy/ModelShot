@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import {
+  coveredBy,
   dragFiles,
   droppedFixture,
   expect,
@@ -131,6 +132,18 @@ test('an unsupported or truncated file shows the existing error and the page sta
   await expect(page.getByRole('alert')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('alert')).not.toContainText('took longer than');
   await expect(page.locator('#empty')).toBeVisible();
+});
+
+test('on a phone an error takes its own room: it covers neither the card nor the render bar', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  await openApp(page);
+  await dragFiles(page, 'drop', [{ name: 'notes.txt', text: 'hello' }]);
+  await expect(page.getByRole('alert')).toContainText('.bbmodel');
+  expect(await coveredBy(page, '#alert-box', '.empty-card, .render-bar')).toEqual([]);
+  // The last entry card still takes a click: the card scrolls inside the room the error leaves.
+  const chooser = page.waitForEvent('filechooser');
+  await page.locator('#entry-gltf').click();
+  await chooser;
 });
 
 test('no band under the canvas, and the empty panels are explained', async ({ page }) => {
