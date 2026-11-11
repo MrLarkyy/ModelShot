@@ -89,6 +89,7 @@ test('starting a render pauses the playback', async ({ page }) => {
   await openAnimated(page);
   await timeline(page).getByRole('button', { name: 'Play' }).click();
   await expect(timeline(page).getByRole('button', { name: 'Pause' })).toBeVisible();
+  await page.evaluate(() => window.__msApp!.holdRenders());
   await page.keyboard.press('r');
   await expect(timeline(page).getByRole('button', { name: 'Play' })).toBeVisible();
   await page.keyboard.press('Escape');

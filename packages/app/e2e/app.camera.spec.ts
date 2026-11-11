@@ -48,7 +48,11 @@ test('the O and I keys in the view move the projection radios with them', async 
 
 test('the mouse orbits the model while a render result is shown', async ({ page }) => {
   await openCube(page);
+  const samples = page.locator('#render-panel').getByLabel('Samples');
+  await samples.fill('2');
+  await samples.dispatchEvent('change');
   await page.getByRole('button', { name: 'Render' }).click();
+  await expect(page.getByRole('status')).toContainText('Render done', { timeout: 60_000 });
   await expect(page.locator('#result')).toBeVisible();
   const before = await state(page);
   const box = await page.locator('#viewport').boundingBox();
