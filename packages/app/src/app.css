@@ -757,6 +757,12 @@ button:disabled {
   font-size: var(--ms-size-caption);
 }
 
+/* The key hint sits on the Shot Blue fill: the hint grey of a kbd elsewhere is too faint there. */
+.empty-card button.primary kbd {
+  color: var(--ed-text);
+  border-color: currentColor;
+}
+
 .empty[data-drag] .empty-card {
   background: linear-gradient(var(--ed-accent-soft), var(--ed-accent-soft)), var(--ed-raised);
   border-color: var(--ed-accent-hi);
@@ -839,16 +845,20 @@ button:disabled {
   list-style: none;
 }
 
-/* One row, no separator: nothing to scrub. */
+/* One row, no separator: nothing to scrub. A model without clips keeps its disabled Play beside the reason. */
 .timeline[data-empty] {
+  display: flex;
+  align-items: center;
+  gap: var(--ms-space-3);
   height: auto;
+  padding-block: var(--ms-space-2);
 }
 
 body:has(.timeline[data-empty]) #timeline-separator {
   display: none;
 }
 
-.timeline[data-empty] .timeline-controls,
+.timeline[data-empty] .timeline-controls > :not(button),
 .timeline[data-empty] .markers,
 .timeline[data-empty] .keyframe-count {
   display: none;

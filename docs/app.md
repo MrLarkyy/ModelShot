@@ -145,7 +145,8 @@ in the middle, the inspector on the right and the timeline below.
   made for before the new one is shown. A look picked while files open is kept unless the model has a saved
   look. Starting a render, opening Export or opening
   another model pauses playback, and playing or scrubbing during a render cancels it. A model without animations shows
-  "This model has no animations".
+  "This model has no animations" beside a disabled Play in the one-row bar; the clip choice, Loop and the playhead
+  come with the first clip.
 - **Undo and Redo** (Ctrl/Cmd+Z, Ctrl+Shift+Z or Ctrl+Y) step through visibility, locks, names, texture filters, node
   edits and the look, at most 100 steps, cleared when another model opens.
 - **Share** appears only where the browser can share files (`navigator.canShare`) and a render is shown: it hands the

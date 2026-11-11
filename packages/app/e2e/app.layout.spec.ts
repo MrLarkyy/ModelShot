@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test';
 import { expect, expectLit, fixture, forgetLocalData, openApp, openFiles, test, waitForEditor } from './appTest';
 
 const NESTED = fixture('bbmodel', 'nested-groups.bbmodel');
+const ANIMATED = fixture('bbmodel', 'animated.bbmodel');
 
 interface Box {
   readonly x: number;
@@ -50,13 +51,14 @@ test('below 1024 px the panels are drawers over a usable view', async ({ page },
   await expect(page.locator('#inspector')).toBeHidden();
   const viewport = await box(page, '#viewport');
   expect(viewport.width).toBeGreaterThanOrEqual(900 * 0.5);
-  // The timeline keeps a readable clip choice and says why it is empty; its controls stay inside the page.
-  const clip = await box(page, '#timeline select');
-  expect(clip.width).toBeGreaterThanOrEqual(100);
+  // Without clips the timeline is a bar: it says why it is empty beside the disabled Play, inside the page.
   await expect(page.locator('#timeline')).toContainText('This model has no animations.');
+  await expect(page.locator('#timeline').getByRole('button', { name: 'Play' })).toBeDisabled();
+  await expect(page.locator('#timeline select')).toBeHidden();
   const controls = await box(page, '.timeline-controls');
   expect(controls.x).toBeGreaterThanOrEqual(0);
   expect(controls.x + controls.width).toBeLessThanOrEqual(900);
+  expect((await box(page, '#timeline')).height, 'the timeline is one row').toBeLessThan(60);
   await page.screenshot({ animations: 'disabled', path: testInfo.outputPath('editor-900.png') });
 
   const toggle = page.getByRole('button', { name: 'Outliner', exact: true });
@@ -80,6 +82,20 @@ test('below 1024 px the panels are drawers over a usable view', async ({ page },
   await page.getByRole('button', { name: 'Inspector', exact: true }).click();
   await expect(page.locator('#inspector')).toBeVisible();
   await expect(page.locator('#outliner')).toBeHidden();
+});
+
+test('below 1024 px an animated model keeps a readable clip choice inside the page', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 700 });
+  await openApp(page);
+  await openFiles(page, [ANIMATED], 'animated.bbmodel');
+  await waitForEditor(page);
+  const clip = await box(page, '#timeline select');
+  expect(clip.width).toBeGreaterThanOrEqual(100);
+  await expect(page.locator('#timeline').getByRole('button', { name: 'Play' })).toBeEnabled();
+  await expect(page.locator('#timeline')).not.toContainText('This model has no animations.');
+  const controls = await box(page, '.timeline-controls');
+  expect(controls.x).toBeGreaterThanOrEqual(0);
+  expect(controls.x + controls.width).toBeLessThanOrEqual(900);
 });
 
 test('a separator resizes a panel with the keyboard, and size and collapse survive a reload', async ({ page }) => {

@@ -136,7 +136,12 @@ test('an unsupported or truncated file shows the existing error and the page sta
 test('no band under the canvas, and the empty panels are explained', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openApp(page);
-  const preview = await box(page, '#preview');
+  // Measured in the page: the canvas is not shown while empty, and it must still keep its box.
+  const preview = await page.locator('#preview').evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    return { y: rect.y, width: rect.width, height: rect.height };
+  });
+  expect(preview.width * preview.height, 'the hidden canvas keeps its size').toBeGreaterThan(0);
   const view = await box(page, '#viewport');
   const stage = await box(page, '.stage');
   const timeline = await box(page, '#timeline');
