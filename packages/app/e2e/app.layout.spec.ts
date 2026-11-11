@@ -98,6 +98,19 @@ test('below 1024 px an animated model keeps a readable clip choice inside the pa
   expect(controls.x + controls.width).toBeLessThanOrEqual(900);
 });
 
+// A view resized after the model is shown stops a render and moves a restored camera off its saved framing (the
+// stored distances are relative to the fit of the view's aspect), so the bar is one control row from the start.
+test('opening a model without clips does not resize the view: the timeline bar keeps its height', async ({ page }) => {
+  await openApp(page);
+  const emptyBar = await box(page, '#timeline');
+  const emptyView = await box(page, '#viewport');
+  await openFiles(page, [NESTED], 'nested-groups.bbmodel');
+  await waitForEditor(page);
+  await expect(page.locator('#timeline').getByRole('button', { name: 'Play' })).toBeDisabled();
+  expect(await box(page, '#timeline')).toEqual(emptyBar);
+  expect(await box(page, '#viewport')).toEqual(emptyView);
+});
+
 test('a separator resizes a panel with the keyboard, and size and collapse survive a reload', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openApp(page);

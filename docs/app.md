@@ -81,7 +81,9 @@ in the middle, the inspector on the right and the timeline below.
   canvas keeps its box but is not shown, so the render size stays valid and the realtime backdrop and the render are
   untouched). The chips and the stats are hidden while empty. The Outliner, Inspector and Timeline each say what opens
   them. The timeline is a one-row bar without its separator when no model is open or the model has no animation
-  (`#timeline[data-empty]`), and the full panel for one with clips.
+  (`#timeline[data-empty]`), and the full panel for one with clips. The bar is one control row high with or without
+  its Play button, so the view keeps its size when a model without clips opens: a resize after the model is shown
+  would stop a render and move a restored camera off its saved framing.
 - **First-run row**: `#first-run-hint` (a region "Shortcut hints") over the view, below the chips: keys from
   `SHORTCUTS`, drag to orbit and scroll to zoom. Dismissing it moves the focus to the 3D view.
 - **Model dot**: next to the model name, `#model-state` is a dot with a shape per state, not colour alone (filled
@@ -297,6 +299,6 @@ dialog, a message or the longest error covers no view control, render bar button
 unsupported and truncated files, an error on a phone covers neither the card nor the render bar, no band under the canvas, the empty panels and the timeline bar, the first-run row;
 the `firstRunHint` fixture option shows the row, otherwise every spec starts with it dismissed),
 `app.layout.spec.ts` (1280, 1440, 1920 and 900 px with screenshots in `test-results` for review, resize, collapse,
-drawers), `app.overlay.spec.ts` (toggles; overlays never in the preview, render or export), `app.motion.spec.ts`
+drawers, the view keeps its size when a model without clips opens), `app.overlay.spec.ts` (toggles; overlays never in the preview, render or export), `app.motion.spec.ts`
 (reduced motion, overlay draw time) and `app.system.spec.ts` (the control specimen and its goldens, blue only on
 primaries, chip focus ring, forced colours, the dot and toast borders). Bundle budgets: [testing.md](testing.md#budgets).

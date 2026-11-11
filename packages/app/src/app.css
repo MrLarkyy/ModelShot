@@ -866,12 +866,15 @@ button:disabled {
   list-style: none;
 }
 
-/* One row, no separator: nothing to scrub. A model without clips keeps its disabled Play beside the reason. */
+/* One row, no separator: nothing to scrub. A model without clips keeps its disabled Play beside the reason. The row is
+   a control high (and its top border) before the button is there too: a bar that grew when the tools load would resize
+   the view after the model is shown. */
 .timeline[data-empty] {
   display: flex;
   align-items: center;
   gap: var(--ms-space-3);
   height: auto;
+  min-height: calc(var(--ed-control-h) + 2 * var(--ms-space-2) + 1px);
   padding-block: var(--ms-space-2);
 }
 
