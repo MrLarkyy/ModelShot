@@ -272,11 +272,13 @@ names a missing `Access-Control-Allow-Origin` as a possible cause.
 
 The iframe is titled with `label`. Inside, the canvas is focusable and named; arrow keys, drag and wheel turn and zoom
 as in the app. Loading and lighting progress is announced in a `role="status"` element (visible while loading, for
-screen readers only once the model shows); errors in a `role="alert"` element, which also shows a failure of the graphics driver (a context that cannot be
-restored) as text, without a message to the host page. `autorotate` never starts when the
-visitor prefers reduced motion, stops when that setting turns on and stops for good on the first pointer, wheel or
-key input in the frame. An error stops it (nothing turns behind the alert); it starts again once a model is shown
-with `autorotate`. The light bake runs only when a model is shown; the renderer and orbit easing follow
+screen readers only once the model shows); errors in a `role="alert"` element, which also shows a failure of the graphics driver as text, without a message to
+the host page. Two driver failures are permanent for that frame: a context that cannot be restored, and a linear
+program that fails to link during the fallback switch (drawing then continues with nearest filtering). Either
+stops `autorotate` for good, and its alert stays through later hash updates and models. `autorotate` never starts when
+the visitor prefers reduced motion, stops when that setting turns on and stops for good on the first pointer, wheel or
+key input in the frame. A model or load error stops it too (nothing turns behind the alert); it starts again once a
+model is shown with `autorotate`. The light bake runs only when a model is shown; the renderer and orbit easing follow
 reduced motion as in the app.
 
 ## Tests

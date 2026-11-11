@@ -225,7 +225,9 @@ buttons are blue on the real screens.
 Landmarks (header, outliner `nav`, view `main`, inspector `aside`, timeline `section`, a focusable messages region),
 every control labelled, visible focus (a 3 px `--ms-color-blue-mid` ring, 2 px off the control, on every control of
 the dark workspace; the viewport chips sit over the 3D view, so their ring has a ground halo under it), errors in
-`role="alert"`, progress in `role="status"`, native controls and dialogs, tabs and separators with their ARIA
+`role="alert"` (the pinned graphics-driver alert survives opening a file: a context that cannot be restored, or a
+linear program that fails to link during the fallback switch, where drawing goes on with nearest filtering but the
+alert stays), progress in `role="status"`, native controls and dialogs, tabs and separators with their ARIA
 patterns, the overlay canvas `aria-hidden`, colours only from the brand tokens ([brand.md](brand.md)). In forced
 colours the native checkbox, radio and select return and every active state (`.on`, pressed, the checked segment, the
 selected tab, the current outliner row) gets a system-colour outline or bar. Every panel is reachable by keyboard; the
