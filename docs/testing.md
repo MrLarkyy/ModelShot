@@ -1633,8 +1633,8 @@ round 7); its max was 750 ms then.
   old max plus the measured growth plus 10 %, rounded up to 100. `embed-frame` 165 081 to 165 115 B, within its max.)
 - `bundleGzipBytes` `app-entry` 89 800 (MS-102, 2026-11-11: the grouped editor top bar with icons, render bar, toasts and
   storage chip, forget dialog, empty-state card and first-run hint load before a model opens. Measured on origin/main
-  e19e346 76 399 B, with MS-102 81 635 B, gzip level 9; the max is the measurement plus 10 %, rounded up to 100, as for
-  MS-34. `app` 216 892 to 221 201 B, within its max.)
+  e19e346 76 399 B, with MS-102 81 635 B, gzip level 9; the max is the measurement plus 10 %, rounded up to 100, the rule of
+  MS-23, MS-38 and MS-85. `app` 216 892 to 221 201 B, within its max.)
 - `frameTimeMs.rt-pose-step-512` (MS-34): one playback frame of the editor on the bench scene (128 group nodes, a
   rotation channel per node): `animateScene`, the renderer's pose-only `setScene` (no decode, upload or bake) and the
   render at 512 x 512, each timed until the GPU finished; median of 11 frames after 4 (`renderPoseFrames`, installed by
