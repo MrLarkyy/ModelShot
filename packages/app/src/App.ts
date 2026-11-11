@@ -156,7 +156,7 @@ export class App {
     try {
       this.viewer = Viewer.create(byId('preview', HTMLCanvasElement), {
         onStatus: (message) => this.notices.lighting(message),
-        onError: (message) => this.notices.alert(message),
+        onError: (message) => this.notices.pinAlert(message),
         onResize: (size) => {
           const previous = this.cssSize;
           this.cssSize = size;

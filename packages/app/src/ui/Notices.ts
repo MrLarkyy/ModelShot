@@ -5,6 +5,8 @@ const clip = (text: string): string =>
 
 // The status line (role="status") and the error line (role="alert"). Text only: messages carry file names.
 export class Notices {
+  private pinned: string | null = null;
+
   constructor(
     private readonly main: HTMLElement,
     private readonly lightingLine: HTMLElement,
@@ -30,8 +32,14 @@ export class Notices {
     this.alertLine.hidden = false;
   }
 
+  /** A failure that does not go away (the graphics driver): clearAlert brings it back instead of wiping it. */
+  pinAlert(message: string): void {
+    this.pinned = clip(message);
+    this.alert(message);
+  }
+
   clearAlert(): void {
-    this.alertLine.textContent = '';
-    this.alertLine.hidden = true;
+    this.alertLine.textContent = this.pinned ?? '';
+    this.alertLine.hidden = this.pinned === null;
   }
 }

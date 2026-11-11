@@ -475,6 +475,19 @@ describe('showEmbed', () => {
     expect(embed.posts()).toEqual(before);
   });
 
+  it('a renderer error stops autorotate, and the next hash update keeps its alert', async () => {
+    const embed = start(fragment(A, '&autorotate=1'));
+    await arrive(A);
+    viewer().options.onBakeSettled?.(true);
+    expect(fakes.rotations).toHaveLength(1);
+    viewer().options.onError?.('The preview could not use the graphics driver: lost');
+    expect(fakes.rotations[0]?.stop).toHaveBeenCalledOnce();
+    embed.update(fragment(A, '&autorotate=1&yaw=40'));
+    expect(embed.page.alert.hidden).toBe(false);
+    expect(embed.page.alert.textContent).toBe('The preview could not use the graphics driver: lost');
+    expect(fakes.rotations).toHaveLength(1);
+  });
+
   it('a failed file of the model posts error and shows the alert, without reading the model', async () => {
     const G = 'https://models.example/g/scene.gltf';
     fakes.sidecarsWait.add(G);

@@ -91,6 +91,7 @@ export function showEmbed(page: EmbedPage, hash: string, env: EmbedEnvironment):
   let appliedViewKey: string | null = null;
   let touched = false;
   let settled = false;
+  let rendererFailed: string | null = null;
   let stopRotation: (() => void) | null = null;
   // setDocument calls run one after another, so the document set last is the one of the latest load that got there.
   let documents: Promise<void> = Promise.resolve();
@@ -105,7 +106,7 @@ export function showEmbed(page: EmbedPage, hash: string, env: EmbedEnvironment):
   const syncRotation = (): void => {
     if (!viewer || !canvas) return;
     const showing = wanted !== null && pendingKey === null && shownKey === wanted.key;
-    if (!showing || !wanted?.params.autorotate) {
+    if (rendererFailed !== null || !showing || !wanted?.params.autorotate) {
       stopRotating();
     } else if (!stopRotation && !touched && settled) {
       stopRotation = startAutorotate(viewer, { input: canvas });
@@ -145,6 +146,8 @@ export function showEmbed(page: EmbedPage, hash: string, env: EmbedEnvironment):
         },
         // Seen by sighted visitors too (the frame can stay blank); only the frame shows it, nothing is posted.
         onError: (message) => {
+          rendererFailed = message;
+          stopRotating();
           page.alert.textContent = message;
           page.alert.hidden = false;
         },
@@ -309,8 +312,8 @@ export function showEmbed(page: EmbedPage, hash: string, env: EmbedEnvironment):
   }
 
   const update = (nextHash: string): void => {
-    page.alert.hidden = true;
-    page.alert.textContent = '';
+    page.alert.hidden = rendererFailed === null;
+    page.alert.textContent = rendererFailed ?? '';
     let params: EmbedParams;
     let look: LookPreset;
     let key: string;
