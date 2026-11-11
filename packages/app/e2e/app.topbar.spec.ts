@@ -1,5 +1,15 @@
 import type { Page } from '@playwright/test';
-import { coveredBy, expect, fixture, forgetLocalData, openApp, openFileMenu, openFiles, test } from './appTest';
+import {
+  coveredBy,
+  expect,
+  fixture,
+  forgetLocalData,
+  openApp,
+  openFileMenu,
+  openFiles,
+  openTab,
+  test,
+} from './appTest';
 
 const CUBE = fixture('bbmodel', 'single-cube.bbmodel');
 const LAYOUT_KEY = 'modelshot.layout.v1';
@@ -180,6 +190,11 @@ test('the bar has one primary, Export, and no Render label; Share does not move 
   const text = await page.evaluate(() => (document.querySelector('.top-bar') as HTMLElement).innerText);
   expect(text).not.toMatch(/Render/);
   const before = await page.locator('#export-button').boundingBox();
+  // Any finished render shows Share: the default 256 samples took most of the wait on an idle machine.
+  await openTab(page, 'Render');
+  const samples = page.locator('#render-panel').getByLabel('Samples');
+  await samples.fill('8');
+  await samples.dispatchEvent('change');
   await page.locator('#render-button').click();
   await expect(page.locator('#result')).toHaveAttribute('data-renders', '1', { timeout: 90_000 });
   await expect(page.getByRole('button', { name: 'Share' })).toBeVisible();
