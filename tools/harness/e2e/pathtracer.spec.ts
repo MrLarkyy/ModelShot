@@ -1062,8 +1062,9 @@ const PAIR_WITHOUT_CATCHER: ReadonlySet<string> = new Set(['gltf-contact']);
 test.describe('the render frames and lights like the baked preview', () => {
   for (const [variant, tolerance] of Object.entries(PT_PAIR_TOLERANCE)) {
     test(`${variant}: same silhouettes, radiance within the measured tolerance`, async ({ page }, testInfo) => {
-      // Up to 1.3 m on a normal runner, about 2.6 m on a slow VM (run 39624802150).
-      test.setTimeout(300_000);
+      // Up to 1.3 m on a normal runner, about 2.6 m on a slow VM (run 39624802150), 5.2 m at six local workers on a
+      // loaded machine (alpha-plane ran past 300 s twice).
+      test.setTimeout(660_000);
       const samples = PAIR_SAMPLES[variant] ?? 64;
       const preview = (catcher: 0 | 1, query = '') =>
         openFixture(page, `/rt.html?variant=${variant}&bake=64&catcher=${catcher}${query}`);
