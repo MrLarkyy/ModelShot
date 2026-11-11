@@ -1,14 +1,32 @@
 ModelShot brand assets
 
-Copyright (c) 2026 MrLarkyy. All rights reserved.
+Copyright (c) 2026 MrLarkyy. All rights reserved, except as granted below.
 
 The ModelShot name, the logo mark (every variant in logo/ and the icons in public/), the hero illustration in
 illustrations/ and the social preview image are our own work. They are not covered by the MIT licence of this
-repository (the LICENSE file at the repository root, which covers the code and the documentation). All rights in them
-are reserved: you may not use, copy, modify or distribute them without written permission from the holder. The same
-holds for the artwork that the generator sources draw (../src/logo/markSvg.ts, ../src/illustration/heroIslandSvg.ts and
+repository (the LICENSE file at the repository root, which covers the code and the documentation). The same holds for
+the artwork that the generator sources draw (../src/logo/markSvg.ts, ../src/illustration/heroIslandSvg.ts and
 ../social/social-preview.html with its stylesheet): the code of those files is MIT, the marks and images they produce are
-not. You may also not use the name to suggest that your work is or comes from ModelShot. Nominative references to
-ModelShot as a project, such as a link or a mention in text, need no permission.
+not. In this note, "the brand assets" means all of the above.
+
+Permission for forks and redistributions. You may keep the brand assets, unchanged, in a fork or a redistribution of
+this repository, and in what it builds without changes to them, as long as all of the following hold:
+
+1. The files stay as they are: not modified, cropped, recoloured, merged into other artwork or regenerated with
+   changed generator code.
+2. They stay part of the repository: you do not use them on their own, outside a copy of this repository and what it
+   builds.
+3. They do not identify anything other than ModelShot: you do not use the name or the brand assets to name, brand or
+   advertise a different product, service or project, and not in a way that suggests ModelShot or the holder made,
+   endorses or supports your fork. A fork that you publish, deploy or distribute as your own product or service, or
+   under another name, replaces the brand assets with its own.
+4. In a copy of the repository this file stays next to them. A build may carry them where the unchanged build
+   configuration of this repository places them (for example the icons and the social preview copied from public/ to
+   the build root, or the logo inlined into a page), without this file.
+
+Any other use, copy, modification or distribution of the brand assets needs written permission from the holder.
+Nominative references to ModelShot as a project, such as a link or a mention in text, need no permission. The
+permission above gives no right in the ModelShot name or marks beyond what it states, and it ends for anyone who breaks
+its conditions.
 
 The fonts are not covered by this note: they live in ../fonts/<family>/ with their SIL Open Font License (OFL.txt).

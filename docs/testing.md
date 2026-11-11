@@ -896,7 +896,9 @@ from 192): the faint skirts and, under the dome, the darkest band rose; only the
 | `cutout-checker` (Studio) | 1496.3 -> 1625.1 (x1.09) | 825.1 -> 920.8   | 4894.4 -> 4950.8 | 1810.1 -> 1983.9 |
 
 "An unblocked catcher shades exactly 1" also runs under Softbox (seeds 1 and 7, 0 pixels at tolerance 0; casting
-9 609 and 9 633). Unit tests (`catcherFillSampling.test.ts`, the TS mirror of the `catcherFill` chunk): a blocked
+9 609 and 9 633). Each seed and look is its own test (MS-111): six renders, 15.0-15.3 s each with four running at
+once locally, a twelfth of the describe's 180 s; as one test the 24 renders took 2.0-2.2 minutes in the full suite and
+ran past 180 s on a loaded machine. Unit tests (`catcherFillSampling.test.ts`, the TS mirror of the `catcherFill` chunk): a blocked
 sample loses lum(sky) within 1e-6 relative under every dome preset and the 5x corner looks, the image's
 cos-weighted mean within 1e-5 (2.6e-6 measured: float32 CDFs) for Softbox and synthetic images (a hot pixel over a
 dim sky, an odd height with a row across the horizon, black above the horizon); the importance-sampled blocked fill
@@ -1295,7 +1297,8 @@ widened.
   64-pixel tiles within 0.5 levels of its TS mirror (limit 2, as at 1x).
 - **Determinism**: the denoised 2x turntable (16 samples) gives the bytes of a one-pass reference rendered in the same
   run in batches of 7, 3 and 1, in 64-pixel tiles, and after a context loss and restore, also one in the middle of the
-  guide (MS-56; the whole guide, 256 tiles, is drawn again). The guide is spread over steps: guide draws per `step(1)`
+  guide (MS-56; the whole guide, 256 tiles, is drawn again); each drawing is its own test with its own reference (MS-111:
+  as one test the five renders took 2.2-2.6 minutes of the 300 s and ran past it on a loaded machine). The guide is spread over steps: guide draws per `step(1)`
   and `step(4)`, tile 256 and 64, stay within the budget bound and add up to every guide tile, no sample is drawn
   before the last, a guide-only step returns 0 with `guiding` true and traces and presents nothing and leaves the
   default framebuffer bound.
