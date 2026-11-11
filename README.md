@@ -51,4 +51,5 @@ The [wiki](https://github.com/MrLarkyy/ModelShot/wiki) is generated from `docs/`
 ## Licence
 
 ModelShot is released under the [MIT licence](LICENSE). The ModelShot name, logo, icons, illustration and social preview, and the artwork their
-generators draw, are not covered by it and stay all rights reserved (see `packages/brand/assets/LICENSE`); the bundled fonts keep their SIL Open Font License.
+generators draw, are not covered by it and stay all rights reserved, except that forks and redistributions of the repository may keep them unchanged under
+the conditions in `packages/brand/assets/LICENSE` (no modification, no standalone use, never to brand another product); the bundled fonts keep their SIL Open Font License.

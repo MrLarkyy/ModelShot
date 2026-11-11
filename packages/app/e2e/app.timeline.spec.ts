@@ -185,6 +185,9 @@ const lightingSeen = (page: Page): Promise<string[]> =>
   page.evaluate(() => (window as unknown as { statusSeen: string[] }).statusSeen);
 
 test('a scene change at a scrubbed pose relights it at once, not after the relight delay', async ({ page }) => {
+  // Three bakes in a row, each allowed 120 s: 37 s quiet, up to 1.5 minutes beside the other suites, and past the
+  // config's 120 s once on a loaded machine (MS-111). Bake time itself is held by the bench's bake budget.
+  test.setTimeout(360_000);
   await openAnimated(page);
   await expectLit(page, 120_000);
   await playhead(page).fill('0.5');
