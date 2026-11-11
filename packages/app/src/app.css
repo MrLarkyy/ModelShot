@@ -978,6 +978,12 @@ body:has(.timeline[data-empty]) #timeline-separator {
   opacity: 1;
 }
 
+/* A shown message takes the pointer, so the wheel or a touch over a cut-off one scrolls the toasts instead of the
+   camera; faded, it lets clicks through to the view again. */
+.toast.toast-shown:not(:empty) {
+  pointer-events: auto;
+}
+
 /* Still rendered, so the first message is announced; without one it takes no room above the render bar. */
 .toast:empty {
   margin: 0;

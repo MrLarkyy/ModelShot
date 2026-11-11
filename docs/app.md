@@ -104,7 +104,8 @@ in the middle, the inspector on the right and the timeline below.
   (`.viewport-dock`): a message takes its own room there, so it covers neither the camera presets and Overlays at the
   top of the view, the first-run row, the render bar nor the card, from 375 to 1440 px. The column lies over the view
   and the drawers and never takes height from the view; the messages take at most half of its height and scroll
-  beyond that, and without a message the status line takes no room. An error goes to `#alert` (`role="alert"`, with a Dismiss button) and stays until it is
+  beyond that (a shown message takes the pointer, so the wheel or a touch over it scrolls the messages and not the
+  camera; once faded it lets the pointer through to the view), and without a message the status line takes no room. An error goes to `#alert` (`role="alert"`, with a Dismiss button) and stays until it is
   dismissed, which gives the focus to the File button. A saving failure is not an error and not a status: it shows in its own chip (`#storage-chip`, a polite live region that is always in the tree and collapses when empty) under the status line, with a Dismiss button, until dismissed or the page reloads, and the app goes on. The graphics-context message is a status, sent by `ViewerOptions.onContextRestored`.
 - **Resize and collapse**: the separators between the panels are focusable (`role="separator"` with
   `aria-valuenow`): drag them, or use the arrow keys (16 px), Home and End. Widths are clamped (outliner 180-480 px,
@@ -297,7 +298,8 @@ Vitest in `packages/app/test`; Playwright in `packages/app/e2e` (`pnpm --filter 
 flow, formats, camera, persistence, hostile files, offline, network, handoff, accessibility and preview/render parity,
 and the editor: `app.editor.spec.ts` (outliner, picking, gizmo, undo, names and locks), `app.timeline.spec.ts`,
 `app.topbar.spec.ts` (one row from 1440 to 900 px, More below, one primary, the File menu from the keyboard, the forget
-dialog, a message or the longest error covers no view control, render bar button or first-run row from 375 to 1440 px), `app.render.spec.ts` (render start, Stop and Esc, numbers, result line, the view keeps its size),
+dialog, a message or the longest error covers no view control, render bar button or first-run row from 375 to 1440 px, a
+cut-off message scrolls under the wheel and the camera stays), `app.render.spec.ts` (render start, Stop and Esc, numbers, result line, the view keeps its size),
 `app.empty.spec.ts` (the empty state at 1440 and 375 px, keyboard Open, entry cards and their accept, drag-over and drop,
 unsupported and truncated files, an error on a phone covers neither the card nor the render bar, no band under the canvas, the empty panels and the timeline bar, the first-run row;
 the `firstRunHint` fixture option shows the row, otherwise every spec starts with it dismissed),

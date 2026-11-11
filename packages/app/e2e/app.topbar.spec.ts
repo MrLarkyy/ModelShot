@@ -126,6 +126,33 @@ for (const [width, height] of [
   });
 }
 
+test('a message longer than its room scrolls under the wheel, and the camera stays where it is', async ({ page }) => {
+  await page.setViewportSize({ width: 667, height: 375 });
+  await openApp(page);
+  await openFiles(page, [CUBE], 'single-cube.bbmodel');
+  const status = page.getByRole('status');
+  // The Opened message fades first: its timer must not take the class off the long one below.
+  await expect(status).not.toHaveClass(/toast-shown/, { timeout: 10_000 });
+  await status.evaluate((line) => {
+    line.textContent = 'A long message that names a file and why it failed. '.repeat(12).slice(0, 600);
+  });
+  const toasts = page.locator('.toasts');
+  expect(await toasts.evaluate((node) => node.scrollHeight > node.clientHeight), 'the message is cut off').toBe(true);
+  const box = (await status.boundingBox())!;
+  const point = { x: box.x + box.width / 2, y: box.y + 12 };
+  const hit = (): Promise<boolean> =>
+    page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.id === 'status', point);
+  expect(await hit(), 'a faded message lets the pointer through to the view').toBe(false);
+  await status.evaluate((line) => line.classList.add('toast-shown'));
+  expect(await hit(), 'a shown message takes the pointer').toBe(true);
+
+  const camera = await page.evaluate(() => window.__msApp!.state());
+  await page.mouse.move(point.x, point.y);
+  await page.mouse.wheel(0, 120);
+  await expect.poll(() => toasts.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => window.__msApp!.state())).toEqual(camera);
+});
+
 test.describe('with the first-run hint', () => {
   test.use({ firstRunHint: true });
 
