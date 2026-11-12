@@ -30,4 +30,9 @@ describe('app playwright config timeouts', () => {
     expect(config.fullyParallel).toBe(true);
     expect(config.workers).toBe(1);
   });
+
+  it('keeps the trace of a failed test on CI only, so a failure that does not repeat locally can be read', async () => {
+    expect((await load('true')).use?.trace).toBe('retain-on-failure');
+    expect((await load('')).use?.trace).toBe('off');
+  });
 });

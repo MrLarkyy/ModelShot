@@ -31,14 +31,15 @@ jobs:
       - run: pnpm -r build
       - run: pnpm run test:unit
 
-  # The harness browser tests in 16 shards, each on its own VM with one Playwright worker (docs/testing.md, CI).
+  # The harness browser tests in 19 shards, each on its own VM with one Playwright worker (docs/testing.md, CI).
   # Playwright shards a project into contiguous ranges by test count, not time, so each block of slow tests is its own
   # project: golden 4 shards (the raster goldens and the export tests, 22 minutes together; with 2 shards the eight
   # baked realtime goldens, 7.8 minutes, sat in one that took 15.1), golden-pt 6 (the path-tracer tests,
   # about 20 minutes; its two longest tests, 3.0 and 1.9 minutes, are four tests apart and fit one 7-minute shard only
-  # with 6), pair 3 (the preview-vs-render pairing tests, about 11 minutes) and bake 3 (the baked lighting tests, 13-15
-  # minutes on a slow VM). One runner ran past the 20-minute limit with the whole suite. The site browser suite runs
-  # after golden shard 1; the app suite has its own job below.
+  # with 6), pair 3 (the preview-vs-render pairing tests, about 11 minutes) and bake 6 (the 33 baked lighting tests,
+  # 27 minutes together; with 3 shards one took 17 minutes, the globalTimeout, on a VM twice as slow, MS-97). One
+  # runner ran past the 20-minute limit with the whole suite. The site browser suite runs after golden shard 1; the app
+  # suite has its own job below.
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -59,9 +60,12 @@ jobs:
           - { name: pair-1, project: pair, shard: '1/3' }
           - { name: pair-2, project: pair, shard: '2/3' }
           - { name: pair-3, project: pair, shard: '3/3' }
-          - { name: bake-1, project: bake, shard: '1/3' }
-          - { name: bake-2, project: bake, shard: '2/3' }
-          - { name: bake-3, project: bake, shard: '3/3' }
+          - { name: bake-1, project: bake, shard: '1/6' }
+          - { name: bake-2, project: bake, shard: '2/6' }
+          - { name: bake-3, project: bake, shard: '3/6' }
+          - { name: bake-4, project: bake, shard: '4/6' }
+          - { name: bake-5, project: bake, shard: '5/6' }
+          - { name: bake-6, project: bake, shard: '6/6' }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
