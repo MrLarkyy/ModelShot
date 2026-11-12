@@ -47,6 +47,12 @@ describe('LookPanel', () => {
     expect(cards[1]?.focused).toBe(true);
   });
 
+  it('does not select the card already in use again, so an adjustment made on it stays', () => {
+    const { cards, onSelect } = setup('studio');
+    cards[0]?.dispatch('click');
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
   it('previews a grading slider while it moves and commits once when it is released', () => {
     const { root, adjust } = setup();
     const exposure = root.find((e) => e.tagName === 'input' && e.getAttribute('type') === 'range')[0] as FakeElement;

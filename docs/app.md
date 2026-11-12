@@ -148,9 +148,27 @@ in the middle, the inspector on the right and the timeline below.
     light shows "Off"), the environment (a dome's sky and ground or an image's name, intensity and rotation), a
     Shadows section (the key casts shadows, fill and rim do not, the catcher strength) and Other lights (buttons
     that move the focus to a light). Lights come from the look: choose another in Look.
-  - **Look** (one radio per look preset, [look-presets.md](look-presets.md); `session/applyLook.ts` is the one place
-    that sets the look and edges on the viewer, the tracer and the bake) and **Render** (samples, supersampling,
-    denoise, and the camera: field of view (disabled in orthographic), perspective or orthographic, Frame, Reset).
+  - **Look**: one radio card per look preset ([look-presets.md](look-presets.md)): a swatch painted from the look's own
+    data (backdrop gradient, a glow in the key's tint, a rim line when the rim is lit; CSS only, nothing is rendered),
+    its name and one line, a check on the active card, `L` shown in the header. Arrow keys move the choice, one tab
+    stop; a card, the `L` key, Undo and a reload all mark the same card (`LookPanel.show`). Under the cards,
+    Backdrop (Scene, or a flat Colour) and Grading (Exposure -6..+6 EV, Saturation 0-200 %) adjust the look.
+    An adjustment is `session/adjustLook.ts` on top of the preset, handed to the preview and the path tracer through
+    `session/applyLook.ts`, the one place that sets the look and edges on the viewer, the tracer and the bake, so both
+    draw it alike. It changes nothing baked light depends on (`lightingKey`: key, dome or image), so it starts no
+    bake. A slider previews while it moves and is one Undo step when released; choosing a card drops the adjustment
+    (Undo brings both back); Reset adjustments clears it. It is kept with the model (`lookAdjust`, see
+    [Local state](#local-state-v1)). A transparent backdrop is not offered: the render has no alpha output (Export
+    owns transparency).
+  - **Render**: Quality (sample chips 64, 256 and 1024 beside a number field 1-4096, supersampling 1x-4x as a
+    segment, denoise) and Output (the size of the render, which is the size of the 3D view, "traced at" the
+    supersampled size, and a time estimate that appears only after a render has finished in this session, from that
+    render's speed scaled by pixels and samples, labelled an estimate). Render starts from 256 samples because it
+    draws one still; Export starts from 64 because a clip renders many frames: both say so beside their field. Below
+    them the **Camera** section (collapsible): the four presets, field of view (disabled in orthographic),
+    perspective or orthographic, Frame and Reset. The presets mirror the chips over the view: one `sync` marks the
+    preset the camera stands at (angles within 0.5 degrees, and the isometric one only in orthographic) with
+    `aria-pressed` on both, and an orbit, the O and I keys or any other change of angle or projection clears the mark.
 - **The view**: clicking a mesh selects it (a press that moves more than 4 px orbits instead and selects nothing), a
   click on empty ground clears the selection, and locked or hidden meshes cannot be picked. The selected node shows a
   move (W) or rotate (E) gizmo: drag a handle to change the node's translation or rotation; the drag is shown live and
@@ -201,7 +219,7 @@ list in the app (`?`, grouped File, View, Selection, Timeline) is built from `SH
 | R                        | render                                                               |
 | Esc                      | stop the render, close dialogs, menus and drawers                    |
 | 1, 2, 3, 4               | front, side, three-quarter, iso                                      |
-| L                        | next look                                                            |
+| L                        | next look (the Look tab's cards mark it; `aria-checked` follows)     |
 | G                        | all overlays off, or back on                                         |
 | [ and ]                  | outliner and inspector                                               |
 | T                        | timeline                                                             |
@@ -220,10 +238,10 @@ IndexedDB `modelshot-app`, version 1, on this device only:
 
 - store `session`, key `current`: `{ v: 1, files, modelKey, savedAt }`, the files of the last open model, reopened on
   a start without handoff;
-- store `models`, key = SHA-256 hex of the model bytes: `{ v: 1, camera, look, hiddenNodes, hiddenMeshes, textureFilters?, arms?, names?, lockedNodes?, lockedMeshes?, nodeEdits?, render, export?, savedAt }`,
+- store `models`, key = SHA-256 hex of the model bytes: `{ v: 1, camera, look, hiddenNodes, hiddenMeshes, textureFilters?, arms?, names?, lockedNodes?, lockedMeshes?, nodeEdits?, lookAdjust?, render, export?, savedAt }`,
   restored when the same model is opened again. At most 20 entries; the oldest is evicted. `names` maps
   `n:<node index>` / `m:<mesh index>` to a label of at most 128 characters, the locks are index lists and `nodeEdits`
-  is `{ node, translation, rotation }[]` (finite, at most `MAX_ANIMATION_VALUE`). A record from before the editor lacks
+  is `{ node, translation, rotation }[]` (finite, at most `MAX_ANIMATION_VALUE`); `lookAdjust` is `{ exposure -6..6, saturation 0..2, backdrop: null or "#rrggbb" }` (a malformed one is dropped on its own). A record from before the editor lacks
   them and reads as before; a bad entry is dropped on its own.
 
 The panel layout is not in this database: it is `localStorage` `modelshot.layout.v1`

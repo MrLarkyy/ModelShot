@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Locator, Page } from '@playwright/test';
 import {
   expect,
@@ -14,6 +17,7 @@ import {
   expectLit,
 } from './appTest';
 
+const HERE = dirname(fileURLToPath(import.meta.url));
 const NESTED = fixture('bbmodel', 'nested-groups.bbmodel');
 const CUBE = fixture('bbmodel', 'single-cube.bbmodel');
 
@@ -503,4 +507,160 @@ test('an element named like markup is shown as text in the title row and the Mat
   await expect(page.locator('.inspector-title h2')).toHaveText('<img src=x onerror=window.__pwned=1>');
   expect(await page.evaluate(() => (window as unknown as Record<string, unknown>)['__pwned'])).toBeUndefined();
   expect(await page.locator('.inspector-title img').count()).toBe(0);
+});
+
+const LOOK_IDS = ['studio', 'marketplace', 'rim', 'softbox'] as const;
+
+test('the Look tab shows a card per look, and a card and the L key mark the same one', async ({ page }) => {
+  await openNested(page);
+  await openTab(page, 'Look');
+  const cards = page.getByRole('radiogroup', { name: 'Look preset' }).getByRole('radio');
+  await expect(cards).toHaveCount(LOOK_IDS.length);
+  await expect(cards.first().locator('.look-swatch')).toBeVisible();
+  expect(
+    await cards
+      .first()
+      .locator('.look-swatch')
+      .evaluate((n) => getComputedStyle(n).backgroundImage),
+  ).toContain('gradient');
+  await page.getByRole('radio', { name: 'Marketplace' }).click();
+  await expect(page.getByRole('radio', { name: 'Marketplace' })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('radio', { name: 'Studio' })).toHaveAttribute('aria-checked', 'false');
+  await expect(page.getByRole('radio', { name: 'Marketplace' }).locator('svg')).toHaveCount(1);
+  await page.locator('#preview').focus();
+  await page.keyboard.press('l');
+  await expect(page.getByRole('radio', { name: 'Rim' })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('radio', { name: 'Marketplace' })).toHaveAttribute('aria-checked', 'false');
+  // Arrow keys move the choice and the focus together.
+  await page.getByRole('radio', { name: 'Rim' }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('radio', { name: 'Softbox' })).toBeFocused();
+  await expect(page.getByRole('radio', { name: 'Softbox' })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('radio', { name: 'Softbox' })).toHaveAttribute('tabindex', '0');
+});
+
+test('the Edges rows of the Material tab are the active look own values, for every look', async ({ page }) => {
+  const presets = (id: string): { name: string; edges: { width: number; sharpAngleDeg: number } } =>
+    JSON.parse(readFileSync(join(HERE, '..', '..', 'looks', 'src', 'presets', `${id}.json`), 'utf8')) as {
+      name: string;
+      edges: { width: number; sharpAngleDeg: number };
+    };
+  await openNested(page);
+  await page.locator('#scene-panel [data-row^="mesh:"]').first().click();
+  for (const id of LOOK_IDS) {
+    const preset = presets(id);
+    await openTab(page, 'Look');
+    await page.getByRole('radio', { name: preset.name, exact: true }).click();
+    await openTab(page, 'Material');
+    const edges = page.locator('#tabpanel-material').locator('#section-material-edges');
+    await expect(edges).toContainText(preset.edges.width.toFixed(2));
+    await expect(edges).toContainText(`${preset.edges.sharpAngleDeg}°`);
+    await expect(edges).toContainText(`From the ${preset.name} look.`);
+  }
+});
+
+test('exposure moves with one Undo step per drag, changes the preview and starts no bake', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openNested(page);
+  await expectLit(page, 120_000);
+  await openTab(page, 'Look');
+  const slider = page.getByRole('slider', { name: 'Exposure' });
+  await expect(slider).toHaveValue('0');
+  const before = await previewImage(page);
+  const box = (await slider.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 2, box.y + box.height / 2, { steps: 8 });
+  await expect(page.locator('#model-state')).toHaveAttribute('data-state', 'lit');
+  await page.mouse.up();
+  await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(2);
+  await expect.poll(async () => (await previewImage(page)).data.equals(before.data)).toBe(false);
+  await expect(page.locator('#model-state')).toHaveAttribute('data-state', 'lit');
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(slider).toHaveValue('0');
+  await page.getByRole('button', { name: 'Redo' }).click();
+  await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(2);
+  await page.getByRole('button', { name: 'Reset adjustments' }).click();
+  await expect(slider).toHaveValue('0');
+  await expect(page.getByRole('button', { name: 'Reset adjustments' })).toBeDisabled();
+});
+
+test('a backdrop colour is a flat colour behind the model and a look card drops it', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openNested(page);
+  await expectLit(page, 120_000);
+  await openTab(page, 'Look');
+  const before = await previewImage(page);
+  await page.locator('#backdrop-colour').fill('#ff0000');
+  await expect(page.getByRole('radio', { name: 'Colour', exact: true })).toBeChecked();
+  await expect.poll(async () => (await previewImage(page)).data.equals(before.data)).toBe(false);
+  await page.getByRole('radio', { name: 'Scene', exact: true }).check({ force: true });
+  await expect(page.getByRole('radio', { name: 'Scene', exact: true })).toBeChecked();
+  await page.locator('#backdrop-colour').fill('#00ff00');
+  await page.getByRole('radio', { name: 'Rim' }).click();
+  await expect(page.getByRole('radio', { name: 'Scene', exact: true })).toBeChecked();
+  await expect(page.getByRole('button', { name: 'Reset adjustments' })).toBeDisabled();
+});
+
+test('the Render tab offers sample chips, the output size and the estimate only after a render', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 600 });
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
+  await waitForEditor(page);
+  await openTab(page, 'Render');
+  const panel = page.locator('#render-panel');
+  const chip = (count: string): Locator => panel.getByRole('button', { name: `${count} per pixel` });
+  await expect(chip('256')).toHaveAttribute('aria-pressed', 'true');
+  await chip('64').click();
+  await expect(chip('64')).toHaveAttribute('aria-pressed', 'true');
+  await expect(chip('256')).toHaveAttribute('aria-pressed', 'false');
+  await expect(panel.getByLabel('Samples', { exact: true })).toHaveValue('64');
+  await expect(page.locator('#render-meta')).toContainText('64 samples');
+  await expect(panel).toContainText('Render uses 256 samples by default for one still');
+  await expect(panel).toContainText('Export uses 64 per frame because clips render many frames');
+  await expect(panel.locator('#section-render-output')).toContainText(/\d+ × \d+ px, the size of the 3D view/);
+  await expect(panel.locator('#section-render-output')).toContainText('No estimate before the first render.');
+  await panel.getByLabel('Samples', { exact: true }).fill('4');
+  await panel.getByLabel('Samples', { exact: true }).dispatchEvent('change');
+  await expect(chip('64')).toHaveAttribute('aria-pressed', 'false');
+  await page.getByRole('button', { name: 'Render' }).click();
+  await expect(page.locator('#result')).toHaveAttribute('data-renders', '1', { timeout: 180_000 });
+  await expect(panel.locator('#section-render-output')).toContainText('estimated from your last render');
+  await page.getByRole('radio', { name: 'Supersampling 2×' }).check({ force: true });
+  await expect(panel.locator('#section-render-output')).toContainText('traced at');
+  await page.getByRole('button', { name: 'Export…' }).click();
+  await expect(page.getByRole('dialog', { name: 'Export' })).toContainText('Export uses 64 per frame');
+});
+
+test('the preset chips and the Camera section mark the same preset, an orbit clears both', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openNested(page);
+  await openTab(page, 'Render');
+  const chips = page.locator('#camera-presets');
+  const section = page.locator('#render-panel, #camera-panel');
+  const sectionPreset = (label: string): Locator =>
+    page.locator('#camera-panel').getByRole('button', { name: `${label} camera` });
+  await expect(chips.getByRole('button', { name: 'Three-quarter view' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(sectionPreset('Three-quarter')).toHaveAttribute('aria-pressed', 'true');
+  await chips.getByRole('button', { name: 'Front view' }).click();
+  await expect(chips.getByRole('button', { name: 'Front view' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(sectionPreset('Front')).toHaveAttribute('aria-pressed', 'true');
+  await expect(sectionPreset('Three-quarter')).toHaveAttribute('aria-pressed', 'false');
+  await sectionPreset('Isometric').click();
+  await expect(chips.getByRole('button', { name: 'Isometric view' })).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('#preview').focus();
+  await page.keyboard.press('o');
+  await expect(chips.getByRole('button', { name: 'Isometric view' })).toHaveAttribute('aria-pressed', 'false');
+  await expect(sectionPreset('Isometric')).toHaveAttribute('aria-pressed', 'false');
+  await chips.getByRole('button', { name: 'Side view' }).click();
+  const box = (await page.locator('#viewport').boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 10, { steps: 6 });
+  await page.mouse.up();
+  for (const label of ['Front', 'Side', 'Three-quarter', 'Isometric']) {
+    await expect(chips.getByRole('button', { name: `${label} view` })).toHaveAttribute('aria-pressed', 'false');
+    await expect(sectionPreset(label)).toHaveAttribute('aria-pressed', 'false');
+  }
+  await expect(section.first()).toBeVisible();
 });

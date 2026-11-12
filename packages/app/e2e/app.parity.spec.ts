@@ -90,6 +90,16 @@ test('a position typed and stepped and a texture filter chosen through the inspe
   });
 });
 
+test('exposure and saturation set on the Look tab reach the preview and the render alike', async ({ page }) => {
+  await expectParity(page, 'single-cube.bbmodel', async () => {
+    await openTab(page, 'Look');
+    await page.getByRole('radio', { name: 'Marketplace' }).click();
+    await page.getByRole('slider', { name: 'Exposure' }).fill('1');
+    await page.getByRole('slider', { name: 'Saturation' }).fill('0.6');
+    await expect(page.getByRole('button', { name: 'Reset adjustments' })).toBeEnabled();
+  });
+});
+
 test('the render canvas is drawn pixelated and as large as the view', async ({ page }) => {
   await openApp(page);
   await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');

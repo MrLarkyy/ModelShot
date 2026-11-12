@@ -70,7 +70,10 @@ export class LookPanel {
           el('span', { className: 'look-card-check' }),
         ],
       );
-      card.addEventListener('click', () => this.onSelect(preset.id));
+      card.addEventListener('click', () => {
+        // The card in use is already the choice: pressing it again must not drop an adjustment made on it.
+        if (card.getAttribute('aria-checked') !== 'true') this.onSelect(preset.id);
+      });
       card.addEventListener('keydown', (event) => {
         const step =
           event.key === 'ArrowRight' || event.key === 'ArrowDown'

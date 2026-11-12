@@ -96,6 +96,27 @@ test('the look, the hidden nodes and the render settings are restored', async ({
   await expect(page.locator('#render-panel').getByLabel('Samples')).toHaveValue('32');
 });
 
+test('a look adjustment is kept with the model and restored, and a stored bad one is ignored', async ({ page }) => {
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'nested-groups.bbmodel')], 'nested-groups.bbmodel');
+  await openTab(page, 'Look');
+  const slider = page.getByRole('slider', { name: 'Exposure' });
+  await slider.fill('1.5');
+  await page.locator('#backdrop-colour').fill('#336699');
+  await waitForStored(
+    page,
+    (record) => JSON.stringify(record['lookAdjust']) === '{"exposure":1.5,"saturation":1,"backdrop":"#336699"}',
+  );
+  await page.reload();
+  await expect(page.getByRole('status')).toContainText('Opened nested-groups.bbmodel', { timeout: 30_000 });
+  await openTab(page, 'Look');
+  await expect(page.getByRole('slider', { name: 'Exposure' })).toHaveValue('1.5');
+  await expect(page.getByRole('radio', { name: 'Colour', exact: true })).toBeChecked();
+  await expect(page.locator('#backdrop-colour')).toHaveValue('#336699');
+  await page.getByRole('button', { name: 'Reset adjustments' }).click();
+  await waitForStored(page, (record) => record['lookAdjust'] === undefined);
+});
+
 test('Forget local data deletes the database, and the next start has no model and the default view', async ({
   page,
 }) => {

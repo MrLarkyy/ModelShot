@@ -52,7 +52,8 @@ export class RenderPanel {
         attributes: {
           type: 'button',
           'aria-pressed': 'false',
-          title: `${count} samples`,
+          title: `${count} samples per pixel`,
+          'aria-label': `${count} per pixel`,
           'data-focus': `chip:${count}`,
         },
       });
