@@ -123,15 +123,34 @@ in the middle, the inspector on the right and the timeline below.
   tab on it. The Add
   menu has "Open model" and a disabled "Add light" (user-placed lights are not available yet). Labels and locks are
   app labels: they never change the scene document, an export or a pixel.
-- **Inspector** (tabs: arrows, Home and End move between them): **Object** (name, visible, locked, position and
-  rotation of the selected node, the player's arms), **Material** (the materials the selected element draws with,
-  alpha mode, blending, sides, and "Texture filtering" with a Nearest (pixel art, the default) or Linear (smooth)
-  select per texture, applied to the preview and the render), **Light** (the look's lights as the look defines them,
-  read-only: key, fill and rim, a black one shown as off, and the environment: a dome's sky and ground or an image's
-  name, intensity and rotation; Softbox is lit by its environment image and the key, its fill and rim are off),
-  **Look** (one radio per look preset, [look-presets.md](look-presets.md); `session/applyLook.ts` is the one place that
-  sets the look and edges on the viewer, the tracer and the bake) and **Render** (samples, supersampling, denoise, and
-  the camera: field of view (disabled in orthographic), perspective or orthographic, Frame, Reset).
+- **Inspector**: a vertical icon rail (56 px, so it cannot wrap at 260-520 px) of five tabs, each an icon over its label;
+  ArrowUp/Down and Left/Right, Home and End move between them, and the selected tab is styled by `aria-selected`
+  only, so focus never changes it (forced colours: a 3 px left border). Above the panels a title row names the
+  selected node or element with a type tag (Group, Element), or the tab. Panels are built from collapsible sections
+  (a header button with `aria-expanded` / `aria-controls`; the open state is kept, see [Local state](#local-state-v1)).
+  Only what an existing path applies to both the preview and the render is editable; the rest is shown read-only with
+  its source named ("from the file", "from the look") and nothing is a disabled placeholder.
+  - **Object**: Name; State (Visible, Locked); Transform (Position in px and Rotation in degrees as XYZ rows, Scale
+    read-only "from the file"); Animation (the keyframe times of the node's channels in the clip the timeline shows,
+    each a button that moves the playhead there; adding keyframes is not available); the player's Arms as a segment.
+    An XYZ row is three text fields with `inputmode="decimal"` labelled "Position X" and so on: type a value, step
+    with ArrowUp/Down (Shift x10, Alt x0.1, one undo step per press), or drag an axis letter (one undo step on
+    release, Escape cancels). A value that is not a number or beyond +-1e6 reverts, is marked `aria-invalid` and
+    says so; a field committed with Tab leaves the focus on the next field.
+  - **Material**: nothing selected says to select something; a group lists the elements below it as "Select <name>"
+    buttons with their materials (capped at 100); an element shows Texture (a thumbnail drawn on a canvas, never an
+    `<img>`: the page policy allows no `blob:` images; file name and size), Filtering (Nearest, the pixel-art
+    default, or Linear per texture, applied to the preview and the render), Transparency (alpha mode, cut-out
+    threshold, alpha emission, blending, sides: read-only, from the file) and Edges (rounding and sharp angle,
+    read-only, from the look, with "Change in Look").
+  - **Light**: the look's lights as it defines them, read-only: key, fill and rim each with a colour swatch and hex,
+    intensity (the strongest channel), key softness in degrees, azimuth and elevation with a top-view dial (a black
+    light shows "Off"), the environment (a dome's sky and ground or an image's name, intensity and rotation), a
+    Shadows section (the key casts shadows, fill and rim do not, the catcher strength) and Other lights (buttons
+    that move the focus to a light). Lights come from the look: choose another in Look.
+  - **Look** (one radio per look preset, [look-presets.md](look-presets.md); `session/applyLook.ts` is the one place
+    that sets the look and edges on the viewer, the tracer and the bake) and **Render** (samples, supersampling,
+    denoise, and the camera: field of view (disabled in orthographic), perspective or orthographic, Frame, Reset).
 - **The view**: clicking a mesh selects it (a press that moves more than 4 px orbits instead and selects nothing), a
   click on empty ground clears the selection, and locked or hidden meshes cannot be picked. The selected node shows a
   move (W) or rotate (E) gizmo: drag a handle to change the node's translation or rotation; the drag is shown live and
@@ -208,7 +227,10 @@ IndexedDB `modelshot-app`, version 1, on this device only:
   them and reads as before; a bad entry is dropped on its own.
 
 The panel layout is not in this database: it is `localStorage` `modelshot.layout.v1`
-([Editor layout](#editor-layout)).
+([Editor layout](#editor-layout)). Which inspector sections are closed is `localStorage` `modelshot.sections.v1`
+(`ui/sectionState.ts`): an object of `"<section id>": false` for the closed ones, at most 2 KB, unknown ids and
+other values dropped, anything unreadable leaves every section open; a blocked store keeps the choice for the session and
+tells the user once. "Forget local data" removes it with the layout.
 
 Saves are debounced by 500 ms. Reads are validated as untrusted (`state/readAppState.ts`: own properties, `v === 1`,
 finite values in range, a known look, real `File` objects) and never throw; an invalid record is ignored. A full disk
@@ -256,18 +278,17 @@ Element defaults (no class needed): `button` is the secondary button (transparen
 px, radius 10); a checkbox is a 34x20 toggle, a radio outside `.segment` a round radio, a range a 4 px track with a 14
 px thumb, number, text, search and select are 30 px fields on `--ed-field` (the select chevron is two gradients, no
 `data:` image), `kbd` a keycap, `.segmented` / `.segment` a field track whose checked segment is raised, a selected
-tab is raised with a blue light bottom bar. `[hidden]` always wins over a component's `display`.
+tab in the inspector rail is a soft blue wash with a blue light left bar. `[hidden]` always wins over a component's `display`.
 
 Classes (stable names): `.primary` (the only button fill in Shot Blue: Render in the render bar, Export in the top bar
 and the dialog Export; a checked toggle's track is the one other use), `.ghost` (no border, secondary text), `.destructive` (Flash
 border and text), `.icon-button` 32 px and `.icon-button.small` 26 px (an icon alone; the helper sets `aria-label`),
 `.small` (a 26 px text button), `.on`, `[aria-pressed='true']` and `.bar-toggle[aria-expanded='true']` (the active
-state: soft blue wash, blue light text), `.slider` (a range with its number field), `.axis-field` + `.x`/`.y`/`.z` (a
-number field with its axis letter in an `<i>`), `.toggle-row` (label left, toggle right), `.overline`. A disabled
+state: soft blue wash, blue light text), `.slider` (a range with its number field), `.xyz` (three number fields in `.xyz-cell`s, each with its `.xyz-axis` letter, coloured by `--ed-ax`, `--ed-ay`, `--ed-az`), `.section` / `.section-head` / `.section-body`, `.rail-layout`, `.toggle-row` (label left, toggle right), `.overline`. A disabled
 control keeps its fill at 40 % opacity with `cursor: not-allowed`, so it never looks like an active one.
 
 Icons: `src/ui/icon.ts` draws `ICON_NAMES` (eye, lock, chevron-down, -right, -left, -up, plus, undo, redo, search,
-cube, sun, camera, play, loop, frame, share, download, more, panel-left, panel-right, panel-bottom, close) as a 16 px (or 14 px) SVG on a 16 grid, stroke 1.7, round
+cube, sun, camera, play, loop, frame, share, download, more, panel-left, panel-right, panel-bottom, close, eye-off, unlock, material, look, render, keyframe, folder) as a 16 px (or 14 px) SVG on a 16 grid, stroke 1.7, round
 caps, `currentColor`, `aria-hidden`, built with `createElementNS` (never `innerHTML`); `src/ui/iconButton.ts` wraps
 one in a named button. The paths are drawn for the project: no icon set, no licence entry.
 
@@ -289,10 +310,10 @@ the dark workspace; the viewport chips sit over the 3D view, so their ring has a
 `role="alert"` until dismissed or the next open, arms change or render (the Dismiss button sits beside it, not inside;
 the pinned graphics-driver alert, a context that cannot be restored or a linear program that fails to link during the
 fallback switch, where drawing goes on with nearest filtering, survives those and goes only when dismissed), one `role="status"` line, the render progress as
-a `progress` with `aria-valuetext`, the forget dialog with its focus back on File, native controls and dialogs, tabs and separators with their ARIA
+a `progress` with `aria-valuetext`, the forget dialog with its focus back on File, native controls and dialogs, tabs (a vertical rail), collapsible sections and separators with their ARIA
 patterns, the overlay canvas `aria-hidden`, colours only from the brand tokens ([brand.md](brand.md)). In forced
 colours the native checkbox, radio and select return and every active state (`.on`, pressed, the checked segment, the
-selected tab, the current outliner row) gets a system-colour outline or bar. Every panel is reachable by keyboard; the
+selected tab, the current outliner row) gets a system-colour outline or bar. Axis letters keep 4.5:1 on the field surface; an XYZ field with an invalid value is `aria-invalid` and its hint is a polite status. Every panel is reachable by keyboard; the
 shortcut list is the cheat sheet.
 
 ## Tests

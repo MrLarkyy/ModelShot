@@ -60,6 +60,24 @@ test('axe finds no violation in any inspector tab of an animated model with a no
   expect(await violations(page), 'playing').toEqual([]);
 });
 
+test('axe finds no violation in any inspector tab at 1024 px and with the rail at its narrowest and widest', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'animated.bbmodel')], 'animated.bbmodel');
+  await waitForEditor(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  for (const key of ['Home', 'End']) {
+    await page.getByRole('separator', { name: 'Resize the inspector' }).focus();
+    await page.keyboard.press(key);
+    for (const tab of ['Object', 'Material', 'Light'] as const) {
+      await openTab(page, tab);
+      expect(await violations(page), `${tab} with the inspector at ${key}`).toEqual([]);
+    }
+  }
+});
+
 test('axe finds no violation with the File, Add and Overlays menus open', async ({ page }) => {
   await openApp(page);
   await openFiles(page, [fixture('bbmodel', 'nested-groups.bbmodel')], 'nested-groups.bbmodel');

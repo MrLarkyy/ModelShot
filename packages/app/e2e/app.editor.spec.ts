@@ -289,13 +289,218 @@ test('a look picked while a model without a saved look opens is kept and lit', a
   await waitForStored(page, (record) => record['look'] === 'marketplace');
 });
 
-test('the Light tab lists the look lights read-only and adding is disabled', async ({ page }) => {
+test('the Light tab lists the look lights read-only with no placeholder control', async ({ page }) => {
   await openNested(page);
   await page.getByRole('button', { name: 'Key light' }).click();
   await expect(page.getByRole('tab', { name: 'Light' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#tabpanel-light')).toContainText('Rim light');
-  await expect(page.locator('#tabpanel-light').getByRole('button', { name: 'Add light' })).toBeDisabled();
+  await expect(page.locator('#tabpanel-light')).toContainText('Lights come from the Studio look');
+  await expect(page.locator('#tabpanel-light').getByRole('button', { name: 'Add light' })).toHaveCount(0);
+  await expect(page.locator('#tabpanel-light').getByRole('group')).toHaveCount(0);
   await page.getByRole('button', { name: 'Add', exact: true }).click();
   await expect(page.getByRole('button', { name: /Add light \(coming/ })).toBeDisabled();
   await openTab(page, 'Object');
+});
+
+test('the inspector rail never wraps and its selected tab looks the same focused or not', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openApp(page);
+  const separator = page.getByRole('separator', { name: 'Resize the inspector' });
+  const tabs = page.getByRole('tab');
+  await expect(tabs).toHaveCount(5);
+  for (const key of ['Home', 'End', 'Home']) {
+    await separator.focus();
+    await page.keyboard.press(key);
+    const tops = await tabs.evaluateAll((nodes) => nodes.map((n) => Math.round(n.getBoundingClientRect().top)));
+    expect(tops, `rail at ${await separator.getAttribute('aria-valuenow')} px`).toEqual(
+      [...tops].sort((a, b) => a - b),
+    );
+    const lefts = await tabs.evaluateAll((nodes) => nodes.map((n) => Math.round(n.getBoundingClientRect().left)));
+    expect(new Set(lefts).size, 'one column').toBe(1);
+    expect(await page.getByRole('tablist').evaluate((n) => n.getAttribute('aria-orientation'))).toBe('vertical');
+  }
+  const selected = page.getByRole('tab', { name: 'Object', exact: true });
+  const style = (): Promise<string> =>
+    selected.evaluate((n) => {
+      const s = getComputedStyle(n);
+      return [s.backgroundColor, s.color, s.boxShadow].join('|');
+    });
+  await page.mouse.move(0, 0);
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  const unfocused = await style();
+  await selected.focus();
+  expect(await style()).toBe(unfocused);
+});
+
+test('Arrow keys move between the inspector tabs and Home and End go to the ends', async ({ page }) => {
+  await openApp(page);
+  const object = page.getByRole('tab', { name: 'Object', exact: true });
+  await object.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('tab', { name: 'Material', exact: true })).toBeFocused();
+  await expect(page.getByRole('tab', { name: 'Material', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('tab', { name: 'Light', exact: true })).toBeFocused();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.getByRole('tab', { name: 'Material', exact: true })).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(page.getByRole('tab', { name: 'Render', exact: true })).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(object).toBeFocused();
+});
+
+test('ArrowUp in a position field commits once and one Undo restores it', async ({ page }) => {
+  await openNested(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  const panel = page.locator('#tabpanel-object');
+  await expect(panel.getByLabel('Position X')).toHaveValue('0');
+  await panel.getByLabel('Position X').focus();
+  await page.keyboard.press('ArrowUp');
+  await expect(panel.getByLabel('Position X')).toHaveValue('0.1');
+  await expect(panel.getByLabel('Position X')).toBeFocused();
+  await page.keyboard.press('Shift+ArrowUp');
+  await expect(panel.getByLabel('Position X')).toHaveValue('1.1');
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(panel.getByLabel('Position X')).toHaveValue('0.1');
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(panel.getByLabel('Position X')).toHaveValue('0');
+});
+
+test('a position that is not a number or out of range reverts and says so', async ({ page }) => {
+  await openNested(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  const x = page.locator('#tabpanel-object').getByLabel('Position X');
+  await x.fill('abc');
+  await x.press('Enter');
+  await expect(x).toHaveValue('0');
+  await expect(x).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.locator('#tabpanel-object').getByRole('status')).toContainText('Enter a number');
+  await x.fill('1e9');
+  await x.press('Enter');
+  await expect(x).toHaveValue('0');
+  await expect(page.getByRole('button', { name: 'Undo' })).toBeDisabled();
+});
+
+test('dragging an axis letter scrubs the value and one Undo restores the start', async ({ page }) => {
+  await openNested(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  const panel = page.locator('#tabpanel-object');
+  const letter = panel.getByRole('group', { name: 'Position' }).locator('.xyz-axis').first();
+  const box = (await letter.boundingBox())!;
+  await page.mouse.move(box.x + 4, box.y + 6);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 24, box.y + 6, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(async () => Number(await panel.getByLabel('Position X').inputValue())).toBeGreaterThan(1);
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(panel.getByLabel('Position X')).toHaveValue('0');
+});
+
+test('the Object tab shows the scale from the file, read-only', async ({ page }) => {
+  await openNested(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  const scale = page.locator('#tabpanel-object').getByLabel('Scale X');
+  await expect(scale).toHaveValue('1');
+  await expect(scale).toHaveJSProperty('readOnly', true);
+  await expect(page.locator('#tabpanel-object')).toContainText('Scale is from the file');
+});
+
+test('sections open and close, and the choice is remembered across a reload', async ({ page }) => {
+  await openNested(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  const head = page.locator('#tabpanel-object').getByRole('button', { name: 'Transform', exact: true });
+  await expect(head).toHaveAttribute('aria-expanded', 'true');
+  await head.click();
+  await expect(head).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#tabpanel-object').getByLabel('Position X')).toBeHidden();
+  expect(await page.evaluate(() => localStorage.getItem('modelshot.sections.v1'))).toContain('object-transform');
+  await page.reload();
+  await expect(page.getByRole('status')).toContainText('Opened nested-groups.bbmodel', { timeout: 30_000 });
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  await expect(
+    page.locator('#tabpanel-object').getByRole('button', { name: 'Transform', exact: true }),
+  ).toHaveAttribute('aria-expanded', 'false');
+  await page.evaluate(() => localStorage.setItem('modelshot.sections.v1', '{not json'));
+  await page.reload();
+  await expect(page.getByRole('status')).toContainText('Opened nested-groups.bbmodel', { timeout: 30_000 });
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  await expect(
+    page.locator('#tabpanel-object').getByRole('button', { name: 'Transform', exact: true }),
+  ).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('a keyframe button in the Animation section moves the playhead there', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'animated.bbmodel')], 'animated.bbmodel');
+  await waitForEditor(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  const keyframes = page.locator('#tabpanel-object').getByRole('button', { name: /^Go to / });
+  await expect(keyframes.first()).toBeVisible();
+  const count = await keyframes.count();
+  const last = keyframes.nth(count - 1);
+  const label = (await last.getAttribute('aria-label'))!;
+  const time = Number(/Go to ([\d.]+) s/.exec(label)![1]);
+  await last.click();
+  await expect(page.locator('#timeline').getByRole('slider', { name: 'Playhead' })).toHaveValue(String(time), {
+    timeout: 5000,
+  });
+});
+
+test('the Material tab says what a group holds and selects an element from it', async ({ page }) => {
+  await openNested(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  await openTab(page, 'Material');
+  const panel = page.locator('#tabpanel-material');
+  await expect(panel).not.toContainText('Select an element to see its material');
+  await expect(panel.getByRole('button', { name: /^Select / }).first()).toBeVisible();
+  await panel
+    .getByRole('button', { name: /^Select / })
+    .first()
+    .click();
+  await expect(page.getByRole('tab', { name: 'Material', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(panel.getByRole('button', { name: 'Texture', exact: true })).toBeVisible();
+  await expect(panel).toContainText('Alpha mode');
+  await expect(panel).toContainText('Preview and render use the same values.');
+  await expect(panel.getByRole('button', { name: 'Change in Look' })).toBeVisible();
+  await panel.getByRole('button', { name: 'Change in Look' }).click();
+  await expect(page.getByRole('tab', { name: 'Look', exact: true })).toHaveAttribute('aria-selected', 'true');
+});
+
+test('the texture thumbnail is drawn on a canvas and the page raises no policy violation', async ({ page }) => {
+  const violations: string[] = [];
+  page.on('console', (message) => {
+    if (/Content Security Policy|Refused to/i.test(message.text())) violations.push(message.text());
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
+  await waitForEditor(page);
+  await page.locator('#scene-panel [data-row^="mesh:"]').first().click();
+  await openTab(page, 'Material');
+  const thumb = page.locator('#tabpanel-material canvas.texture-thumb').first();
+  await expect(thumb).toBeVisible();
+  await expect
+    .poll(() =>
+      thumb.evaluate((canvas) => {
+        const c = canvas as HTMLCanvasElement;
+        return c
+          .getContext('2d')!
+          .getImageData(0, 0, c.width, c.height)
+          .data.some((v) => v !== 0);
+      }),
+    )
+    .toBe(true);
+  expect(violations).toEqual([]);
+});
+
+test('an element named like markup is shown as text in the title row and the Material tab', async ({ page }) => {
+  await openNested(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  const name = page.locator('#tabpanel-object').getByLabel('Name', { exact: true });
+  await name.fill('<img src=x onerror=window.__pwned=1>');
+  await name.press('Enter');
+  await expect(page.locator('.inspector-title h2')).toHaveText('<img src=x onerror=window.__pwned=1>');
+  expect(await page.evaluate(() => (window as unknown as Record<string, unknown>)['__pwned'])).toBeUndefined();
+  expect(await page.locator('.inspector-title img').count()).toBe(0);
 });

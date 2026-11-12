@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import {
   expect,
   fixture,
@@ -149,11 +149,17 @@ async function renderOnce(page: Page, renders: number): Promise<Rgba> {
   return renderImage(page);
 }
 
+// The Nearest / Linear segment of the texture, found by its group name.
+const filterRadio = (page: Page, filter: 'Nearest' | 'Linear'): Locator =>
+  page
+    .locator('#inspector')
+    .getByRole('group', { name: `Filter ${TEXTURE}` })
+    .getByRole('radio', { name: filter });
+
 async function switchFilterByKeyboard(page: Page): Promise<void> {
   await openTab(page, 'Material');
-  const select = page.locator('#inspector').getByRole('combobox', { name: TEXTURE });
-  await select.focus();
-  await page.keyboard.press('ArrowDown');
+  await filterRadio(page, 'Nearest').focus();
+  await page.keyboard.press('ArrowRight');
 }
 
 test('the texture filter follows in the preview and the render, is saved and restored on reload', async ({ page }) => {
@@ -164,15 +170,13 @@ test('the texture filter follows in the preview and the render, is saved and res
   await samples.fill('8');
   await samples.dispatchEvent('change');
   await openTab(page, 'Material');
-  const select = page.locator('#inspector').getByRole('combobox', { name: TEXTURE });
-  await expect(select).toHaveCount(1);
-  await expect(select).toHaveValue('nearest');
+  await expect(filterRadio(page, 'Nearest')).toBeChecked();
   await expectLit(page, 120_000);
   const nearestPreview = await waitForModel(page);
   const nearestRender = await renderOnce(page, 1);
 
   await switchFilterByKeyboard(page);
-  await expect(select).toHaveValue('linear');
+  await expect(filterRadio(page, 'Linear')).toBeChecked();
   await expect
     .poll(async () => (await previewImage(page)).data.equals(nearestPreview.data), { timeout: 20_000 })
     .toBe(false);
@@ -184,7 +188,8 @@ test('the texture filter follows in the preview and the render, is saved and res
 
   await page.reload();
   await expect(page.getByRole('status')).toContainText('Opened single-cube.bbmodel', { timeout: 30_000 });
-  await expect(page.locator('#inspector').getByRole('combobox', { name: TEXTURE })).toHaveValue('linear');
+  await openTab(page, 'Material');
+  await expect(filterRadio(page, 'Linear')).toBeChecked();
   await expectLit(page, 120_000);
   const restored = await waitForModel(page);
   expect(restored.data.equals(nearestPreview.data), 'the restored preview is not the nearest look').toBe(false);
@@ -249,7 +254,7 @@ for (const shape of ['portrait', 'landscape'] as const) {
   });
 }
 
-test('a filter switch whose scene fails to build reverts the select and saves nothing', async ({ page }) => {
+test('a filter switch whose scene fails to build reverts the segment and saves nothing', async ({ page }) => {
   await openApp(page);
   await openFiles(page, [CUBE], 'single-cube.bbmodel');
   await waitForModel(page);
@@ -257,7 +262,7 @@ test('a filter switch whose scene fails to build reverts the select and saves no
   await page.evaluate(() => window.__msApp!.failNextScene());
   await switchFilterByKeyboard(page);
   await expect(page.getByRole('alert')).toContainText('Could not update the view');
-  await expect(page.locator('#inspector').getByRole('combobox')).toHaveValue('nearest');
+  await expect(filterRadio(page, 'Nearest')).toBeChecked();
   await page.waitForTimeout(1500);
   const records = await storedModels(page);
   expect(records.map((record) => JSON.stringify(record['textureFilters']))).toEqual(['["nearest"]']);
