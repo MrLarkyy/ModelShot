@@ -45,6 +45,8 @@ export default defineConfig({
     headless: true,
     viewport: { width: 1100, height: 700 },
     deviceScaleFactor: 1,
+    // A failure that cannot be repeated locally (MS-97) leaves its trace in the uploaded artefact.
+    trace: ci ? 'retain-on-failure' : 'off',
     launchOptions: {
       args: [
         '--use-angle=swiftshader',
