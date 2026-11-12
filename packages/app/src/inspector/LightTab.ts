@@ -35,6 +35,9 @@ function colourRows(color: Rgb): (readonly [string, string])[] {
       ];
 }
 
+const AZIMUTH_TITLE =
+  "0° is toward the camera (the Front view's for key and fill, the live view's for rim), positive to the viewer's right, ±180° behind the model";
+
 function aimRows(aim: LightAim): (readonly [string, string])[] {
   return [
     ['Azimuth', degrees(aim.azimuth)],
@@ -48,7 +51,7 @@ export function lightSections(look: LookPreset): LightSection[] {
   const env = look.environment;
   const keyAim = lightAim(key.direction);
   const fillAim = lightAim(fill.direction);
-  const rimAim = lightAim(rim.direction);
+  const rimAim = lightAim(rim.direction, 'view');
   return [
     {
       id: 'key',
@@ -162,7 +165,7 @@ function rows(entries: readonly (readonly [string, string])[], hex: string | nul
     'dl',
     { className: 'value-grid' },
     entries.flatMap(([term, value]) => [
-      el('dt', { text: term }),
+      el('dt', term === 'Azimuth' ? { text: term, attributes: { title: AZIMUTH_TITLE } } : { text: term }),
       el('dd', {}, term === 'Colour' ? [swatch(hex), el('span', { text: value })] : [value]),
     ]),
   );

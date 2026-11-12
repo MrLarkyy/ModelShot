@@ -263,11 +263,14 @@ export class App {
         setLocked: (kind, index, locked) => this.setLocked(kind, index, locked),
         setTransform: (node, translation, rotation) => this.setTransform(node, translation, rotation),
         setArms: (arms) => void this.changeArms(arms),
-        seek: (time) => this.tools?.timeline.seek(time),
+        seek: (time) => {
+          this.tools?.timeline.seek(time);
+          this.invalidateRender();
+        },
         sections: this.sectionState,
         setTextureFilter: (index, filter) => this.setTextureFilter(index, filter),
         selectRow: (kind, index) => this.selection.set({ kind, index }),
-        showTab: (tab) => this.inspector.select(tab, true),
+        showTab: (tab) => this.inspector.show(tab),
         tabChanged: (tab) => this.layoutStore.update({ tab }),
       },
       this.layoutStore.state.tab,

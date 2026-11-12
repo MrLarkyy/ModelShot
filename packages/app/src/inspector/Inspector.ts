@@ -107,6 +107,12 @@ export class Inspector {
     if (notify) this.host.tabChanged(id);
   }
 
+  /** Shows `id` from a control inside another tab and moves the focus to its tab, which the hidden control cannot keep. */
+  show(id: InspectorTabId): void {
+    this.select(id, true);
+    this.tabs.get(id)?.focus();
+  }
+
   /** Shows the Light tab with `light` first. */
   showLight(light: 'key' | 'rim'): void {
     this.lightFocus = light;

@@ -450,6 +450,28 @@ test('a keyframe button in the Animation section moves the playhead there', asyn
   });
 });
 
+test('a keyframe button hides a shown render, which no longer matches the pose', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'animated.bbmodel')], 'animated.bbmodel');
+  await waitForEditor(page);
+  await openTab(page, 'Render');
+  const samples = page.locator('#render-panel').getByLabel('Samples');
+  await samples.fill('2');
+  await samples.dispatchEvent('change');
+  await page.getByRole('button', { name: 'Render' }).click();
+  await expect(page.getByRole('status')).toContainText('Render done', { timeout: 120_000 });
+  await expect(page.locator('#result')).toBeVisible();
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  await openTab(page, 'Object');
+  await page
+    .locator('#tabpanel-object')
+    .getByRole('button', { name: /^Go to / })
+    .last()
+    .click();
+  await expect(page.locator('#result')).toBeHidden();
+});
+
 test('the Material tab says what a group holds and selects an element from it', async ({ page }) => {
   await openNested(page);
   await page.locator('#scene-panel [data-row^="node:"]').first().click();
@@ -468,6 +490,7 @@ test('the Material tab says what a group holds and selects an element from it', 
   await expect(panel.getByRole('button', { name: 'Change in Look' })).toBeVisible();
   await panel.getByRole('button', { name: 'Change in Look' }).click();
   await expect(page.getByRole('tab', { name: 'Look', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Look', exact: true })).toBeFocused();
 });
 
 test('the texture thumbnail is drawn on a canvas and the page raises no policy violation', async ({ page }) => {

@@ -31,7 +31,7 @@ describe('lightSections', () => {
       Colour: '#FFFCF9',
       Intensity: '1.25',
       Softness: '2.3°',
-      Azimuth: '41°',
+      Azimuth: '-139°',
       Elevation: '53°',
     });
   });
@@ -66,10 +66,15 @@ describe('lightValues', () => {
   });
 
   it('turns a direction into azimuth and elevation', () => {
-    const toward = lightAim([0, 0, 1]);
+    // The Front preset's camera stands at -z, and the viewer's right there is world -x.
+    const toward = lightAim([0, 0, -1]);
     expect(toward.azimuth).toBeCloseTo(0);
     expect(toward.elevation).toBeCloseTo(0);
-    expect(lightAim([1, 0, 0]).azimuth).toBeCloseTo(90);
+    expect(lightAim([-1, 0, 0]).azimuth).toBeCloseTo(90);
+    expect(Math.abs(lightAim([0, 0, 1]).azimuth)).toBeCloseTo(180);
+    // The rim is in view space: z toward the camera, x right.
+    expect(lightAim([0, 0, 1], 'view').azimuth).toBeCloseTo(0);
+    expect(lightAim([1, 0, 0], 'view').azimuth).toBeCloseTo(90);
     expect(lightAim([0, 1, 0]).elevation).toBeCloseTo(90);
     expect(softnessDegrees(Math.PI / 2)).toBeCloseTo(90);
   });

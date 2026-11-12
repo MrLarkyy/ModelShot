@@ -36,6 +36,7 @@ body {
   --ed-hover: color-mix(in srgb, var(--ms-color-paper) 5%, transparent);
   --ed-press: color-mix(in srgb, var(--ms-color-paper) 9%, transparent);
   --ed-accent-soft: color-mix(in srgb, var(--ms-color-shot-blue) 18%, transparent);
+  --ed-accent-soft-hover: color-mix(in srgb, var(--ms-color-shot-blue) 30%, transparent);
   --ed-flash-soft: color-mix(in srgb, var(--ms-color-flash) 12%, transparent);
   --ed-row-h: 30px;
   --ed-field-h: 30px;
@@ -1730,7 +1731,7 @@ legend {
 }
 
 [role='tablist'][aria-orientation='vertical'] [role='tab'][aria-selected='true']:hover {
-  background: color-mix(in srgb, var(--ms-color-shot-blue) 30%, transparent);
+  background: var(--ed-accent-soft-hover);
 }
 
 .inspector-title {

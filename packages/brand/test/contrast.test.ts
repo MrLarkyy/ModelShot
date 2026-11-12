@@ -88,6 +88,13 @@ describe('the editor alpha layers', () => {
     expect(contrastRatio(paper, wash)).toBeGreaterThanOrEqual(MIN_CONTRAST.body);
   });
 
+  // The selected inspector tab under the pointer: a 30 % shot blue wash over the panel.
+  it('keeps a hovered selected tab readable on its stronger wash', () => {
+    const wash = compositeOver('rgb(47 75 255 / 0.3)', panel);
+    expect(contrastRatio(blueMid, wash)).toBeGreaterThanOrEqual(MIN_CONTRAST.body);
+    expect(contrastRatio(paper, wash)).toBeGreaterThanOrEqual(MIN_CONTRAST.body);
+  });
+
   // A hovered "on" chip: the same wash over the raised ground.
   it('keeps a hovered active chip readable on its wash over raised', () => {
     const wash = compositeOver('rgb(47 75 255 / 0.18)', color.raised);

@@ -173,7 +173,11 @@ export function buildMaterialTab(
       const name = displayName(model.doc, model.names, 'mesh', element.mesh);
       const button = el(
         'button',
-        { className: 'ghost', attributes: { type: 'button', 'aria-label': `Select ${name}` } },
+        {
+          className: 'ghost',
+          // The group's list is replaced by the element's sections: the focus moves on to the first of them.
+          attributes: { type: 'button', 'aria-label': `Select ${name}`, 'data-focus': 'section:material-texture' },
+        },
         [el('span', { text: name })],
       );
       button.addEventListener('click', () => host.selectRow('mesh', element.mesh));
