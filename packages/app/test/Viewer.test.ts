@@ -1,3 +1,4 @@
+import { DEFAULT_LOOK } from '@modelshot/looks';
 import type { CanvasCssSize, RealtimeRenderer, SetSceneResult } from '@modelshot/renderer-rt';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Viewer, type ViewerOptions } from '../src/viewer/Viewer';
@@ -26,6 +27,7 @@ class FakeRenderer {
     return { width: size.cssWidth, height: size.cssHeight };
   }
   setCamera(): void {}
+  setLook(): void {}
   setLighting(): boolean {
     return false;
   }
@@ -151,6 +153,18 @@ describe('Viewer', () => {
     expect(onContextRestored).toHaveBeenCalledTimes(1);
     expect(statuses).toEqual([]);
     expect(frames).toHaveBeenCalledTimes(1);
+  });
+
+  it('a look change with keepBake leaves the baked light alone; without it the look bakes again', async () => {
+    const onBakeStarted = vi.fn();
+    const { shown, renderer } = viewer({ onBakeStarted });
+    await show(shown, renderer);
+    await vi.waitFor(() => expect(onBakeStarted).toHaveBeenCalled());
+    onBakeStarted.mockClear();
+    shown.setLook(DEFAULT_LOOK, { keepBake: true });
+    expect(onBakeStarted).not.toHaveBeenCalled();
+    shown.setLook(DEFAULT_LOOK);
+    await vi.waitFor(() => expect(onBakeStarted).toHaveBeenCalledTimes(1));
   });
 
   it('hands the reason of a bake that threw to onBakeSettled', async () => {

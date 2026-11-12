@@ -30,6 +30,7 @@ import { RenderPanel } from './panels/RenderPanel';
 import { ScenePanel } from './panels/ScenePanel';
 import { RenderSession } from './render/RenderSession';
 import { DEFAULT_RENDER_SETTINGS, type RenderSettingsValues } from './render/RenderSettings';
+import { adjustLook, isNeutral, NO_LOOK_ADJUST, sameAdjust, type LookAdjust } from './session/adjustLook';
 import { applyLook } from './session/applyLook';
 import { changedRest } from './session/changedRest';
 import { editPose } from './session/editPose';
@@ -69,6 +70,7 @@ interface SetupState {
 interface HistoryEntry {
   readonly setup: SetupState;
   readonly look: string;
+  readonly adjust: LookAdjust;
 }
 
 interface OpenModel {
@@ -148,6 +150,7 @@ export class App {
   private shareFile: File | null = null;
   private setupQueue: Promise<unknown> = Promise.resolve();
   private look: LookPreset = DEFAULT_LOOK;
+  private lookAdjust: LookAdjust = NO_LOOK_ADJUST;
   private arms: PlayerArmsChoice = 'classic';
   private renderValues: RenderSettingsValues = { ...DEFAULT_RENDER_SETTINGS };
   private exportValues: ExportSettings | null = null;
@@ -257,7 +260,16 @@ export class App {
       },
       this.layoutStore.state.tab,
     );
-    this.lookPanel = new LookPanel(this.inspector.look, this.look.id, (id) => this.selectLook(id));
+    this.lookPanel = new LookPanel(
+      this.inspector.look,
+      this.look.id,
+      (id) => this.selectLook(id),
+      {
+        preview: (adjust) => this.applyAdjust(adjust),
+        commit: (adjust) => this.commitAdjust(adjust),
+      },
+      this.sectionState,
+    );
     this.cameraPanel = new CameraPanel(this.inspector.camera, {
       orbit: this.viewer?.orbit ?? new OrbitController(),
       changed: () => this.viewer?.changed(),
@@ -520,7 +532,11 @@ export class App {
       this.timelinePanel.toggleAttribute('data-empty', (rest.animations?.length ?? 0) === 0);
       if (viewer.syncSize() && reframe) viewer.orbit.reset();
       // Taken after the wait: a look picked while the files were opening stays, unless the model has its own.
-      this.look = applyLook(savedLook ?? this.look, [viewer, this.renderSession.existingTracer()]);
+      if (savedLook) this.lookAdjust = saved?.lookAdjust ?? NO_LOOK_ADJUST;
+      this.look = applyLook(adjustLook(savedLook ?? this.basePreset(), this.lookAdjust), [
+        viewer,
+        this.renderSession.existingTracer(),
+      ]);
       if (this.open?.loaded.key !== open.loaded.key) this.selection.set(null);
       this.open = open;
       this.arms = open.arms;
@@ -644,7 +660,7 @@ export class App {
       this.selection.current,
     );
     this.inspector.update(this.inspectorModel());
-    this.lookPanel.show(this.look.id);
+    this.lookPanel.show(this.look.id, this.lookAdjust);
     this.cameraPanel.sync();
     this.renderPanel.show(this.renderValues);
     this.syncRenderMeta();
@@ -801,7 +817,7 @@ export class App {
       // Decided once the document is set: a scrub while it was being set leaves a clip pose to light, not this document.
       const bakes = sceneBakes({ sceneChanged, lookChanged, reposes: this.tools?.reposes ?? false });
       if (bakes.document) viewer.relight();
-      if (record) this.history.record({ setup: current, look: this.look.id });
+      if (record) this.history.record({ setup: current, look: this.look.id, adjust: this.lookAdjust });
       this.filteredBase = filtered;
       this.restDoc = rest;
       this.nodeVisible = next.nodeVisible;
@@ -837,8 +853,12 @@ export class App {
   private stepHistory(direction: 'undo' | 'redo'): Promise<unknown> {
     const run = this.setupQueue.then(async () => {
       if (!this.base || this.loading) return;
-      const now: HistoryEntry = { setup: this.setupState(), look: this.look.id };
-      const show = (entry: HistoryEntry): Promise<boolean> => this.applySetup(() => entry.setup, false, entry.look);
+      const now: HistoryEntry = { setup: this.setupState(), look: this.look.id, adjust: this.lookAdjust };
+      const show = async (entry: HistoryEntry): Promise<boolean> => {
+        const shown = await this.applySetup(() => entry.setup, false, entry.look);
+        if (shown && !sameAdjust(this.lookAdjust, entry.adjust)) this.setLookAdjust(entry.adjust);
+        return shown;
+      };
       await (direction === 'undo' ? this.history.undo(now, show) : this.history.redo(now, show));
       this.syncHistoryButtons();
     });
@@ -871,14 +891,48 @@ export class App {
     const preset = Object.hasOwn(LOOK_PRESETS, id) ? LOOK_PRESETS[id] : undefined;
     if (!preset || !this.viewer) return;
     if (record && preset.id !== this.look.id && this.base) {
-      this.history.record({ setup: this.setupState(), look: this.look.id });
+      this.history.record({ setup: this.setupState(), look: this.look.id, adjust: this.lookAdjust });
       this.syncHistoryButtons();
     }
+    // A card is the look as designed: choosing one drops the adjustment (Undo brings both back).
+    this.lookAdjust = NO_LOOK_ADJUST;
     this.look = applyLook(preset, [this.viewer, this.renderSession.existingTracer()], { bake });
-    this.lookPanel.show(this.look.id);
+    this.lookPanel.show(this.look.id, this.lookAdjust);
     this.inspector.update(this.inspectorModel());
     this.tools?.refresh();
     this.scheduleSave();
+  }
+
+  private basePreset(): LookPreset {
+    return Object.hasOwn(LOOK_PRESETS, this.look.id) ? (LOOK_PRESETS[this.look.id] ?? this.look) : this.look;
+  }
+
+  // Exposure, saturation and a flat backdrop apply at draw time: the same `lightingKey`, so no bake (tested), and the
+  // same checked look reaches the preview and the tracer through `applyLook`.
+  private applyAdjust(adjust: LookAdjust): void {
+    if (!this.viewer) return;
+    this.look = applyLook(adjustLook(this.basePreset(), adjust), [this.viewer, this.renderSession.existingTracer()], {
+      keepBake: true,
+    });
+    this.tools?.refresh();
+  }
+
+  private setLookAdjust(adjust: LookAdjust): void {
+    this.lookAdjust = adjust;
+    this.applyAdjust(adjust);
+    this.lookPanel.show(this.look.id, adjust);
+    this.scheduleSave();
+  }
+
+  // One finished change is one undo step, however many previews led to it.
+  private commitAdjust(adjust: LookAdjust): void {
+    if (!this.base || sameAdjust(adjust, this.lookAdjust)) {
+      this.lookPanel.show(this.look.id, this.lookAdjust);
+      return;
+    }
+    this.history.record({ setup: this.setupState(), look: this.look.id, adjust: this.lookAdjust });
+    this.syncHistoryButtons();
+    this.setLookAdjust(adjust);
   }
 
   private nextLook(): void {
@@ -899,6 +953,7 @@ export class App {
     return {
       camera: this.requireViewer().orbit.state(),
       look: this.look.id,
+      ...(isNeutral(this.lookAdjust) ? {} : { lookAdjust: this.lookAdjust }),
       hiddenNodes: hiddenIndices(this.nodeVisible),
       hiddenMeshes: hiddenIndices(this.meshVisible),
       textureFilters: [...this.textureFilter],

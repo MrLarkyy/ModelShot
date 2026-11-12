@@ -1283,6 +1283,23 @@ kbd {
   padding: var(--ms-space-1) 0 var(--ms-space-3);
 }
 
+.colour-input {
+  width: 44px;
+  height: var(--ed-field-h);
+  padding: 2px;
+  background: var(--ed-field);
+  border: 1px solid var(--ed-line);
+  border-radius: var(--ed-radius-field);
+}
+
+.field > .slider-value {
+  min-width: 3.5rem;
+  color: var(--ed-text-2);
+  font-size: var(--ms-size-caption);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .look-head {
   display: flex;
   align-items: center;

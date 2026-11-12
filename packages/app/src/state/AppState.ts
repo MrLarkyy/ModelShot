@@ -3,6 +3,7 @@ import type { SceneTextureFilter } from '@modelshot/scene';
 import type { ExportSettings } from '../export/ExportSettings';
 import type { PlayerArmsChoice } from '../intake/LoadMessages';
 import type { RenderSettingsValues } from '../render/RenderSettings';
+import type { LookAdjust } from '../session/adjustLook';
 import type { NodeEdit } from '../session/NodeEdit';
 
 export const APP_STATE_VERSION = 1;
@@ -39,6 +40,8 @@ export interface ModelState {
   readonly lockedMeshes?: readonly number[];
   /** Rest-space transforms the user gave nodes with the gizmo or the Object tab. Absent in older records. */
   readonly nodeEdits?: readonly NodeEdit[];
+  /** What the user changed on top of the look (exposure, saturation, flat backdrop). Absent: none. */
+  readonly lookAdjust?: LookAdjust;
   readonly render: RenderSettingsValues;
   readonly export?: ExportSettings;
   readonly savedAt: number;

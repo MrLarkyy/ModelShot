@@ -192,6 +192,29 @@ describe('readModelState', () => {
   });
 });
 
+describe('readModelState lookAdjust', () => {
+  it('reads a look adjustment and leaves it out when absent', () => {
+    expect(readModelState(model())).not.toHaveProperty('lookAdjust');
+    const adjust = { exposure: -1.5, saturation: 0.5, backdrop: '#336699' };
+    expect(readModelState(model({ lookAdjust: adjust }))?.lookAdjust).toEqual(adjust);
+    expect(readModelState(model({ lookAdjust: { ...adjust, backdrop: null } }))?.lookAdjust?.backdrop).toBeNull();
+  });
+
+  it.each([
+    ['exposure out of range', { exposure: 7, saturation: 1, backdrop: null }],
+    ['saturation out of range', { exposure: 0, saturation: 2.5, backdrop: null }],
+    ['a backdrop that is not a hex colour', { exposure: 0, saturation: 1, backdrop: 'red' }],
+    ['a backdrop that is injected markup', { exposure: 0, saturation: 1, backdrop: '#fff;x' }],
+    ['a non-finite value', { exposure: Number.NaN, saturation: 1, backdrop: null }],
+    ['a missing backdrop', { exposure: 0, saturation: 1 }],
+    ['a list', [0, 1, null]],
+  ])('drops %s without refusing the record', (_name, lookAdjust) => {
+    const read = readModelState(model({ lookAdjust }));
+    expect(read).not.toBeNull();
+    expect(read).not.toHaveProperty('lookAdjust');
+  });
+});
+
 describe('readSession', () => {
   it('reads the files of a session', () => {
     const read = readSession(session());
