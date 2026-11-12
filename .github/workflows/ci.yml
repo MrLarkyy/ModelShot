@@ -31,12 +31,14 @@ jobs:
       - run: pnpm -r build
       - run: pnpm run test:unit
 
-  # The browser tests in 14 shards, each on its own VM with one Playwright worker (docs/testing.md, CI). Playwright
-  # shards a project into contiguous ranges by test count, not time, so each block of slow tests is its own project:
-  # golden 2 shards (the raster goldens and the export tests, about 10 minutes together), golden-pt 6 (the
-  # path-tracer tests, about 20 minutes; its two longest tests, 3.0 and 1.9 minutes, are four tests apart and fit one
-  # 7-minute shard only with 6), pair 3 (the preview-vs-render pairing tests, about 11 minutes) and bake 3 (the baked lighting tests, 13-15
-  # minutes on a slow VM). One runner ran past the 20-minute limit with the whole suite.
+  # The harness browser tests in 15 shards, each on its own VM with one Playwright worker (docs/testing.md, CI).
+  # Playwright shards a project into contiguous ranges by test count, not time, so each block of slow tests is its own
+  # project: golden 4 shards (the raster goldens and the export tests, 22 minutes together; with 2 shards the eight
+  # baked realtime goldens, 7.8 minutes, sat in one that took 15.1), golden-pt 6 (the path-tracer tests,
+  # about 20 minutes; its two longest tests, 3.0 and 1.9 minutes, are four tests apart and fit one 7-minute shard only
+  # with 6), pair 3 (the preview-vs-render pairing tests, about 11 minutes) and bake 3 (the baked lighting tests, 13-15
+  # minutes on a slow VM). One runner ran past the 20-minute limit with the whole suite. The site browser suite runs
+  # after golden shard 1; the app suite has its own job below.
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -44,8 +46,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: golden-1, project: golden, shard: '1/2' }
-          - { name: golden-2, project: golden, shard: '2/2' }
+          - { name: golden-1, project: golden, shard: '1/4' }
+          - { name: golden-2, project: golden, shard: '2/4' }
+          - { name: golden-3, project: golden, shard: '3/4' }
+          - { name: golden-4, project: golden, shard: '4/4' }
           - { name: golden-pt-1, project: golden-pt, shard: '1/6' }
           - { name: golden-pt-2, project: golden-pt, shard: '2/6' }
           - { name: golden-pt-3, project: golden-pt, shard: '3/6' }
@@ -73,8 +77,6 @@ jobs:
       - run: pnpm --filter @modelshot/harness exec playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}
       - run: pnpm --filter @modelshot/site run test:browser
         if: ${{ matrix.name == 'golden-1' && !cancelled() }}
-      - run: pnpm --filter @modelshot/app run test:browser
-        if: ${{ matrix.name == 'golden-1' && !cancelled() }}
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
@@ -82,7 +84,42 @@ jobs:
           path: |
             tools/harness/test-results/
             packages/site/test-results/
-            packages/app/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # The app browser suite (166 tests, 13 minutes locally and about 15 on a runner with the Playwright worker count 1)
+  # in 4 shards, each on its own VM. It shared the VM of golden shard 1 until the shard outran the 20-minute limit
+  # (MS-97). The app config is fullyParallel, so --shard splits the suite per test; its slow tests (the timeline and
+  # persistence specs, 30-90 s each) end up in the last shards, the largest of which is about 5.4 minutes of tests.
+  app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: app-1, shard: '1/4' }
+          - { name: app-2, shard: '2/4' }
+          - { name: app-3, shard: '3/4' }
+          - { name: app-4, shard: '4/4' }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - run: npm i -g corepack@latest
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/playwright
+        with:
+          package: '@modelshot/app'
+      - run: pnpm -r build
+      - run: pnpm --filter @modelshot/app exec playwright test --shard=${{ matrix.shard }}
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: browser-test-results-${{ matrix.name }}
+          path: packages/app/test-results/
           retention-days: 14
           if-no-files-found: ignore
 
