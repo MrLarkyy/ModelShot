@@ -283,7 +283,7 @@ test('axe finds no violation with a toast, the File menu, the forget dialog and 
   expect(await violations(page), 'forget dialog').toEqual([]);
   await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 375, height: 812 });
-  await page.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeVisible();
   expect(await violations(page, true), 'More at 375 px').toEqual([]);
 });
