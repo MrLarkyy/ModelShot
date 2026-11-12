@@ -214,6 +214,9 @@ function toPng(image: Rgba): Buffer {
 test('a pose that stays is lit for that pose: preview and render at 0.5 s agree within the pair tolerance', async ({
   page,
 }) => {
+  // Two baked lightings and a render: 1.4-1.5 minutes locally, over the 120 s default on a CI runner (MS-97, run
+  // 43209537341); 360 s is 4x the local time and is confirmed by the next main run.
+  test.setTimeout(360_000);
   await page.setViewportSize({ width: 1100, height: 600 });
   await openAnimated(page);
   await openTab(page, 'Look');

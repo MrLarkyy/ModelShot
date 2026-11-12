@@ -18,6 +18,9 @@ export default defineConfig({
   outputDir: 'test-results',
   snapshotPathTemplate: '{testDir}/../goldens/{arg}{ext}',
   timeout: 120_000,
+  // A hang or a slow runner ends the shard with every finished test reported and the artefact uploaded, before the
+  // 20-minute job limit cancels the job and drops both (the harness does the same, 17 minutes).
+  globalTimeout: ci ? 17 * 60_000 : 0,
   workers: 1,
   // Every test opens its own page and shares no state, so this only lets CI's `--shard` (ci.yml, job app) split a
   // file; with one worker nothing runs at once and a shard still runs its tests in file order.
@@ -42,6 +45,8 @@ export default defineConfig({
     headless: true,
     viewport: { width: 1100, height: 700 },
     deviceScaleFactor: 1,
+    // A failure that cannot be repeated locally (MS-97) leaves its trace in the uploaded artefact.
+    trace: ci ? 'retain-on-failure' : 'off',
     launchOptions: {
       args: [
         '--use-angle=swiftshader',
