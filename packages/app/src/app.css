@@ -1283,6 +1283,63 @@ kbd {
   padding: var(--ms-space-1) 0 var(--ms-space-3);
 }
 
+.look-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--ms-space-2);
+}
+
+.look-head .hint {
+  margin: 0;
+}
+
+.look-cards {
+  display: grid;
+  gap: var(--ms-space-2);
+}
+
+.look-cards .look-card {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 14px;
+  gap: var(--ms-space-3);
+  justify-content: stretch;
+  height: auto;
+  padding: var(--ms-space-2);
+  text-align: left;
+  font-weight: var(--ms-weight-medium);
+}
+
+.look-cards .look-card[aria-checked='true'] {
+  background: var(--ed-accent-soft);
+  border-color: var(--ed-accent-hi);
+}
+
+.look-swatch {
+  height: 40px;
+  border: 1px solid var(--ed-line-strong);
+  border-radius: var(--ed-radius-field);
+}
+
+.look-card-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.look-card-name {
+  font-weight: var(--ms-weight-bold);
+}
+
+.look-card-text .hint {
+  margin: 0;
+}
+
+.look-card-check {
+  display: inline-flex;
+  color: var(--ed-accent-hi);
+}
+
 .value-grid {
   grid-template-columns: minmax(5rem, max-content) minmax(0, 1fr);
   align-items: center;
@@ -1753,6 +1810,7 @@ progress {
 
   button.on,
   button[aria-pressed='true'],
+  .look-card[aria-checked='true'],
   .bar-toggle[aria-expanded='true'],
   .segment input:checked + span,
   .outliner-row .name[aria-current='true'] {
@@ -1762,6 +1820,7 @@ progress {
 
   button.on:focus-visible,
   button[aria-pressed='true']:focus-visible,
+  .look-card[aria-checked='true']:focus-visible,
   .bar-toggle[aria-expanded='true']:focus-visible,
   .outliner-row .name[aria-current='true']:focus-visible {
     outline: var(--ed-ring);

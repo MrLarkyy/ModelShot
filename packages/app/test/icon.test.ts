@@ -46,6 +46,7 @@ describe('icon', () => {
         'render',
         'keyframe',
         'folder',
+        'check',
       ].sort(),
     );
   });

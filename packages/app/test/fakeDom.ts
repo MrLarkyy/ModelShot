@@ -92,9 +92,12 @@ export class FakeElement {
     for (const listener of this.listeners.get(type) ?? []) listener(event);
     return event;
   }
-  // Tag names only: enough for the helpers under test.
-  querySelector<T = FakeElement>(tag: string): T | null {
-    return (this.find((e) => e.tagName === tag)[0] as T | undefined) ?? null;
+  // A tag name or one class: enough for the helpers under test.
+  querySelector<T = FakeElement>(selector: string): T | null {
+    const match = selector.startsWith('.')
+      ? (e: FakeElement) => e.className.split(' ').includes(selector.slice(1))
+      : (e: FakeElement) => e.tagName === selector;
+    return (this.find(match)[0] as T | undefined) ?? null;
   }
   find(match: (element: FakeElement) => boolean): FakeElement[] {
     const out: FakeElement[] = [];

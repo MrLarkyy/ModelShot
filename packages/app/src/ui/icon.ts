@@ -29,6 +29,7 @@ export const ICON_NAMES = [
   'render',
   'keyframe',
   'folder',
+  'check',
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];
@@ -84,6 +85,7 @@ const SHAPES: Record<IconName, readonly Shape[]> = {
   look: [path('M2.5 13.5l6-6'), path('M9.5 3.5l1 2 2 1-2 1-1 2-1-2-2-1 2-1z')],
   render: [{ rect: [2, 3, 12, 9, 1.5] }, path('M6.5 6v3.5l3-1.75zM5 14h6')],
   keyframe: [path('M8 2.5l5 5.5-5 5.5L3 8z')],
+  check: [path('M3 8.5l3.2 3.2L13 4.8')],
   folder: [path('M2 4.5a1 1 0 0 1 1-1h3l1.5 1.5H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z')],
 };
 
