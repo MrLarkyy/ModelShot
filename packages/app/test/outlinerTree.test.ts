@@ -62,6 +62,7 @@ describe('outlinerRows', () => {
     expect(out.rows.at(-1)?.matchRanges).toEqual([
       [1, 3],
       [3, 5],
+      [8, 10],
     ]);
     expect(matchRanges('aaaa', 'aa')).toEqual([
       [0, 2],

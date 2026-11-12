@@ -31,6 +31,7 @@ import { ScenePanel } from './panels/ScenePanel';
 import { RenderSession } from './render/RenderSession';
 import { DEFAULT_RENDER_SETTINGS, type RenderSettingsValues } from './render/RenderSettings';
 import { adjustLook, isNeutral, NO_LOOK_ADJUST, sameAdjust, type LookAdjust } from './session/adjustLook';
+import { lightHex } from './inspector/lightValues';
 import { applyLook } from './session/applyLook';
 import { changedRest } from './session/changedRest';
 import { editPose } from './session/editPose';
@@ -677,6 +678,7 @@ export class App {
     );
     this.inspector.update(this.inspectorModel());
     this.lookPanel.show(this.look.id, this.lookAdjust);
+    this.syncLightSwatches();
     this.cameraPanel.sync();
     this.renderPanel.show(this.renderValues);
     this.syncRenderMeta();
@@ -914,9 +916,15 @@ export class App {
     this.lookAdjust = NO_LOOK_ADJUST;
     this.look = applyLook(preset, [this.viewer, this.renderSession.existingTracer()], { bake });
     this.lookPanel.show(this.look.id, this.lookAdjust);
+    this.syncLightSwatches();
     this.inspector.update(this.inspectorModel());
     this.tools?.refresh();
     this.scheduleSave();
+  }
+
+  private syncLightSwatches(): void {
+    const { key, rim } = this.look.lights;
+    this.scenePanel.setLights({ key: lightHex(key.color), rim: lightHex(rim.color) });
   }
 
   private basePreset(): LookPreset {
@@ -1316,6 +1324,10 @@ export class App {
       rotate: () => this.tools?.setGizmoMode('rotate'),
       overlays: () => this.toggleOverlays(),
       rename: () => this.scenePanel.renameSelected(),
+      search: () => {
+        if (this.layoutStore.state.collapsed.outliner) this.panelLayout.toggle('outliner');
+        this.scenePanel.focusSearch();
+      },
       outliner: panel('outliner'),
       inspector: panel('inspector'),
       timeline: panel('timeline'),

@@ -1,10 +1,13 @@
 import type { SceneDocument } from '@modelshot/scene';
 import { displayName, MAX_NAME_LENGTH } from '../editor/displayName';
 import type { Selection, SelectionTarget } from '../editor/Selection';
+import { bindDisclosure } from '../ui/bindDisclosure';
 import { el, uniqueId } from '../ui/dom';
+import { icon } from '../ui/icon';
+import { iconButton } from '../ui/iconButton';
+import { MAX_SCENE_ROWS, outlinerRows, type OutlinerRow } from './outlinerTree';
 
-/** Rows listed; a larger scene lists the first ones and says how many are left out. */
-export const MAX_SCENE_ROWS = 500;
+export { MAX_SCENE_ROWS };
 
 export interface ScenePanelHost {
   readonly setNodeVisible: (index: number, visible: boolean) => void;
@@ -15,6 +18,8 @@ export interface ScenePanelHost {
   readonly rename: (kind: 'node' | 'mesh', index: number, name: string) => void;
   readonly selectLight: (light: 'key' | 'rim') => void;
   readonly openFiles: () => void;
+  /** The user opened or closed groups: the indices of the collapsed ones, to keep with the model. */
+  readonly collapseChanged?: (collapsed: readonly number[]) => void;
 }
 
 export interface ScenePanelModel {
@@ -27,19 +32,42 @@ export interface ScenePanelModel {
 }
 
 const ADD_LIGHT_LABEL = 'Add light (coming with user-placed lights)';
+const SEARCH_MAX = 128;
 
-// The outliner: the nodes (groups) and meshes (elements) of the open model with select, rename, hide, lock and search,
-// and the look's lights. Names come from the file or the user and are set as text only.
+const plural = (count: number, one: string, many: string): string => `${count} ${count === 1 ? one : many}`;
+
+// A label with the searched parts in <mark>: text nodes only, so a name can never become markup.
+function labelNodes(name: string, row: OutlinerRow): (Node | string)[] {
+  if (row.matchRanges.length === 0) return [name];
+  const parts: (Node | string)[] = [];
+  let at = 0;
+  for (const [start, end] of row.matchRanges) {
+    if (start > at) parts.push(name.slice(at, start));
+    parts.push(el('mark', { text: name.slice(start, end) }));
+    at = end;
+  }
+  if (at < name.length) parts.push(name.slice(at));
+  return parts;
+}
+
+// The outliner: the nodes (groups) and meshes (elements) of the open model as a tree with select, rename, hide, lock,
+// collapse and search, and the look's lights. Names come from the file or the user and are set as text only. One tab stop
+// on the tree (arrow keys move through it); the row's buttons are reachable from the row that has it.
 export class ScenePanel {
-  private rows = 0;
   private model: ScenePanelModel | null = null;
-  private lastChecked: HTMLInputElement | null = null;
-  private readonly checkboxes = new Map<string, HTMLInputElement>();
+  private selected: SelectionTarget | null = null;
+  private collapsed = new Set<number>();
+  private current: string | null = null;
+  private lights: { readonly key: string | null; readonly rim: string | null } = { key: null, rim: null };
+  private readonly items = new Map<string, HTMLLIElement>();
+  private readonly eyes = new Map<string, HTMLButtonElement>();
+  private lastEye: HTMLButtonElement | null = null;
+  private visibleRows: readonly OutlinerRow[] = [];
   private readonly search: HTMLInputElement;
   private readonly matches: HTMLParagraphElement;
-  private readonly lights: HTMLElement;
+  private readonly lightsBox: HTMLElement;
   private readonly list: HTMLElement;
-  private selected: SelectionTarget | null = null;
+  private readonly footer: HTMLParagraphElement;
 
   constructor(
     root: HTMLElement,
@@ -49,13 +77,40 @@ export class ScenePanel {
     const searchId = uniqueId('outliner-search');
     this.search = el('input', {
       id: searchId,
-      attributes: { type: 'search', 'aria-label': 'Search the outliner', placeholder: 'Search', maxlength: '128' },
+      attributes: {
+        type: 'search',
+        'aria-label': 'Search the outliner',
+        placeholder: 'Search',
+        maxlength: String(SEARCH_MAX),
+        'aria-keyshortcuts': '/',
+      },
     });
     this.search.addEventListener('input', () => this.rebuild());
+    const moreButton = iconButton('more', 'More outliner actions');
+    moreButton.setAttribute('aria-expanded', 'false');
+    const moreList = el('div', { className: 'menu-list', attributes: { hidden: '' } });
+    const expandAll = el('button', { text: 'Expand all', attributes: { type: 'button' } });
+    const collapseAll = el('button', { text: 'Collapse all', attributes: { type: 'button' } });
+    expandAll.addEventListener('click', () => this.setAllCollapsed(false));
+    collapseAll.addEventListener('click', () => this.setAllCollapsed(true));
+    moreList.append(expandAll, collapseAll);
+    moreButton.setAttribute('aria-controls', uniqueId('outliner-more'));
+    moreList.id = moreButton.getAttribute('aria-controls') ?? '';
+    bindDisclosure(moreButton, moreList);
     this.matches = el('p', { className: 'hint' });
-    this.lights = el('section', { attributes: { 'aria-label': 'Lights' } });
+    this.lightsBox = el('section', { className: 'outliner-lights', attributes: { 'aria-label': 'Lights' } });
     this.list = el('div');
-    root.replaceChildren(this.search, this.matches, this.list, this.lights);
+    this.footer = el('p', { className: 'hint outliner-footer' });
+    root.replaceChildren(
+      el('div', { className: 'outliner-tools' }, [
+        this.search,
+        el('div', { className: 'menu' }, [moreButton, moreList]),
+      ]),
+      this.matches,
+      this.list,
+      this.lightsBox,
+      this.footer,
+    );
     const open = el('button', { text: 'Open model…', attributes: { type: 'button' } });
     open.addEventListener('click', () => host.openFiles());
     const light = el('button', { text: ADD_LIGHT_LABEL, attributes: { type: 'button', disabled: '' } });
@@ -70,22 +125,44 @@ export class ScenePanel {
     this.rebuild();
   }
 
+  /** The groups shown closed (from the model's saved state); a stale index is ignored. */
+  setCollapsed(indices: readonly number[]): void {
+    this.collapsed = new Set(indices);
+    this.rebuild();
+  }
+
+  /** The colours of the key and rim light swatches (`#RRGGBB`, null when off). */
+  setLights(lights: { readonly key: string | null; readonly rim: string | null }): void {
+    this.lights = lights;
+    this.paintLights();
+  }
+
+  /** Puts the cursor in the search field (the / key). */
+  focusSearch(): void {
+    this.search.focus();
+    this.search.select();
+  }
+
   /** Marks the selected row without rebuilding the list. */
   select(selection: Selection['current']): void {
     this.selected = selection;
-    for (const button of this.list.querySelectorAll<HTMLElement>('[data-row]')) {
-      const [kind, index] = (button.dataset['row'] ?? '').split(':');
-      const on = selection !== null && selection.kind === kind && String(selection.index) === index;
-      if (on) button.setAttribute('aria-current', 'true');
-      else button.removeAttribute('aria-current');
+    for (const [key, item] of this.items) {
+      const on = selection !== null && key === `${selection.kind}:${selection.index}`;
+      item.setAttribute('aria-selected', String(on));
+      const name = item.querySelector('[data-row]');
+      if (on) name?.setAttribute('aria-current', 'true');
+      else name?.removeAttribute('aria-current');
+    }
+    if (selection && this.items.has(`${selection.kind}:${selection.index}`)) {
+      this.setCurrent(`${selection.kind}:${selection.index}`);
     }
   }
 
-  /** Flips the visibility of the selected row, else of the checkbox last used (the H shortcut). */
+  /** Flips the visibility of the selected row, else of the eye last used (the H shortcut). */
   toggleSelected(): void {
     const target = this.selected;
-    const box = target ? this.checkboxes.get(`${target.kind}:${target.index}`) : undefined;
-    (box ?? this.lastChecked)?.click();
+    const eye = target ? this.eyes.get(`${target.kind}:${target.index}`) : undefined;
+    (eye ?? this.lastEye)?.click();
   }
 
   /** Starts renaming the selected row (F2). */
@@ -94,150 +171,230 @@ export class ScenePanel {
     if (target) this.startRename(target.kind, target.index);
   }
 
+  private setAllCollapsed(closed: boolean): void {
+    const doc = this.model?.doc;
+    if (!doc) return;
+    this.collapsed = new Set(
+      closed ? doc.nodes.flatMap((node, index) => (node.children.length + node.meshes.length > 0 ? [index] : [])) : [],
+    );
+    this.host.collapseChanged?.([...this.collapsed]);
+    this.rebuild();
+  }
+
+  private toggleCollapsed(index: number, closed: boolean): void {
+    if (closed) this.collapsed.add(index);
+    else this.collapsed.delete(index);
+    this.host.collapseChanged?.([...this.collapsed]);
+    this.rebuild();
+  }
+
+  // The tree's one tab stop: its row and that row's buttons are reachable by Tab, every other row is not.
+  private setCurrent(key: string): void {
+    if (this.current === key) return;
+    const before = this.current ? this.items.get(this.current) : undefined;
+    this.current = key;
+    if (before) this.markStop(before, false);
+    const now = this.items.get(key);
+    if (now) this.markStop(now, true);
+  }
+
+  private markStop(item: HTMLLIElement, on: boolean): void {
+    item.tabIndex = on ? 0 : -1;
+    for (const button of item.querySelectorAll<HTMLElement>('button:not(.name)')) button.tabIndex = on ? 0 : -1;
+  }
+
   private rebuild(): void {
     const model = this.model;
     // The list is rebuilt for every change: the focus goes back to the control it was on.
     const active = document.activeElement;
     const focused = active instanceof HTMLElement && this.list.contains(active) ? active.dataset['focus'] : undefined;
-    this.checkboxes.clear();
-    this.lastChecked = null;
-    this.rows = 0;
+    this.items.clear();
+    this.eyes.clear();
+    this.lastEye = null;
+    this.visibleRows = [];
     if (!model) {
       this.list.replaceChildren(
         el('p', { className: 'hint', text: 'Open a model to list its groups, meshes and lights.' }),
       );
-      this.lights.replaceChildren();
+      this.lightsBox.replaceChildren();
       this.matches.textContent = '';
+      this.footer.textContent = '';
       return;
     }
-    const query = this.search.value.trim().toLowerCase();
+    const query = this.search.value.trim();
     const { doc } = model;
-    const matching = query ? this.matchingRows(model, query) : null;
-    const list = el('ul', { className: 'tree', attributes: { 'aria-label': 'Nodes and elements' } });
-    for (const index of doc.rootNodes) this.appendNode(list, model, index, matching);
-    doc.meshes.forEach((mesh, index) => {
-      if (mesh.node < 0) this.appendMesh(list, model, index, matching);
+    const { rows, total } = outlinerRows(doc, model.names, this.collapsed, query, this.selected, MAX_SCENE_ROWS);
+    this.visibleRows = rows;
+    const tree = el('ul', { className: 'tree', attributes: { role: 'tree', 'aria-label': 'Nodes and elements' } });
+    for (const row of rows) tree.append(this.row(row, model));
+    tree.addEventListener('keydown', (event) => this.onKey(event));
+    tree.addEventListener('focusin', (event) => {
+      const item = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>('[role="treeitem"]') : null;
+      if (item?.dataset['key']) this.setCurrent(item.dataset['key']);
     });
-    const parts: Node[] = [list];
-    const left = doc.nodes.length + doc.meshes.length - this.rows;
-    if (left > 0 && !matching) parts.push(el('p', { className: 'hint', text: `${left} more rows are not listed.` }));
+    const parts: Node[] = [tree];
+    if (total > rows.length) {
+      parts.push(el('p', { className: 'hint', text: `Showing ${rows.length} of ${total}` }));
+    }
     this.list.replaceChildren(...parts);
+    const first = rows[0];
+    const stop =
+      this.current && this.items.has(this.current) ? this.current : first ? `${first.kind}:${first.index}` : null;
+    this.current = null;
+    if (stop) this.setCurrent(stop);
     if (focused) this.list.querySelector<HTMLElement>(`[data-focus="${focused}"]`)?.focus();
-    this.matches.textContent = matching ? `${matching.count} match${matching.count === 1 ? '' : 'es'}` : '';
-    this.lights.replaceChildren(
-      el('h3', { text: 'Lights' }),
-      this.lightButton('key', 'Key light'),
-      this.lightButton('rim', 'Rim light'),
-    );
+    const matched = query ? rows.filter((row) => row.matchRanges.length > 0).length : 0;
+    this.matches.textContent = query ? `${matched} match${matched === 1 ? '' : 'es'}` : '';
+    this.paintLights();
+    this.footer.textContent = [
+      plural(doc.nodes.length, 'node', 'nodes'),
+      plural(doc.meshes.length, 'cube', 'cubes'),
+      plural(doc.animations?.length ?? 0, 'clip', 'clips'),
+    ].join(' · ');
     this.select(this.selected);
   }
 
-  private lightButton(light: 'key' | 'rim', label: string): HTMLButtonElement {
-    const button = el('button', { className: 'name', text: label, attributes: { type: 'button' } });
-    button.addEventListener('click', () => this.host.selectLight(light));
-    return button;
-  }
-
-  // The rows whose label contains the query, and the groups above them; `count` counts the rows that match themselves.
-  private matchingRows(model: ScenePanelModel, query: string): { keep: Set<string>; count: number } {
-    const keep = new Set<string>();
-    let count = 0;
-    const { doc, names } = model;
-    const mark = (kind: 'node' | 'mesh', index: number): boolean => {
-      const own = displayName(doc, names, kind, index).toLowerCase().includes(query);
-      let below = false;
-      if (kind === 'node') {
-        const node = doc.nodes[index];
-        for (const child of node?.children ?? []) below = mark('node', child) || below;
-        for (const mesh of node?.meshes ?? []) below = mark('mesh', mesh) || below;
-      }
-      if (own) count += 1;
-      if (own || below) keep.add(`${kind}:${index}`);
-      return own || below;
+  private paintLights(): void {
+    if (!this.model) return;
+    const button = (light: 'key' | 'rim', label: string, hex: string | null): HTMLButtonElement => {
+      const swatch = el('span', { className: 'swatch', attributes: { 'aria-hidden': 'true' } });
+      if (hex) swatch.style.setProperty('background-color', hex);
+      else swatch.classList.add('off');
+      const b = el('button', { className: 'ghost light-row', attributes: { type: 'button' } }, [
+        icon('sun', { size: 14 }),
+        swatch,
+        el('span', { text: label }),
+      ]);
+      b.addEventListener('click', () => this.host.selectLight(light));
+      return b;
     };
-    for (const index of doc.rootNodes) mark('node', index);
-    doc.meshes.forEach((mesh, index) => {
-      if (mesh.node < 0) mark('mesh', index);
-    });
-    return { keep, count };
+    this.lightsBox.replaceChildren(
+      el('h3', { text: 'Lights' }),
+      button('key', 'Key light', this.lights.key),
+      button('rim', 'Rim light', this.lights.rim),
+    );
   }
 
-  private appendNode(
-    parent: HTMLElement,
-    model: ScenePanelModel,
-    index: number,
-    matching: { keep: Set<string> } | null,
-  ): void {
-    const node = model.doc.nodes[index];
-    if (!node || (matching && !matching.keep.has(`node:${index}`))) return;
-    const item = this.row('node', index, model);
-    if (!item) return;
-    const children = el('ul', { className: 'tree' });
-    for (const child of node.children) this.appendNode(children, model, child, matching);
-    node.meshes.forEach((mesh) => this.appendMesh(children, model, mesh, matching));
-    if (children.childElementCount > 0) item.append(children);
-    parent.append(item);
-  }
-
-  private appendMesh(
-    parent: HTMLElement,
-    model: ScenePanelModel,
-    index: number,
-    matching: { keep: Set<string> } | null,
-  ): void {
-    if (!model.doc.meshes[index] || (matching && !matching.keep.has(`mesh:${index}`))) return;
-    const item = this.row('mesh', index, model);
-    if (item) parent.append(item);
-  }
-
-  private row(kind: 'node' | 'mesh', index: number, model: ScenePanelModel): HTMLLIElement | null {
-    if (this.rows >= MAX_SCENE_ROWS) return null;
-    this.rows += 1;
+  private row(row: OutlinerRow, model: ScenePanelModel): HTMLLIElement {
+    const { kind, index } = row;
+    const key = `${kind}:${index}`;
     const name = displayName(model.doc, model.names, kind, index);
     const visible = (kind === 'node' ? model.nodeVisible : model.meshVisible)[index] === true;
     const locked = (kind === 'node' ? model.lockedNodes : model.lockedMeshes)[index] === true;
-    const box = el('input', {
-      attributes: { type: 'checkbox', 'aria-label': `Visible: ${name}`, 'data-focus': `box:${kind}:${index}` },
-    });
-    box.checked = visible;
-    box.addEventListener('change', () => {
-      if (kind === 'node') this.host.setNodeVisible(index, box.checked);
-      else this.host.setMeshVisible(index, box.checked);
-    });
-    box.addEventListener('focus', () => (this.lastChecked = box));
-    box.addEventListener('click', () => (this.lastChecked = box));
-    this.checkboxes.set(`${kind}:${index}`, box);
+
+    const lead = row.hasChildren
+      ? iconButton(row.expanded ? 'chevron-down' : 'chevron-right', `${row.expanded ? 'Collapse' : 'Expand'} ${name}`, {
+          small: true,
+        })
+      : el('span', { className: 'row-spacer', attributes: { 'aria-hidden': 'true' } });
+    if (lead instanceof HTMLButtonElement) {
+      lead.setAttribute('data-focus', `chev:${key}`);
+      lead.addEventListener('click', () => this.toggleCollapsed(index, row.expanded));
+    }
     const select = el('button', {
       className: 'name',
-      text: name,
       attributes: {
         type: 'button',
-        'data-row': `${kind}:${index}`,
-        'data-focus': `name:${kind}:${index}`,
+        'data-row': key,
+        'data-focus': `name:${key}`,
         title: 'Select (F2 renames)',
+        tabindex: '-1',
       },
     });
+    select.append(icon(kind === 'node' ? 'folder' : 'cube', { size: 14 }), el('span', {}, labelNodes(name, row)));
     select.addEventListener('click', () => this.host.selectRow(kind, index));
     select.addEventListener('dblclick', () => this.startRename(kind, index));
-    select.addEventListener('keydown', (event) => {
-      if (event.key === 'F2') {
-        event.preventDefault();
-        event.stopPropagation();
-        this.startRename(kind, index);
-      }
+
+    const eye = iconButton(visible ? 'eye' : 'eye-off', `Hide ${name}`, { small: true, pressed: !visible });
+    eye.classList.add('row-eye');
+    eye.setAttribute('data-focus', `eye:${key}`);
+    eye.addEventListener('click', () => {
+      if (kind === 'node') this.host.setNodeVisible(index, !visible);
+      else this.host.setMeshVisible(index, !visible);
     });
-    const lock = el('button', {
-      className: 'lock',
-      text: locked ? 'Locked' : 'Lock',
-      attributes: {
-        type: 'button',
-        'aria-pressed': String(locked),
-        'aria-label': `Lock ${name}`,
-        'data-focus': `lock:${kind}:${index}`,
-      },
-    });
+    eye.addEventListener('focus', () => (this.lastEye = eye));
+    eye.addEventListener('click', () => (this.lastEye = eye));
+    this.eyes.set(key, eye);
+    const lock = iconButton(locked ? 'lock' : 'unlock', `Lock ${name}`, { small: true, pressed: locked });
+    lock.classList.add('row-lock');
+    lock.setAttribute('data-focus', `lock:${key}`);
     lock.addEventListener('click', () => this.host.setLocked(kind, index, !locked));
-    return el('li', {}, [el('div', { className: 'outliner-row' }, [box, select, lock])]);
+
+    const line = el('div', { className: row.ancestorOfSelected ? 'outliner-row has-selection' : 'outliner-row' }, [
+      lead,
+      select,
+      eye,
+      lock,
+    ]);
+    line.addEventListener('click', (event) => {
+      if (event.target instanceof Element && !event.target.closest('button, input')) this.host.selectRow(kind, index);
+    });
+    const attributes: Record<string, string> = {
+      role: 'treeitem',
+      'aria-level': String(row.depth + 1),
+      'aria-selected': 'false',
+      'data-key': key,
+      'data-focus': `item:${key}`,
+      tabindex: '-1',
+    };
+    if (row.hasChildren) attributes['aria-expanded'] = String(row.expanded);
+    const item = el('li', { attributes }, [line]);
+    item.style.setProperty('--depth', String(row.depth));
+    this.items.set(key, item);
+    return item;
+  }
+
+  // Arrow keys on a row: Up and Down move, Home and End jump, Right opens or enters, Left closes or goes to the group,
+  // Enter and Space select, F2 renames. A key pressed on one of the row's own buttons stays with that button.
+  private onKey(event: KeyboardEvent): void {
+    const item = event.target instanceof HTMLElement ? event.target.closest<HTMLLIElement>('[role="treeitem"]') : null;
+    if (!item || event.target !== item) return;
+    const rows = this.visibleRows;
+    const at = rows.findIndex((row) => `${row.kind}:${row.index}` === item.dataset['key']);
+    const row = rows[at];
+    if (!row) return;
+    const go = (target: number): void => {
+      const next = rows[Math.min(rows.length - 1, Math.max(0, target))];
+      if (next) this.items.get(`${next.kind}:${next.index}`)?.focus();
+    };
+    let handled = true;
+    switch (event.key) {
+      case 'ArrowDown':
+        go(at + 1);
+        break;
+      case 'ArrowUp':
+        go(at - 1);
+        break;
+      case 'Home':
+        go(0);
+        break;
+      case 'End':
+        go(rows.length - 1);
+        break;
+      case 'ArrowRight':
+        if (row.hasChildren && !row.expanded) this.toggleCollapsed(row.index, false);
+        else if (row.hasChildren) go(at + 1);
+        break;
+      case 'ArrowLeft':
+        if (row.hasChildren && row.expanded && this.search.value.trim() === '') this.toggleCollapsed(row.index, true);
+        else {
+          let up = at - 1;
+          while (up >= 0 && (rows[up]?.depth ?? 0) >= row.depth) up -= 1;
+          if (up >= 0) go(up);
+        }
+        break;
+      case 'Enter':
+      case ' ':
+        this.host.selectRow(row.kind, row.index);
+        break;
+      case 'F2':
+        event.stopPropagation();
+        this.startRename(row.kind, row.index);
+        break;
+      default:
+        handled = false;
+    }
+    if (handled) event.preventDefault();
   }
 
   private startRename(kind: 'node' | 'mesh', index: number): void {
@@ -258,14 +415,12 @@ export class ScenePanel {
         this.host.rename(kind, index, typed === original ? '' : typed);
       }
       this.rebuild();
-      this.list.querySelector<HTMLElement>(`[data-row="${kind}:${index}"]`)?.focus();
+      this.items.get(`${kind}:${index}`)?.focus();
     };
     input.addEventListener('keydown', (event) => {
+      event.stopPropagation();
       if (event.key === 'Enter') finish(true);
-      else if (event.key === 'Escape') {
-        event.stopPropagation();
-        finish(false);
-      }
+      else if (event.key === 'Escape') finish(false);
     });
     input.addEventListener('blur', () => finish(true));
     button.replaceWith(input);

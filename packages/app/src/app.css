@@ -1551,34 +1551,81 @@ legend {
 
 .tree {
   margin: 0;
-  padding-left: var(--ms-space-4);
+  padding: 0;
   list-style: none;
 }
 
-#scene-panel > .tree {
-  padding-left: 0;
+.tree > li {
+  position: relative;
 }
 
-.outliner-row {
+.outliner-tools {
   display: flex;
   align-items: center;
   gap: var(--ms-space-1);
 }
 
-.outliner-row .name {
+.outliner-tools input[type='search'] {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  display: block;
-  line-height: calc(var(--ed-row-h) - 2px);
-  text-align: left;
+}
+
+.outliner-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: calc(var(--depth, 0) * 16px);
+  border-radius: var(--ed-radius-field);
+}
+
+.outliner-row:hover {
+  background: var(--ed-hover);
+}
+
+/* One guide line per level, drawn behind the row's indent. */
+.outliner-row::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: calc(var(--depth, 0) * 16px);
+  content: '';
+  background-image: repeating-linear-gradient(90deg, var(--ed-line-strong) 0 1px, transparent 1px 16px);
+  background-position: 11px 0;
+  pointer-events: none;
+}
+
+.outliner-row .row-spacer {
+  flex: none;
+  width: 26px;
+}
+
+.outliner-row .name {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--ms-space-2);
+  min-width: 0;
   min-height: var(--ed-row-h);
   padding: 0 var(--ms-space-2);
   border-color: transparent;
+  justify-content: flex-start;
   font-weight: var(--ms-weight-medium);
   color: var(--ed-text-2);
+  text-align: left;
+}
+
+.outliner-row .name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outliner-row .name mark {
+  background: var(--ed-accent-soft);
+  color: var(--ed-text);
+  border-radius: 2px;
 }
 
 .outliner-row .name[aria-current='true'] {
@@ -1587,20 +1634,55 @@ legend {
   box-shadow: inset 2px 0 0 var(--ed-accent-hi);
 }
 
-.outliner-row .lock {
-  min-width: 26px;
-  min-height: 26px;
-  padding: 0 var(--ms-space-2);
-  border-color: transparent;
+.outliner-row.has-selection .name:not([aria-current='true']) {
+  color: var(--ed-text);
 }
 
-.outliner-row .lock:not([aria-pressed='true']) {
+.outliner-row .row-eye,
+.outliner-row .row-lock {
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  border-color: transparent;
   color: var(--ed-text-3);
+  opacity: 0;
+}
+
+/* Hidden and locked rows keep their buttons in view; the others show them on hover, on focus and on the open row. */
+.outliner-row:hover .row-eye,
+.outliner-row:hover .row-lock,
+.outliner-row:focus-within .row-eye,
+.outliner-row:focus-within .row-lock,
+[role='treeitem'][aria-selected='true'] .row-eye,
+[role='treeitem'][aria-selected='true'] .row-lock,
+.outliner-row .row-eye[aria-pressed='true'],
+.outliner-row .row-lock[aria-pressed='true'] {
+  opacity: 1;
+}
+
+.outliner-row .row-eye[aria-pressed='true'],
+.outliner-row .row-lock[aria-pressed='true'] {
+  color: var(--ed-accent-hi);
 }
 
 .outliner-row input[type='text'] {
   flex: 1;
   min-width: 0;
+}
+
+.outliner-lights {
+  margin-top: var(--ms-space-3);
+}
+
+.outliner-lights .light-row {
+  display: flex;
+  width: 100%;
+  justify-content: flex-start;
+  gap: var(--ms-space-2);
+}
+
+.outliner-footer {
+  margin-top: var(--ms-space-3);
 }
 
 .button-row {

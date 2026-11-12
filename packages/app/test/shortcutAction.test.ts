@@ -34,6 +34,7 @@ describe('shortcutAction', () => {
     [key('e'), 'rotate'],
     [key('g'), 'overlays'],
     [key('F2'), 'rename'],
+    [key('/'), 'search'],
     [key('['), 'outliner'],
     [key(']'), 'inspector'],
     [key('t'), 'timeline'],
