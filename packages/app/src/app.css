@@ -424,6 +424,8 @@ button:disabled {
 
 .segmented {
   display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
   margin: 0;
   padding: 2px;
   gap: 2px;
@@ -1280,6 +1282,8 @@ kbd {
 
 .section-body {
   display: grid;
+  /* One column no wider than the section: a wide row wraps or shrinks instead of pushing its neighbours out. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--ms-space-2);
   padding: var(--ms-space-1) 0 var(--ms-space-3);
 }
@@ -1293,12 +1297,22 @@ kbd {
   border-radius: var(--ed-radius-field);
 }
 
+/* A slider row is one line at every inspector width: label, range, value. A long label wraps inside its column. */
+.field:has(> .slider-value) {
+  display: grid;
+  grid-template-columns: minmax(2.5rem, 5rem) minmax(3rem, 1fr) 3rem;
+}
+
+.field:has(> .slider-value) > :is(label, input, span) {
+  min-width: 0;
+}
+
 .field > .slider-value {
-  min-width: 3.5rem;
   color: var(--ed-text-2);
   font-size: var(--ms-size-caption);
   font-variant-numeric: tabular-nums;
   text-align: right;
+  white-space: nowrap;
 }
 
 .look-head {

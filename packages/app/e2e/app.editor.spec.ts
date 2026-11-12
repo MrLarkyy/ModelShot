@@ -727,6 +727,60 @@ test('the Render tab offers sample chips, the output size and the estimate only 
   await expect(page.getByRole('dialog', { name: 'Export' })).toContainText('Export uses 64 per frame');
 });
 
+test('a slider row is one line of label, range and value, with the same columns in Look and Render', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openNested(page);
+  const separator = page.getByRole('separator', { name: 'Resize the inspector' });
+  // Each part's left, right and middle line, then the row's, measured from the row's own left and top.
+  const columns = (name: string): Promise<number[][]> =>
+    page.getByRole('slider', { name }).evaluate((input) => {
+      const row = input.parentElement as HTMLElement;
+      const origin = row.getBoundingClientRect();
+      return [...row.children, row].map((n) => {
+        const r = n.getBoundingClientRect();
+        return [r.left - origin.left, r.right - origin.left, (r.top + r.bottom) / 2 - origin.top].map(
+          (v) => Math.round(v * 2) / 2,
+        );
+      });
+    });
+  for (const key of [null, 'Home', 'End']) {
+    if (key) {
+      await separator.focus();
+      await page.keyboard.press(key);
+    }
+    const at = `inspector at ${await separator.getAttribute('aria-valuenow')} px`;
+    await openTab(page, 'Render');
+    expect(await cutOff(page, 'render'), `Render tab, ${at}`).toEqual([]);
+    const fov = await columns('Field of view');
+    const [label, range, value, row] = fov as [number[], number[], number[], number[]];
+    expect(Math.abs(label[2]! - range[2]!), `label and slider on one line, ${at}`).toBeLessThanOrEqual(1);
+    expect(Math.abs(value[2]! - range[2]!), `value and slider on one line, ${at}`).toBeLessThanOrEqual(1);
+    expect(range[0], `slider after the label, ${at}`).toBeGreaterThanOrEqual(label[1]!);
+    expect(value[0], `value after the slider, ${at}`).toBeGreaterThanOrEqual(range[1]!);
+    expect(value[1], `value ends with the row, ${at}`).toBe(row[1]);
+    expect(range[1]! - range[0]!, `a slider wide enough to drag, ${at}`).toBeGreaterThanOrEqual(48);
+    await openTab(page, 'Look');
+    expect(await cutOff(page, 'look'), `Look tab, ${at}`).toEqual([]);
+    for (const other of ['Exposure', 'Saturation']) {
+      const cells = await columns(other);
+      expect(
+        cells.slice(1).map((c) => c.slice(0, 2)),
+        `${other} columns, ${at}`,
+      ).toEqual(fov.slice(1).map((c) => c.slice(0, 2)));
+      expect(Math.abs(cells[0]![2]! - cells[1]![2]!), `${other} on one line, ${at}`).toBeLessThanOrEqual(1);
+    }
+  }
+  // The widest values still fit their column.
+  await page.getByRole('slider', { name: 'Exposure' }).fill('-6');
+  await page.getByRole('slider', { name: 'Saturation' }).fill('2');
+  const fits = await page
+    .locator('#tabpanel-look .slider-value')
+    .evaluateAll((values) => values.map((v) => `${v.textContent}: ${v.scrollWidth <= v.clientWidth}`));
+  expect(fits).toEqual(['-6.0 EV: true', '200 %: true']);
+});
+
 test('the preset chips and the Camera section mark the same preset, an orbit clears both', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openNested(page);
