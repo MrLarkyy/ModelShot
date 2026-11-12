@@ -1730,6 +1730,12 @@ round 7); its max was 750 ms then.
   `pt.setLarge()` is the traced call, and the bench asserts it applied 200 000 triangles in the worker
   (`pt.geometryInWorker`). Max 50 ms, fixed like the bake rows. Local SwiftShader: 14.4 ms (382 tasks; CPU 14.4 ms,
   largest GPU wait 13.1 ms in one task, a band's `texSubImage2D`), the call to applied 3238 ms.
+- `mainThreadBlockMs.outliner-rebuild-2000` (MS-106): the most one main-thread task blocked (CPU plus GPU wait, the
+  trace of the rows above) while the app's `ScenePanel` rebuilt its list over a generated model of 2000 nodes (100
+  groups of 19 sub-groups, 1900 cubes; `outliner.html`, which imports the panel and `app.css`): the search keystrokes
+  `part 1`, `part 12-3` and an empty one, Collapse all, Expand all and a model refresh, each its own task followed by
+  a frame, with a forced style and layout read of the rebuilt rows inside the task. Part of the loads section. Max
+  50 ms, fixed like the bake rows. The app's own `app.outliner.spec.ts` checks only the 500-row cap and the footer.
 - `bundleGzipBytes` embed 3200 and embed-frame 177 200 (MS-24: the element and the frame page; measured 2949 and
   161 810 B, gzip level 9, plus 10 %, rounded up to 100). Before MS-24 embed was a 115 B stub with a max of 2200.
   embed-frame 195 100 (MS-52: the frame grew with MS-54, MS-56 and MS-52's texture wrap to 177 303 B, over the 177 200;

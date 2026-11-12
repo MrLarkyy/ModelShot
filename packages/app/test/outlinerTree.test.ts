@@ -1,6 +1,6 @@
 import type { SceneDocument } from '@modelshot/scene';
 import { describe, expect, it } from 'vitest';
-import { MAX_SCENE_ROWS, matchRanges, outlinerRows } from '../src/panels/outlinerTree';
+import { countCubes, MAX_SCENE_ROWS, matchRanges, outlinerRows } from '../src/panels/outlinerTree';
 
 // root(0) > arm(1) > hand(2); root also holds mesh 0; mesh 1 is outside every group; node 3 is a second root with mesh 2.
 const doc = {
@@ -105,5 +105,15 @@ describe('outlinerRows', () => {
       meshes: [],
     } as unknown as SceneDocument;
     expect(label(outlinerRows(odd, names, new Set(), '', null))).toEqual(['n0']);
+  });
+});
+
+describe('countCubes', () => {
+  const mesh = (vertices: number, indices: number): SceneDocument['meshes'][number] =>
+    ({ positions: new Float32Array(vertices * 3), indices: new Uint32Array(indices) }) as never;
+
+  it('counts quad-only meshes of up to 24 vertices as cubes and every other mesh as a mesh', () => {
+    const meshes = [mesh(24, 36), mesh(4, 6), mesh(3, 3), mesh(25, 36), mesh(96, 144), mesh(24, 30)];
+    expect(countCubes(meshes)).toBe(2);
   });
 });

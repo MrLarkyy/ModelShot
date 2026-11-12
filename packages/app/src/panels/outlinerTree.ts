@@ -37,6 +37,19 @@ export function matchRanges(label: string, query: string): (readonly [number, nu
   return out;
 }
 
+/**
+ * How many meshes are Blockbench-style cubes: at most 24 vertices, quads only (4 vertices and 6 indices per face). The
+ * rest are imported meshes (glTF, OBJ), which the outliner counts as meshes.
+ */
+export function countCubes(meshes: SceneDocument['meshes']): number {
+  let cubes = 0;
+  for (const mesh of meshes) {
+    const vertices = mesh.positions.length / 3;
+    if (vertices <= 24 && vertices % 4 === 0 && mesh.indices.length === (vertices / 4) * 6) cubes += 1;
+  }
+  return cubes;
+}
+
 interface Frame {
   readonly kind: 'node' | 'mesh';
   readonly index: number;

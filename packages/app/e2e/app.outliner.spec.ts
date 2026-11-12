@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import type { Locator, Page } from '@playwright/test';
-import { expect, fixture, openApp, openFiles, test, waitForEditor, waitForStored } from './appTest';
+import { expect, fixture, openApp, openFiles, openTab, test, waitForEditor, waitForStored } from './appTest';
 
 const NESTED = fixture('bbmodel', 'nested-groups.bbmodel');
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
@@ -167,6 +167,58 @@ test('the outliner and its lights group pass axe, and hidden or locked state sho
   expect(await cue('Lock chest')).not.toBe(await cue('Lock hips'));
 });
 
+test('a selection inside a closed group marks the group, and H and F2 still act on it', async ({ page }) => {
+  await openNested(page);
+  await item(page, 'body').locator('[data-row]').click();
+  await page.getByRole('button', { name: 'Collapse body' }).click();
+  await openTab(page, 'Material');
+  const panel = page.locator('#tabpanel-material');
+  await panel.getByRole('button', { name: 'Select hips' }).click();
+  await expect(panel.getByRole('button', { name: 'Texture', exact: true })).toBeFocused();
+  await expect(item(page, 'hips')).toHaveCount(0);
+  await expect(item(page, 'body').locator('.outliner-row')).toHaveClass(/has-selection/);
+  await page.locator('#preview').focus();
+  await page.keyboard.press('h');
+  await page.getByRole('button', { name: 'More outliner actions' }).click();
+  await page.getByRole('button', { name: 'Expand all' }).click();
+  await expect(page.getByRole('button', { name: 'Hide hips' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(item(page, 'body').locator('.outliner-row')).not.toHaveClass(/has-selection/);
+  await page.getByRole('button', { name: 'Collapse body' }).click();
+  await expect(item(page, 'hips')).toHaveCount(0);
+  await page.locator('#preview').focus();
+  await page.keyboard.press('F2');
+  await expect(page.locator('#scene-panel input[type="text"]')).toBeFocused();
+  await expect(item(page, 'body')).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('a row is named for its label, a search leaves the chevrons inert and the footer counts cubes', async ({
+  page,
+}) => {
+  await openNested(page);
+  await expect(item(page, 'hips')).toHaveAttribute('aria-label', 'hips');
+  await expect(page.locator('#scene-panel .outliner-footer')).toHaveText(/5 cubes/);
+  await page.getByRole('searchbox', { name: 'Search the outliner' }).fill('sku');
+  const chevron = page.getByRole('button', { name: 'Collapse body' });
+  await expect(chevron).toHaveAttribute('aria-disabled', 'true');
+  await chevron.click();
+  await item(page, 'torso').focus();
+  await page.keyboard.press('ArrowLeft');
+  await expect(item(page, 'skull')).toBeVisible();
+  await page.getByRole('searchbox', { name: 'Search the outliner' }).fill('');
+  await expect(item(page, 'body')).toHaveAttribute('aria-expanded', 'true');
+  await expect(item(page, 'torso')).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('a light button keeps the focus through the rebuild a look change causes', async ({ page }) => {
+  await openNested(page);
+  const key = page.locator('#scene-panel .outliner-lights').getByRole('button', { name: 'Key light' });
+  await key.focus();
+  await page.keyboard.press('l');
+  await expect(key).toBeFocused();
+  await page.keyboard.press('Control+z');
+  await expect(page.locator('#scene-panel .outliner-lights').getByRole('button', { name: 'Key light' })).toBeFocused();
+});
+
 // A model of 1950 rows: 50 groups of 19 sub-groups, each holding one cube (1000 nodes, 950 cubes).
 function bigModel(): Buffer {
   const elements: unknown[] = [];
@@ -200,10 +252,7 @@ function bigModel(): Buffer {
   );
 }
 
-// The longest a rebuild of the outliner may block the main thread (the same 50 ms the bake and scene-set budgets allow).
-const OUTLINER_REBUILD_BLOCK_MS = 50;
-
-test('a 2000-node outliner rebuilds within the main-thread budget and says how many rows it shows', async ({
+test('a model of 1000 nodes lists the first 500 rows, says how many are left out and counts its cubes', async ({
   page,
 }) => {
   test.setTimeout(240_000);
@@ -217,28 +266,4 @@ test('a 2000-node outliner rebuilds within the main-thread budget and says how m
   await expect(page.locator('#scene-panel')).toContainText(/Showing 500 of \d+/);
   await expect(page.locator('#scene-panel [role="treeitem"]')).toHaveCount(500);
   await expect(page.locator('#scene-panel .outliner-footer')).toHaveText(/1000 nodes · 950 cubes/);
-  const blocked = await page.evaluate(() => {
-    const search = document.querySelector<HTMLInputElement>('#scene-panel input[type="search"]')!;
-    const time = (run: () => void): number => {
-      const start = performance.now();
-      run();
-      return performance.now() - start;
-    };
-    const keystroke = (value: string): number =>
-      time(() => {
-        search.value = value;
-        search.dispatchEvent(new Event('input', { bubbles: true }));
-      });
-    const click = (selector: string): number => time(() => document.querySelector<HTMLElement>(selector)!.click());
-    const samples = [keystroke('part 1'), keystroke('part 12-3'), keystroke('')];
-    samples.push(click('#scene-panel [data-row]'));
-    document.querySelector<HTMLElement>('#outliner .menu button[aria-controls]')!.click();
-    const collapse = [...document.querySelectorAll<HTMLElement>('#outliner .menu-list button')].find(
-      (b) => b.textContent === 'Collapse all',
-    )!;
-    samples.push(time(() => collapse.click()));
-    return Math.max(...samples);
-  });
-  console.log(`[outliner] longest rebuild ${blocked.toFixed(1)} ms of ${OUTLINER_REBUILD_BLOCK_MS}`);
-  expect(blocked).toBeLessThanOrEqual(OUTLINER_REBUILD_BLOCK_MS);
 });

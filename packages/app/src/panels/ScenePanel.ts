@@ -5,7 +5,7 @@ import { bindDisclosure } from '../ui/bindDisclosure';
 import { el, uniqueId } from '../ui/dom';
 import { icon } from '../ui/icon';
 import { iconButton } from '../ui/iconButton';
-import { MAX_SCENE_ROWS, outlinerRows, type OutlinerRow } from './outlinerTree';
+import { countCubes, MAX_SCENE_ROWS, outlinerRows, type OutlinerRow } from './outlinerTree';
 
 export { MAX_SCENE_ROWS };
 
@@ -156,24 +156,64 @@ export class ScenePanel {
     if (selection && this.items.has(`${selection.kind}:${selection.index}`)) {
       this.setCurrent(`${selection.kind}:${selection.index}`);
     }
+    this.paintCue(selection);
+  }
+
+  // The groups above the selection read as marked while they are closed; a pick in the 3D view moves the mark without a rebuild.
+  private paintCue(selection: SelectionTarget | null): void {
+    const above = new Set(this.groupsAbove(selection));
+    for (const [key, item] of this.items) {
+      const [kind, index] = key.split(':');
+      item.firstElementChild?.classList.toggle('has-selection', kind === 'node' && above.has(Number(index)));
+    }
+  }
+
+  private groupsAbove(selection: SelectionTarget | null): number[] {
+    const doc = this.model?.doc;
+    const out: number[] = [];
+    if (!doc || !selection) return out;
+    let at =
+      selection.kind === 'node'
+        ? (doc.nodes[selection.index]?.parent ?? -1)
+        : (doc.meshes[selection.index]?.node ?? -1);
+    for (let guard = 0; at >= 0 && guard <= doc.nodes.length; guard++) {
+      out.push(at);
+      at = doc.nodes[at]?.parent ?? -1;
+    }
+    return out;
   }
 
   /** Flips the visibility of the selected row, else of the eye last used (the H shortcut). */
   toggleSelected(): void {
     const target = this.selected;
+    const model = this.model;
     const eye = target ? this.eyes.get(`${target.kind}:${target.index}`) : undefined;
-    (eye ?? this.lastEye)?.click();
+    if (eye) eye.click();
+    else if (target && model) {
+      // The row is not listed (inside a closed group, or filtered out): the selection still decides.
+      if (target.kind === 'node') this.host.setNodeVisible(target.index, !(model.nodeVisible[target.index] === true));
+      else this.host.setMeshVisible(target.index, !(model.meshVisible[target.index] === true));
+    } else this.lastEye?.click();
   }
 
-  /** Starts renaming the selected row (F2). */
+  /** Starts renaming the selected row (F2); a row hidden in a closed group or by the search is shown first. */
   renameSelected(): void {
     const target = this.selected;
-    if (target) this.startRename(target.kind, target.index);
+    if (!target) return;
+    const key = `${target.kind}:${target.index}`;
+    if (!this.items.has(key)) {
+      const above = this.groupsAbove(target).filter((group) => this.collapsed.has(group));
+      for (const group of above) this.collapsed.delete(group);
+      if (above.length > 0) this.host.collapseChanged?.([...this.collapsed]);
+      if (!this.items.has(key) && this.search.value !== '') this.search.value = '';
+      this.rebuild();
+    }
+    this.startRename(target.kind, target.index);
   }
 
   private setAllCollapsed(closed: boolean): void {
     const doc = this.model?.doc;
-    if (!doc) return;
+    if (!doc || this.search.value.trim() !== '') return;
     this.collapsed = new Set(
       closed ? doc.nodes.flatMap((node, index) => (node.children.length + node.meshes.length > 0 ? [index] : [])) : [],
     );
@@ -182,6 +222,8 @@ export class ScenePanel {
   }
 
   private toggleCollapsed(index: number, closed: boolean): void {
+    // A search opens the groups it needs by itself; changing the kept state then would show nothing.
+    if (this.search.value.trim() !== '') return;
     if (closed) this.collapsed.add(index);
     else this.collapsed.delete(index);
     this.host.collapseChanged?.([...this.collapsed]);
@@ -246,9 +288,12 @@ export class ScenePanel {
     const matched = query ? rows.filter((row) => row.matchRanges.length > 0).length : 0;
     this.matches.textContent = query ? `${matched} match${matched === 1 ? '' : 'es'}` : '';
     this.paintLights();
+    const cubes = countCubes(doc.meshes);
+    const meshes = doc.meshes.length - cubes;
     this.footer.textContent = [
       plural(doc.nodes.length, 'node', 'nodes'),
-      plural(doc.meshes.length, 'cube', 'cubes'),
+      ...(cubes > 0 || meshes === 0 ? [plural(cubes, 'cube', 'cubes')] : []),
+      ...(meshes > 0 ? [plural(meshes, 'mesh', 'meshes')] : []),
       plural(doc.animations?.length ?? 0, 'clip', 'clips'),
     ].join(' · ');
     this.select(this.selected);
@@ -260,19 +305,23 @@ export class ScenePanel {
       const swatch = el('span', { className: 'swatch', attributes: { 'aria-hidden': 'true' } });
       if (hex) swatch.style.setProperty('background-color', hex);
       else swatch.classList.add('off');
-      const b = el('button', { className: 'ghost light-row', attributes: { type: 'button' } }, [
-        icon('sun', { size: 14 }),
-        swatch,
-        el('span', { text: label }),
-      ]);
+      const b = el(
+        'button',
+        { className: 'ghost light-row', attributes: { type: 'button', 'data-focus': `light:${light}` } },
+        [icon('sun', { size: 14 }), swatch, el('span', { text: label })],
+      );
       b.addEventListener('click', () => this.host.selectLight(light));
       return b;
     };
+    const active = document.activeElement;
+    const focused =
+      active instanceof HTMLElement && this.lightsBox.contains(active) ? active.dataset['focus'] : undefined;
     this.lightsBox.replaceChildren(
       el('h3', { text: 'Lights' }),
       button('key', 'Key light', this.lights.key),
       button('rim', 'Rim light', this.lights.rim),
     );
+    if (focused) this.lightsBox.querySelector<HTMLElement>(`[data-focus="${focused}"]`)?.focus();
   }
 
   private row(row: OutlinerRow, model: ScenePanelModel): HTMLLIElement {
@@ -289,6 +338,10 @@ export class ScenePanel {
       : el('span', { className: 'row-spacer', attributes: { 'aria-hidden': 'true' } });
     if (lead instanceof HTMLButtonElement) {
       lead.setAttribute('data-focus', `chev:${key}`);
+      if (this.search.value.trim() !== '') {
+        lead.setAttribute('aria-disabled', 'true');
+        lead.title = 'Clear the search to open or close groups';
+      }
       lead.addEventListener('click', () => this.toggleCollapsed(index, row.expanded));
     }
     const select = el('button', {
@@ -337,6 +390,7 @@ export class ScenePanel {
     });
     const attributes: Record<string, string> = {
       role: 'treeitem',
+      'aria-label': name,
       'aria-level': String(row.depth + 1),
       'aria-selected': 'false',
       'data-key': key,

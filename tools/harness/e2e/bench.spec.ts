@@ -209,6 +209,22 @@ test.describe('bench sections', () => {
         `call to applied ${ptSet.ms.toFixed(0)} ms`,
     );
 
+    // The app's outliner over a 2000-node model (MS-106): the longest one task blocked while the list was rebuilt by
+    // search keystrokes, Collapse all, Expand all and a model refresh, each with the style and layout of its rows.
+    await openFixture(page, '/outliner.html');
+    expect(await page.evaluate(() => window.__msFixture?.outliner?.nodes)).toBe(2000);
+    const outlinerTrace = await traceMainThread(page, () =>
+      page.evaluate(async () => {
+        const outliner = window.__msFixture?.outliner;
+        if (!outliner) throw new Error('outliner controls missing');
+        await outliner.rebuildAll();
+      }),
+    );
+    console.log(
+      `[bench] outliner rebuilds of 2000 nodes: ${outlinerTrace.tasks} tasks, max blocking per task ` +
+        `${outlinerTrace.maxBlocking.toFixed(1)} ms (CPU ${outlinerTrace.maxCpu.toFixed(1)} ms)`,
+    );
+
     await finishSection(
       'loads',
       {
@@ -220,7 +236,10 @@ test.describe('bench sections', () => {
           'rt-load-first-frame-200k-world': worldLoadMs,
           'pt-load-200k': ptLoadMs,
         },
-        mainThreadBlockMs: { 'pt-setscene-200k': ptSetTrace.maxBlocking },
+        mainThreadBlockMs: {
+          'pt-setscene-200k': ptSetTrace.maxBlocking,
+          'outliner-rebuild-2000': outlinerTrace.maxBlocking,
+        },
       },
       testInfo,
     );

@@ -131,8 +131,13 @@ in the middle, the inspector on the right and the timeline below.
   collapse, the selection and the search alone. The Lights group has a button for the look's key and rim light with
   its colour swatch, each opening the Light tab on it, and the footer counts nodes, cubes and clips. The Add menu has
   "Open model" and a disabled "Add light" (user-placed lights are not available yet). Labels and locks are app
-  labels: they never change the scene document, an export or a pixel. Rebuilding the list for a model of about 2000
-  rows (a search keystroke, Collapse all, a selection) blocks the main thread under 50 ms, held by `app.outliner.spec.ts`.
+  labels: they never change the scene document, an export or a pixel. Rebuilding the list for a model of 2000
+  nodes (a search keystroke, Collapse all, Expand all, a model refresh), with the style and layout of its rows, blocks
+  the main thread under 50 ms: the `mainThreadBlockMs.outliner-rebuild-2000` budget, measured in the harness's bench
+  (`outliner.html`, [testing.md](testing.md)). While a search is typed the chevrons, Right and Collapse all / Expand
+  all leave the stored collapse alone (the search opens what it needs). H and F2 act on the selected row even when a
+  closed group or the search hides it (F2 shows it first). The footer counts cubes (Blockbench cubes) and meshes
+  (glTF and OBJ) apart.
 - **Inspector**: a vertical icon rail (56 px, so it cannot wrap at 260-520 px) of five tabs, each an icon over its label;
   ArrowUp/Down and Left/Right, Home and End move between them, and the selected tab is styled by `aria-selected`
   only, so focus never changes it (forced colours: a 3 px left border). Above the panels a title row names the

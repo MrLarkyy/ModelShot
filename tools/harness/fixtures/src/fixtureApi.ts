@@ -26,6 +26,17 @@ export interface MsFixture {
   probes?: ModelViewProbe[];
   rt?: RtControls;
   pt?: PtControls;
+  outliner?: OutlinerControls;
+}
+
+/** Outliner fixture (outliner.html): the app's list over a 2000-node model. */
+export interface OutlinerControls {
+  readonly nodes: number;
+  readonly meshes: number;
+  /** Rows in the list now. */
+  rows: () => number;
+  /** Rebuilds the list by search keystrokes, Collapse all, Expand all and a model refresh, each with its layout and a frame. */
+  rebuildAll: () => Promise<void>;
 }
 
 /** A pixel (x right, y down from the top-left, as in the PNG) and the RGBA of the texel it should show. */
