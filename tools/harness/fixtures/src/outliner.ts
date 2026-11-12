@@ -1,6 +1,7 @@
 import { loadBbmodel } from '@modelshot/formats';
 import { ScenePanel, type ScenePanelModel } from '../../../../packages/app/src/panels/ScenePanel';
 import '../../../../packages/app/src/app.css';
+import { timed } from './bench';
 import { createContext } from './context';
 import type { MsFixture, OutlinerStep } from './fixtureApi';
 
@@ -74,11 +75,9 @@ panel.show(scene);
 // Each step is its own task, followed by a frame: the handler, then the style and layout of the rebuilt rows (the
 // offsetHeight read forces both inside the task), which is what the user waits for.
 async function step(name: string, run: () => void, into: OutlinerStep[]): Promise<void> {
-  const start = performance.now();
-  run();
-  const handled = performance.now() - start;
-  void document.body.offsetHeight;
-  into.push({ name, handlerMs: handled, ms: performance.now() - start });
+  const handlerMs = timed(run);
+  const layoutMs = timed(() => void document.body.offsetHeight);
+  into.push({ name, handlerMs, ms: handlerMs + layoutMs });
   await frame();
 }
 

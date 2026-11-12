@@ -170,3 +170,10 @@ export function installPoseBench(
     return times;
   };
 }
+
+/** Milliseconds one synchronous `run` takes. */
+export function timed(run: () => void): number {
+  const start = performance.now();
+  run();
+  return performance.now() - start;
+}
