@@ -1,5 +1,8 @@
-import { icon, ICON_NAMES } from './icon';
+import { icon, ICON_NAMES, type IconName } from './icon';
 import { iconButton } from './iconButton';
+import { section } from './section';
+import { SectionState } from './sectionState';
+import { xyzField } from './xyzField';
 
 type State = 'default' | 'on' | 'disabled';
 
@@ -78,26 +81,61 @@ function slider(label: string, state: State): HTMLElement {
 }
 
 function axes(state: State): HTMLElement {
-  const wrapper = styled(document.createElement('div'), {
-    display: 'grid',
-    'grid-template-columns': 'repeat(3, minmax(0, 1fr))',
-    gap: '6px',
-    width: '15rem',
-  });
-  (['x', 'y', 'z'] as const).forEach((axis, index) => {
-    const cell = document.createElement('label');
-    cell.className = `axis-field ${axis}`;
-    const letter = document.createElement('i');
-    letter.textContent = axis.toUpperCase();
-    letter.setAttribute('aria-hidden', 'true');
-    const input = field('number', `Position ${axis.toUpperCase()}`, state, {
-      step: '1',
-      value: String((index + 1) * 2),
-    });
-    cell.append(letter, input);
-    wrapper.append(cell);
-  });
+  const wrapper = styled(document.createElement('div'), { width: '15rem' });
+  wrapper.append(
+    xyzField({
+      label: 'Position',
+      unit: 'px',
+      values: [2, 4, 6],
+      step: 0.5,
+      disabled: state === 'disabled',
+    }).element,
+  );
   return wrapper;
+}
+
+function sectionRow(state: State): HTMLElement | null {
+  if (state === 'disabled') return null;
+  const body = text('p', 'Visible and locked toggles go here.', 'hint');
+  const sections = new SectionState(null);
+  if (state === 'on') sections.set('object-state', false);
+  const wrapper = styled(document.createElement('div'), { width: '15rem' });
+  wrapper.append(section('object-state', 'State', [body], sections));
+  return wrapper;
+}
+
+// A static copy of the inspector rail: every tab is reachable by Tab here, and the ids are the specimen's own.
+function rail(state: State): HTMLElement | null {
+  if (state === 'disabled') return null;
+  const layout = styled(document.createElement('div'), { width: '17rem' });
+  layout.className = 'rail-layout';
+  const list = document.createElement('div');
+  list.setAttribute('role', 'tablist');
+  list.setAttribute('aria-orientation', 'vertical');
+  list.setAttribute('aria-label', 'Specimen rail');
+  const names: readonly (readonly [string, IconName])[] = [
+    ['Object', 'cube'],
+    ['Material', 'material'],
+    ['Light', 'sun'],
+  ];
+  const panelId = unique('specimen-panel');
+  names.forEach(([name, glyph], index) => {
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-selected', String(state === 'on' ? index === 1 : index === 0));
+    tab.setAttribute('aria-controls', panelId);
+    tab.append(icon(glyph), text('span', name));
+    list.append(tab);
+  });
+  const panel = document.createElement('div');
+  panel.id = panelId;
+  panel.setAttribute('role', 'tabpanel');
+  panel.setAttribute('aria-label', 'Specimen panel');
+  panel.className = 'rail-content';
+  panel.append(text('p', 'Cube', 'overline'), text('p', 'Panel content.', 'hint'));
+  layout.append(list, panel);
+  return layout;
 }
 
 function select(state: State): HTMLElement {
@@ -188,6 +226,8 @@ export function buildSpecimen(): HTMLElement {
     cells('Segmented', (state) => segmented('View', state)),
     cells('Slider and value', (state) => slider('Field of view', state)),
     cells('Number field with axis', axes),
+    cells('Section', sectionRow),
+    cells('Rail', rail),
     cells('Select', select),
     cells('Keycap', (state) => (state === 'default' ? keycaps() : null)),
     cells('Icon set', (state) => (state === 'default' ? icons : null)),

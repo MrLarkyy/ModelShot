@@ -5,7 +5,7 @@ export interface XyzFieldOptions {
   /** Names the row for assistive tech: each input is "<label> X", "<label> Y", "<label> Z". */
   readonly label: string;
   readonly values: Vec3;
-  /** Shown after each value: `px`, `°`. */
+  /** Named in the row title next to the label: `px`, `°`; the cells stay narrow enough for a 260 px panel. */
   readonly unit?: string;
   /** One arrow step and one pixel of scrubbing. */
   readonly step: number;
@@ -166,13 +166,6 @@ export function xyzField(options: XyzFieldOptions): XyzField {
     const box = document.createElement('span');
     box.className = 'xyz-cell';
     box.append(letter, input);
-    if (unit) {
-      const suffix = document.createElement('span');
-      suffix.className = 'xyz-unit';
-      suffix.textContent = unit;
-      suffix.setAttribute('aria-hidden', 'true');
-      box.append(suffix);
-    }
     return box;
   });
 

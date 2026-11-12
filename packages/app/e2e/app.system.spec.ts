@@ -106,7 +106,7 @@ const HOVERED = [
   '#specimen input[type=radio]:enabled:not(.segment input)',
   '#specimen input[type=range]:enabled',
   '#specimen .slider input[type=number]:enabled',
-  '#specimen .axis-field',
+  '#specimen .xyz-cell:has(input:enabled)',
   '#specimen .segment:has(input:enabled)',
 ].join(', ');
 
