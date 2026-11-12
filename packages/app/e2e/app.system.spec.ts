@@ -242,7 +242,7 @@ test('a locked row shows the on state and a hovered active chip differs from a h
   await openApp(page);
   await openFiles(page, [fixture('bbmodel', 'nested-groups.bbmodel')], 'nested-groups.bbmodel');
   await waitForEditor(page);
-  const lock = page.locator('.outliner-row .lock').first();
+  const lock = page.locator('.outliner-row .row-lock').first();
   await lock.click();
   await expect(lock).toHaveAttribute('aria-pressed', 'true');
   await page.mouse.move(0, 0);

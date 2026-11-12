@@ -84,9 +84,8 @@ test('rename, hide, lock and search work from the outliner and survive a reload'
   const lock = page.getByRole('button', { name: 'Lock Pelvis' });
   await lock.click();
   await expect(page.getByRole('button', { name: 'Lock Pelvis' })).toHaveAttribute('aria-pressed', 'true');
-  const hide = page.getByRole('checkbox', { name: 'Visible: Pelvis' });
-  await hide.uncheck();
-  await expect(page.getByRole('checkbox', { name: 'Visible: Pelvis' })).not.toBeChecked();
+  await page.getByRole('button', { name: 'Hide Pelvis' }).click();
+  await expect(page.getByRole('button', { name: 'Hide Pelvis' })).toHaveAttribute('aria-pressed', 'true');
 
   const all = await page.locator('#scene-panel [data-row]').count();
   await page.getByRole('searchbox', { name: 'Search the outliner' }).fill('pelv');
@@ -108,16 +107,16 @@ test('rename, hide, lock and search work from the outliner and survive a reload'
 
 test('the keyboard focus stays on a row control after it changes the outliner', async ({ page }) => {
   await openNested(page);
-  const box = page.locator('#scene-panel input[type="checkbox"]').first();
-  await box.focus();
+  const eye = page.locator('#scene-panel .row-eye').first();
+  await eye.focus();
   await page.keyboard.press('Space');
-  await expect(page.locator('#scene-panel input[type="checkbox"]').first()).not.toBeChecked();
-  await expect(page.locator('#scene-panel input[type="checkbox"]').first()).toBeFocused();
-  const lock = page.locator('#scene-panel button.lock').first();
+  await expect(page.locator('#scene-panel .row-eye').first()).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#scene-panel .row-eye').first()).toBeFocused();
+  const lock = page.locator('#scene-panel .row-lock').first();
   await lock.focus();
   await page.keyboard.press('Enter');
-  await expect(page.locator('#scene-panel button.lock').first()).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#scene-panel button.lock').first()).toBeFocused();
+  await expect(page.locator('#scene-panel .row-lock').first()).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#scene-panel .row-lock').first()).toBeFocused();
 });
 
 test('the gizmo moves the node, Undo and Redo step through it, and it is remembered', async ({ page }) => {
@@ -254,7 +253,7 @@ test('changes queued before an open apply to their model first, then the open ap
   await openNested(page);
   // Change A (hide mesh 0) is held while it sets its scene; the node edit B queues behind it, then the cube opens.
   await page.evaluate(() => window.__msApp!.holdNextScene());
-  await page.locator('#scene-panel [data-focus="box:mesh:0"]').click();
+  await page.locator('#scene-panel [data-focus="eye:mesh:0"]').click();
   await expect.poll(() => page.evaluate(() => window.__msApp!.sceneHeld())).toBe(true);
   await page.evaluate(() => {
     void window.__msApp!.commitNodeEdit({ node: 0, translation: [1, 0, 0], rotation: [0, 0, 0] });
@@ -267,7 +266,7 @@ test('changes queued before an open apply to their model first, then the open ap
   await page.evaluate(() => window.__msApp!.releaseScene());
   await expect(page.getByRole('status')).toContainText('Opened single-cube.bbmodel', { timeout: 30_000 });
   await expect(page.getByRole('alert')).toHaveCount(0);
-  await expect(page.locator('#scene-panel [data-focus="box:mesh:0"]')).toBeChecked();
+  await expect(page.locator('#scene-panel [data-focus="eye:mesh:0"]')).toHaveAttribute('aria-pressed', 'false');
   // The nested model keeps both changes (its record also hides what the file hides); the cube's record has none.
   await waitForStored(page, (record) => {
     const hidden = record['hiddenMeshes'] as number[] | undefined;

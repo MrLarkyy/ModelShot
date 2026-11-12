@@ -81,8 +81,7 @@ test('the look, the hidden nodes and the render settings are restored', async ({
   await openFiles(page, [fixture('bbmodel', 'nested-groups.bbmodel')], 'nested-groups.bbmodel');
   await openTab(page, 'Look');
   await page.getByRole('radio', { name: 'Rim' }).check();
-  const boxes = page.locator('#scene-panel input[type="checkbox"]');
-  await boxes.first().uncheck();
+  await page.locator('#scene-panel .row-eye').first().click();
   await openTab(page, 'Render');
   const samples = page.locator('#render-panel').getByLabel('Samples');
   await samples.fill('32');
@@ -92,7 +91,7 @@ test('the look, the hidden nodes and the render settings are restored', async ({
   await expect(page.getByRole('status')).toContainText('Opened nested-groups.bbmodel', { timeout: 30_000 });
   await openTab(page, 'Look');
   await expect(page.getByRole('radio', { name: 'Rim' })).toBeChecked();
-  await expect(page.locator('#scene-panel input[type="checkbox"]').first()).not.toBeChecked();
+  await expect(page.locator('#scene-panel .row-eye').first()).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#render-panel').getByLabel('Samples')).toHaveValue('32');
 });
 

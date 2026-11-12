@@ -174,9 +174,9 @@ test('a scene checkbox clicked while files load goes back to what the shown mode
     window.__msApp!.hangNextLoad();
   });
   await page.locator('#file-input').setInputFiles([CUBE]);
-  const box = page.locator('#scene-panel input[type="checkbox"]').first();
-  await expect(box).toBeChecked();
+  const box = page.locator('#scene-panel .row-eye').first();
+  await expect(box).toHaveAttribute('aria-pressed', 'false');
   await box.click();
-  await expect(box).toBeChecked();
+  await expect(box).toHaveAttribute('aria-pressed', 'false');
   await expectAlert(page, /took longer/);
 });

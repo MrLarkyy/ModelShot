@@ -73,13 +73,13 @@ test('hides and shows a node from the scene panel', async ({ page }) => {
   await openApp(page);
   await openFiles(page, [fixture('bbmodel', 'nested-groups.bbmodel')], 'nested-groups.bbmodel');
   const before = await waitForModel(page);
-  const boxes = page.locator('#scene-panel input[type="checkbox"]');
+  const boxes = page.locator('#scene-panel .row-eye');
   expect(await boxes.count()).toBeGreaterThan(1);
-  for (let i = 0; i < (await boxes.count()); i++) await boxes.nth(i).uncheck();
+  for (let i = 0; i < (await boxes.count()); i++) await boxes.nth(i).click();
   await page.waitForTimeout(500);
   const hidden = await previewImage(page);
   let differing = 0;
   for (let i = 0; i < before.data.length; i += 4) if (before.data[i] !== hidden.data[i]) differing++;
   expect(differing).toBeGreaterThan(100);
-  for (let i = 0; i < (await boxes.count()); i++) await boxes.nth(i).check();
+  for (let i = 0; i < (await boxes.count()); i++) await boxes.nth(i).click();
 });

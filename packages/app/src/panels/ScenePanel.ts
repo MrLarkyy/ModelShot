@@ -304,6 +304,12 @@ export class ScenePanel {
     select.append(icon(kind === 'node' ? 'folder' : 'cube', { size: 14 }), el('span', {}, labelNodes(name, row)));
     select.addEventListener('click', () => this.host.selectRow(kind, index));
     select.addEventListener('dblclick', () => this.startRename(kind, index));
+    select.addEventListener('keydown', (event) => {
+      if (event.key !== 'F2') return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.startRename(kind, index);
+    });
 
     const eye = iconButton(visible ? 'eye' : 'eye-off', `Hide ${name}`, { small: true, pressed: !visible });
     eye.classList.add('row-eye');
@@ -340,6 +346,7 @@ export class ScenePanel {
     if (row.hasChildren) attributes['aria-expanded'] = String(row.expanded);
     const item = el('li', { attributes }, [line]);
     item.style.setProperty('--depth', String(row.depth));
+    this.markStop(item, false);
     this.items.set(key, item);
     return item;
   }

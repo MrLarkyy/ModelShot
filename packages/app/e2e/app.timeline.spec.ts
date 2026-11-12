@@ -132,9 +132,9 @@ test('a node hidden while a clip plays stays hidden', async ({ page }) => {
   await openAnimated(page);
   await timeline(page).getByRole('button', { name: 'Play' }).click();
   await expect.poll(async () => Number(await playhead(page).inputValue())).toBeGreaterThan(0);
-  await page.locator('#scene-panel input[type="checkbox"]').first().uncheck();
+  await page.locator('#scene-panel .row-eye').first().click();
   await page.waitForTimeout(800);
-  await expect(page.locator('#scene-panel input[type="checkbox"]').first()).not.toBeChecked();
+  await expect(page.locator('#scene-panel .row-eye').first()).toHaveAttribute('aria-pressed', 'true');
   await expect
     .poll(async () => ((await storedModels(page))[0]?.['hiddenNodes'] as unknown[] | undefined)?.length)
     .toBe(1);
@@ -196,7 +196,7 @@ test('a scene change at a scrubbed pose relights it at once, not after the relig
   // A relight that waits for the delay would not come within this test: only one at once is seen.
   expect(await page.evaluate(() => window.__msApp!.setRelightDelayMs(600_000))).toBe(true);
   await watchLighting(page);
-  await page.locator('#scene-panel input[type="checkbox"]').first().uncheck();
+  await page.locator('#scene-panel .row-eye').first().click();
   await expect
     .poll(async () => (await lightingSeen(page)).some((text) => text.includes('Lighting the preview')), {
       timeout: 30_000,
