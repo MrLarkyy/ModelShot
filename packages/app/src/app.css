@@ -1958,6 +1958,11 @@ progress {
     outline-offset: var(--ed-ring-offset);
   }
 
+  /* A row clips what it paints: a pressed eye or lock and the selected name keep their ring inside themselves here too. */
+  .tree > li :is(button, input, .name[aria-current='true']):focus-visible {
+    outline-offset: calc(-1 * var(--ms-focus-width));
+  }
+
   [role='tablist'][aria-orientation='vertical'] [role='tab'][aria-selected='true'] {
     border-left: 3px solid Highlight;
   }

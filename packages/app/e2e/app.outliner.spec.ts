@@ -109,39 +109,56 @@ const ringSlack = (page: Page): Promise<{ what: string; ring: string; slack: num
     };
   });
 
-test('the focus ring of a row and of each of its controls is drawn whole, inside what clips the row', async ({
-  page,
-}) => {
-  await openNested(page);
-  const whole = async (what: RegExp): Promise<void> => {
-    const ring = await ringSlack(page);
-    expect(ring.what).toMatch(what);
-    expect(ring.ring, `${ring.what} shows a ring`).toBe('solid 3px');
-    expect(ring.slack, `${ring.what}: ring cut off by ${-ring.slack} px`).toBeGreaterThanOrEqual(0);
-  };
-  await item(page, 'body').focus();
-  await page.keyboard.press('ArrowDown');
-  await expect(item(page, 'torso')).toBeFocused();
-  await whole(/^li/);
-  await page.keyboard.press('Tab');
-  await whole(/Collapse torso/);
-  await page.keyboard.press('Tab');
-  await whole(/Hide torso/);
-  await page.keyboard.press('Tab');
-  await whole(/Lock torso/);
-  // The name button is no tab stop: a script gives it the focus, and after keys the browser rings it.
-  await item(page, 'torso').locator('button.name').focus();
-  await whole(/^button\.name/);
-  await page.keyboard.press('F2');
-  await expect(page.locator('#scene-panel input[type="text"]')).toBeFocused();
-  await whole(/^input/);
-  // The last row of the list, where a ring has the least room below it.
-  await page.keyboard.press('Escape');
-  await page.keyboard.press('End');
-  await whole(/^li/);
-  await page.keyboard.press('Tab');
-  await whole(/^button/);
-});
+for (const forcedColors of ['none', 'active'] as const) {
+  test(`the focus ring of a row and of each of its controls is drawn whole, forced colours ${forcedColors}`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ forcedColors });
+    await openNested(page);
+    const whole = async (what: RegExp): Promise<void> => {
+      const ring = await ringSlack(page);
+      expect(ring.what).toMatch(what);
+      expect(ring.ring, `${ring.what} shows a ring`).toBe('solid 3px');
+      expect(ring.slack, `${ring.what}: ring cut off by ${-ring.slack} px`).toBeGreaterThanOrEqual(0);
+    };
+    await item(page, 'body').focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(item(page, 'torso')).toBeFocused();
+    await whole(/^li/);
+    // The selected row and a pressed eye or lock have their own state styles: their rings stay inside too.
+    await page.keyboard.press('Enter');
+    await expect(item(page, 'torso')).toHaveAttribute('aria-selected', 'true');
+    await whole(/^li/);
+    await page.keyboard.press('Tab');
+    await whole(/Collapse torso/);
+    await page.keyboard.press('Tab');
+    await whole(/Hide torso/);
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('button', { name: 'Hide torso' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: 'Hide torso' })).toBeFocused();
+    await whole(/Hide torso/);
+    await page.keyboard.press('Tab');
+    await whole(/Lock torso/);
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('button', { name: 'Lock torso' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: 'Lock torso' })).toBeFocused();
+    await whole(/Lock torso/);
+    // The name button is no tab stop: a script gives it the focus, and after keys the browser rings it.
+    const name = item(page, 'torso').locator('button.name');
+    await expect(name).toHaveAttribute('aria-current', 'true');
+    await name.focus();
+    await whole(/^button\.name/);
+    await page.keyboard.press('F2');
+    await expect(page.locator('#scene-panel input[type="text"]')).toBeFocused();
+    await whole(/^input/);
+    // The last row of the list, where a ring has the least room below it.
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('End');
+    await whole(/^li/);
+    await page.keyboard.press('Tab');
+    await whole(/^button/);
+  });
+}
 
 test('a collapsed group stays collapsed through Undo and a reload, and the search and selection stay too', async ({
   page,
