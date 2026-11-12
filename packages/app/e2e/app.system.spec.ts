@@ -308,7 +308,7 @@ test('forced colours mark the selected tab, an open panel toggle and the current
   await openTab(page, 'Object');
   const tab = await page
     .getByRole('tab', { name: 'Object', exact: true })
-    .evaluate((n) => [getComputedStyle(n).borderBottomStyle, getComputedStyle(n).borderBottomWidth]);
+    .evaluate((n) => [getComputedStyle(n).borderLeftStyle, getComputedStyle(n).borderLeftWidth]);
   expect(tab).toEqual(['solid', '3px']);
   const outline = (selector: string): Promise<string[]> =>
     page
