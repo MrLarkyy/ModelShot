@@ -116,13 +116,23 @@ in the middle, the inspector on the right and the timeline below.
 - **Below 1024 px** the outliner and the inspector are drawers over the view (a toast stays above them):
   the toggles open one at a time, Esc closes it and returns the focus to its toggle, and the timeline shrinks to one
   row without the keyframe markers. The view keeps the whole width.
-- **Outliner**: the node tree (at most 500 rows are listed) with, per row, a visibility checkbox, a name button that
-  selects and a Lock toggle (`aria-pressed`). F2 or a double click renames (128 characters, Enter keeps, Esc cancels;
-  an empty name takes the file's name back). The search field keeps the rows whose label contains the text, with their
-  groups, and says "N matches". The Lights group has a button for the look's key and rim light, each opening the Light
-  tab on it. The Add
-  menu has "Open model" and a disabled "Add light" (user-placed lights are not available yet). Labels and locks are
-  app labels: they never change the scene document, an export or a pixel.
+- **Outliner**: a tree (`role="tree"`, rows `treeitem` with `aria-level`, `aria-expanded` and `aria-selected`; the model
+  is `panels/outlinerTree.ts`, a pure flat list of the visible rows). Each row has a chevron for groups, a folder or cube
+  icon, the name (select; F2 or a double click renames: 128 characters, Enter keeps, Esc cancels, an empty name takes
+  the file's name back), an eye button "Hide <name>" and a lock button "Lock <name>", both `aria-pressed` with their
+  icon changing (eye / eye-off, lock / unlock) and a pressed-state outline in forced colours; the buttons show on
+  hover, on focus, on the selected row and always while pressed. The tree is one tab stop: Up and Down move, Home and
+  End jump, Right opens a group or goes to its first child, Left closes it or goes to its group, Enter selects, F2
+  renames, H hides or shows the selected row. At most 500 rows are listed and the list says "Showing 500 of N". The
+  search field (the `/` key focuses it, except while typing in a field) keeps the rows whose label contains the text
+  and the groups above them, opened for the search without touching what you collapsed, marks the matches with
+  `<mark>` text nodes and says "N matches". "More" holds Expand all and Collapse all. Which groups are collapsed is kept
+  per model (`collapsedNodes`, see [Local state](#local-state-v1)); it is not an undo step, so Undo and Redo leave the
+  collapse, the selection and the search alone. The Lights group has a button for the look's key and rim light with
+  its colour swatch, each opening the Light tab on it, and the footer counts nodes, cubes and clips. The Add menu has
+  "Open model" and a disabled "Add light" (user-placed lights are not available yet). Labels and locks are app
+  labels: they never change the scene document, an export or a pixel. Rebuilding the list for a model of about 2000
+  rows (a search keystroke, Collapse all, a selection) blocks the main thread under 50 ms, held by `app.outliner.spec.ts`.
 - **Inspector**: a vertical icon rail (56 px, so it cannot wrap at 260-520 px) of five tabs, each an icon over its label;
   ArrowUp/Down and Left/Right, Home and End move between them, and the selected tab is styled by `aria-selected`
   only, so focus never changes it (forced colours: a 3 px left border). Above the panels a title row names the
@@ -222,6 +232,7 @@ list in the app (`?`, grouped File, View, Selection, Timeline) is built from `SH
 | L                        | next look (the Look tab's cards mark it; `aria-checked` follows)     |
 | G                        | all overlays off, or back on                                         |
 | [ and ]                  | outliner and inspector                                               |
+| /                        | search the outliner (not while typing in a field)                    |
 | T                        | timeline                                                             |
 | ?                        | the shortcut list                                                    |
 | H                        | show or hide the selected node                                       |
@@ -238,10 +249,10 @@ IndexedDB `modelshot-app`, version 1, on this device only:
 
 - store `session`, key `current`: `{ v: 1, files, modelKey, savedAt }`, the files of the last open model, reopened on
   a start without handoff;
-- store `models`, key = SHA-256 hex of the model bytes: `{ v: 1, camera, look, hiddenNodes, hiddenMeshes, textureFilters?, arms?, names?, lockedNodes?, lockedMeshes?, nodeEdits?, lookAdjust?, render, export?, savedAt }`,
+- store `models`, key = SHA-256 hex of the model bytes: `{ v: 1, camera, look, hiddenNodes, hiddenMeshes, textureFilters?, arms?, names?, lockedNodes?, lockedMeshes?, nodeEdits?, lookAdjust?, collapsedNodes?, render, export?, savedAt }`,
   restored when the same model is opened again. At most 20 entries; the oldest is evicted. `names` maps
   `n:<node index>` / `m:<mesh index>` to a label of at most 128 characters, the locks are index lists and `nodeEdits`
-  is `{ node, translation, rotation }[]` (finite, at most `MAX_ANIMATION_VALUE`); `lookAdjust` is `{ exposure -6..6, saturation 0..2, backdrop: null or "#rrggbb" }` (a malformed one is dropped on its own). A record from before the editor lacks
+  is `{ node, translation, rotation }[]` (finite, at most `MAX_ANIMATION_VALUE`); `lookAdjust` is `{ exposure -6..6, saturation 0..2, backdrop: null or "#rrggbb" }` (a malformed one is dropped on its own); `collapsedNodes` is a list of node indices (at most 100000, a malformed list is dropped). A record from before the editor lacks
   them and reads as before; a bad entry is dropped on its own.
 
 The panel layout is not in this database: it is `localStorage` `modelshot.layout.v1`
@@ -328,7 +339,7 @@ the dark workspace; the viewport chips sit over the 3D view, so their ring has a
 `role="alert"` until dismissed or the next open, arms change or render (the Dismiss button sits beside it, not inside;
 the pinned graphics-driver alert, a context that cannot be restored or a linear program that fails to link during the
 fallback switch, where drawing goes on with nearest filtering, survives those and goes only when dismissed), one `role="status"` line, the render progress as
-a `progress` with `aria-valuetext`, the forget dialog with its focus back on File, native controls and dialogs, tabs (a vertical rail), collapsible sections and separators with their ARIA
+a `progress` with `aria-valuetext`, the forget dialog with its focus back on File, native controls and dialogs, tabs (a vertical rail), the outliner tree, radio cards, collapsible sections and separators with their ARIA
 patterns, the overlay canvas `aria-hidden`, colours only from the brand tokens ([brand.md](brand.md)). In forced
 colours the native checkbox, radio and select return and every active state (`.on`, pressed, the checked segment, the
 selected tab, the current outliner row) gets a system-colour outline or bar. Axis letters keep 4.5:1 on the field surface; an XYZ field with an invalid value is `aria-invalid` and its hint is a polite status. Every panel is reachable by keyboard; the
@@ -338,7 +349,7 @@ shortcut list is the cheat sheet.
 
 Vitest in `packages/app/test`; Playwright in `packages/app/e2e` (`pnpm --filter @modelshot/app run test:browser`):
 flow, formats, camera, persistence, hostile files, offline, network, handoff, accessibility and preview/render parity,
-and the editor: `app.editor.spec.ts` (outliner, picking, gizmo, undo, names and locks), `app.timeline.spec.ts`,
+and the editor: `app.editor.spec.ts` (picking, gizmo, undo, names and locks, the inspector tabs, looks, render and camera), `app.outliner.spec.ts` (the tree, collapse, search, keyboard, the 2000-row rebuild), `app.timeline.spec.ts`,
 `app.topbar.spec.ts` (one row from 1440 to 900 px, More below, one primary, the File menu from the keyboard, the forget
 dialog, a message or the longest error covers no view control, render bar button or first-run row from 375 to 1440 px, a
 cut-off message scrolls under the wheel and the camera stays), `app.render.spec.ts` (render start, Stop and Esc, numbers, result line, the view keeps its size),
