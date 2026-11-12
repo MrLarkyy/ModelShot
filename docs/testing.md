@@ -1749,6 +1749,12 @@ round 7); its max was 750 ms then.
   storage chip, forget dialog, empty-state card and first-run hint load before a model opens. Measured on origin/main
   e19e346 76 399 B, with MS-102 81 635 B, gzip level 9; the max is the measurement plus 10 %, rounded up to 100, the rule of
   MS-23, MS-38 and MS-85. `app` 216 892 to 221 201 B, within its max.)
+- `bundleGzipBytes` `app` 237 100 and `app-entry` 94 500 (MS-104, MS-105, MS-106, 2026-11-12: the inspector rail with
+  collapsible sections, XYZ fields and the Object, Material and Light tabs, the look cards with swatches and
+  adjustments, the Render quality and camera sections, and the outliner tree all load with the first model's page, so
+  `app-entry` grows with `app`. Measured with the three tasks 232 432 B (`app`) and 92 578 B (`app-entry`), gzip level 9,
+  against the earlier maxima 223 100 and 89 800 B; each max is the measurement plus 2 %, rounded up to 100, small
+  headroom because the panels are the code the editor ships and no new dependency was added.)
 - `frameTimeMs.rt-pose-step-512` (MS-34): one playback frame of the editor on the bench scene (128 group nodes, a
   rotation channel per node): `animateScene`, the renderer's pose-only `setScene` (no decode, upload or bake) and the
   render at 512 x 512, each timed until the GPU finished; median of 11 frames after 4 (`renderPoseFrames`, installed by
