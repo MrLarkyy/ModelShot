@@ -106,7 +106,8 @@ in the middle, the inspector on the right and the timeline below.
   and the drawers and never takes height from the view; the messages take at most half of its height and scroll
   beyond that (a shown message takes the pointer, so the wheel or a touch over it scrolls the messages and not the
   camera; once faded it lets the pointer through to the view), and without a message the status line takes no room. An error goes to `#alert` (`role="alert"`, with a Dismiss button) and stays until it is
-  dismissed, which gives the focus to the File button. A saving failure is not an error and not a status: it shows in its own chip (`#storage-chip`, a polite live region that is always in the tree and collapses when empty) under the status line, with a Dismiss button, until dismissed or the page reloads, and the app goes on. The graphics-context message is a status, sent by `ViewerOptions.onContextRestored`.
+  dismissed, which gives the focus to the File button, or until the next open, arms change or render clears it. A
+  graphics-driver failure (`ViewerOptions.onError`) is pinned: it survives those and goes only when dismissed. A saving failure is not an error and not a status: it shows in its own chip (`#storage-chip`, a polite live region that is always in the tree and collapses when empty) under the status line, with a Dismiss button, until dismissed or the page reloads, and the app goes on. The graphics-context message is a status, sent by `ViewerOptions.onContextRestored`.
 - **Resize and collapse**: the separators between the panels are focusable (`role="separator"` with
   `aria-valuenow`): drag them, or use the arrow keys (16 px), Home and End. Widths are clamped (outliner 180-480 px,
   inspector 260-520, timeline 96-320). A toggle collapses a panel. Sizes, collapsed panels, the overlay toggles and the
@@ -285,9 +286,9 @@ Landmarks (header, outliner `nav`, view `main`, inspector `aside`, timeline `sec
 heading, the Shortcut hints region; the toasts are live regions, not landmarks),
 every control labelled, visible focus (a 3 px `--ms-color-blue-mid` ring, 2 px off the control, on every control of
 the dark workspace; the viewport chips sit over the 3D view, so their ring has a ground halo under it), errors in
-`role="alert"` until dismissed (the Dismiss button sits beside it, not inside; the pinned graphics-driver alert, a
-context that cannot be restored or a linear program that fails to link during the fallback switch, where drawing goes
-on with nearest filtering, also survives opening a file and goes only when dismissed), one `role="status"` line, the render progress as
+`role="alert"` until dismissed or the next open, arms change or render (the Dismiss button sits beside it, not inside;
+the pinned graphics-driver alert, a context that cannot be restored or a linear program that fails to link during the
+fallback switch, where drawing goes on with nearest filtering, survives those and goes only when dismissed), one `role="status"` line, the render progress as
 a `progress` with `aria-valuetext`, the forget dialog with its focus back on File, native controls and dialogs, tabs and separators with their ARIA
 patterns, the overlay canvas `aria-hidden`, colours only from the brand tokens ([brand.md](brand.md)). In forced
 colours the native checkbox, radio and select return and every active state (`.on`, pressed, the checked segment, the
