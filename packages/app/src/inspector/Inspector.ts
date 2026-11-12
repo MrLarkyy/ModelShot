@@ -2,6 +2,7 @@ import { INSPECTOR_TABS, type InspectorTabId } from '../layout/layoutState';
 import { displayName } from '../editor/displayName';
 import { icon, type IconName } from '../ui/icon';
 import { el } from '../ui/dom';
+import type { SectionState } from '../ui/sectionState';
 import type { InspectorModel } from './InspectorModel';
 import { buildLightTab } from './LightTab';
 import { buildMaterialTab, type MaterialTabHost } from './MaterialTab';
@@ -16,6 +17,7 @@ const TITLES: Readonly<Record<InspectorTabId, string>> = {
 };
 
 export interface InspectorHost extends ObjectTabHost, MaterialTabHost {
+  readonly sections: SectionState;
   readonly tabChanged: (tab: InspectorTabId) => void;
 }
 
@@ -160,7 +162,7 @@ export class Inspector {
       const again = at >= 0 ? controlsOf(panel)[at] : undefined;
       if (again && controlKind(again) === kind) again.focus();
     };
-    set('object', buildObjectTab(this.model, this.host));
+    set('object', buildObjectTab(this.model, this.host, this.host.sections));
     set('material', buildMaterialTab(this.model, this.host));
     set(
       'light',

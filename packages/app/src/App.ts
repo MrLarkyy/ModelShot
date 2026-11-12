@@ -21,6 +21,7 @@ import { LOAD_TIMEOUT_MS, loadModel } from './intake/loadModel';
 import { Inspector } from './inspector/Inspector';
 import type { InspectorModel } from './inspector/InspectorModel';
 import { LayoutStore } from './layout/LayoutStore';
+import { SectionState } from './ui/sectionState';
 import { DEFAULT_LAYOUT, type PanelId } from './layout/layoutState';
 import { PanelLayout } from './layout/PanelLayout';
 import { CameraPanel } from './panels/CameraPanel';
@@ -95,6 +96,7 @@ export class App {
   private readonly renderPanel: RenderPanel;
   private readonly inspector: Inspector;
   private readonly layoutStore: LayoutStore;
+  private readonly sectionState: SectionState;
   private readonly panelLayout: PanelLayout;
   private readonly selection = new Selection();
   private readonly history = new UndoStack<HistoryEntry>();
@@ -170,11 +172,15 @@ export class App {
       alertText: byId('alert', HTMLElement),
     });
     this.layoutStore = new LayoutStore(browserStorage(), (message) => this.notices.storage(message));
+    this.sectionState = new SectionState(browserStorage(), (message) => this.notices.storage(message));
     this.persistence = new StatePersistence(
       store,
       (message) => this.notices.storage(message),
       undefined,
-      () => this.layoutStore.reset(),
+      () => {
+        this.layoutStore.reset();
+        this.sectionState.reset();
+      },
     );
     this.hintStore = new HintStore(browserStorage(), (message) => this.notices.storage(message));
     this.firstRunHint = new FirstRunHint(byId('first-run-hint', HTMLElement), this.hintStore, () =>
@@ -242,6 +248,8 @@ export class App {
         setLocked: (kind, index, locked) => this.setLocked(kind, index, locked),
         setTransform: (node, translation, rotation) => this.setTransform(node, translation, rotation),
         setArms: (arms) => void this.changeArms(arms),
+        seek: (time) => this.tools?.timeline.seek(time),
+        sections: this.sectionState,
         setTextureFilter: (index, filter) => this.setTextureFilter(index, filter),
         tabChanged: (tab) => this.layoutStore.update({ tab }),
       },
@@ -582,6 +590,7 @@ export class App {
             : null,
         commitEdit: (edit) => this.commitNodeEdit(edit),
         interacted: () => this.invalidateRender(),
+        clipChanged: () => this.inspector.update(this.inspectorModel()),
       });
       if (this.cssSize) this.tools.resize(this.cssSize);
       this.tools.modelChanged();
@@ -607,6 +616,7 @@ export class App {
       lockedMeshes: this.lockedMeshes,
       textureFilter: this.textureFilter,
       player: open.loaded.kind === 'skin' ? { arms: this.arms } : null,
+      clip: this.base.animations?.[this.tools?.timeline.clipIndex ?? 0] ?? null,
       look: this.look,
     };
   }
