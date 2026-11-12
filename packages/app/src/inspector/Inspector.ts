@@ -93,7 +93,7 @@ export class Inspector {
     return this.current;
   }
 
-  /** Shows `id`; `focus` moves the focus to its tab (a keyboard or pointer choice). */
+  /** Shows `id`; `notify` reports it to the host (`tabChanged`, which keeps the tab with the layout), false for the first paint. */
   select(id: InspectorTabId, notify: boolean): void {
     this.current = id;
     for (const [tabId, tab] of this.tabs) {

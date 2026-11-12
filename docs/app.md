@@ -159,8 +159,10 @@ in the middle, the inspector on the right and the timeline below.
     threshold, alpha emission, blending, sides: read-only, from the file) and Edges (rounding and sharp angle,
     read-only, from the look, with "Change in Look").
   - **Light**: the look's lights as it defines them, read-only: key, fill and rim each with a colour swatch and hex,
-    intensity (the strongest channel), key softness in degrees, azimuth and elevation with a top-view dial (azimuth 0° is toward the camera, positive to the viewer's right, ±180° behind
-    the model: key and fill are seen from the Front view, the rim from the live view; a black light shows "Off"), the environment (a dome's sky and ground or an image's name, intensity and rotation), a
+    intensity (the strongest channel), key softness in degrees, then azimuth and elevation beside a top-view dial
+    (azimuth 0° is toward the camera, positive to the viewer's right, ±180° behind the model: key and fill are seen
+    from the Front view, the rim from the live view; a light straight above or below reads 0°; a black light shows
+    "Off"), the environment (a dome's sky and ground or an image's name, intensity and rotation), a
     Shadows section (the key casts shadows, fill and rim do not, the catcher strength) and Other lights (buttons
     that move the focus to a light). Lights come from the look: choose another in Look.
   - **Look**: one radio card per look preset ([look-presets.md](look-presets.md)): a swatch painted from the look's own

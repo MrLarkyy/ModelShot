@@ -202,6 +202,8 @@ test.describe('first run hint', () => {
     await openFiles(page, [CUBE], 'single-cube.bbmodel');
     await expect(hint).toBeHidden();
     await forgetLocalData(page);
+    // The hint is forgotten after the database is deleted, which outlasts the dialog: the status line says when.
+    await expect(page.getByRole('status')).toContainText('Local data deleted');
     expect(await page.evaluate(() => localStorage.getItem('modelshot-hints-v1'))).toBeNull();
     await openFiles(page, [FLAT], 'flat-cube.bbmodel');
     await expect(hint).toBeVisible();

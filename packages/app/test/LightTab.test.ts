@@ -78,6 +78,21 @@ describe('lightValues', () => {
     expect(lightAim([0, 1, 0]).elevation).toBeCloseTo(90);
     expect(softnessDegrees(Math.PI / 2)).toBeCloseTo(90);
   });
+
+  it('gives a light straight above or below azimuth 0 in both spaces, never -180 from a negative zero', () => {
+    for (const direction of [
+      [0, 1, 0],
+      [0, -1, 0],
+      [-0, 1, -0],
+    ] as const) {
+      expect(lightAim(direction).azimuth).toBe(0);
+      expect(lightAim(direction, 'view').azimuth).toBe(0);
+    }
+    // Studio points its unlit fill (world space) and rim (view space) straight up: both read alike.
+    const studio = rows('studio');
+    expect(studio['Fill light']).toMatchObject({ Azimuth: '0°', Elevation: '90°' });
+    expect(studio['Rim light']).toMatchObject({ Azimuth: '0°', Elevation: '90°' });
+  });
 });
 
 // The titles of the tab's sections, in the order shown.

@@ -129,7 +129,7 @@ function textureRows(doc: SceneDocument, materials: readonly MaterialInfo[]): HT
 
 function transparencyRows(materials: readonly MaterialInfo[]): HTMLElement[] {
   const rows = materials.map((m) =>
-    el('dl', {}, [
+    el('dl', { className: 'value-grid' }, [
       el('dt', { text: 'Material' }),
       el('dd', { text: m.name }),
       el('dt', { text: 'Alpha mode' }),
@@ -214,7 +214,7 @@ export function buildMaterialTab(
       'material-edges',
       'Edges',
       [
-        el('dl', {}, [
+        el('dl', { className: 'value-grid' }, [
           el('dt', { text: 'Rounding' }),
           el('dd', { text: edges.width.toFixed(2) }),
           el('dt', { text: 'Sharp from' }),

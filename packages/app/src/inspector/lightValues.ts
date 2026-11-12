@@ -49,8 +49,9 @@ const DEGREES = 180 / Math.PI;
 export function lightAim(direction: Direction, space: 'world' | 'view' = 'world'): LightAim {
   const [x, y, z] = direction;
   const sign = space === 'world' ? -1 : 1;
+  // A light straight above or below has no azimuth; `|| 0` keeps the mirrored zeros from reading as −180 (atan2(−0, −0)).
   return {
-    azimuth: Math.atan2(sign * x, sign * z) * DEGREES,
+    azimuth: Math.atan2(sign * x || 0, sign * z || 0) * DEGREES,
     elevation: Math.asin(Math.min(1, Math.max(-1, y))) * DEGREES,
   };
 }

@@ -171,9 +171,21 @@ function rows(entries: readonly (readonly [string, string])[], hex: string | nul
   );
 }
 
+const AIM_TERMS: readonly string[] = ['Azimuth', 'Elevation'];
+
+// The dial stands beside the two angles it draws; the other rows keep the full width, so a colour is never cut off.
 function lightBody(entry: LightSection): HTMLElement[] {
-  const grid = rows(entry.rows, entry.swatch);
-  return entry.aim ? [el('div', { className: 'light-aim' }, [dial(entry.aim), grid])] : [grid];
+  if (!entry.aim) return [rows(entry.rows)];
+  return [
+    rows(
+      entry.rows.filter(([term]) => !AIM_TERMS.includes(term)),
+      entry.swatch,
+    ),
+    el('div', { className: 'light-aim' }, [
+      dial(entry.aim),
+      rows(entry.rows.filter(([term]) => AIM_TERMS.includes(term))),
+    ]),
+  ];
 }
 
 // The Light tab: the lights of the look, read-only; the one picked in the outliner first. The look defines the lights,

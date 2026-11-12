@@ -305,6 +305,40 @@ test('the Light tab lists the look lights read-only with no placeholder control'
   await openTab(page, 'Object');
 });
 
+// What a shown tab lays out past its own right edge, where the inspector cuts it off: a row, a value, a part of one.
+const cutOff = (page: Page, tab: 'light' | 'look' | 'render'): Promise<string[]> =>
+  page.locator(`#tabpanel-${tab}`).evaluate((root) => {
+    const edge = root.getBoundingClientRect().right + 0.5;
+    return [...root.querySelectorAll('*')]
+      .filter((n) => n.getClientRects().length > 0 && n.getBoundingClientRect().right > edge)
+      .map((n) => `${n.tagName} ${n.textContent}`);
+  });
+
+for (const width of [1440, 1024] as const) {
+  test(`the Light tab cuts off no value at ${width} px, down to the narrowest inspector`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openNested(page);
+    const panel = page.locator('#tabpanel-light');
+    const separator = page.getByRole('separator', { name: 'Resize the inspector' });
+    // Studio lights the key alone; Rim has the longest rows (a lit rim with "Albedo share").
+    for (const look of ['Studio', 'Rim']) {
+      await openTab(page, 'Look');
+      await page.getByRole('radio', { name: look, exact: true }).click();
+      await openTab(page, 'Light');
+      await expect(panel.locator('dd', { hasText: /^#[0-9A-F]{6}$/ }).first()).toBeVisible();
+      if (look === 'Studio') await expect(panel.locator('dd', { hasText: /^Off$/ }).first()).toBeVisible();
+      expect(await cutOff(page, 'light'), `${look} at the stored width`).toEqual([]);
+      for (const key of ['Home', 'End']) {
+        await separator.focus();
+        await page.keyboard.press(key);
+        expect(await cutOff(page, 'light'), `${look} at ${await separator.getAttribute('aria-valuenow')} px`).toEqual(
+          [],
+        );
+      }
+    }
+  });
+}
+
 test('the inspector rail never wraps and its selected tab looks the same focused or not', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openApp(page);
@@ -603,6 +637,20 @@ test('the Edges rows of the Material tab are the active look own values, for eve
     await expect(edges).toContainText(preset.edges.width.toFixed(2));
     await expect(edges).toContainText(`${preset.edges.sharpAngleDeg}°`);
     await expect(edges).toContainText(`From the ${preset.name} look.`);
+  }
+  // One label and value style on every tab: the Edges rows are set like the Light tab's rows, never in the mono face.
+  const face = (selector: string): Promise<string> =>
+    page
+      .locator(selector)
+      .first()
+      .evaluate((n) => {
+        const s = getComputedStyle(n);
+        return [s.fontFamily, s.fontSize, s.fontWeight, s.color].join('|');
+      });
+  for (const cell of ['dt', 'dd']) {
+    const edgesFace = await face(`#section-material-edges ${cell}`);
+    expect(edgesFace).not.toMatch(/mono/i);
+    expect(edgesFace).toBe(await face(`#tabpanel-light ${cell}`));
   }
 });
 
