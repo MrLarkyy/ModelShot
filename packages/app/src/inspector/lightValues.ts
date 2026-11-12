@@ -11,18 +11,22 @@ export function lightIntensity(color: Rgb): number {
   return Math.max(color[0], color[1], color[2]);
 }
 
+const hex = (channels: readonly number[]): string =>
+  `#${channels
+    .map((channel) => srgbByte(channel).toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase()}`;
+
+/** A scene-linear colour (0..1 per channel) as `#RRGGBB`, sRGB-encoded. */
+export function srgbHex(color: Rgb): string {
+  return hex(color);
+}
+
 /** The hue of a scene-linear light colour as `#RRGGBB`, sRGB-encoded at full strength (the intensity is separate); null when off. */
 export function lightHex(color: Rgb): string | null {
   const peak = lightIntensity(color);
   if (!(peak > 0)) return null;
-  return `#${color
-    .map((channel) =>
-      srgbByte(channel / peak)
-        .toString(16)
-        .padStart(2, '0'),
-    )
-    .join('')
-    .toUpperCase()}`;
+  return hex(color.map((channel) => channel / peak));
 }
 
 export interface LightAim {
