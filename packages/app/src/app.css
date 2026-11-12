@@ -1586,6 +1586,11 @@ legend {
   contain-intrinsic-size: auto var(--ed-row-h);
 }
 
+/* A row clips what it paints at its own box (content-visibility), so a control in a row draws its ring inside itself. */
+.tree > li :focus-visible {
+  outline-offset: calc(-1 * var(--ms-focus-width));
+}
+
 .outliner-tools {
   display: flex;
   align-items: center;

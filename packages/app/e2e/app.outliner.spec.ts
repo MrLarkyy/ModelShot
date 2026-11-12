@@ -76,6 +76,73 @@ test('arrow keys walk the tree, open and close groups, select and rename', async
   expect(stops).toBeLessThanOrEqual(4);
 });
 
+// How far the focus ring of the focused element (outline width plus offset around its box) stays inside every ancestor
+// that clips its paint: negative is the part of the ring that is cut off.
+const ringSlack = (page: Page): Promise<{ what: string; ring: string; slack: number }> =>
+  page.evaluate(() => {
+    const focused = document.activeElement as HTMLElement;
+    const style = getComputedStyle(focused);
+    const reach = parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset);
+    const box = focused.getBoundingClientRect();
+    let slack = Number.POSITIVE_INFINITY;
+    for (let above = focused.parentElement; above; above = above.parentElement) {
+      const s = getComputedStyle(above);
+      const clips =
+        s.overflowX !== 'visible' ||
+        s.overflowY !== 'visible' ||
+        s.contentVisibility !== 'visible' ||
+        /paint|strict|content/.test(s.contain);
+      if (!clips) continue;
+      const clip = above.getBoundingClientRect();
+      slack = Math.min(
+        slack,
+        box.left - reach - clip.left,
+        box.top - reach - clip.top,
+        clip.right - (box.right + reach),
+        clip.bottom - (box.bottom + reach),
+      );
+    }
+    return {
+      what: `${focused.tagName.toLowerCase()}.${focused.className} ${focused.getAttribute('aria-label') ?? ''}`.trim(),
+      ring: `${style.outlineStyle} ${style.outlineWidth}`,
+      slack,
+    };
+  });
+
+test('the focus ring of a row and of each of its controls is drawn whole, inside what clips the row', async ({
+  page,
+}) => {
+  await openNested(page);
+  const whole = async (what: RegExp): Promise<void> => {
+    const ring = await ringSlack(page);
+    expect(ring.what).toMatch(what);
+    expect(ring.ring, `${ring.what} shows a ring`).toBe('solid 3px');
+    expect(ring.slack, `${ring.what}: ring cut off by ${-ring.slack} px`).toBeGreaterThanOrEqual(0);
+  };
+  await item(page, 'body').focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(item(page, 'torso')).toBeFocused();
+  await whole(/^li/);
+  await page.keyboard.press('Tab');
+  await whole(/Collapse torso/);
+  await page.keyboard.press('Tab');
+  await whole(/Hide torso/);
+  await page.keyboard.press('Tab');
+  await whole(/Lock torso/);
+  // The name button is no tab stop: a script gives it the focus, and after keys the browser rings it.
+  await item(page, 'torso').locator('button.name').focus();
+  await whole(/^button\.name/);
+  await page.keyboard.press('F2');
+  await expect(page.locator('#scene-panel input[type="text"]')).toBeFocused();
+  await whole(/^input/);
+  // The last row of the list, where a ring has the least room below it.
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('End');
+  await whole(/^li/);
+  await page.keyboard.press('Tab');
+  await whole(/^button/);
+});
+
 test('a collapsed group stays collapsed through Undo and a reload, and the search and selection stay too', async ({
   page,
 }) => {

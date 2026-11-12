@@ -136,8 +136,9 @@ in the middle, the inspector on the right and the timeline below.
   the main thread under 50 ms: the `mainThreadBlockMs.outliner-rebuild-2000` budget, measured in the harness's bench
   (`outliner.html`, [testing.md](testing.md)). While a search is typed the chevrons, Right and Collapse all / Expand
   all leave the stored collapse alone (the search opens what it needs). H and F2 act on the selected row even when a
-  closed group or the search hides it (F2 shows it first). The footer counts cubes (Blockbench cubes) and meshes
-  (glTF and OBJ) apart.
+  closed group or the search hides it (F2 shows it first). The footer counts cubes and meshes apart by shape, not by
+  file format: an element of at most 24 vertices made of quads only counts as a cube, any other as a mesh (so a
+  box from a glTF or OBJ file is a cube too).
 - **Inspector**: a vertical icon rail (56 px, so it cannot wrap at 260-520 px) of five tabs, each an icon over its label;
   ArrowUp/Down and Left/Right, Home and End move between them, and the selected tab is styled by `aria-selected`
   only, so focus never changes it (forced colours: a 3 px left border). Above the panels a title row names the
@@ -342,7 +343,9 @@ first-run row is a named region whose dismiss button hands the focus to the 3D v
 Landmarks (header, outliner `nav`, view `main`, inspector `aside`, timeline `section`, the empty card `section` named by its
 heading, the Shortcut hints region; the toasts are live regions, not landmarks),
 every control labelled, visible focus (a 3 px `--ms-color-blue-mid` ring, 2 px off the control, on every control of
-the dark workspace; the viewport chips sit over the 3D view, so their ring has a ground halo under it), errors in
+the dark workspace; the viewport chips sit over the 3D view, so their ring has a ground halo under it; the chevron,
+name, eye, lock and rename field of an outliner row draw it inside themselves, because a row clips what it paints at
+its own box), errors in
 `role="alert"` until dismissed or the next open, arms change or render (the Dismiss button sits beside it, not inside;
 the pinned graphics-driver alert, a context that cannot be restored or a linear program that fails to link during the
 fallback switch, where drawing goes on with nearest filtering, survives those and goes only when dismissed), one `role="status"` line, the render progress as
