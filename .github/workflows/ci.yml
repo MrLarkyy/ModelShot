@@ -36,9 +36,10 @@ jobs:
   # project: golden 4 shards (the raster goldens and the export tests, 22 minutes together; with 2 shards the eight
   # baked realtime goldens, 7.8 minutes, sat in one that took 15.1), golden-pt 6 (the path-tracer tests,
   # about 20 minutes; its two longest tests, 3.0 and 1.9 minutes, are four tests apart and fit one 7-minute shard only
-  # with 6), pair 3 (the preview-vs-render pairing tests, about 11 minutes) and bake 6 (the 33 baked lighting tests, 27 minutes
-  # on a fast VM; with 3 shards one took 17 minutes, the globalTimeout, on a VM twice as slow, MS-97). One runner ran past the 20-minute limit with the whole suite. The site browser suite runs
-  # after golden shard 1; the app suite has its own job below.
+  # with 6), pair 3 (the preview-vs-render pairing tests, about 11 minutes) and bake 6 (the 33 baked lighting tests,
+  # 27 minutes together; with 3 shards one took 17 minutes, the globalTimeout, on a VM twice as slow, MS-97). One
+  # runner ran past the 20-minute limit with the whole suite. The site browser suite runs after golden shard 1; the app
+  # suite has its own job below.
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
