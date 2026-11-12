@@ -30,6 +30,17 @@ export class FakeElement {
   value = '';
   tabIndex = 0;
   focused = false;
+  readonly style = {
+    properties: new Map<string, string>(),
+    setProperty(name: string, value: string): void {
+      this.properties.set(name, value);
+    },
+  };
+  readonly classList = {
+    add: (name: string): void => {
+      this.className = `${this.className} ${name}`.trim();
+    },
+  };
   private text = '';
   constructor(
     readonly tagName: string,
@@ -80,6 +91,10 @@ export class FakeElement {
     event.stopPropagation = () => undefined;
     for (const listener of this.listeners.get(type) ?? []) listener(event);
     return event;
+  }
+  // Tag names only: enough for the helpers under test.
+  querySelector<T = FakeElement>(tag: string): T | null {
+    return (this.find((e) => e.tagName === tag)[0] as T | undefined) ?? null;
   }
   find(match: (element: FakeElement) => boolean): FakeElement[] {
     const out: FakeElement[] = [];

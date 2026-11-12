@@ -1283,6 +1283,56 @@ kbd {
   padding: var(--ms-space-1) 0 var(--ms-space-3);
 }
 
+.value-grid {
+  grid-template-columns: minmax(5rem, max-content) minmax(0, 1fr);
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.value-grid dt {
+  color: var(--ed-text-2);
+  font: var(--ms-weight-medium) var(--ms-size-caption) var(--ms-font-body);
+}
+
+.value-grid dd {
+  display: flex;
+  align-items: center;
+  gap: var(--ms-space-2);
+  font-size: var(--ms-size-label);
+}
+
+.swatch {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--ed-line-strong);
+  border-radius: var(--ed-radius-field);
+}
+
+.swatch.off {
+  background: transparent;
+  border-style: dashed;
+}
+
+.light-aim {
+  display: flex;
+  align-items: center;
+  gap: var(--ms-space-3);
+}
+
+.light-dial {
+  flex: none;
+}
+
+.dial-ring {
+  fill: none;
+  stroke: var(--ed-line-strong);
+}
+
+.dial-dot {
+  fill: var(--ed-sun);
+}
+
 .texture-row {
   display: flex;
   align-items: center;

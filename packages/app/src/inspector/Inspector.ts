@@ -167,7 +167,7 @@ export class Inspector {
     set(
       'light',
       this.model
-        ? buildLightTab(this.model.look, this.lightFocus)
+        ? buildLightTab(this.model.look, this.lightFocus, this.host.sections)
         : [el('p', { className: 'hint', text: 'Open a model to edit its objects, materials and light.' })],
     );
     this.retitle();
