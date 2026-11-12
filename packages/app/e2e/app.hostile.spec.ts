@@ -23,8 +23,12 @@ async function expectResponsive(page: Page): Promise<void> {
   expect(Date.now() - started).toBeLessThan(1000);
 }
 
-async function expectAlert(page: Page, text: string | RegExp): Promise<void> {
-  await expect(page.getByRole('alert')).toContainText(text, { timeout: 5000 });
+// Refusals alert within 5 s (docs/app.md). An alert after a scene build waits for a worker load and the setup save
+// first, which took over 5 s on a loaded machine: those pass SCENE_ALERT_MS.
+const SCENE_ALERT_MS = 30_000;
+
+async function expectAlert(page: Page, text: string | RegExp, timeout = 5000): Promise<void> {
+  await expect(page.getByRole('alert')).toContainText(text, { timeout });
   await expectResponsive(page);
 }
 
@@ -142,7 +146,7 @@ test('a scene that fails to build keeps the model, the look and the saved sessio
   const before = await waitForModel(page);
   await page.evaluate(() => window.__msApp!.failNextScene());
   await page.locator('#file-input').setInputFiles([CUBE]);
-  await expectAlert(page, 'single-cube.bbmodel');
+  await expectAlert(page, 'single-cube.bbmodel', SCENE_ALERT_MS);
   await expect(page.locator(`#look-panel input[value="${initial}"]`)).toBeChecked();
   await expect(page.getByRole('status')).not.toContainText('Opening');
   expect(pixelAt(await previewImage(page), 0.5, 0.5)).toEqual(pixelAt(before, 0.5, 0.5));
@@ -156,7 +160,7 @@ test('a skin whose scene fails to build keeps its arms', async ({ page }) => {
   await waitForModel(page);
   await page.evaluate(() => window.__msApp!.failNextScene());
   await page.getByRole('radio', { name: 'Slim (3 px)' }).check();
-  await expectAlert(page, 'Could not change the arms');
+  await expectAlert(page, 'Could not change the arms', SCENE_ALERT_MS);
   await expect(page.getByRole('radio', { name: 'Slim (3 px)' })).not.toBeChecked();
   await expect(page.getByRole('radio', { name: 'Classic (4 px)' })).toBeChecked();
 });

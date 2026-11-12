@@ -30,6 +30,7 @@ export interface NoticeElements {
 // One status line (role="status"), one lasting error (role="alert") and the lighting state on the model dot. Text only:
 // messages carry file names.
 export class Notices {
+  private pinned: string | null = null;
   private timer: unknown = null;
   private toastedReason: string | null = null;
 
@@ -90,8 +91,20 @@ export class Notices {
     this.elements.alertBox.hidden = false;
   }
 
+  /** A failure that does not go away (the graphics driver): clearAlert brings it back instead of wiping it. */
+  pinAlert(message: string): void {
+    this.pinned = clip(message);
+    this.alert(message);
+  }
+
   clearAlert(): void {
-    this.elements.alertText.textContent = '';
-    this.elements.alertBox.hidden = true;
+    this.elements.alertText.textContent = this.pinned ?? '';
+    this.elements.alertBox.hidden = this.pinned === null;
+  }
+
+  /** The Dismiss button: the visitor has read the error, a pinned one too, so it does not come back. */
+  dismissAlert(): void {
+    this.pinned = null;
+    this.clearAlert();
   }
 }

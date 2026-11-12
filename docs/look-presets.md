@@ -186,7 +186,10 @@ MS-47 (pinned in `lightingKey.test.ts`), so stored dome bakes stay valid, and a 
 stamps it on the result; `RealtimeRenderer.setLighting` refuses (returns `false`) light whose `lightingKey` is not the
 current look's, and `setLook` to a look of another key drops the shown light (the preview shows the unbaked look until
 light baked under the new one is set). Looks that differ only in colours, accents, backdrop, catcher strength, edges or
-grading share baked light.
+grading share baked light. One approximation since MS-57: the fill share includes one bounce off the model, whose key
+part is lit by the key colour of the look baked under; the key colour stays out of the key, so such a look shows that
+bounce until it is baked again, which the app and the embed do on every look change
+([realtime-renderer.md](realtime-renderer.md#baked-lighting)).
 
 ## Presets
 

@@ -46,7 +46,7 @@ const PT_WRAP: GoldenSpec = {
  * re-measured, x 1.25; maxMeanDelta stays 0.839. Kept here, not in that table, whose every entry pathtracer.spec.ts
  * pairs.
  */
-const PAIR_TOLERANCE: CompareOptions = { threshold: 0.1, maxDiffRatio: 0.00111, maxMeanDelta: 0.839 };
+const PAIR_TOLERANCE: CompareOptions = { threshold: 0.1, maxDiffRatio: 0.00048, maxMeanDelta: 0.711 };
 
 /** A texel coordinate (u, v) on a box's south face; v absent: half way up (the still textures' rows are alike). */
 type At = readonly [number, number?];

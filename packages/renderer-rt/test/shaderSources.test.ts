@@ -61,16 +61,42 @@ describe('shader sources', () => {
 
   it('filters a linear texture through the shared texelFilter chunk on faceTexel-addressed taps in every mesh pass', () => {
     for (const name of ['opaque', 'oitAccum', 'fallback'] as const) {
-      const { fragment } = shaderProgramSource(name);
+      const { fragment } = shaderProgramSource(name, 'raster', 'linear');
       expect(fragment).toContain(
         'vec3 bilinearColor(vec4 c00, vec4 c10, vec4 c01, vec4 c11, vec2 f, int mode, int cutoffByte, vec3 fallback)',
       );
       expect(fragment).toContain('const int TEXTURE_FLAG_LINEAR = 2;');
-      expect(fragment).toContain('if ((flags & TEXTURE_FLAG_LINEAR) != 0) {');
+      expect(fragment).toContain('if ((a.flags & TEXTURE_FLAG_LINEAR) == 0) return;');
       // The taps go through fetchTexel (faceTexel); only the colour changes, never the coverage.
       expect(fragment.match(/fetchTexel\(tex, taps\.base/g)).toHaveLength(4);
       expect(fragment).toContain('s.premultiplied.rgb = color * s.premultiplied.a;');
       expect(fragment.split('vec4 coverageWeighted(').length).toBe(2);
+    }
+  });
+
+  it('links the nearest variant of every mesh pass without the linear filter, the linear one with it (MS-90)', () => {
+    for (const name of ['opaque', 'oitAccum', 'fallback'] as const) {
+      for (const depthKey of ['raster', 'exact'] as const) {
+        const nearest = shaderProgramSource(name, depthKey);
+        const linear = shaderProgramSource(name, depthKey, 'linear');
+        expect(shaderProgramSource(name, depthKey, 'nearest'), `${name} ${depthKey}`).toEqual(nearest);
+        expect(nearest.fragment, `${name} ${depthKey}`).not.toContain('linearTexelColor(');
+        expect(nearest.fragment, `${name} ${depthKey}`).not.toContain('bilinearColor(');
+        expect(nearest.fragment, `${name} ${depthKey}`).not.toContain('TEXTURE_FLAG_LINEAR) == 0');
+        expect(linear.fragment.match(/linearTexelColor\(/g), `${name} ${depthKey}`).toHaveLength(6);
+        expect(linear.vertex, `${name} ${depthKey}`).toBe(nearest.vertex);
+        // Both call the same hook after the nearest taps; only its body differs.
+        for (const { fragment } of [nearest, linear]) {
+          const sample = fragment.slice(fragment.indexOf('TexelSample sampleTexels('));
+          expect(sample, `${name} ${depthKey}`).toContain(
+            'filterTexelColor(s, tex, p, dx, dy, texelsPerPixel, a, mode, cutoffByte);\n  return s;',
+          );
+        }
+      }
+    }
+    // Programs without texel lookups are the same in both.
+    for (const name of ['oitComposite', 'present', 'presentSamples', 'backdrop', 'catcher'] as const) {
+      expect(shaderProgramSource(name, 'raster', 'linear'), name).toEqual(shaderProgramSource(name));
     }
   });
 

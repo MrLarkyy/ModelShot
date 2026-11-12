@@ -1,7 +1,7 @@
 import { LOOK_UNIFORM_NAMES, type LookUniformName } from '@modelshot/looks';
 import type { DepthKeyMode } from './depthKeyMode';
 import { createGlProgram } from './glProgram';
-import { shaderProgramSource, type ShaderProgramName } from './shaderSources';
+import { shaderProgramSource, type ShaderProgramName, type TexelFilterVariant } from './shaderSources';
 
 /** A program's locations of the look uniforms (`uploadLookUniforms`); `null` for one it does not use. */
 export type LookLocations = Readonly<Record<LookUniformName, WebGLUniformLocation | null>>;
@@ -42,8 +42,18 @@ export type MeshPassName = 'opaque' | 'oitAccum' | 'fallback';
 
 /** The programs of one path: float (opaque, OIT, composite, present, backdrop) or no-float (fallback, backdrop). */
 export interface RendererPrograms {
-  /** Mesh passes in both depth-key variants; a frame uses one variant for all of them. */
-  readonly meshPasses: Readonly<Record<DepthKeyMode, Readonly<Partial<Record<MeshPassName, MeshProgram>>>>>;
+  /**
+   * A mesh pass of this path in a depth-key variant (a frame uses one for all its passes) and a texel-filter variant
+   * (per draw). The nearest ones are linked with the path; the linear ones by `linkLinear`, so a scene without a linear
+   * texture never links them (a linear request before that gives `undefined`). Undefined for a pass the path does not
+   * draw.
+   */
+  meshPass(depthKey: DepthKeyMode, name: MeshPassName, filter: TexelFilterVariant): MeshProgram | undefined;
+  /**
+   * Links the linear variants of every mesh pass of this path (once; they join `all`). Throws the link error of a
+   * variant that fails: call it where a scene with a linear texture is uploaded, never while drawing.
+   */
+  linkLinear(): void;
   /** `presentSamples`: the present pass of an exact-key frame's sample history (`exactSampleCount`). */
   readonly fullscreen: Readonly<
     Partial<Record<'oitComposite' | 'present' | 'presentSamples' | 'backdrop', FullscreenProgram>>
@@ -67,8 +77,12 @@ const DEPTH_KEY_MODES: readonly DepthKeyMode[] = ['raster', 'exact'];
 
 export function createRendererPrograms(gl: WebGL2RenderingContext, floatPath: boolean): RendererPrograms {
   const all: WebGLProgram[] = [];
-  const build = (name: ShaderProgramName, depthKey: DepthKeyMode): WebGLProgram => {
-    const source = shaderProgramSource(name, depthKey);
+  const build = (
+    name: ShaderProgramName,
+    depthKey: DepthKeyMode,
+    filter: TexelFilterVariant = 'nearest',
+  ): WebGLProgram => {
+    const source = shaderProgramSource(name, depthKey, filter);
     const program = createGlProgram(gl, source.vertex, source.fragment, name);
     all.push(program);
     return program;
@@ -79,8 +93,12 @@ export function createRendererPrograms(gl: WebGL2RenderingContext, floatPath: bo
       WebGLUniformLocation | null
     >;
   try {
-    const meshProgram = (name: MeshPassName, depthKey: DepthKeyMode): MeshProgram => {
-      const program = build(name, depthKey);
+    const meshProgram = (
+      name: MeshPassName,
+      depthKey: DepthKeyMode,
+      filter: TexelFilterVariant = 'nearest',
+    ): MeshProgram => {
+      const program = build(name, depthKey, filter);
       const at = (uniform: string) => gl.getUniformLocation(program, uniform);
       return {
         program,
@@ -113,15 +131,31 @@ export function createRendererPrograms(gl: WebGL2RenderingContext, floatPath: bo
       );
       return { program, uniforms, look: lookLocations(program) };
     };
-    const passes = (names: readonly MeshPassName[]): RendererPrograms['meshPasses'] => {
-      const variant = (depthKey: DepthKeyMode) =>
-        Object.fromEntries(names.map((name) => [name, meshProgram(name, depthKey)]));
-      const [raster, exact] = DEPTH_KEY_MODES.map(variant);
-      return { raster: raster ?? {}, exact: exact ?? {} };
+    const meshPasses = (names: readonly MeshPassName[]): Pick<RendererPrograms, 'meshPass' | 'linkLinear'> => {
+      const nearest = new Map(
+        DEPTH_KEY_MODES.flatMap((depthKey) =>
+          names.map((name) => [`${depthKey} ${name}`, meshProgram(name, depthKey)]),
+        ),
+      );
+      const linear = new Map<string, MeshProgram>();
+      return {
+        meshPass: (depthKey, name, filter) => {
+          const key = `${depthKey} ${name}`;
+          return filter === 'nearest' ? nearest.get(key) : linear.get(key);
+        },
+        linkLinear: () => {
+          for (const depthKey of DEPTH_KEY_MODES) {
+            for (const name of names) {
+              const key = `${depthKey} ${name}`;
+              if (!linear.has(key)) linear.set(key, meshProgram(name, depthKey, 'linear'));
+            }
+          }
+        },
+      };
     };
     if (floatPath) {
       return {
-        meshPasses: passes(['opaque', 'oitAccum']),
+        ...meshPasses(['opaque', 'oitAccum']),
         fullscreen: {
           oitComposite: fullscreenProgram('oitComposite'),
           present: fullscreenProgram('present'),
@@ -133,7 +167,7 @@ export function createRendererPrograms(gl: WebGL2RenderingContext, floatPath: bo
       };
     }
     return {
-      meshPasses: passes(['fallback']),
+      ...meshPasses(['fallback']),
       fullscreen: { backdrop: fullscreenProgram('backdrop') },
       catcher: fullscreenProgram('catcher'),
       all,

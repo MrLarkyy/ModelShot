@@ -41,6 +41,12 @@ Float path (needs `EXT_color_buffer_float`):
    the per-pixel mean of every sample's sums, so the outline of a face with only partial texels is anti-aliased like
    an opaque one; above the cap, without MSAA and in exact-key frames the pass stays single-sampled and those outlines
    hard.
+
+   Limit (MS-88): a silhouette pixel the face covers only in a sliver that holds none of the 4 samples stays what lies
+   behind, opaque and partial faces alike, where the path tracer blends it by area: on the `partial-edge` view three
+   outline pixels the render covers by about 28-33 % (realtime.spec checks the opaque twin `partial-edge-opaque` leaves
+   them backdrop too). Coverage finer than the samples is MS-112 (sub-sample silhouette coverage).
+
 3. Composite of the transparency average over the opaque image.
 4. Present: AgX and the display encoding into the canvas.
 
@@ -114,9 +120,24 @@ if (lighting) renderer.setLighting(lighting);
   allocating anything. A scene without a world-charted mesh lays out exactly as before world charts existed (same
   `layoutKey`).
 - **Values.** RGBA16F (`BakedLighting`): rgb 1 less the fill lost over the unoccluded fill `hemisphereFill(n)` (MS-87: the
-  path tracer's control variate; a blocked bake ray loses the environment along it, so a texel nothing blocked is
-  exactly 1; a cosine ray under a smooth face's geometric side is mirrored as the trace does, so such a texel is near
-  but not exactly 1 and a mirror that sees more sky may lift it slightly above 1), a the key's visibility. Texels of no chart and vertices of no triangle hold 1, so an anti-aliasing tap outside a face, or
+  path tracer's control variate; a cosine ray under a smooth face's geometric side is mirrored as the trace does, so
+  such a texel is near but not exactly 1 and a mirror that sees more sky may lift it slightly above 1), a the key's
+  visibility. A blocked bake ray loses the environment along it and gains what the blocker sends back (MS-57: one
+  diffuse bounce, the trace's first bounce vertex): the blocker's emission plus its albedo × (the key, with the trace's
+  gate and cosine and a shadow ray in the key cone from the blocker, + the blocker's unshadowed `hemisphereFill`). So a
+  face beside a bright neighbour takes its interreflection (rgb can exceed 1 there), a texel whose rays nothing blocked
+  is still exactly 1, and the key channel is unchanged (the bounce draws its own random dimensions, 7-8). A cut-out
+  texel is no blocker and sends back nothing; a partial one is a blocker with probability alpha, so it sends back that
+  share. No bounce reaches the shadow catcher (the trace's catcher shade has none), and the bounce point's own fill is
+  not shadowed, so a deep pocket can come out slightly brighter than the render. Two limits: rgb is a ratio over the
+  fill, so a channel whose `hemisphereFill` is 0 (a look whose dome leaves it at 0) holds 1 and its bounce is not baked
+  (the key's coloured bounce in that channel is lost; carrying it would need a channel of its own); and the bounce is
+  baked under the key colour of the look baked under, which `lightingKey` does not include, so light baked under a look
+  of the same key but another key colour shows the old bounce until it is baked again (the app and the embed bake again
+  on every look change). The ratio is stored finite (`toFiniteHalf`): a value above 65504 is stored as 65504. Under a
+  near-black sky and ground with a key light the fill is tiny and the bounce over it large (`chartMean` about 1990 in the
+  near-black test), so the cut can leave the preview darker than the render there, like the dark-channel limit above.
+  Texels of no chart and vertices of no triangle hold 1, so an anti-aliasing tap outside a face, or
   a degenerate triangle, never darkens. The shadow catcher's lightmap stores the same form over `hemisphereFill(up)` (Shadow
   catcher, below). `shadeBaked` (`shading.glsl`) is `albedo × (hemisphereFill(n) × rgb +
 u_lookKeyColor × max(n·u_lookKeyDirection, 0) × a + fillLight(n)) + rimLight(n, v, albedo)`, v toward the eye
@@ -188,6 +209,12 @@ without depth test lets the model cover it in either depth-key variant. A scene 
   taps give an opaque|cut-out edge and the closed-opaque check all stay the nearest texel's, as for a pixel-art
   texture. Minified, the colour is the mean of the blend at the same rotated 2 × 2 grid. The filter is the texture's,
   so `texelAntialias: false` keeps it. Four more `texelFetch` taps per fragment (16 minified), only for such textures.
+  The mesh passes come in a nearest and a linear program variant per texture filter (`TexelFilterVariant`, the
+  `texelFilterColor` chunk: `texelFilterNearest.glsl` holds no linear code, `texelFilterLinear.glsl` the blend above);
+  each draw takes the variant of its batch's `TEXTURE_FLAG_LINEAR`, and the linear programs are linked when a
+  scene with a linear texture is uploaded (`setScene`, a restored context, the fallback switch), never inside a frame: a
+  link failure rejects that `setScene` once (`SHADER_LINK`), the fallback switch's and a restore's failures are caught and reach `onError` once (a frame draws the linear batches with the nearest program; after a failed restore nothing is drawn). With the blend behind a branch in one program, SwiftShader drew the nearest-textured bench
+  frames 1.27x (raster) and 1.24x (exact key) slower (MS-90, docs/testing.md); the images are byte-identical.
 
 ## Transparency, sides and render order
 
@@ -450,5 +477,8 @@ On `webglcontextlost` the renderer prevents the default (so the browser may rest
 no-op. On `webglcontextrestored` it queries the limits again, rebuilds programs, targets, buffers and textures from
 the retained scene, decoded images and baked lighting (no re-decode, no re-bake, no reload; the sharp-edge attributes
 come from the per-mesh cache), redraws and calls the
-`onContextRestored` listeners. `dispose()` deletes every GL object it created (lightmaps and the catcher's quad
+`onContextRestored` listeners. If the restore fails (a program does not link, a resource cannot be rebuilt), nothing is
+redrawn, `onContextRestored` is not called and the `onError(listener)` listeners get the `RendererError` once (an
+error that is not one is reported as `SHADER_LINK`); `onError` also reports a failed fallback switch. Like
+`onContextRestored` it returns a function that removes the listener. `dispose()` deletes every GL object it created (lightmaps and the catcher's quad
 included), closes every decoded image and removes its listeners.

@@ -2,8 +2,8 @@
   "version": 1,
   "frameTimeMs": {
     "gradient-256": { "max": 5 },
-    "rt-bench-512": { "max": 6000 },
-    "rt-bench-order-512": { "max": 5000 },
+    "rt-bench-512": { "max": 5300 },
+    "rt-bench-order-512": { "max": 3900 },
     "rt-pose-step-512": { "max": 10200 },
     "rt-frame-partial-edge-512": { "max": 1500 },
     "rt-load-first-frame-200k-order": { "max": 7000 },

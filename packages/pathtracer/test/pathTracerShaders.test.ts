@@ -198,7 +198,7 @@ describe('path tracer shaders', () => {
     expect(point).toContain('vec3 lost = escapeRadiance(d);');
     expect(point).toContain('if (dot(mirrored, side) > 0.0) {');
     expect(point).toMatch(
-      /if \(!closestHit\(origin, mirrored, [^)]*blocker\)\) \{\s*lost = lost - escapeRadiance\(mirrored\);/,
+      /if \(closestHit\(origin, mirrored, [^)]*blocker\)\) \{\s*lost = lost - bounceLight\(blocker, key\);\s*\} else \{\s*lost = lost - escapeRadiance\(mirrored\);/,
     );
     expect(point).toContain('return vec4(1.0 - lostShare(lost, hemisphereFill(normal)), keyT);');
     // A non-finite component is replaced alone, the key's visibility kept.
@@ -208,6 +208,7 @@ describe('path tracer shaders', () => {
     expect(bake).toContain('const uint KEY_DIMENSION = 2u;');
     expect(bake).toContain('const uint FILL_DIMENSION = 4u;');
     expect(bake).toContain('const uint ALPHA_DIMENSION = 6u;');
+    expect(bake).toContain('const uint BOUNCE_KEY_DIMENSION = 7u;');
     expect(bake).toContain(
       'keyConeDirection(unitRandom(key, KEY_DIMENSION, 0u), unitRandom(key, KEY_DIMENSION + 1u, 0u))',
     );
@@ -217,6 +218,55 @@ describe('path tracer shaders', () => {
       'unitRandom(key, FILL_DIMENSION, 0u)',
       'unitRandom(key, FILL_DIMENSION + 1u, 0u)',
     ]);
+  });
+
+  it('adds one bounce where the fill ray of a model point is blocked: the first bounce vertex of the trace, none on the catcher', () => {
+    const trace = pathTracerProgramSource('trace').fragment;
+    const bake = pathTracerProgramSource('bake').fragment;
+    const bounce = bake.slice(bake.indexOf('vec3 bounceLight('), bake.indexOf('vec4 bakePoint('));
+    expect(bounce).toContain('Surface b = surfaceAt(blocker);');
+    // The key at the bounce point as the trace adds it at a vertex: the same gate, cosine and colour.
+    expect(trace).toContain('float cosKey = dot(s.normal, u_lookKeyDirection);');
+    expect(trace).toContain('if (cosKey > 0.0 && dot(s.side, u_lookKeyDirection) > 0.0) {');
+    expect(trace).toContain('radiance += throughput * s.albedo * u_lookKeyColor * (cosKey * visible);');
+    expect(bounce).toContain('float cosKey = dot(b.normal, u_lookKeyDirection);');
+    expect(bounce).toContain('if (cosKey > 0.0 && dot(b.side, u_lookKeyDirection) > 0.0) {');
+    expect(bounce).toContain('incoming += u_lookKeyColor * (cosKey * visible);');
+    // Its shadow ray leaves the blocker on the side the fill ray met and skips the blocker's own triangle.
+    expect(bounce).toContain('float visible = shadowTransmittance(leave(b.position, b.side), cone, blocker.triangle);');
+    // The bounce point's fill is the unoccluded fill at its normal; emission and albedo as the trace's vertex has them.
+    expect(bounce).toContain('vec3 incoming = hemisphereFill(b.normal);');
+    expect(bounce).toContain('return b.emission + b.albedo * incoming;');
+    expect(bounce).not.toMatch(/closestHit\(|fillLight\(|rimLight\(|environmentLight\(|cosineDirection\(/);
+    // New randoms only in the appended dimensions 7-8: no stream an unblocked texel or the key draws moves.
+    expect(bounce.match(/unitRandom\([^)]*\)/g)).toEqual([
+      'unitRandom(key, BOUNCE_KEY_DIMENSION, 0u)',
+      'unitRandom(key, BOUNCE_KEY_DIMENSION + 1u, 0u)',
+    ]);
+    const point = bake.slice(bake.indexOf('vec4 bakePoint('), bake.indexOf('vec4 bakeCatcher('));
+    expect(point.match(/unitRandom\([^)]*\)/g)).toEqual([
+      'unitRandom(key, FILL_DIMENSION, 0u)',
+      'unitRandom(key, FILL_DIMENSION + 1u, 0u)',
+    ]);
+    expect(point).toContain('closestHit(origin, mirrored, 0.0, 3.0e38, 1.0, skip, key, ALPHA_DIMENSION, blocker)');
+    // The trace's catcher shade has no bounce, so the baked catcher has none either.
+    const catcher = bake.slice(bake.indexOf('vec4 bakeCatcher('), bake.indexOf('vec4 bakeChart('));
+    expect(catcher).not.toContain('bounceLight');
+    expect(trace.slice(trace.indexOf('float catcherShadeAt('), trace.indexOf('vec3 environmentLight('))).not.toContain(
+      'surfaceAt(',
+    );
+  });
+
+  it('bakes the bounce as a share of the fill: a channel whose fill is 0 stays exactly 1 (the dark-channel limit)', () => {
+    const bake = pathTracerProgramSource('bake').fragment;
+    // The bounce enters only through what the ray lost, so it is a ratio over hemisphereFill like the loss itself.
+    const share = bake.slice(bake.indexOf('vec3 lostShare('), bake.indexOf('float bakeKey('));
+    expect(share).toContain('full.r > 0.0 ? lost.r / full.r : 0.0,');
+    expect(share).toContain('full.g > 0.0 ? lost.g / full.g : 0.0,');
+    expect(share).toContain('full.b > 0.0 ? lost.b / full.b : 0.0);');
+    const point = bake.slice(bake.indexOf('vec4 bakePoint('), bake.indexOf('vec4 bakeCatcher('));
+    expect(point.match(/bounceLight\(/g)).toHaveLength(1);
+    expect(point).toContain('return vec4(1.0 - lostShare(lost, hemisphereFill(normal)), keyT);');
   });
 
   it('an image environment (MS-47): texelFetch tables, escapes through escapeRadiance, a dome takes the dome branch', () => {

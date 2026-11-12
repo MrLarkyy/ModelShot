@@ -35,6 +35,8 @@ const errorText = (error: unknown): string => (error instanceof Error ? error.me
 export interface ViewerOptions {
   /** Short messages about the lighting bake and the context. */
   readonly onStatus: (message: string) => void;
+  /** A failure the renderer reports outside a call (a graphics driver that cannot link or restore); `onStatus` when absent. */
+  readonly onError?: (message: string) => void;
   /** The graphics context came back; when set, the context message is not sent to `onStatus`. */
   readonly onContextRestored?: () => void;
   /** The canvas was resized (CSS size and pixel ratio); the render canvas follows. */
@@ -90,6 +92,10 @@ export class Viewer {
         if (this.options.onContextRestored) this.options.onContextRestored();
         else this.options.onStatus('The graphics context was restored.');
         this.requestRender();
+      }),
+      renderer.onError((error) => {
+        const message = `The preview could not use the graphics driver: ${error.message}`;
+        (this.options.onError ?? this.options.onStatus)(message);
       }),
     );
   }

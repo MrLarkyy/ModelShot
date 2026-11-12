@@ -653,3 +653,185 @@ describe('RealtimeRenderer OIT pass: partial seam coverage and multisampled targ
     renderer.dispose();
   });
 });
+
+describe('RealtimeRenderer texel filter program variants (MS-90)', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(() => Promise.resolve({ width: 16, height: 16, close: () => undefined })),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** The quad split into two batches: triangle 0 with the nearest texture 0, triangle 1 with the linear texture 1. */
+  function mixedFilterQuad(): SceneDocument {
+    const doc = quadScene();
+    const [mesh] = doc.meshes;
+    if (!mesh) throw new Error('quad mesh missing');
+    return {
+      ...doc,
+      meshes: [
+        {
+          ...mesh,
+          groups: [
+            { material: 0, start: 0, count: 3 },
+            { material: 1, start: 3, count: 3 },
+          ],
+        },
+      ],
+      materials: [
+        { name: 'nearest', texture: 0, alphaMode: 'blend', alphaCutoff: 0.5 / 255 },
+        { name: 'linear', texture: 1, alphaMode: 'blend', alphaCutoff: 0.5 / 255 },
+      ],
+      textures: [testTexture({ name: 'nearest.png' }), testTexture({ name: 'linear.png', filter: 'linear' })],
+    };
+  }
+
+  /** Per mesh-pass draw since call index `from`: whether its program's fragment shader holds the linear filter. */
+  function meshDrawsLinear(fake: FakeWebGl, from = 0): boolean[] {
+    const sources = new Map<unknown, string>();
+    const programs = new Map<unknown, string[]>();
+    let current: unknown = null;
+    const draws: boolean[] = [];
+    for (const [index, [name, args]] of fake.history().entries()) {
+      if (name === 'shaderSource') sources.set(args[0], String(args[1]));
+      else if (name === 'attachShader')
+        programs.set(args[0], [...(programs.get(args[0]) ?? []), sources.get(args[1]) ?? '']);
+      else if (name === 'useProgram') current = args[0];
+      else if (index >= from && (name === 'drawElements' || name === 'drawArrays')) {
+        const linked = programs.get(current) ?? [];
+        if (!linked.some((source) => source.includes('in float a_textureFlags;'))) continue;
+        draws.push(linked.some((source) => source.includes('linearTexelColor(')));
+      }
+    }
+    return draws;
+  }
+
+  const linearPrograms = (fake: FakeWebGl): number =>
+    fake.calls('shaderSource').filter(([, source]) => String(source).includes('linearTexelColor(')).length;
+
+  it('draws a linear texture with the linear program and a nearest one without the linear code', async () => {
+    for (const path of ['float', 'fallback'] as const) {
+      const fake = fakeWebGl({ ...(path === 'float' ? { float: { samples: 4, maxSize: 4096 } } : {}), pixelByte: 255 });
+      const renderer = RealtimeRenderer.create(fake.canvas);
+      renderer.setCamera(camera);
+      await renderer.setScene(quadScene());
+      renderer.render();
+      // A scene without a linear texture never links the linear variants.
+      expect(meshDrawsLinear(fake), path).toEqual([false]);
+      expect(linearPrograms(fake), path).toBe(0);
+
+      await renderer.setScene(mixedFilterQuad());
+      const from = fake.history().length;
+      renderer.render();
+      expect(renderer.capabilities?.path).toBe(path);
+      // Document order kept: the nearest batch, then the linear one, each with its own program.
+      expect(meshDrawsLinear(fake, from), path).toEqual([false, true]);
+      renderer.render();
+      // Every depth-key variant of every mesh pass of the path, linked with the scene and once.
+      const variants = path === 'float' ? 4 : 2;
+      expect(linearPrograms(fake), `${path}: linked once`).toBe(variants);
+
+      // A restored context links them again, and dispose deletes every program of the live context.
+      fake.fire('webglcontextlost');
+      const createdBefore = fake.count('createProgram');
+      fake.fire('webglcontextrestored');
+      const restored = fake.history().length;
+      renderer.render();
+      expect(meshDrawsLinear(fake, restored), `${path} restored`).toEqual([false, true]);
+      expect(linearPrograms(fake), `${path} restored`).toBe(2 * variants);
+      const deletedBefore = fake.count('deleteProgram');
+      renderer.dispose();
+      expect(fake.count('deleteProgram') - deletedBefore, path).toBe(fake.count('createProgram') - createdBefore);
+    }
+  });
+
+  it('links the linear programs with the scene: a link failure is one error there, never one of a frame', async () => {
+    for (const path of ['float', 'fallback'] as const) {
+      let broken = false;
+      const fake = fakeWebGl({
+        ...(path === 'float' ? { float: { samples: 4, maxSize: 4096 } } : {}),
+        pixelByte: 255,
+        linkFails: (sources) => broken && sources.some((source) => source.includes('linearTexelColor(')),
+      });
+      const renderer = RealtimeRenderer.create(fake.canvas);
+      renderer.setCamera(camera);
+      await renderer.setScene(quadScene());
+      broken = true;
+      // The scene load rejects once with the link error; the frames after it do not throw and draw nothing linear.
+      await expect(renderer.setScene(mixedFilterQuad()), path).rejects.toMatchObject({ code: 'SHADER_LINK' });
+      const linked = linearPrograms(fake);
+      expect(() => renderer.render(), path).not.toThrow();
+      expect(() => renderer.render(), path).not.toThrow();
+      expect(linearPrograms(fake), `${path}: no link retried by a frame`).toBe(linked);
+
+      // After a context restore the failing link is caught with the restore: no throw, no retry per frame.
+      renderer.dispose();
+      const restoring = fakeWebGl({
+        ...(path === 'float' ? { float: { samples: 4, maxSize: 4096 } } : {}),
+        pixelByte: 255,
+        linkFails: (sources) => broken && sources.some((source) => source.includes('linearTexelColor(')),
+      });
+      broken = false;
+      const second = RealtimeRenderer.create(restoring.canvas);
+      second.setCamera(camera);
+      await second.setScene(mixedFilterQuad());
+      restoring.fire('webglcontextlost');
+      broken = true;
+      expect(() => restoring.fire('webglcontextrestored'), path).not.toThrow();
+      const afterRestore = linearPrograms(restoring);
+      expect(() => second.render(), path).not.toThrow();
+      expect(linearPrograms(restoring), `${path}: no link retried after the restore`).toBe(afterRestore);
+      second.dispose();
+    }
+  });
+
+  it('reports a linear link failure of the fallback switch once and draws the batch with the nearest program', async () => {
+    let broken = false;
+    const fake = fakeWebGl({
+      float: { samples: 4, maxSize: 4096, rejects: (width) => width === 80 },
+      pixelByte: 255,
+      linkFails: (sources) => broken && sources.some((source) => source.includes('linearTexelColor(')),
+    });
+    const renderer = RealtimeRenderer.create(fake.canvas);
+    const errors: unknown[] = [];
+    renderer.onError((error) => errors.push(error));
+    renderer.setCamera(camera);
+    await renderer.setScene(mixedFilterQuad());
+    renderer.render();
+    broken = true;
+    fake.canvas.width = 80;
+    const from = fake.history().length;
+    expect(() => renderer.render()).not.toThrow();
+    expect(() => renderer.render()).not.toThrow();
+    expect(renderer.capabilities?.path).toBe('fallback');
+    expect(meshDrawsLinear(fake, from).slice(0, 2)).toEqual([false, false]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ code: 'SHADER_LINK' });
+    renderer.dispose();
+  });
+
+  it('reports a program link failure of a context restore to the error listener', async () => {
+    let broken = false;
+    const fake = fakeWebGl({
+      float: { samples: 4, maxSize: 4096 },
+      pixelByte: 255,
+      linkFails: (sources) => broken && sources.some((source) => source.includes('linearTexelColor(')),
+    });
+    const renderer = RealtimeRenderer.create(fake.canvas);
+    const errors: unknown[] = [];
+    renderer.onError((error) => errors.push(error));
+    renderer.setCamera(camera);
+    await renderer.setScene(mixedFilterQuad());
+    fake.fire('webglcontextlost');
+    broken = true;
+    fake.fire('webglcontextrestored');
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ code: 'SHADER_LINK' });
+    expect(() => renderer.render()).not.toThrow();
+    renderer.dispose();
+  });
+});

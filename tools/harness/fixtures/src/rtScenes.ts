@@ -18,6 +18,7 @@ import alphaRampUri from '../models/rt-alpha-ramp.png?inline';
 import outlineHullSource from '../models/outline-hull.bbmodel?raw';
 import showcaseSource from '../models/rt-showcase.bbmodel?raw';
 import { benchScene } from './benchScene';
+import { bounceWall } from './bounceWall';
 import { convexCube } from './convexCube';
 import { smoothSphere } from './smoothSphere';
 import { cutoutChecker, cutoutGhost } from './cutoutChecker';
@@ -88,6 +89,7 @@ export const RT_SCENE_NAMES = [
   'partial-edge-under',
   'partial-edge-pair',
   'partial-edge-linear',
+  'partial-edge-opaque',
   'lightmap-overflow',
   'edges',
   'edges-200k',
@@ -99,6 +101,12 @@ export const RT_SCENE_NAMES = [
   'world-200k',
   'texture-wrap',
   'texture-filter',
+  'bounce-wall',
+  'bounce-wall-black',
+  'bounce-wall-partial',
+  'bounce-wall-partial-black',
+  'bounce-wall-cutout',
+  'bounce-wall-none',
 ] as const;
 export type RtSceneName = (typeof RT_SCENE_NAMES)[number];
 
@@ -451,6 +459,8 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return partialEdge(load(showcaseSource), { pair: true });
     case 'partial-edge-linear':
       return partialEdge(load(showcaseSource), { linear: true });
+    case 'partial-edge-opaque':
+      return partialEdge(load(showcaseSource), { opaque: true });
     case 'lightmap-overflow':
       return lightmapOverflow(load(showcaseSource));
     case 'edges-200k':
@@ -485,6 +495,18 @@ export function rtScene(name: RtSceneName): SceneDocument {
       return textureWrapScene();
     case 'texture-filter':
       return textureFilterScene();
+    case 'bounce-wall':
+      return bounceWall(load(showcaseSource), 'white');
+    case 'bounce-wall-black':
+      return bounceWall(load(showcaseSource), 'black');
+    case 'bounce-wall-partial':
+      return bounceWall(load(showcaseSource), 'partial-white');
+    case 'bounce-wall-partial-black':
+      return bounceWall(load(showcaseSource), 'partial-black');
+    case 'bounce-wall-cutout':
+      return bounceWall(load(showcaseSource), 'cutout');
+    case 'bounce-wall-none':
+      return bounceWall(load(showcaseSource), 'none');
     case 'outline-hull-board': {
       // The shell keeps its vertices, so the camera fits the same bounds as outline-hull, but draws no triangle.
       const doc = load(outlineHullSource);

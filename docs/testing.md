@@ -126,7 +126,7 @@ run 39878163371's).
 
 Why: the shard holding the baked tests ran into the 20-minute job limit with 4 shards (cancelled in runs 39612706830 and
 39624802150; the 23 baked lighting tests alone took 13-15 minutes on the slow VM of the second), and the 6 pairing tests
-alone are about 11 minutes together on a normal VM. The VMs differ in speed by up to about 2x on the same image (the bench's bakes, the same work every run, took 48.5-51.7 s a bake in runs 40918637235 and 40960128489, 70.8-72.5 s in 40945330892, 41064336939, 41097803096 and 41122837420, 99.6-100.2 s in 40883379594 and 41115750426: 2.0x, all eight on runner image ubuntu-26 version 20261021.618; the two runs with the bench's runner line logged `AMD EPYC 7763 64-Core Processor x4` and `AMD EPYC 9V74 80-Core Processor x4`, so a slow number can be told from a slow CPU model. The realtime frame benches read more than that spread, `rt-bench-512` 1070 to 4140 ms, because they also grew about 1.5-1.8x on runners of equal speed, a regression, see Budgets) (the
+alone are about 11 minutes together on a normal VM. The VMs differ in speed by up to about 2x on the same image (the bench's bakes, the same work every run, took 48.5-51.7 s a bake in runs 40918637235 and 40960128489, 70.8-72.5 s in 40945330892, 41064336939, 41097803096 and 41122837420, 99.6-100.2 s in 40883379594 and 41115750426: 2.0x, all eight on runner image ubuntu-26 version 20261021.618; the two runs with the bench's runner line logged `AMD EPYC 7763 64-Core Processor x4` and `AMD EPYC 9V74 80-Core Processor x4`, so a slow number can be told from a slow CPU model. The realtime frame benches read more than that spread, `rt-bench-512` 1070 to 4140 ms, because they also grew about 1.5-1.8x on runners of equal speed, a regression MS-90 bisected to MS-38's linear filter (fixed) and MS-60's multisampled transparency pass (accepted), see Budgets) (the
 cut-out checker bake took 1.3 minutes on one, 39 s on another), so a shard needs room for the slow case; the bench no
 longer shares a VM with the bakes.
 
@@ -135,7 +135,7 @@ came near or over it; the worst of runs 39594658979 and 39612706830 per test: th
 `rt-bake-cutout-checker` and its fallback over 30 s, `rt-bake-turntable-y030` over 30 s, `rt-bake-alpha-plane` 24.5 s;
 the path-tracer determinism batches test 35.0 s (over 30 s), its same-seed test 15.2 s, `pt-alpha-plane` 22.4 s, the
 transparency tests up to 22.5 s, the lifetime tests 14.9-18.6 s, the 10 000 coincident cubes test 10.0 s. A suite or
-test whose CI time reaches a third of the default carries a timeout: 180 s for the baked goldens (bakes took 33-42 s in run 39624802150), 300 s for the baked lighting describe, 720 s for its determinism test (1.6 minutes on a normal runner, over 3 on a slow one, 5.2 at six local workers), 600 s for the baked-preview pairing tests (up to 1.3 minutes, about 2.6 on a slow VM, alpha-plane 4.3-5.1 in a full local run beside the other suites, MS-102; MS-38's texture-filter pairing test 53.8 s at six local workers), 120 s for the texture-filter render golden (3.1 s at six local workers), 120 s for the path-tracer goldens, determinism and lifetime describes and the coincident cubes test, 180 s for the
+test whose CI time reaches a third of the default carries a timeout: 180 s for the baked goldens (bakes took 33-42 s in run 39624802150), 300 s for the baked lighting describe, 720 s for its determinism test (1.6 minutes on a normal runner, over 3 on a slow one, 5.2 at six local workers), 660 s for the baked-preview pairing tests (up to 1.3 minutes, about 2.6 on a slow VM, `alpha-plane` 4.3-5.2 in a full local run beside the other suites, where 300 s timed it out, MS-102 and MS-57; MS-38's texture-filter pairing test 53.8 s at six local workers), 120 s for the texture-filter render golden (3.1 s at six local workers), 120 s for the path-tracer goldens, determinism and lifetime describes and the coincident cubes test, 180 s for the
 transparency describe (66 s at six local workers), 300 s for the exact-key silhouette test (29.5 s serial), 600 s for the
 exact-key catcher test (49 s serial) and the preset rim probes (42.6 s serial), 180 s for the bench's export and bundle sections, 360 s for its loads, 600 s for its path-tracer section, 15 x (the three frame maxima) + 120 s for its frames (382.5 s) and 3 x the bake max + 120 s for its bakes (786 s). The bench sections are hang backstops, bounded as a whole by the 17-minute `globalTimeout`: the loads' 360 s are 1.0x the 5.9 minutes the slowest run (41025764238, before the sections were split) needed for the loads plus every path-tracer run, the path-tracer's 600 s hold its maxima, the bakes' 786 s are 2.1x the slowest bake series (372 s, the whole bake section of run 40883379594 with page load and trace; its three bakes took 100 s each), the frames' 382.5 s are 1.9x the 3.3 minutes the frame section took on the slowest runner (41115750426). A section hitting its timeout fails with its numbers; the sections together are cut by the global limit, 120 s for the realtime shimmer test (`texel anti-aliasing halves shimmer`, eight renders: 22-35 s alone locally, 30.3 and 31.1 s in the full serial suite, 24.1 s at six local workers), 180 s for the partial-alpha seam describe (MS-60: 5.4-11.8 s a test at six local workers, 6.9-15.4 s serial), 600 s for the partial-edge per-row pairing test (MS-60: 96 s serial, 3.5 minutes at six local workers); apart from the bench sections, each is at least 3x the worst CI time and twice the worst local time. A
 hang now fails after that time, not after the 60 s default; several hangs in one
@@ -339,6 +339,16 @@ anti-alias silhouettes like raster frames`): `turntable-y030` at `aa=0`, framed 
   `partial-edge` within 1 level, with and without MSAA. The fallback keeps the same model/backdrop map with and without texel AA, and `breakFramebuffers`
   with partial geometry switches to it without a page error. `scene=partial-edge-pair` (a second quad overlapping
   the first) is byte-identical with `reverse=1` at 4 samples, `msaa=0`, `depth=inside` and both.
+  MS-88: three outline pixels of `partial-edge`, (49, 194), (119, 213) and (202, 228), stay exactly the backdrop at 4
+  samples (held to 1 level), and so does `partial-edge-opaque` (the same quad, every texel opaque under alpha mode
+  OPAQUE, drawn by the opaque pass); one pixel along the outline, (49, 193), (120, 213) and (203, 228), both mix by the
+  same sample share (linear light 0.253 partial, 0.251 twin, held to 0.01 apart), and the cut-out texel centres stay
+  exactly the backdrop. Why (diagnosis, pair view with the bake and catcher, red / blue): preview 101/110, 101/110 and
+  103/112 (the catcher in the plane's shadow, no plane colour); the opaque twin 82/90, 84/92, 89/97 (its own darker
+  shadow, plane 197), equally unmixed; the render (seed 1) 126, 127, 132 at 64 samples and 113, 125, 127 at 128, its
+  twin 113, 131, 134: the face covers about 28-33 % of each pixel in a sliver that holds none of the 4 samples. With the
+  OIT pass single-sampled (`oitMsaaActive` false) the mixed neighbours turn hard while these stay, so the transparency
+  pass is multisampled and drops nothing: a limit of the sample count (docs/realtime-renderer.md), MS-112 (sub-sample silhouette coverage).
 - Context loss through `WEBGL_lose_context`: the image after the restore matches `rt-turntable-y030`, without a
   reload or a page error.
 - Device pixel ratio 2 doubles the backing store; an element resize reallocates and keeps the projection unstretched.
@@ -807,7 +817,7 @@ all 49 296 (1 040 before). Pairs before -> after (ratio / mean delta), limits un
 0.591; `alpha-plane`, `player-hold-34`, `preset-rim`, `preset-marketplace-yaw30` and `gltf-contact` unchanged.
 `partial-edge` went from 2 to 3 pixels (0.00005 against the old limit 0.00004; mean 1.124 -> 1.120): one
 silhouette edge pixel (row 194, x about 50: the preview steps 101 to 174 where the render blends about 126) moved by
-1 level in blue towards the render, which crosses pixelmatch's OKLab threshold. Its limit was re-measured, x 1.25: 0.00006 / 1.4 (was 0.00004 / 1.405); no other
+1 level in blue towards the render, which crosses pixelmatch's OKLab threshold. Its limit was re-measured, x 1.25: 0.00006 / 1.4 (was 0.00004 / 1.405; MS-57 and MS-88 brought it back below, see the pair table); no other
 limit changed. New: realtime.spec "nothing blocks" (the `cutout-ghost` scene, the checker geometry with every texel
 cut out: every catcher texel exactly 1 in all four channels, the preview
 byte-identical with and without the catcher; it failed before with 1 040 of 49 296), "the lit catcher is exact away
@@ -816,6 +826,24 @@ keeps its baked key shadow" (Studio with sky and ground blue 0: no non-finite te
 under Studio, 5 352 shadowed model texels; before, 0 / 0 turned every texel into 1 and both counts were 0), through
 the `bakeCatcherStats` hook; source pins of the bake and catcher shaders and the preview form over baked rgb in
 [−0.25, 1] (`catcherShade.test.ts`).
+
+MS-57 bakes one diffuse bounce (path-tracer.md, light baker): a model texel's fill ray that a blocker stops gains what
+the blocker sends back, its emission and albedo × (the key through one more shadow ray in the cone, + its unshadowed
+`hemisphereFill`), as the trace's first bounce vertex has it. The catcher has none, as in the trace. New randoms only in
+dimensions 7-8, so the key bytes (hashes below) and every texel whose rays nothing blocked are unchanged. The `bake>0`
+goldens that left their tolerance were regenerated (seed 1, 64 samples; changed pixels, max channel delta, mean delta
+per channel against the committed file before MS-57): `rt-bake-gltf-contact` 41 880 px, 111, 6.553 (its box sides lit
+by the ground as in `pt-gltf-contact`); `rt-bake-alpha-plane` 26 823, 28, 1.205; `rt-bake-cutout-checker` 5 722, 123,
+0.385 and `-fallback` 5 279, 123, 0.408 (the checker texels half a unit from the box, dark brown before, take the
+box's light, orange as in `pt-cutout-checker`); `rt-preset-marketplace` 8 888, 40, 0.285, `-fallback` 8 608, 55, 0.311;
+`rt-preset-rim` 8 126, 44, 0.215; `rt-preset-softbox` 10 283, 92, 0.433 (the crevices between the player's limbs and
+body). Every changed pixel is brighter in luminance but a few: 9 (`rt-preset-marketplace`), 10 (`-fallback`), 0
+(`rt-preset-rim`) and 11 (`rt-preset-softbox`) pixels, and 0 on the four `rt-bake-*` views (Rec. 709 luminance, old
+against new file); 184, 234, 0 and 213 pixels of the preset views have one channel lower (AgX mixes the channels). `rt-bake-turntable-y030`
+moved within its tolerance and stays; every `pt-*` golden passed unchanged (the trace's program is not touched).
+Judged as images (old, new, render side by side): the box sides of the glTF scene go from a dark falloff to the
+render's pink, the shadow on the ground keeps its shape, the grain is texel-scale like the render's noise; no speckle,
+no cut-out texel lit, no shadow shape moved, the catcher unchanged.
 
 MS-87 gave the model lightmap texels the same control variate (path-tracer.md, light baker): rgb = 1 − the fill the
 ray lost over `hemisphereFill(n)`, so a texel nothing blocked is exactly 1 and the preview, whose texel and world taps
@@ -947,6 +975,23 @@ test extended (the cube stays exactly 1 under a zero blue channel, no non-finite
 as before (below-side rays on smooth faces are now traced, mirrored, where they used to be skipped), so the bench bake
 time budget is not expected to move.
 
+MS-57 (one bounce in the bake): a generated `bounce-wall` scene (no file: a 16 x 16 grey floor at y = 0 and an 8-unit
+single-sided wall on its west edge facing east, toward Studio's key, its 8 x 8 texture opaque white or black, partial
+white or black at alpha 128, cut out, or the wall without triangles) and `bakeMeshTexels(scene, samples, mesh, look)`
+(the half-float texels of one mesh's charts, `bakedMeshTexels.ts`). realtime.spec "a bounce comes from what blocks the
+fill ray: opaque, partial by its alpha, never a cut-out texel" bakes the floor at 256 samples, seed 1: the cut-out wall
+gives the floor byte for byte what no wall gives (every channel exactly 1); the white wall's gain over the black one
+(the same rays and blocks) is 0.2339 on average, and the floor beside it reaches 1.335; the partial wall's gain is
+0.1168, ratio 0.4996 against alpha 0.5020, the residual per texel -0.00056 with a standard error of 0.00120 (limit 3
+standard errors); a wall turned from the key (the key mirrored in x) bakes the same floor rgb bytes under half the key
+colour, a wall turned to it a brighter floor under the full one; under a look whose dome has no blue the floor's blue
+is exactly 1 everywhere (the dark-channel limit) while its red still exceeds 1. "one bounce lights the low west side of
+the glTF box from the bright ground, as the render does": world (8, 4, -8), 5 x 5 mean luminance baked 132.7 (sd 3.4),
+render 125.2 (sd 3.9), 5.9 % apart (limit 15 %; 62.9 before MS-57). The key hashes above and the convex cube's exact 1s
+did not move. Source pins: `bounceLight` has the trace's key gate, cosine and colour, its shadow ray skips the
+blocker's triangle, its only randoms are dimensions 7-8, `bakeCatcher` has none, and the bounce enters only through
+`lost` (a share of the fill). A blocked fill ray costs one more shadow traversal (the node-cap test counts it too).
+
 - Tolerance: an override of `threshold 0` only (its reason in the spec); `maxDiffRatio 0.001` and `maxMeanDelta 1`
   stay the defaults. The tracer converges, so at the default threshold 0.1 another seed or one sample more or less
   still passes (seed 2 at 64 samples: 7 of 65 536 pixels, mean delta 0.30; 63 samples: 0 pixels, mean delta 0.027). At
@@ -997,32 +1042,58 @@ look's backdrop in that row, `agxToneMap(backdropColor(look, y), look.toneMappin
 before MS-19 the top-left pixel) must agree on every pixel off the silhouette (a pixel whose 3 x 3 neighbourhood in the preview holds
 both classes) that the two images draw more than 2 levels apart (a dark texel near the backdrop colour falls on either
 side of the mask test, with the same colour in both views); 0 mismatches is the limit. Radiance, catcher on both: pixelmatch `threshold 0.1` with `maxDiffRatio`
-and `maxMeanDelta` = measured x 1.25 and never above the previous limit, never widened; the one exception is a limit re-measured x 1.25 after a deliberate change whose pixels all moved toward the render (MS-63: `partial-edge`, one silhouette edge pixel on row 194, x about 50, where the preview steps 101 to 174 and the render blends about 126 because the plane partly covers it, flipped over pixelmatch's OKLab threshold as the added blue raised the chroma difference), with the change named beside it; the render differs where it
-has interreflection and noise. Logged as `[pt pair] <view>: ...`, values in `test-results/pt-pair-<view>.json`.
+and `maxMeanDelta` = measured x 1.25 and never above the previous limit, never widened (MS-63's re-measure of `partial-edge` above its limit was the one exception; MS-88 removed it); the render differs where it
+has interreflection past the bake's one bounce (MS-57) and noise. Logged as `[pt pair] <view>: ...`, values in `test-results/pt-pair-<view>.json`.
 Measured on SwiftShader (local Windows dev machine, deterministic), MS-15 with rounded edges and the mirrored bounce
 (MS-16's values in brackets; every limit stayed, none widened, `edges` is new at measured x 1.25):
 
-| view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta                                               | limit: `maxDiffRatio`, `maxMeanDelta`      |
-| -------------------------- | ----------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------ |
-| `turntable-y030`           | 0 (1 627)                           | 131, 0.00200, 0.675 (MS-87; 123, 0.00188, 0.697 MS-60; MS-54 142, 0.00217, 0.723) | 0.00235, 0.871 (MS-60; was 0.00271, 0.904) |
-| `iso`                      | 0 (1 517)                           | 263, 0.00401, 0.850 (MS-87; 250, 0.00381, 0.869 MS-60; MS-54 266, 0.00406, 0.888) | 0.00476, 1.086 (MS-60; was 0.00508, 1.111) |
-| `alpha-plane`              | 0 (692)                             | 213, 0.00325, 1.321 (MS-87; 232, 0.00354, 1.335 MS-54; MS-30 232, 0.00354, 1.334) | 0.00443, 1.669 (MS-54; was 0.00443, 1.67)  |
-| `player-hold-34`           | 0 (1 322)                           | 690, 0.01053, 0.975 (MS-87; 683, 0.01042, 0.999 MS-35; 1 208, 0.01843, 1.293)     | 0.01304, 1.25 (MS-35; was 0.0232, 1.62)    |
-| `cutout-checker`           | 0 (3 295)                           | 245, 0.00374, 0.605 (MS-87; 223, 0.00340, 0.611 MS-60; MS-30 223, 0.00340, 0.623) | 0.00426, 0.764 (MS-60; was 0.00426, 0.78)  |
-| `edges`                    | 0 (1 971)                           | 46, 0.00070, 0.349 (MS-87; 41, 0.00063, 0.373 MS-60; MS-54 41, 0.00063, 0.386)    | 0.00079, 0.466 (MS-60; was 0.00079, 0.483) |
-| `preset-marketplace`       | 0 (1 322)                           | 600, 0.00916, 0.787 (MS-87; 598, 0.00912, 0.793 MS-35; 1 269, 0.01936, 1.237)     | 0.01141, 0.992 (MS-35; was 0.0223, 1.43)   |
-| `preset-rim`               | 0 (1 322)                           | 851, 0.01299, 0.701 (MS-87; 860, 0.01312, 0.704 MS-35; 1 407, 0.02147, 1.109)     | 0.01641, 0.881 (MS-35; was 0.0241, 1.13)   |
-| `preset-softbox`           | 0 (1 322)                           | 916, 0.01398, 1.000 (MS-47, new)                                                  | 0.01748, 1.25                              |
-| `preset-marketplace-yaw30` | 0 (1 304)                           | 747, 0.01140, 0.837 (MS-87; 723, 0.01103, 0.856 MS-35; 1 387, 0.02116, 1.281)     | 0.0138, 1.071 (MS-35; was 0.0265, 1.52)    |
-| `outline-hull`             | 0 (1 448)                           | 170, 0.00259, 0.395 (MS-87; 172, 0.00262, 0.423 MS-60; MS-54 172, 0.00262, 0.437) | 0.00329, 0.529 (MS-60; was 0.00329, 0.547) |
-| `gltf-contact`             | 0 (629)                             | 6 330, 0.09659, 4.971 (MS-87; 6 987, 0.10661, 5.627 MS-41, new, no catcher)       | 0.133, 7.03                                |
-| `obj-shapes-y030`          | 0 (1 852)                           | 245, 0.00374, 0.447 (MS-87; 241, 0.00368, 0.455 MS-60; MS-54 246, 0.00375, 0.469) | 0.0046, 0.569 (MS-60; was 0.00468, 0.587)  |
-| `gltf-nodes-y030`          | 0 (2 218)                           | 256, 0.00391, 0.930 (MS-87; 291, 0.00444, 0.943 MS-60; MS-54 319, 0.00487, 0.955) | 0.00555, 1.179 (MS-60; was 0.00609, 1.194) |
-| `gltf-jpeg-y030`           | 0 (1 476)                           | 36, 0.00055, 0.339 (MS-87; 36, 0.00055, 0.409 MS-83, new)                         | 0.00069, 0.511                             |
-| `obj-jpeg-y030`            | 0 (1 476)                           | 70, 0.00107, 0.350 (MS-87; 71, 0.00108, 0.420 MS-83, new)                         | 0.00135, 0.525                             |
-| `texture-wrap`             | 0 (3 444)                           | 58, 0.00089, 0.594 (MS-87; 46, 0.00070, 0.671 MS-52, new; textureWrap.spec.ts)    | 0.00111, 0.839 (MS-87; was 0.00088, 0.839) |
-| `partial-edge`             | 0 (3 844)                           | 3, 0.00005, 1.102 (MS-87; 3, 0.00005, 1.120 MS-63; MS-60 2, 0.00003, 1.124)       | 0.00006, 1.4 (MS-63; was 0.00004, 1.405)   |
-| `texture-filter`           | 0 (2 600)                           | 6, 0.00009, 0.353 (MS-87; MS-60 0.390; MS-38 7, 0.00011, 0.396)                   | 0.00011, 0.488 (MS-60; was 0.00014, 0.495) |
+| view                       | framing: mismatches (silhouette px) | radiance: pixels, ratio, mean delta                                                  | limit: `maxDiffRatio`, `maxMeanDelta`      |
+| -------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------ |
+| `turntable-y030`           | 0 (1 627)                           | 114, 0.00174, 0.577 (MS-57; 131, 0.00200, 0.675 MS-87; 123, 0.00188, 0.697 MS-60)    | 0.00218, 0.722 (MS-57; was 0.00235, 0.871) |
+| `iso`                      | 0 (1 517)                           | 304, 0.00464, 0.772 (MS-57; 263, 0.00401, 0.850 MS-87; 250, 0.00381, 0.869 MS-60)    | 0.00476, 0.965 (MS-57; was 0.00476, 1.086) |
+| `alpha-plane`              | 0 (692)                             | 133, 0.00203, 0.543 (MS-57; 213, 0.00325, 1.321 MS-87; 232, 0.00354, 1.335 MS-54)    | 0.00254, 0.679 (MS-57; was 0.00443, 1.669) |
+| `player-hold-34`           | 0 (1 322)                           | 437, 0.00667, 0.832 (MS-57; 690, 0.01053, 0.975 MS-87; 683, 0.01042, 0.999 MS-35)    | 0.00834, 1.04 (MS-57; was 0.01304, 1.25)   |
+| `cutout-checker`           | 0 (3 295)                           | 2, 0.00003, 0.415 (MS-57; 245, 0.00374, 0.605 MS-87; 223, 0.00340, 0.611 MS-60)      | 0.00004, 0.519 (MS-57; was 0.00426, 0.764) |
+| `edges`                    | 0 (1 971)                           | 37, 0.00056, 0.277 (MS-57; 46, 0.00070, 0.349 MS-87; 41, 0.00063, 0.373 MS-60)       | 0.00071, 0.346 (MS-57; was 0.00079, 0.466) |
+| `preset-marketplace`       | 0 (1 322)                           | 509, 0.00777, 0.737 (MS-57; 600, 0.00916, 0.787 MS-87; 598, 0.00912, 0.793 MS-35)    | 0.00971, 0.922 (MS-57; was 0.01141, 0.992) |
+| `preset-rim`               | 0 (1 322)                           | 665, 0.01015, 0.634 (MS-57; 851, 0.01299, 0.701 MS-87; 860, 0.01312, 0.704 MS-35)    | 0.01269, 0.793 (MS-57; was 0.01641, 0.881) |
+| `preset-softbox`           | 0 (1 322)                           | 573, 0.00874, 0.846 (MS-57; 916, 0.01398, 1.000 MS-47, new)                          | 0.01093, 1.059 (MS-57; was 0.01744, 1.254) |
+| `preset-marketplace-yaw30` | 0 (1 304)                           | 506, 0.00772, 0.729 (MS-57; 747, 0.01140, 0.837 MS-87; 723, 0.01103, 0.856 MS-35)    | 0.00966, 0.911 (MS-57; was 0.0138, 1.071)  |
+| `outline-hull`             | 0 (1 448)                           | 167, 0.00255, 0.400 (MS-57; 170, 0.00259, 0.395 MS-87; 172, 0.00262, 0.423 MS-60)    | 0.00319, 0.529 (MS-57; was 0.00329, 0.529) |
+| `gltf-contact`             | 0 (629)                             | 34, 0.00052, 0.804 (MS-57; 6 330, 0.09659, 4.971 MS-87; 6 987, 0.10661, 5.627 MS-41) | 0.00065, 1.005 (MS-57; was 0.133, 7.03)    |
+| `obj-shapes-y030`          | 0 (1 852)                           | 112, 0.00171, 0.265 (MS-57; 245, 0.00374, 0.447 MS-87; 241, 0.00368, 0.455 MS-60)    | 0.00214, 0.331 (MS-57; was 0.0046, 0.569)  |
+| `gltf-nodes-y030`          | 0 (2 218)                           | 78, 0.00119, 0.433 (MS-57; 256, 0.00391, 0.930 MS-87; 291, 0.00444, 0.943 MS-60)     | 0.00149, 0.541 (MS-57; was 0.00555, 1.179) |
+| `gltf-jpeg-y030`           | 0 (1 476)                           | 36, 0.00055, 0.338 (MS-57; 36, 0.00055, 0.339 MS-87; 36, 0.00055, 0.409 MS-83)       | 0.00069, 0.511                             |
+| `obj-jpeg-y030`            | 0 (1 476)                           | 70, 0.00107, 0.349 (MS-57; 70, 0.00107, 0.350 MS-87; 71, 0.00108, 0.420 MS-83)       | 0.00135, 0.525                             |
+| `texture-wrap`             | 0 (3 444)                           | 25, 0.00038, 0.568 (MS-57; 58, 0.00089, 0.594 MS-87; textureWrap.spec.ts)            | 0.00048, 0.711 (MS-57; was 0.00111, 0.839) |
+| `partial-edge`             | 0 (3 844)                           | 2, 0.00003, 1.103 (MS-88, MS-57; 3, 0.00005, 1.102 MS-87; 3, 0.00005, 1.120 MS-63)   | 0.00004, 1.379 (MS-88; was 0.00004, 1.4)   |
+| `texture-filter`           | 0 (2 600)                           | 7, 0.00011, 0.353 (MS-57; 6, 0.00009, 0.353 MS-87; MS-38 7, 0.00011, 0.396)          | 0.00011, 0.488 (MS-60; was 0.00014, 0.495) |
+
+MS-57 (one bounce in the bake) re-measured every pair (rows above): every value that fell is tightened to measured x
+1.25 (exact values from `test-results/pt-pair-<view>.json`, rounded up), most of all `gltf-contact`, whose box sides
+now take the ground's bounce (6 330 px to 34), and `cutout-checker` (the checker texels beside the box). Three values
+rose within their limits and keep them: `iso`'s ratio (263 px to 304, 0.00464 of 0.00476; its mean delta fell; cause
+below), and the
+mean deltas of `outline-hull` (0.395 to 0.400) and `partial-edge` (1.102 to 1.103); `texture-filter` rose one pixel (6
+to 7, 0.000107, at its 0.00011 limit, which passes). `gltf-jpeg-y030` and `obj-jpeg-y030` measured as before (0.001 of
+mean delta) and keep theirs. The Softbox head probe (hdriLook.spec.ts) went from 2.64 to 0.07 levels (preview 95.63,
+render 95.56), a signed difference near zero, so `HEAD_LIMIT` is the larger of measured x 1.25 (0.09) and one level
+(the least an 8-bit frame resolves): 1. The app's parity tests, which take `preset-marketplace`'s limit, measured 0.00086 /
+0.244 and posed 0.00108 / 0.217.
+
+`iso`'s 41 extra pixels (diff images of origin/main's bake shader and the branch's, same render, seed 1, 64 samples):
+304 px differ now, 263 before, 181 in both. 123 are new and 82 left the diff. All 123 new ones lie in the two dark pits
+in the grass top (x 122-145, y 83-115) and the preview is brighter than the render in every one (none darker): render
+0 to 14 levels, preview 20 to 38 (10 before the bounce), which crosses the 0.1 colour threshold. The 82 that left were
+pixels of the same pits' rims and walls where the old preview was 13 to 45 levels darker than the render, which the
+bounce lifted into agreement. So the bounce moved the error in the pits from too dark to a little too bright: the
+blocker's returned fill is `hemisphereFill` unshadowed (one bounce, no second ray), which overstates the light a wall
+inside a one-texel-wide pit gets, where the render's next bounce meets the opposite wall. This is the documented limit
+of the single unshadowed bounce (path-tracer.md), not a defect, and the pair keeps its limit (never widened).
+
+MS-88 re-measured `partial-edge` with no renderer change (every rt and pt golden byte-identical): 2 px, 0.0000305 /
+1.103, so its mean delta limit is 1.379 (x 1.25; was 1.4) and its ratio limit stays 0.00004. The 2 px are outline pixels
+the render covers in a sliver no 4x MSAA sample reaches, as the opaque twin shows (realtime.spec MS-88 probe, above).
 
 MS-60 (anti-aliased partial seams, opaque|partial seams and partial outlines in the preview's raster frames)
 re-measured every pair: `turntable-y030`, `iso`, `cutout-checker`, `edges`, `outline-hull`, `obj-shapes-y030` and
@@ -1071,7 +1142,9 @@ world-charted and shows the render's shadows; before 2 083, 0.03178, 2.187), so 
 `gltf-contact` (catcher off on both sides, `PAIR_WITHOUT_CATCHER`, as its render has none): 6 987 px, 0.10661, 5.627,
 limit 0.133, 7.03. Its ground agrees; the box's sides do not: the render lights them with the bounce of the bright
 ground and the bake has no interreflection (box top, lit alike: 207, 176, 162 in both; west side low 85 baked, 132
-unbaked, 150 rendered). Same albedo in both, so no material difference.
+unbaked, 150 rendered). Same albedo in both, so no material difference. MS-57 bakes that bounce: low on the west face
+(world 8, 4, -8) the 5 x 5 mean luminance is 132.7 baked (sd 3.4), 102.9 unbaked, 125.2 rendered (sd 3.9), 62.9 in the
+bake before; the realtime spec holds it within 15 % of the render.
 
 MS-39: `obj-shapes-y030` and `gltf-nodes-y030` (128 samples, catcher on) are new at measured x 1.25. The first
 measurement of `gltf-nodes-y030` was 2 931 px, 0.04472, 2.305, the ground 157 rendered against 188 baked: its ground
@@ -1510,7 +1583,7 @@ Measured on the local Windows dev machine (SwiftShader, 3 runs) when the budgets
 textured cubes, 2,048 cubes, 24,576 triangles, one mesh per cube in 128 group nodes of 4 x 4 cubes as the Blockbench
 loader produces a grouped model, so 512 draw calls per frame after batching per node (checked by the spec), every
 seventh with a partial-alpha face; 512 x 512, 4x MSAA, front and back face passes, opaque and transparency passes),
-median of 11 frames after 4 warm-up frames (MS-81: 4 warm frames are one cycle of an exact frame's sample history, 11 is an exact odd median; it was 30 after 5, which took 6.1 minutes on the slowest runner; `gradient-256` keeps 30 after 5, its 0.1 ms timer ticks need them). Max 6000 ms (MS-81: 2000 ms from MS-44 failed runs 40945330892 and 41064336939, medians 2105 and 3140; 4500 ms then held 4140 in run 41115750426 at 1.09x). The 2000 ms derivation, from the CI medians of the `bench` job: 608.5 ms on
+median of 11 frames after 4 warm-up frames (MS-81: 4 warm frames are one cycle of an exact frame's sample history, 11 is an exact odd median; it was 30 after 5, which took 6.1 minutes on the slowest runner; `gradient-256` keeps 30 after 5, its 0.1 ms timer ticks need them). Max 5300 ms (MS-90, derivation below; MS-81 had 6000 ms after 2000 ms from MS-44 failed runs 40945330892 and 41064336939, medians 2105 and 3140, and 4500 ms then held 4140 in run 41115750426 at 1.09x). The 2000 ms derivation, from the CI medians of the `bench` job: 608.5 ms on
 a normal runner (run 39594658979) and 944.4 ms on a runner about 1.55x slower on this bench (1.71x on the other rt-bench row; 1.33-1.46x on the remaining benches) (run 39650722835,
 where the earlier max of 750 ms failed). 2000 ms was 3.3x the normal CI median and 2.1x the slow one, the 3-4x-CI-median
 rule of `timeToSamplesMs`. MS-81: the medians grew more than the runners differ, a regression, not runner spread.
@@ -1519,12 +1592,53 @@ CI). At equal bake time `rt-bench-512` grew from 2104.95 ms (40945330892, bakes 
 3838.6 ms (41064336939, 41097803096, 41122837420, bakes 70.8-72.5 s), 1.49-1.83x; locally from 401.95-409.75 ms (full
 tests of 2026-10-29, bakes 17.2-18.0 s) to 741.55-828.55 ms (2026-10-30, bakes 17.8-20.9 s), about 1.9x, with MS-38's
 branch at 641.25-665.95 ms (bakes 18.7-21.9 s, about 1.6x) and MS-60's at 748.5-769.55 ms (bakes 18.0-19.7 s, about
-1.2x more). MS-90 bisects it (a3a1144..ab09aae, MS-38 and MS-60) and re-derives this max and `rt-bench-order-512`'s.
-Until then 6000 ms is a documented temporary acceptance, a deliberate exception to the 3-4x rule: 5.6x and 4.5x the
-fast medians of 1070.2 and 1347.95 ms (runs 40918637235 and 40960128489, bakes 48.5-51.7 s, before the growth), 2.9x
-the mid median 2104.95 (40945330892), 1.9x 3139.6 (41064336939), 1.56x 3855.65 (41097803096) and 1.45x the slowest
-seen, 4140 ms (41115750426, bakes 99.8-100.2 s). Against the medians before the growth it fails only at 2.9x and
-above, so the 1.5-2x growth passed it and a 2x regression is not detected on a fast or mid runner until MS-90. The 4500 ms of MS-81's first round (4.2x and 3.3x the fast medians, 1.43x the 3139.6 then slowest) and the 2000 ms ratios above are history. The last local
+1.2x more). The 4500 ms of MS-81's first round, its 6000 ms (5.6x and 4.5x the fast medians of 1070.2 and 1347.95 ms,
+runs 40918637235 and 40960128489, which caught only 2.9x) and the 2000 ms ratios above are history.
+
+MS-90 bisected the growth (a3a1144..ab09aae) on the local SwiftShader machine: each point a scratch worktree of that
+commit, the frame scenes `bench` and `bench-order` at 512 px with the tree's own frame counts (5 + 30 before MS-81,
+4 + 11 after), 3 runs per point interleaved round-robin with `gradient-256` (0.3-0.5 ms in every run) as the speed
+proxy; the machine was shared with other test runs throughout, so medians move about ±5 % run to run. Medians in ms:
+
+| point                         | sha     | `rt-bench-512` | `rt-bench-order-512` | `gradient-256` |
+| ----------------------------- | ------- | -------------- | -------------------- | -------------- |
+| before the growth (MS-61)     | a3a1144 | 548.2          | 480.8                | 0.3-0.4        |
+| MS-74 (serial bench phase)    | fa1a443 | 554.6          | 473.5                | 0.3-0.4        |
+| MS-38's base                  | 48c4e08 | 564.1          | 474.5                | 0.3-0.4        |
+| MS-38 first commit (linear)   | 463352c | 822.4          | 679.5                | 0.4            |
+| MS-38 seam-free linear taps   | ece5b88 | 819.5          | 687.0                | 0.3-0.4        |
+| MS-38 merge                   | c0c55bf | 794.2          | 679.0                | 0.3-0.5        |
+| MS-73, MS-75, MS-69 merged    | 6ea9597 | 801.0          | 668.3                | 0.3-0.4        |
+| MS-60's base                  | 8ed2a38 | 540.6          | 459.6                | 0.3-0.4        |
+| MS-60 first commit (OIT MSAA) | c6d31ba | 679.4          | 490.2                | 0.3-0.4        |
+| MS-60 merge                   | d0dae68 | 989.8          | 712.2                | 0.3-0.4        |
+| MS-81 merge (4 + 11 frames)   | 14367e2 | 996.8          | 695.5                | 0.35-0.4       |
+| MS-86 merge                   | ab09aae | 1000.2         | 709.8                | 0.3-0.4        |
+
+Attribution: MS-38's 463352c 1.46x and 1.43x; MS-60's c6d31ba 1.26x on the raster row (its merge 1.24x over 6ea9597),
+1.07x on the exact one, within the spread; MS-74, MS-73, MS-75, MS-69 and MS-81's frame counts move neither row. The
+same session, on the MS-57 tree with one change at a time: compiling the linear block out of `sampleTexels` 971.1 ->
+761.8 and 679.5 -> 548.5 ms (1.27x, 1.24x), the OIT pass single-sampled (`oitMsaaActive` false) 971.1 -> 782.9 ms (1.24x)
+on the raster row, the opaque pass's alpha-to-coverage alpha of before c6d31ba no change. Fix: the linear branch of
+MS-38 ran in every fragment on SwiftShader although no bench texture is linear, so the mesh passes now come in a
+nearest and a linear program variant per texture filter (docs/realtime-renderer.md, linear textures): 758.5 and 552.6
+ms after it, every realtime golden and the linear and fallback views byte-identical. Accepted: MS-60's multisampled
+transparency pass, about 1.24x (190 ms locally) of the raster frame, which every seventh cube's partial face takes per
+sample (anti-aliased partial outlines are product behaviour, MS-60); `rt-frame-partial-edge-512` measures that pass alone.
+
+Derivation (MS-90), on the final MS-57 batch tree in one session with a3a1144, 3 runs each, the same probe: local_pre
+555.3 and 465.2 ms (a3a1144), local_final 768.5 and 532.4 ms, so the frames are 1.38x and 1.14x the pre-growth ones.
+max = ceil100(1.8 x CI-mid x local_final / local_pre), CI-mid the pre-growth median of the mid runner class (bakes about
+71 s, run 40945330892): 2104.95 ms here, 1878.5 ms for `rt-bench-order-512`, scaled by the local growth 2913.0 and 2149.9
+ms, so 5300 and 3900 ms (round 2 of MS-90 lowered the factor from 1.9: 5600 and 4100 let a 2x regression pass on the fast end
+of the spread). 1.8 leaves room for
+the slowest runner class (bakes about 100 s, about 1.4x the mid one on the bench rows) times the 1.09x spread of one
+class (MS-81, 4140 against 3800 ms), 1.53x. A 2x regression on a mid or slow runner fails (2 x 2913 = 5826 ms, 2 x 2149
+= 4298 ms); on the fast class (bakes about 50 s, 1070.2 and 936.85 ms before the growth) it does not, as the runners
+span 2.0x and one absolute max cannot catch 2x on both ends. The frames section's timeout (`bench.spec.ts`, 15 frames
+at the maxima of the four 512 px rows plus 120 s) falls from 535.5 to 492.0 s (502.5 s with 1.9); 15 frames at the slowest runner's medians of the raster, both exact and the
+partial-edge rows (4140, 2 x 2962.6, 339.9 ms; its pose row is not logged) are 156 s. In the same session the real frames section read `rt-bench-512` 692.2, 732.2, 759.3 ms and
+`rt-bench-order-512` 548.1, 597.0, 539.8 ms. The last local
 SwiftShader median is 375.2 ms (`budgets-measured.json` of the full build test of 2026-10-21). History: the first
 local medians were 68.9, 70.2 and 80.7 ms (3 runs, 128 group nodes batched per node) and the max of 750 ms was 10x the
 middle run, rounded up; renderer work since (MS-12's double-sided cubes and coverage per texel tap, MS-15's rounded
@@ -1562,7 +1676,7 @@ and 3.2x, 1.9x). A return of the first detection (2 s more on `edges-200k`, belo
 detection's work cap and sorted matching are pinned by `sharpEdges.test.ts`.
 
 `frameTimeMs.rt-bench-order-512` is the same scene with one mesh at render order 1, so every frame uses the exact
-depth key (fragment depth, de-indexed geometry); max 5000 ms (MS-81, from 2000 ms of MS-44, then 4500): CI medians 936.85 and 1170.3 ms fast (runs 40918637235, 40960128489), 1878.5 mid (40945330892), 2714.95 and 2924.3 slow (41064336939, 41057545063) and 2962.6 on the slowest runner (41115750426), so 5.3x and 4.3x the fast medians, 2.7x the mid and 1.69x the slowest, the raster bench's documented temporary acceptance until MS-90: at equal bake time this bench grew 1.45-1.52x (1878.5 in 40945330892 against 2714.95, 2855.6 and 2849.6 in 41064336939, 41097803096 and 41122837420, bakes 70.8-72.5 s; 2180.6 in 40883379594 against 2962.6 in 41115750426, bakes 99.6-100.2 s, 1.36x; locally 342.35-347.4 against 518.35-592.2 ms, see the raster bench), the same regression, not runner spread, and against the medians before the growth 5000 ms fails only at 2.7x and above, so a 2x regression is not detected on a fast or mid runner until MS-90 re-derives it; MS-44's 537.9 and 919.5 ms (runs 39594658979, 39650722835, 3.7x and 2.2x of 2000 ms) are history; last local
+depth key (fragment depth, de-indexed geometry); max 3900 ms (MS-90, derived with `rt-bench-512`'s, see there; MS-81 had 5000 ms, from 2000 ms of MS-44, then 4500): CI medians 936.85 and 1170.3 ms fast (runs 40918637235, 40960128489), 1878.5 mid (40945330892), 2714.95 and 2924.3 slow (41064336939, 41057545063) and 2962.6 on the slowest runner (41115750426), of which MS-81's 5000 ms was 5.3x and 4.3x, 2.7x and 1.69x; at equal bake time this bench grew 1.45-1.52x (1878.5 in 40945330892 against 2714.95, 2855.6 and 2849.6 in 41064336939, 41097803096 and 41122837420, bakes 70.8-72.5 s; 2180.6 in 40883379594 against 2962.6 in 41115750426, bakes 99.6-100.2 s, 1.36x; locally 342.35-347.4 against 518.35-592.2 ms, see the raster bench), the same regression (MS-38's linear branch, fixed by MS-90), not runner spread; MS-44's 537.9 and 919.5 ms (runs 39594658979, 39650722835, 3.7x and 2.2x of 2000 ms) are history; last local
 median 326.8 ms (`budgets-measured.json`, 2026-10-21). MS-35: a still exact frame draws one rotated-grid pass of its
 sample history per `render()`, so the bench pins its draws to those of the single-sampled frame (`msaa=0`, 519 both)
 and its median to at most 1.25x that frame's, measured alongside: local 349.3 ms against 340.0 ms (2026-10-27; the
@@ -1645,7 +1759,14 @@ round 7); its max was 750 ms then.
   `e2e/app.motion.spec.ts`: the overlay's median draw time at most 2 ms.
 - `bakeTimeMs.bake-bench-n16` (MS-16): `LightBaker.bake` of the benchmark scene in its worker, 16 samples with the
   shadow catcher (lightmap 2048 wide, catcher 512 x 512), from the call to the final lighting, median of 3. Local
-  SwiftShader 22 873, 22 113 and 22 141 ms; max 222 000 ms (10x the middle run, rounded up). Each run is asserted
+  SwiftShader 22 873, 22 113 and 22 141 ms; max 222 000 ms (10x the middle run, rounded up). MS-57 (one bounce: a
+  blocked fill ray casts one more shadow ray) measured origin/main and the branch alternately on the local machine while
+  other test runs shared it, medians in ms: 26 662 / 34 282, 24 259 / 45 314 (a load spike: heartbeat lag 61 ms),
+  25 715 / 33 274, 20 329 / 32 548; the branch without the bounce's shadow ray 27 680 against 25 442. So about 1.3x,
+  1.6x on the pair with the highest ratio (its origin/main run was the quiet one, 20 329 ms; the branch's 32 548 ms is the same as the others), far inside the max; the budget is unchanged. Measured again on the final batch tree (with
+  MS-90 and MS-88), same method, one session: 25 342 / 31 660 (1.249), 25 712 / 35 648 (1.386, a load spike: heartbeat
+  lag 31.1 ms, rerun as 25 415 / 34 385, 1.353), 25 569 / 34 588 (1.353); medians with the rerun 25 415 / 34 385, so the
+  bounce costs 1.35x (criterion at most 1.4x), most of it the bounce's shadow ray (1.09x without it, above). Each run is asserted
   against the max as it completes, and the bake section's timeout is 3 x that max + 120 s (MS-81), a backstop; on CI the bake
   section runs on shard 2 beside only the three realtime tests, so bakes of over about 220 s each (inside the budget) are
   stopped by the section timeout on a slow runner, the per-bake log lines showing the finished bakes; the 17-minute

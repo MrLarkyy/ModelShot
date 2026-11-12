@@ -186,6 +186,7 @@ export class App {
         // The bake reports through onBakeStarted/onBakeSettled (the model dot); the context through onContextRestored.
         onStatus: () => undefined,
         onContextRestored: () => this.notices.status('The graphics context was restored.'),
+        onError: (message) => this.notices.pinAlert(message),
         onResize: (size) => {
           const previous = this.cssSize;
           this.cssSize = size;
@@ -1176,7 +1177,7 @@ export class App {
       byId('file-menu-button', HTMLButtonElement).focus();
     });
     byId('alert-close', HTMLButtonElement).addEventListener('click', () => {
-      this.notices.clearAlert();
+      this.notices.dismissAlert();
       byId('file-menu-button', HTMLButtonElement).focus();
     });
     const dropOverlay = byId('drop-overlay', HTMLElement);

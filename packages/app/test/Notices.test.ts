@@ -157,4 +157,23 @@ describe('Notices', () => {
     expect(elements.alertBox.hidden).toBe(true);
     expect(elements.alertText.textContent).toBe('');
   });
+
+  it('a pinned driver failure survives clearAlert, such as opening a file', () => {
+    const { elements, notices } = setup();
+    notices.pinAlert('The preview could not use the graphics driver: lost');
+    notices.alert('Could not open it.');
+    notices.clearAlert();
+    expect(elements.alertBox.hidden).toBe(false);
+    expect(elements.alertText.textContent).toBe('The preview could not use the graphics driver: lost');
+  });
+
+  it('Dismiss hides a pinned driver failure for good', () => {
+    const { elements, notices } = setup();
+    notices.pinAlert('The preview could not use the graphics driver: lost');
+    notices.dismissAlert();
+    expect(elements.alertBox.hidden).toBe(true);
+    notices.clearAlert();
+    expect(elements.alertBox.hidden).toBe(true);
+    expect(elements.alertText.textContent).toBe('');
+  });
 });

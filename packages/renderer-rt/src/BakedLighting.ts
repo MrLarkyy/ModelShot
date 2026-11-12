@@ -3,9 +3,11 @@
  * `RealtimeRenderer.setLighting` takes it. Texel (x, y) is element `(y × width + x) × 4` of `data`, RGBA as IEEE half
  * floats: rgb 1 less the fill the texel's ray lost over the unoccluded fill `hemisphereFill(n)` (the path tracer's
  * control variate: exactly 1 where nothing blocks the sky; a ray under a smooth face's geometric side counts as the
- * trace mirrors it; unclamped, so values can lie below 0 where fully blocked and slightly above 1), a the key light's
- * visibility 0..1. Texels of no chart hold 1; a channel the look's dome leaves at 0 holds 1. Valid
- * only under looks of the same `lightingKey`.
+ * trace mirrors it), where a blocked ray loses the environment along it less what the blocker sends back (one diffuse
+ * bounce: its emission and its albedo times the key and its unshadowed fill). Unclamped, so values can lie below 0
+ * where fully blocked by dark faces and above 1 beside a bright one. a is the key light's visibility 0..1. Texels of
+ * no chart hold 1; a channel the look's dome leaves at 0 holds 1, its bounce not baked. Valid only under looks of the
+ * same `lightingKey`; the bounce's key share follows the key colour of the look baked under, which the key leaves out.
  */
 export interface BakedLighting {
   /** `LightmapLayout.layoutKey` of the document it was baked for. */

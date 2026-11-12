@@ -30,6 +30,14 @@ export function toHalf(value: number): number {
   return sign | (half + (rest > 0x1000 || (rest === 0x1000 && (half & 1) === 1) ? 1 : 0));
 }
 
+/** The largest finite half-float value. */
+export const HALF_MAX = 65504;
+
+/** `toHalf` with the value held to the finite half range, so an overflow stores the largest value, never Infinity. */
+export function toFiniteHalf(value: number): number {
+  return toHalf(Math.min(HALF_MAX, Math.max(-HALF_MAX, value)));
+}
+
 /** The value of half-float bits `h`. */
 export function fromHalf(h: number): number {
   const sign = h & 0x8000 ? -1 : 1;

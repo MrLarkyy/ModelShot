@@ -20,6 +20,7 @@ function deferred<T>(): Deferred<T> {
 
 interface ViewerOptions {
   onStatus?: (message: string) => void;
+  onError?: (message: string) => void;
   onBakeStarted?: () => void;
   onBakeSettled?: (lit: boolean) => void;
 }
@@ -462,6 +463,29 @@ describe('showEmbed', () => {
     sidecars()[0]?.answer.reject(new EmbedError('SIDECAR_REFUSED', 'The model refers to "//evil.example/a.png".'));
     await settle();
     expect(fakes.sessions[0]?.closed).toBe(true);
+  });
+
+  it('a renderer error shows in the alert as text and posts nothing', async () => {
+    const embed = start(fragment('https://models.example/a.bbmodel'));
+    await settle();
+    const before = embed.posts();
+    viewer().options.onError?.('<img src=x onerror=alert(1)> could not link');
+    expect(embed.page.alert.textContent).toBe('<img src=x onerror=alert(1)> could not link');
+    expect(embed.page.alert.hidden).toBe(false);
+    expect(embed.posts()).toEqual(before);
+  });
+
+  it('a renderer error stops autorotate, and the next hash update keeps its alert', async () => {
+    const embed = start(fragment(A, '&autorotate=1'));
+    await arrive(A);
+    viewer().options.onBakeSettled?.(true);
+    expect(fakes.rotations).toHaveLength(1);
+    viewer().options.onError?.('The preview could not use the graphics driver: lost');
+    expect(fakes.rotations[0]?.stop).toHaveBeenCalledOnce();
+    embed.update(fragment(A, '&autorotate=1&yaw=40'));
+    expect(embed.page.alert.hidden).toBe(false);
+    expect(embed.page.alert.textContent).toBe('The preview could not use the graphics driver: lost');
+    expect(fakes.rotations).toHaveLength(1);
   });
 
   it('a failed file of the model posts error and shows the alert, without reading the model', async () => {

@@ -1,4 +1,5 @@
 import type { BakedLighting, LightmapLayout } from '@modelshot/renderer-rt';
+import { halfToNumber } from './halfToNumber';
 
 /** IEEE half 1.0. */
 const HALF_ONE = 0x3c00;
@@ -32,17 +33,11 @@ export interface BakedCatcherStats {
   readonly chartMin: number;
   /** FNV-1a over the key visibility (a) halves of the model lightmap, to pin that the key's bytes did not move. */
   readonly chartKeyHash: number;
+  /** FNV-1a over every half of the catcher lightmap, to pin that its bytes did not move. */
+  readonly catcherHash: number;
 }
 
 const NEGATIVE = 0x8000;
-
-function halfToNumber(half: number): number {
-  const sign = half & NEGATIVE ? -1 : 1;
-  const exponent = (half >> 10) & 31;
-  const fraction = half & 0x3ff;
-  if (exponent === 0) return sign * fraction * 2 ** -24;
-  return sign * (1 + fraction / 1024) * 2 ** (exponent - 15);
-}
 
 const finite = (half: number): boolean => (half & HALF_EXPONENT) !== HALF_EXPONENT;
 
@@ -66,6 +61,11 @@ export function bakedCatcherStats(lighting: BakedLighting, layout: LightmapLayou
   let keyShadowed = 0;
   let nonFinite = 0;
   const catcher = lighting.catcher?.data ?? new Uint16Array(0);
+  let catcherHash = 0x811c9dc5;
+  for (const half of catcher) {
+    catcherHash = Math.imul(catcherHash ^ (half & 255), 0x01000193) >>> 0;
+    catcherHash = Math.imul(catcherHash ^ (half >> 8), 0x01000193) >>> 0;
+  }
   for (let i = 0; i < catcher.length; i += 4) {
     const [r = 0, g = 0, b = 0, a = 0] = catcher.subarray(i, i + 4);
     const rgbOne = r === HALF_ONE && g === HALF_ONE && b === HALF_ONE;
@@ -121,5 +121,6 @@ export function bakedCatcherStats(lighting: BakedLighting, layout: LightmapLayou
     chartNegative,
     chartMin: Number.isFinite(chartMin) ? chartMin : 0,
     chartKeyHash,
+    catcherHash,
   };
 }
