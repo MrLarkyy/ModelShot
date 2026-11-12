@@ -39,6 +39,13 @@ describe('icon', () => {
         'panel-right',
         'panel-bottom',
         'close',
+        'eye-off',
+        'unlock',
+        'material',
+        'look',
+        'render',
+        'keyframe',
+        'folder',
       ].sort(),
     );
   });

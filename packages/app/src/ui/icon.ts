@@ -22,6 +22,13 @@ export const ICON_NAMES = [
   'panel-right',
   'panel-bottom',
   'close',
+  'eye-off',
+  'unlock',
+  'material',
+  'look',
+  'render',
+  'keyframe',
+  'folder',
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];
@@ -71,6 +78,13 @@ const SHAPES: Record<IconName, readonly Shape[]> = {
   'panel-right': [{ rect: [2, 2.5, 12, 11, 1.5] }, path('M9.5 2.5v11')],
   'panel-bottom': [{ rect: [2, 2.5, 12, 11, 1.5] }, path('M2 9.5h12')],
   close: [path('M3.5 3.5l9 9M12.5 3.5l-9 9')],
+  'eye-off': [path('M1.5 8C3 5 5.3 3.5 8 3.5S13 5 14.5 8C13 11 10.7 12.5 8 12.5S3 11 1.5 8Z'), path('M2.5 2.5l11 11')],
+  unlock: [{ rect: [3.5, 7, 9, 6.5, 1.5] }, path('M5.5 7V5a2.5 2.5 0 0 1 4.8-1')],
+  material: [circle(8, 8, 5.5), path('M8 2.5a5.5 5.5 0 0 0 0 11'), path('M2.6 7h10.8')],
+  look: [path('M2.5 13.5l6-6'), path('M9.5 3.5l1 2 2 1-2 1-1 2-1-2-2-1 2-1z')],
+  render: [{ rect: [2, 3, 12, 9, 1.5] }, path('M6.5 6v3.5l3-1.75zM5 14h6')],
+  keyframe: [path('M8 2.5l5 5.5-5 5.5L3 8z')],
+  folder: [path('M2 4.5a1 1 0 0 1 1-1h3l1.5 1.5H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z')],
 };
 
 const NS = 'http://www.w3.org/2000/svg';
