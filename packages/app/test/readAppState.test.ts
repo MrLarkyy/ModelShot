@@ -215,6 +215,24 @@ describe('readModelState lookAdjust', () => {
   });
 });
 
+describe('readModelState collapsedNodes', () => {
+  it('reads the collapsed groups and leaves the field out when absent', () => {
+    expect(readModelState(model())).not.toHaveProperty('collapsedNodes');
+    expect(readModelState(model({ collapsedNodes: [0, 4, 9] }))?.collapsedNodes).toEqual([0, 4, 9]);
+  });
+
+  it.each([
+    ['indices that are not integers', [1.5]],
+    ['negative indices', [-1]],
+    ['too many indices', new Array(100_001).fill(0)],
+    ['a value that is not a list', 'all'],
+  ])('drops %s without refusing the record', (_name, collapsedNodes) => {
+    const read = readModelState(model({ collapsedNodes }));
+    expect(read).not.toBeNull();
+    expect(read).not.toHaveProperty('collapsedNodes');
+  });
+});
+
 describe('readSession', () => {
   it('reads the files of a session', () => {
     const read = readSession(session());

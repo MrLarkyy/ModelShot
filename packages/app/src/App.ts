@@ -154,6 +154,7 @@ export class App {
   private shareFile: File | null = null;
   private setupQueue: Promise<unknown> = Promise.resolve();
   private look: LookPreset = DEFAULT_LOOK;
+  private collapsedNodes: readonly number[] = [];
   private viewportChips: ViewportChips | null = null;
   private lookAdjust: LookAdjust = NO_LOOK_ADJUST;
   private arms: PlayerArmsChoice = 'classic';
@@ -245,6 +246,11 @@ export class App {
         rename: (kind, index, name) => this.rename(kind, index, name),
         selectLight: (light) => this.showLight(light),
         openFiles: () => this.openPicker(),
+        // Not an undo step and not part of the setup: opening or closing a group changes only what the outliner shows.
+        collapseChanged: (collapsed) => {
+          this.collapsedNodes = collapsed;
+          this.scheduleSave();
+        },
       },
       byId('add-menu', HTMLElement),
     );
@@ -495,7 +501,9 @@ export class App {
     let lockedMeshes = Array.from({ length: meshes }, () => false);
     let names: ReadonlyMap<string, string> = new Map();
     let nodeEdits: readonly NodeEdit[] = [];
+    let collapsed: readonly number[] = [];
     if (saved) {
+      collapsed = (saved.collapsedNodes ?? []).filter((index) => index < nodes);
       nodeVisible = visibilityFromHidden(nodes, saved.hiddenNodes);
       meshVisible = visibilityFromHidden(meshes, saved.hiddenMeshes);
       lockedNodes = lockedFromIndices(nodes, saved.lockedNodes ?? []);
@@ -514,6 +522,7 @@ export class App {
       lockedMeshes = this.lockedMeshes;
       names = this.names;
       nodeEdits = this.nodeEdits;
+      collapsed = this.collapsedNodes;
     }
     let filters = textureFilters(doc);
     const savedFilters = saved?.textureFilters;
@@ -557,6 +566,8 @@ export class App {
       if (this.open?.loaded.key !== open.loaded.key) this.selection.set(null);
       this.open = open;
       this.arms = open.arms;
+      this.collapsedNodes = collapsed;
+      this.scenePanel.setCollapsed(collapsed);
       this.base = doc;
       this.filteredBase = filteredBase;
       this.restDoc = rest;
@@ -986,6 +997,7 @@ export class App {
       ...(lockedNodes.length > 0 ? { lockedNodes } : {}),
       ...(lockedMeshes.length > 0 ? { lockedMeshes } : {}),
       ...(this.nodeEdits.length > 0 ? { nodeEdits: this.nodeEdits } : {}),
+      ...(this.collapsedNodes.length > 0 ? { collapsedNodes: this.collapsedNodes } : {}),
       render: this.renderValues,
       ...(this.exportValues ? { export: this.exportValues } : {}),
     };

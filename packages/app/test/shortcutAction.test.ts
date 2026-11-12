@@ -81,7 +81,7 @@ describe('shortcutAction', () => {
   it('lists every action once for the help dialog', () => {
     const actions = SHORTCUTS.map((s) => s.action);
     expect(new Set(actions).size).toBe(actions.length);
-    expect(actions).toHaveLength(21);
+    expect(actions).toHaveLength(22);
     expect(SHORTCUTS.every((s) => ['File', 'View', 'Selection', 'Timeline'].includes(s.group))).toBe(true);
   });
 });

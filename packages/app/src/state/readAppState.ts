@@ -199,6 +199,7 @@ export function readModelState(value: unknown): ModelState | null {
     const lockedMeshes = indices(own(value, 'lockedMeshes'));
     const nodeEdits = readNodeEdits(own(value, 'nodeEdits'));
     const lookAdjust = readLookAdjust(own(value, 'lookAdjust'));
+    const collapsedNodes = indices(own(value, 'collapsedNodes'));
     return {
       v: APP_STATE_VERSION,
       camera,
@@ -212,6 +213,7 @@ export function readModelState(value: unknown): ModelState | null {
       ...(lockedMeshes ? { lockedMeshes } : {}),
       ...(nodeEdits ? { nodeEdits } : {}),
       ...(lookAdjust ? { lookAdjust } : {}),
+      ...(collapsedNodes ? { collapsedNodes } : {}),
       render,
       ...(exportSettings ? { export: exportSettings } : {}),
       savedAt,

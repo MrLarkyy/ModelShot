@@ -40,6 +40,8 @@ export interface ModelState {
   readonly lockedMeshes?: readonly number[];
   /** Rest-space transforms the user gave nodes with the gizmo or the Object tab. Absent in older records. */
   readonly nodeEdits?: readonly NodeEdit[];
+  /** Indices of the outliner groups shown closed. Absent: all open. */
+  readonly collapsedNodes?: readonly number[];
   /** What the user changed on top of the look (exposure, saturation, flat backdrop). Absent: none. */
   readonly lookAdjust?: LookAdjust;
   readonly render: RenderSettingsValues;
