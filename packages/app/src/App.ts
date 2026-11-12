@@ -153,6 +153,7 @@ export class App {
   private shareFile: File | null = null;
   private setupQueue: Promise<unknown> = Promise.resolve();
   private look: LookPreset = DEFAULT_LOOK;
+  private viewportChips: ViewportChips | null = null;
   private lookAdjust: LookAdjust = NO_LOOK_ADJUST;
   private arms: PlayerArmsChoice = 'classic';
   private renderValues: RenderSettingsValues = { ...DEFAULT_RENDER_SETTINGS };
@@ -274,12 +275,17 @@ export class App {
       },
       this.sectionState,
     );
-    this.cameraPanel = new CameraPanel(this.inspector.camera, {
-      orbit: this.viewer?.orbit ?? new OrbitController(),
-      changed: () => this.viewer?.changed(),
-      frameModel: () => this.viewer?.frameModel(),
-      resetView: () => this.viewer?.resetView(),
-    });
+    this.cameraPanel = new CameraPanel(
+      this.inspector.camera,
+      {
+        orbit: this.viewer?.orbit ?? new OrbitController(),
+        changed: () => this.viewer?.changed(),
+        frameModel: () => this.viewer?.frameModel(),
+        resetView: () => this.viewer?.resetView(),
+        presetMarked: (preset) => this.viewportChips?.mark(preset),
+      },
+      this.sectionState,
+    );
     this.renderPanel = new RenderPanel(
       this.inspector.render,
       this.renderValues,
@@ -290,13 +296,14 @@ export class App {
       },
       this.sectionState,
     );
-    new ViewportChips(
+    this.viewportChips = new ViewportChips(
       byId('camera-presets', HTMLElement),
       byId('overlay-menu-button', HTMLButtonElement),
       byId('overlay-menu', HTMLElement),
       this.layoutStore,
       (id) => this.cameraPanel.applyPreset(id),
     );
+    this.cameraPanel.sync();
     this.exportDialog = new ExportDialog(byId('export-dialog', HTMLDialogElement), {
       document: () => this.viewer?.document ?? null,
       restDocument: () => this.restDoc,

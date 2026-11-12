@@ -81,7 +81,7 @@ export class Inspector {
       panels.push(panel);
     }
     this.panels.get('look')?.append(this.look);
-    this.panels.get('render')?.append(this.render, el('h3', { text: 'Camera' }), this.camera);
+    this.panels.get('render')?.append(this.render, this.camera);
     const title = el('div', { className: 'inspector-title' }, [this.titleName, this.titleTag]);
     root.classList.add('rail-layout');
     root.replaceChildren(list, el('div', { className: 'rail-content' }, [title, ...panels]));
