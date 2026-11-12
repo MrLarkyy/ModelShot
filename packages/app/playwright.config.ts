@@ -19,6 +19,9 @@ export default defineConfig({
   snapshotPathTemplate: '{testDir}/../goldens/{arg}{ext}',
   timeout: 120_000,
   workers: 1,
+  // Every test opens its own page and shares no state, so this only lets CI's `--shard` (ci.yml, job app) split a
+  // file; with one worker nothing runs at once and a shard still runs its tests in file order.
+  fullyParallel: true,
   retries: 0,
   forbidOnly: ci,
   updateSnapshots: 'none',
