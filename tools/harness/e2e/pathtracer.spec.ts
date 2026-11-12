@@ -1062,8 +1062,8 @@ const PAIR_WITHOUT_CATCHER: ReadonlySet<string> = new Set(['gltf-contact']);
 test.describe('the render frames and lights like the baked preview', () => {
   for (const [variant, tolerance] of Object.entries(PT_PAIR_TOLERANCE)) {
     test(`${variant}: same silhouettes, radiance within the measured tolerance`, async ({ page }, testInfo) => {
-      // Up to 1.3 m on a normal runner, about 2.6 m on a slow VM (run 39624802150), 5.2 m at six local workers on a
-      // loaded machine (alpha-plane ran past 300 s twice).
+      // Up to 1.3 m on a normal runner, about 2.6 m on a slow VM (run 39624802150); alpha-plane takes 4.3-5.2 m in a
+      // full local run beside the other suites, so 300 s timed it out (MS-102, MS-57): twice the worst local time.
       test.setTimeout(660_000);
       const samples = PAIR_SAMPLES[variant] ?? 64;
       const preview = (catcher: 0 | 1, query = '') =>

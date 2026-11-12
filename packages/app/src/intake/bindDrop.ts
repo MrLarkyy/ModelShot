@@ -3,17 +3,18 @@ function carriesFiles(event: DragEvent): boolean {
 }
 
 // Dropping files anywhere on the page opens them, and a file dropped on the page never navigates the tab to it.
-// `overlay` is shown while files are dragged over the page.
-export function bindDrop(target: Window, overlay: HTMLElement, onFiles: (files: File[]) => void): () => void {
+// `onActive` tells when files are dragged over the page and when they leave or drop.
+export function bindDrop(
+  target: Pick<Window, 'addEventListener' | 'removeEventListener'>,
+  onActive: (active: boolean) => void,
+  onFiles: (files: File[]) => void,
+): () => void {
   let depth = 0;
-  const show = (visible: boolean): void => {
-    overlay.hidden = !visible;
-  };
   const onEnter = (event: DragEvent): void => {
     if (!carriesFiles(event)) return;
     event.preventDefault();
     depth += 1;
-    show(true);
+    onActive(true);
   };
   const onOver = (event: DragEvent): void => {
     if (!carriesFiles(event)) return;
@@ -23,24 +24,24 @@ export function bindDrop(target: Window, overlay: HTMLElement, onFiles: (files: 
   const onLeave = (event: DragEvent): void => {
     if (!carriesFiles(event)) return;
     depth = Math.max(0, depth - 1);
-    if (depth === 0) show(false);
+    if (depth === 0) onActive(false);
   };
   const onDrop = (event: DragEvent): void => {
     if (!carriesFiles(event)) return;
     event.preventDefault();
     depth = 0;
-    show(false);
+    onActive(false);
     const files = [...(event.dataTransfer?.files ?? [])];
     onFiles(files);
   };
-  target.addEventListener('dragenter', onEnter);
-  target.addEventListener('dragover', onOver);
-  target.addEventListener('dragleave', onLeave);
-  target.addEventListener('drop', onDrop);
+  target.addEventListener('dragenter', onEnter as EventListener);
+  target.addEventListener('dragover', onOver as EventListener);
+  target.addEventListener('dragleave', onLeave as EventListener);
+  target.addEventListener('drop', onDrop as EventListener);
   return () => {
-    target.removeEventListener('dragenter', onEnter);
-    target.removeEventListener('dragover', onOver);
-    target.removeEventListener('dragleave', onLeave);
-    target.removeEventListener('drop', onDrop);
+    target.removeEventListener('dragenter', onEnter as EventListener);
+    target.removeEventListener('dragover', onOver as EventListener);
+    target.removeEventListener('dragleave', onLeave as EventListener);
+    target.removeEventListener('drop', onDrop as EventListener);
   };
 }

@@ -103,7 +103,9 @@ export class ScenePanel {
     this.lastChecked = null;
     this.rows = 0;
     if (!model) {
-      this.list.replaceChildren(el('p', { className: 'hint', text: 'No model open.' }));
+      this.list.replaceChildren(
+        el('p', { className: 'hint', text: 'Open a model to list its groups, meshes and lights.' }),
+      );
       this.lights.replaceChildren();
       this.matches.textContent = '';
       return;

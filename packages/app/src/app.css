@@ -13,7 +13,6 @@ body {
   --outliner-w: 260px;
   --inspector-w: 320px;
   --timeline-h: 132px;
-  --messages-h: 5.5rem;
 
   /* Editor aliases of the brand tokens: components read these, never a raw colour (docs/app.md, Visual system). */
   --ed-ground: var(--ms-color-ground);
@@ -122,30 +121,148 @@ h3 {
   top: var(--ms-space-2);
 }
 
+/* One row at every width: the groups below 900 px move into the More list instead of wrapping. */
 .top-bar {
+  position: relative;
   grid-row: 1;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: var(--ms-space-2) var(--ms-space-3);
+  gap: var(--ms-space-3);
   padding: var(--ms-space-2) var(--ms-space-4);
   background: var(--ed-panel);
   border-bottom: 1px solid var(--ed-line);
 }
 
 .top-bar h1 {
+  flex: 0 1 auto;
+  min-width: 0;
   margin-right: var(--ms-space-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.top-bar > *,
+.bar-group,
+.bar-end {
+  flex-shrink: 0;
+}
+
+.top-bar > h1,
+.top-bar > .model-line {
+  flex-shrink: 1;
 }
 
 .bar-group,
-.toolbar {
+.bar-end,
+.bar-overflow {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   gap: var(--ms-space-2);
+}
+
+.bar-overflow {
+  gap: var(--ms-space-3);
+}
+
+.top-bar .segmented {
+  flex: none;
 }
 
 .bar-end {
   margin-left: auto;
+}
+
+.model-line {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ms-space-2);
+  min-width: 0;
+  margin: 0;
+}
+
+.model-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ed-text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The state is the dot, and each state has its own shape as well as its colour: a filled circle (lit), a dashed ring
+   (lighting), a filled square (unbaked). The text stays for assistive technology and the tooltip. */
+.model-state {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  overflow: hidden;
+  font-size: 0;
+  color: transparent;
+  border: 2px solid var(--ed-line-strong);
+  border-radius: 50%;
+}
+
+.model-state[data-state='none'] {
+  display: none;
+}
+
+.model-state[data-state='lit'] {
+  background: var(--ed-ok);
+}
+
+.model-state[data-state='busy'] {
+  border-color: var(--ed-sun);
+  border-style: dashed;
+}
+
+.model-state[data-state='warn'] {
+  background: var(--ed-flash);
+  border-radius: 2px;
+}
+
+#bar-more-button {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  /* The group is inline here whatever the More button left it at. */
+  .bar-overflow[hidden] {
+    display: flex !important;
+  }
+}
+
+@media (max-width: 899px) {
+  .top-bar {
+    gap: var(--ms-space-2);
+    padding-inline: var(--ms-space-2);
+  }
+
+  /* More follows the File menu in the source, so Tab reaches it before its list; it sits at the end of the row. */
+  #bar-more-button {
+    display: inline-flex;
+    order: 2;
+  }
+
+  .bar-end {
+    order: 1;
+  }
+
+  .bar-overflow {
+    position: absolute;
+    z-index: 15;
+    top: calc(100% + var(--ms-space-1));
+    right: var(--ms-space-2);
+    flex-direction: column;
+    align-items: flex-start;
+    padding: var(--ms-space-3);
+    background: var(--ed-raised);
+    border: 1px solid var(--ed-line-strong);
+    border-radius: var(--ed-radius-ui);
+    box-shadow: 0 14px 32px -12px color-mix(in srgb, var(--ms-color-ink) 80%, transparent);
+  }
 }
 
 /* Native [hidden] loses to any author display value; the buttons and rows below set one. */
@@ -301,11 +418,6 @@ button:disabled {
   justify-content: flex-start;
   border-color: transparent;
   text-align: left;
-}
-
-.menu-list .hint {
-  max-width: 16rem;
-  margin: 0;
 }
 
 .segmented {
@@ -497,7 +609,7 @@ button:disabled {
 
 .stage {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   min-width: 0;
 }
@@ -601,14 +713,183 @@ button:disabled {
   font: var(--ms-weight-medium) var(--ms-size-caption) var(--ms-font-mono);
 }
 
-.empty {
+/* The empty card, the messages and the render bar share one column: a message takes its own room above the render bar,
+   so it covers neither that bar, the card nor the chips at the top of the view. Over the view and never in the layout: a
+   message must not resize the view and stop a render. No z-index here, so the toasts still stack above the drawers. */
+.viewport-dock {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
-  margin: 0;
-  color: var(--ms-color-slate);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding: var(--ms-space-3);
   pointer-events: none;
+}
+
+.empty {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  align-self: stretch;
+  display: grid;
+  /* A track of the room that is left, not of the card: the card's max-height then caps it and it scrolls inside. */
+  grid-template-rows: minmax(0, 1fr);
+  place-items: center;
+  min-height: 0;
+  margin-bottom: var(--ms-space-2);
+  overflow: auto;
+}
+
+.empty-card {
+  display: grid;
+  gap: var(--ms-space-3);
+  justify-items: center;
+  width: min(100%, 40rem);
+  max-height: 100%;
+  padding: var(--ms-space-5) var(--ms-space-4);
+  overflow: auto;
+  text-align: center;
+  color: var(--ed-text-2);
+  background: var(--ed-raised);
+  border: 2px dashed var(--ed-line-strong);
+  border-radius: var(--ms-radius-tile);
+  pointer-events: auto;
+}
+
+.empty-card h2 {
+  color: var(--ed-text);
+  font: var(--ms-weight-heavy) var(--ms-size-h2) var(--ms-font-display);
+  letter-spacing: -0.04em;
+}
+
+.empty-card p {
+  max-width: 32rem;
+  margin: 0;
+}
+
+.empty-card .empty-drop {
+  color: var(--ed-text-3);
+  font-size: var(--ms-size-caption);
+}
+
+/* The key hint sits on the Shot Blue fill: the hint grey of a kbd elsewhere is too faint there. */
+.empty-card button.primary kbd {
+  color: var(--ed-text);
+  border-color: currentColor;
+}
+
+.empty[data-drag] .empty-card {
+  background: linear-gradient(var(--ed-accent-soft), var(--ed-accent-soft)), var(--ed-raised);
+  border-color: var(--ed-accent-hi);
+}
+
+.entry-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ms-space-2);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entry-card {
+  display: grid;
+  gap: var(--ms-space-1);
+  align-content: start;
+  justify-items: start;
+  width: 100%;
+  height: 100%;
+  padding: var(--ms-space-3);
+  line-height: 1.35;
+  text-align: left;
+}
+
+.entry-card span {
+  color: var(--ed-text-2);
+  font-size: var(--ms-size-caption);
+  font-weight: var(--ms-weight-medium);
+}
+
+@media (max-width: 599px) {
+  .entry-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* A phone shows the whole card above the render bar without scrolling it. */
+  .empty-card {
+    padding-block: var(--ms-space-4);
+  }
+}
+
+/* No model: the stage is the editor's own ground, the canvas keeps its box but is not shown, and nothing that acts on a model
+   is in the way of the card. */
+.viewport[data-empty] {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--ms-color-blue-deep) 40%, var(--ed-ground)),
+    var(--ed-ground)
+  );
+}
+
+.viewport[data-empty] #preview,
+.viewport[data-empty] #viewport-chips,
+.viewport[data-empty] #stats {
+  visibility: hidden;
+}
+
+.first-run-hint {
+  position: absolute;
+  z-index: 2;
+  top: 3.25rem;
+  right: var(--ms-space-2);
+  left: var(--ms-space-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ms-space-2);
+  padding: var(--ms-space-2) var(--ms-space-3);
+  color: var(--ed-text-2);
+  background: var(--ed-panel);
+  border: 1px solid var(--ed-line-strong);
+  border-radius: var(--ed-radius-ui);
+  font-size: var(--ms-size-caption);
+}
+
+.hint-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ms-space-1) var(--ms-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One row, no separator: nothing to scrub. A model without clips keeps its disabled Play beside the reason. The row is
+   a control high (and its top border) before the button is there too: a bar that grew when the tools load would resize
+   the view after the model is shown. */
+.timeline[data-empty] {
+  display: flex;
+  align-items: center;
+  gap: var(--ms-space-3);
+  height: auto;
+  min-height: calc(var(--ed-control-h) + 2 * var(--ms-space-2) + 1px);
+  padding-block: var(--ms-space-2);
+}
+
+body:has(.timeline[data-empty]) #timeline-separator {
+  display: none;
+}
+
+.timeline[data-empty] .timeline-controls > :not(button),
+.timeline[data-empty] .markers,
+.timeline[data-empty] .keyframe-count {
+  display: none;
+}
+
+.timeline[data-empty] .hint {
+  margin: 0;
 }
 
 .drop-overlay {
@@ -624,32 +905,147 @@ button:disabled {
   pointer-events: none;
 }
 
-.messages {
-  /* A fixed height: a message or the progress bar appearing must not resize the view and stop a render. */
-  height: var(--messages-h);
-  overflow: auto;
-  padding: var(--ms-space-2) var(--ms-space-4);
+/* Last in the column, after the toasts, whatever the source order: the tab order keeps Render before a message's close. */
+.render-bar {
+  position: relative;
+  z-index: 3;
+  order: 1;
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ms-space-2) var(--ms-space-3);
+  max-width: 100%;
+  padding: var(--ms-space-2) var(--ms-space-3);
   background: var(--ed-panel);
-  border-top: 1px solid var(--ed-line);
+  border: 1px solid var(--ed-line-strong);
+  border-radius: var(--ed-radius-ui);
+  pointer-events: auto;
 }
 
-#alert {
-  margin: var(--ms-space-1) 0;
-  padding: var(--ms-space-1) var(--ms-space-3);
-  background: var(--ms-color-paper);
-  border: 2px solid var(--ms-color-flash);
-  border-radius: var(--ms-radius-control);
-  color: var(--ms-color-ink);
-}
-
+.render-idle,
 .render-progress {
   display: flex;
   align-items: center;
   gap: var(--ms-space-3);
 }
 
+.render-meta,
+.render-info {
+  margin: 0;
+  color: var(--ed-text-2);
+  font: var(--ms-weight-medium) var(--ms-size-caption) var(--ms-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A fixed width: text that changes length would move the Stop button under the pointer. */
+.render-info {
+  min-width: 36ch;
+  max-width: 100%;
+}
+
 .render-progress progress {
-  flex: 1;
+  width: 8rem;
+  max-width: 100%;
+}
+
+/* Above the render bar and over the drawers. Half the view at most: the longest message scrolls instead of climbing into
+   the chips at the top. */
+.toasts {
+  position: relative;
+  z-index: 12;
+  flex: none;
+  display: grid;
+  justify-items: center;
+  max-width: 100%;
+  max-height: 50%;
+  overflow-y: auto;
+}
+
+.toast {
+  margin-bottom: var(--ms-space-2);
+  padding: var(--ms-space-2) var(--ms-space-3);
+  background: var(--ed-raised);
+  border: 1px solid var(--ed-line-strong);
+  border-radius: var(--ed-radius-ui);
+  overflow-wrap: anywhere;
+  opacity: 0;
+  transition: opacity var(--ms-motion-ui) var(--ms-motion-ease);
+}
+
+.toast.toast-shown {
+  opacity: 1;
+}
+
+/* A shown message takes the pointer, so the wheel or a touch over a cut-off one scrolls the toasts instead of the
+   camera; faded, it lets clicks through to the view again. */
+.toast.toast-shown:not(:empty) {
+  pointer-events: auto;
+}
+
+/* Still rendered, so the first message is announced; without one it takes no room above the render bar. */
+.toast:empty {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.toast-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--ms-space-2);
+  opacity: 1;
+  color: var(--ed-text-2);
+  pointer-events: auto;
+}
+
+.storage-text {
+  margin: 0;
+}
+
+/* Kept in the tree so the text is announced when it is set; empty, it takes no room. */
+.toast-chip:has(.storage-text:empty) {
+  height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  pointer-events: none;
+}
+
+.toast-alert {
+  display: flex;
+  align-items: center;
+  gap: var(--ms-space-2);
+  border: 2px solid var(--ed-flash);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.menu-list button kbd {
+  margin-left: auto;
+}
+
+.menu-list .menu-separator {
+  width: 100%;
+  margin: var(--ms-space-1) 0;
+  border: 0;
+  border-top: 1px solid var(--ed-line);
+}
+
+.menu-foot {
+  max-width: 16rem;
+  margin: var(--ms-space-1) var(--ms-space-2);
+  color: var(--ed-text-3);
+  font-size: var(--ms-size-caption);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--ms-space-2);
+  margin-top: var(--ms-space-4);
 }
 
 .hint {
@@ -1097,13 +1493,13 @@ progress {
     grid-column: 1;
   }
 
-  /* A drawer covers the view, never the status and messages below it. */
+  /* A drawer covers the view; the toasts stay above it. */
   #outliner,
   #inspector {
     position: absolute;
     z-index: 10;
     top: 0;
-    bottom: var(--messages-h);
+    bottom: 0;
     width: min(20rem, 85%);
     border: 1px solid var(--ed-line-strong);
     animation: drawer-in var(--ms-motion-ui) var(--ms-motion-ease);
@@ -1183,6 +1579,41 @@ progress {
 
   [role='tab'][aria-selected='true'] {
     border-bottom: 3px solid Highlight;
+  }
+}
+
+@media (forced-colors: active) {
+  /* The ring is a system colour in every state: a state rule above would otherwise keep its author colour here. */
+  .model-state,
+  .model-state[data-state='lit'],
+  .model-state[data-state='busy'],
+  .model-state[data-state='warn'] {
+    forced-color-adjust: none;
+    border-color: CanvasText;
+  }
+
+  .model-state[data-state='lit'] {
+    background: Highlight;
+  }
+
+  .model-state[data-state='busy'] {
+    background: Canvas;
+  }
+
+  .model-state[data-state='warn'] {
+    background: CanvasText;
+  }
+
+  .toast,
+  .render-bar,
+  .empty-card,
+  .first-run-hint {
+    border-color: CanvasText;
+  }
+
+  .empty[data-drag] .empty-card {
+    border-style: solid;
+    border-color: Highlight;
   }
 }
 

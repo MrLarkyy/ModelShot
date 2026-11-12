@@ -11,6 +11,7 @@ import {
   test,
   waitForModel,
   waitForStored,
+  expectLit,
 } from './appTest';
 
 const CUBE = fixture('bbmodel', 'single-cube.bbmodel');
@@ -74,7 +75,7 @@ test('a load that hangs is stopped by the watchdog, the page stays responsive an
 }) => {
   await openApp(page);
   await openFiles(page, [CUBE], 'single-cube.bbmodel');
-  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 30_000 });
+  await expectLit(page, 30_000);
   const before = await waitForModel(page);
   await page.evaluate(() => {
     window.__msApp!.setWatchdogMs(500);
@@ -93,7 +94,7 @@ test('a load that hangs is stopped by the watchdog, the page stays responsive an
 test('a failed open keeps the model that is shown', async ({ page }) => {
   await openApp(page);
   await openFiles(page, [CUBE], 'single-cube.bbmodel');
-  await expect(page.getByRole('status')).toContainText('Preview lit', { timeout: 30_000 });
+  await expectLit(page, 30_000);
   const before = await waitForModel(page);
   await chooseMadeFiles(page, [{ name: 'bad.bbmodel', text: '{"meta":{}}' }]);
   await expectAlert(page, 'bad.bbmodel');

@@ -18,6 +18,10 @@ export const ICON_NAMES = [
   'share',
   'download',
   'more',
+  'panel-left',
+  'panel-right',
+  'panel-bottom',
+  'close',
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];
@@ -63,6 +67,10 @@ const SHAPES: Record<IconName, readonly Shape[]> = {
   share: [circle(4, 8, 1.8), circle(12, 4, 1.8), circle(12, 12, 1.8), path('M5.7 7.1l4.6-2.2M5.7 8.9l4.6 2.2')],
   download: [path('M8 2.5v8M4.5 7.5L8 11l3.5-3.5M3 13.5h10')],
   more: [circle(3.5, 8, 1), circle(8, 8, 1), circle(12.5, 8, 1)],
+  'panel-left': [{ rect: [2, 2.5, 12, 11, 1.5] }, path('M6.5 2.5v11')],
+  'panel-right': [{ rect: [2, 2.5, 12, 11, 1.5] }, path('M9.5 2.5v11')],
+  'panel-bottom': [{ rect: [2, 2.5, 12, 11, 1.5] }, path('M2 9.5h12')],
+  close: [path('M3.5 3.5l9 9M12.5 3.5l-9 9')],
 };
 
 const NS = 'http://www.w3.org/2000/svg';

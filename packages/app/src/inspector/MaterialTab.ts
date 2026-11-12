@@ -31,7 +31,7 @@ function filterControl(model: InspectorModel, host: MaterialTabHost): HTMLElemen
 
 // The Material tab: the materials the selected element draws with (read from the file) and the texture filtering.
 export function buildMaterialTab(model: InspectorModel | null, host: MaterialTabHost): HTMLElement[] {
-  if (!model) return [el('p', { className: 'hint', text: 'No model open.' })];
+  if (!model) return [el('p', { className: 'hint', text: 'Open a model to edit its objects, materials and light.' })];
   const parts: HTMLElement[] = [];
   const target = model.selection;
   const mesh = target?.kind === 'mesh' ? model.doc.meshes[target.index] : undefined;

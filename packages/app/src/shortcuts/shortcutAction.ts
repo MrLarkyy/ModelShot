@@ -43,7 +43,7 @@ export const SHORTCUTS: readonly {
   { keys: 'Ctrl+Z / Cmd+Z', action: 'undo', label: 'Undo', group: 'File' },
   { keys: 'Ctrl+Shift+Z / Ctrl+Y', action: 'redo', label: 'Redo', group: 'File' },
   { keys: 'R', action: 'render', label: 'Render', group: 'File' },
-  { keys: 'Esc', action: 'cancel', label: 'Cancel the render', group: 'File' },
+  { keys: 'Esc', action: 'cancel', label: 'Stop the render', group: 'File' },
   { keys: '1', action: 'front', label: 'Front view', group: 'View' },
   { keys: '2', action: 'side', label: 'Side view', group: 'View' },
   { keys: '3', action: 'three-quarter', label: 'Three-quarter view', group: 'View' },

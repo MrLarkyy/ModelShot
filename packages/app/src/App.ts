@@ -10,6 +10,9 @@ import { describeHandoff } from './handoff/describeHandoff';
 import { takeHandoffFiles } from './handoff/fileHandoff';
 import { UndoStack } from './history/UndoStack';
 import { bindDrop } from './intake/bindDrop';
+import { PICKER_ACCEPT, entryAccept, type EntryKind } from './intake/pickerAccept';
+import { HintStore } from './state/HintStore';
+import { FirstRunHint } from './ui/FirstRunHint';
 import { checkIntake } from './intake/checkIntake';
 import { groupFiles, type LoadRequest } from './intake/groupFiles';
 import { IntakeError } from './intake/IntakeError';
@@ -43,6 +46,8 @@ import { StatePersistence } from './state/StatePersistence';
 import { bindDisclosure } from './ui/bindDisclosure';
 import { byId } from './ui/dom';
 import { Notices } from './ui/Notices';
+import { bindTopBar } from './ui/TopBar';
+import { progressText, resultText } from './render/renderInfo';
 import { Viewer } from './viewer/Viewer';
 import { ViewportChips } from './viewport/ViewportChips';
 
@@ -103,8 +108,25 @@ export class App {
   private readonly modeRender = byId('mode-render', HTMLInputElement);
   private readonly resultCanvas = byId('result', HTMLCanvasElement);
   private readonly progressBox = byId('render-progress', HTMLElement);
+  private readonly renderIdle = byId('render-idle', HTMLElement);
+  private readonly renderInfo = byId('render-info', HTMLElement);
+  private readonly renderMeta = byId('render-meta', HTMLElement);
+  private readonly modelName = byId('model-name', HTMLElement);
+  private readonly modelState = byId('model-state', HTMLElement);
+  private readonly forgetDialog = byId('forget-dialog', HTMLDialogElement);
+  private renderStartedAt = 0;
+  private renderClock: ReturnType<typeof setInterval> | null = null;
+  private renderDoneSamples = 0;
+  /** The sample count of the run on show: the settings may change while it runs. */
+  private renderTarget = 0;
+  private refocusRender = false;
   private readonly progress = byId('progress', HTMLProgressElement);
   private readonly fileInput = byId('file-input', HTMLInputElement);
+  private readonly emptyCard = byId('empty', HTMLElement);
+  private readonly stageView = byId('viewport', HTMLElement);
+  private readonly timelinePanel = byId('timeline', HTMLElement);
+  private readonly hintStore: HintStore;
+  private readonly firstRunHint: FirstRunHint;
   private viewer: Viewer | null = null;
   private tools: EditorTools | null = null;
   private toolsLoading = false;
@@ -139,12 +161,14 @@ export class App {
   private committing = false;
 
   constructor(private readonly store: AppStateStore) {
-    this.notices = new Notices(
-      byId('status-main', HTMLElement),
-      byId('status-lighting', HTMLElement),
-      byId('alert', HTMLElement),
-      byId('status-storage', HTMLElement),
-    );
+    this.notices = new Notices({
+      status: byId('status', HTMLElement),
+      state: this.modelState,
+      storageChip: byId('storage-chip', HTMLElement),
+      storageClose: byId('storage-close', HTMLElement),
+      alertBox: byId('alert-box', HTMLElement),
+      alertText: byId('alert', HTMLElement),
+    });
     this.layoutStore = new LayoutStore(browserStorage(), (message) => this.notices.storage(message));
     this.persistence = new StatePersistence(
       store,
@@ -152,10 +176,16 @@ export class App {
       undefined,
       () => this.layoutStore.reset(),
     );
+    this.hintStore = new HintStore(browserStorage(), (message) => this.notices.storage(message));
+    this.firstRunHint = new FirstRunHint(byId('first-run-hint', HTMLElement), this.hintStore, () =>
+      byId('preview', HTMLCanvasElement).focus(),
+    );
     this.panelLayout = new PanelLayout(this.layoutStore);
     try {
       this.viewer = Viewer.create(byId('preview', HTMLCanvasElement), {
-        onStatus: (message) => this.notices.lighting(message),
+        // The bake reports through onBakeStarted/onBakeSettled (the model dot); the context through onContextRestored.
+        onStatus: () => undefined,
+        onContextRestored: () => this.notices.status('The graphics context was restored.'),
         onError: (message) => this.notices.pinAlert(message),
         onResize: (size) => {
           const previous = this.cssSize;
@@ -169,7 +199,11 @@ export class App {
         },
         onChange: () => this.cameraChanged(),
         onFrame: (camera) => this.tools?.frame(camera),
-        onBakeStarted: () => this.tools?.bakeStarted(),
+        onBakeStarted: () => {
+          this.notices.lighting('busy');
+          this.tools?.bakeStarted();
+        },
+        onBakeSettled: (lit, detail) => this.notices.lighting(lit ? 'lit' : 'warn', lit ? undefined : detail),
         preserveDrawingBuffer: import.meta.env.MODE === 'e2e',
       });
     } catch (error) {
@@ -195,7 +229,7 @@ export class App {
         setLocked: (kind, index, locked) => this.setLocked(kind, index, locked),
         rename: (kind, index, name) => this.rename(kind, index, name),
         selectLight: (light) => this.showLight(light),
-        openFiles: () => this.fileInput.click(),
+        openFiles: () => this.openPicker(),
       },
       byId('add-menu', HTMLElement),
     );
@@ -222,6 +256,7 @@ export class App {
     });
     this.renderPanel = new RenderPanel(this.inspector.render, this.renderValues, (values) => {
       this.renderValues = values;
+      this.syncRenderMeta();
       this.scheduleSave();
     });
     new ViewportChips(
@@ -469,6 +504,11 @@ export class App {
         this.tools?.documentRefused();
         return false;
       }
+      // The timeline takes the size it has for this model now, not when the editor tools list the clips, and the viewer
+      // takes the view's new size at once: a camera framed or restored below is fitted to the aspect known then, and a
+      // view resized after it would show a restored camera at another zoom.
+      this.timelinePanel.toggleAttribute('data-empty', (rest.animations?.length ?? 0) === 0);
+      if (viewer.syncSize() && reframe) viewer.orbit.reset();
       // Taken after the wait: a look picked while the files were opening stays, unless the model has its own.
       this.look = applyLook(savedLook ?? this.look, [viewer, this.renderSession.existingTracer()]);
       if (this.open?.loaded.key !== open.loaded.key) this.selection.set(null);
@@ -497,6 +537,9 @@ export class App {
       this.committing = false;
     }
     viewer.changed();
+    this.modelName.textContent = open.loaded.name;
+    this.modelName.title = open.loaded.name;
+    this.firstRunHint.show();
     this.showPanels();
     void this.startTools();
     const notes = [...open.loaded.warnings, ...result.warnings.map((w) => w.message)];
@@ -570,7 +613,11 @@ export class App {
 
   private showPanels(): void {
     const open = this.open;
-    byId('empty', HTMLElement).hidden = open !== null;
+    this.emptyCard.hidden = open !== null;
+    // The preview canvas keeps its box while empty (the size stays valid); the stage shows the token gradient instead.
+    this.stageView.toggleAttribute('data-empty', open === null);
+    if (open === null) this.timelinePanel.setAttribute('data-empty', '');
+    if (open === null) this.firstRunHint.hide();
     this.scenePanel.show(
       open && this.base
         ? {
@@ -588,6 +635,7 @@ export class App {
     this.lookPanel.show(this.look.id);
     this.cameraPanel.sync();
     this.renderPanel.show(this.renderValues);
+    this.syncRenderMeta();
     this.syncHistoryButtons();
     this.setActionsEnabled();
   }
@@ -600,6 +648,11 @@ export class App {
     this.menuExportButton.disabled = !ready || !idle;
     this.modeRender.disabled = !ready || !idle;
     this.syncMode();
+    // Stop was focused and has hidden: the Render button takes the focus back once it can.
+    if (this.refocusRender && !this.renderButton.disabled && !this.renderIdle.hidden) {
+      this.refocusRender = false;
+      this.renderButton.focus();
+    }
   }
 
   private syncHistoryButtons(): void {
@@ -872,6 +925,11 @@ export class App {
     }
   }
 
+  private syncRenderMeta(): void {
+    const samples = this.renderValues.samples;
+    this.renderMeta.textContent = `· ${samples} sample${samples === 1 ? '' : 's'}`;
+  }
+
   private render(): void {
     if (!this.open || this.exporting || this.renderSession.busy) return;
     this.notices.clearAlert();
@@ -880,17 +938,45 @@ export class App {
     this.resultCanvas.hidden = true;
     this.shareFile = null;
     this.progressBox.hidden = false;
+    // The Render button that was just pressed is about to hide: Stop takes the focus instead of the page body.
+    if (this.renderIdle.contains(document.activeElement)) byId('cancel-button', HTMLButtonElement).focus();
+    this.renderIdle.hidden = true;
+    this.renderTarget = this.renderValues.samples;
     this.progress.value = 0;
+    this.renderStartedAt = performance.now();
+    this.renderDoneSamples = 0;
+    this.showRunningInfo(0, this.renderTarget);
+    this.renderClock = setInterval(() => this.showRunningInfo(this.renderDoneSamples, this.renderTarget), 1000);
     this.notices.status('Rendering: preparing the scene…');
     this.setActionsEnabled();
     void this.renderSession.render().finally(() => this.setActionsEnabled());
     this.setActionsEnabled();
   }
 
+  private showRunningInfo(done: number, target: number): void {
+    this.renderInfo.hidden = false;
+    this.renderInfo.textContent = progressText(done, target, performance.now() - this.renderStartedAt);
+    this.progress.setAttribute('aria-valuetext', this.renderInfo.textContent);
+  }
+
+  private stopRenderClock(): void {
+    if (this.renderClock !== null) clearInterval(this.renderClock);
+    this.renderClock = null;
+  }
+
+  private renderIdleBar(): void {
+    this.stopRenderClock();
+    this.refocusRender = this.progressBox.contains(document.activeElement);
+    this.progressBox.hidden = true;
+    this.renderIdle.hidden = false;
+  }
+
   private renderProgress(done: number, target: number): void {
     if (done > 0) this.resultCanvas.hidden = false;
     this.progress.value = target > 0 ? done / target : 0;
-    this.notices.status(`Rendering: ${done} of ${target} samples.`);
+    this.renderDoneSamples = done;
+    if (target > 0) this.renderTarget = target;
+    this.showRunningInfo(done, target);
     this.syncMode();
   }
 
@@ -898,7 +984,15 @@ export class App {
     // A count of finished renders for the tests to wait on; a page has no use for it.
     this.resultCanvas.dataset['renders'] = String(Number(this.resultCanvas.dataset['renders'] ?? 0) + 1);
     this.resultCanvas.hidden = false;
-    this.progressBox.hidden = true;
+    const elapsed = performance.now() - this.renderStartedAt;
+    this.renderIdleBar();
+    this.renderInfo.hidden = false;
+    this.renderInfo.textContent = resultText(
+      this.resultCanvas.width,
+      this.resultCanvas.height,
+      this.renderTarget,
+      elapsed,
+    );
     this.notices.status(warnings.length > 0 ? `Render done. ${warnings.join(' ')}` : 'Render done.');
     this.setActionsEnabled();
     this.encodeShareFile();
@@ -918,14 +1012,16 @@ export class App {
   }
 
   private renderStopped(message: string): void {
-    this.progressBox.hidden = true;
+    this.renderIdleBar();
+    this.renderInfo.hidden = true;
     this.resultCanvas.hidden = true;
     this.notices.status(message);
     this.setActionsEnabled();
   }
 
   private renderFailed(error: unknown): void {
-    this.progressBox.hidden = true;
+    this.renderIdleBar();
+    this.renderInfo.hidden = true;
     this.resultCanvas.hidden = true;
     this.notices.status('Render failed.');
     this.notices.alert(`The render failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -939,6 +1035,7 @@ export class App {
       return;
     }
     this.resultCanvas.hidden = true;
+    this.renderInfo.hidden = true;
     this.shareFile = null;
     this.syncMode();
   }
@@ -992,9 +1089,24 @@ export class App {
     });
   }
 
+  // Every opener sets the accept list first, so a narrowed pick that was cancelled never leaks into the next one.
+  private openPicker(kind?: EntryKind): void {
+    this.fileInput.accept = kind ? entryAccept(kind) : PICKER_ACCEPT;
+    this.fileInput.click();
+  }
+
+  private dropRefused(): boolean {
+    return this.exporting || document.querySelector('dialog[open]') !== null;
+  }
+
+  private askForget(): void {
+    if (!this.forgetDialog.open) this.forgetDialog.showModal();
+  }
+
   private async forget(): Promise<void> {
     try {
       await this.persistence.forget();
+      this.hintStore.reset();
       this.notices.status('Local data deleted: the last model and your settings are gone from this browser.');
     } catch (error) {
       this.notices.alert(`Could not delete the local data: ${error instanceof Error ? error.message : String(error)}`);
@@ -1013,9 +1125,18 @@ export class App {
 
   private bindControls(): void {
     const openButton = byId('open-button', HTMLButtonElement);
+    bindTopBar();
     bindDisclosure(byId('file-menu-button', HTMLButtonElement), byId('file-menu', HTMLElement));
     bindDisclosure(byId('add-menu-button', HTMLButtonElement), byId('add-menu', HTMLElement));
-    openButton.addEventListener('click', () => this.fileInput.click());
+    openButton.addEventListener('click', () => this.openPicker());
+    byId('empty-open', HTMLButtonElement).addEventListener('click', () => this.openPicker());
+    for (const [id, kind] of [
+      ['entry-bbmodel', 'bbmodel'],
+      ['entry-skin', 'skin'],
+      ['entry-gltf', 'gltf-obj'],
+    ] as const) {
+      byId(id, HTMLButtonElement).addEventListener('click', () => this.openPicker(kind));
+    }
     this.fileInput.addEventListener('change', () => {
       const files = [...(this.fileInput.files ?? [])];
       this.fileInput.value = '';
@@ -1043,17 +1164,42 @@ export class App {
     });
     byId('cancel-button', HTMLButtonElement).addEventListener('click', () => this.renderSession.cancel());
     byId('help-button', HTMLButtonElement).addEventListener('click', () => this.helpDialog.open());
-    byId('forget-button', HTMLButtonElement).addEventListener('click', () => void this.forget());
-    bindDrop(window, byId('drop-overlay', HTMLElement), (files) => {
-      if (this.exporting || document.querySelector('dialog[open]')) {
-        this.notices.status('Close the dialog and wait for the export to finish before opening files.');
-        return;
-      }
-      void this.openFiles(files);
+    byId('forget-button', HTMLButtonElement).addEventListener('click', () => this.askForget());
+    byId('forget-cancel', HTMLButtonElement).addEventListener('click', () => this.forgetDialog.close());
+    byId('forget-confirm', HTMLButtonElement).addEventListener('click', () => {
+      this.forgetDialog.close();
+      void this.forget();
     });
+    // Cancel, Escape and confirm all end here: the menu item hid with its menu, so the visible trigger gets the focus.
+    this.forgetDialog.addEventListener('close', () => byId('file-menu-button', HTMLButtonElement).focus());
+    byId('storage-close', HTMLButtonElement).addEventListener('click', () => {
+      this.notices.dismissStorage();
+      byId('file-menu-button', HTMLButtonElement).focus();
+    });
+    byId('alert-close', HTMLButtonElement).addEventListener('click', () => {
+      this.notices.dismissAlert();
+      byId('file-menu-button', HTMLButtonElement).focus();
+    });
+    const dropOverlay = byId('drop-overlay', HTMLElement);
+    bindDrop(
+      window,
+      (active) => {
+        // A drop that would be refused (a dialog or an export under way) gets no highlight.
+        const shown = active && !this.dropRefused();
+        if (this.open === null) this.emptyCard.toggleAttribute('data-drag', shown);
+        else dropOverlay.hidden = !shown;
+      },
+      (files) => {
+        if (this.dropRefused()) {
+          this.notices.status('Close the dialog and wait for the export to finish before opening files.');
+          return;
+        }
+        void this.openFiles(files);
+      },
+    );
     const panel = (id: PanelId) => () => this.panelLayout.toggle(id);
     bindShortcuts(document, {
-      open: () => this.fileInput.click(),
+      open: () => this.openPicker(),
       render: () => this.render(),
       export: () => this.openExport(),
       cancel: () => this.renderSession.cancel(),

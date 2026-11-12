@@ -128,7 +128,7 @@ export class Inspector {
       'light',
       this.model
         ? buildLightTab(this.model.look, this.lightFocus)
-        : [el('p', { className: 'hint', text: 'No model open.' })],
+        : [el('p', { className: 'hint', text: 'Open a model to edit its objects, materials and light.' })],
     );
   }
 
