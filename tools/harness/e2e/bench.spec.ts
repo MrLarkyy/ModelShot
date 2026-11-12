@@ -5,6 +5,7 @@ import { sectionBudgets, writeSectionMeasured, type BenchSection } from '../src/
 import { budgetReport, checkBudgets, loadBudgets, type BudgetGroup, type Measured } from '../src/budgets';
 import { BUNDLE_TARGETS, measureBundle } from '../src/bundleSize';
 import { openFixture } from '../src/expectGolden';
+import type { OutlinerStep } from '../fixtures/src/fixtureApi';
 import { traceMainThread } from '../src/mainThreadTrace';
 import { median } from '../src/measure';
 
@@ -213,16 +214,18 @@ test.describe('bench sections', () => {
     // search keystrokes, Collapse all, Expand all and a model refresh, each with the style and layout of its rows.
     await openFixture(page, '/outliner.html');
     expect(await page.evaluate(() => window.__msFixture?.outliner?.nodes)).toBe(2000);
-    const outlinerTrace = await traceMainThread(page, () =>
-      page.evaluate(async () => {
+    let outlinerSteps: OutlinerStep[] = [];
+    const outlinerTrace = await traceMainThread(page, async () => {
+      outlinerSteps = await page.evaluate(async () => {
         const outliner = window.__msFixture?.outliner;
         if (!outliner) throw new Error('outliner controls missing');
-        await outliner.rebuildAll();
-      }),
-    );
+        return outliner.rebuildAll();
+      });
+    });
     console.log(
       `[bench] outliner rebuilds of 2000 nodes: ${outlinerTrace.tasks} tasks, max blocking per task ` +
-        `${outlinerTrace.maxBlocking.toFixed(1)} ms (CPU ${outlinerTrace.maxCpu.toFixed(1)} ms)`,
+        `${outlinerTrace.maxBlocking.toFixed(1)} ms (CPU ${outlinerTrace.maxCpu.toFixed(1)} ms); ` +
+        outlinerSteps.map((s) => `${s.name} ${s.handlerMs.toFixed(1)}+${(s.ms - s.handlerMs).toFixed(1)}`).join(', '),
     );
 
     await finishSection(

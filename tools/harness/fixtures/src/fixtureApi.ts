@@ -29,14 +29,21 @@ export interface MsFixture {
   outliner?: OutlinerControls;
 }
 
+/** One rebuild of the outliner fixture: the handler alone and with the forced style and layout, in ms. */
+export interface OutlinerStep {
+  readonly name: string;
+  readonly handlerMs: number;
+  readonly ms: number;
+}
+
 /** Outliner fixture (outliner.html): the app's list over a 2000-node model. */
 export interface OutlinerControls {
   readonly nodes: number;
   readonly meshes: number;
   /** Rows in the list now. */
   rows: () => number;
-  /** Rebuilds the list by search keystrokes, Collapse all, Expand all and a model refresh, each with its layout and a frame. */
-  rebuildAll: () => Promise<void>;
+  /** Rebuilds the list by search keystrokes, Collapse all, Expand all and a model refresh, each with its layout and a frame; the milliseconds of each handler plus layout. */
+  rebuildAll: () => Promise<OutlinerStep[]>;
 }
 
 /** A pixel (x right, y down from the top-left, as in the PNG) and the RGBA of the texel it should show. */

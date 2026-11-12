@@ -1,7 +1,8 @@
 import { loadBbmodel } from '@modelshot/formats';
 import { ScenePanel, type ScenePanelModel } from '../../../../packages/app/src/panels/ScenePanel';
 import '../../../../packages/app/src/app.css';
-import type { MsFixture } from './fixtureApi';
+import { createContext } from './context';
+import type { MsFixture, OutlinerStep } from './fixtureApi';
 
 const GROUPS = 100;
 const PARTS = 19;
@@ -46,6 +47,10 @@ function model(): ScenePanelModel {
   };
 }
 
+// The harness checks every fixture's renderer; this page draws no GL, so the probe canvas goes at once.
+const probe = createContext(1);
+probe.canvas.remove();
+
 const frame = (): Promise<void> => new Promise((resolve) => requestAnimationFrame(() => resolve()));
 
 const root = document.getElementById('scene-panel') as HTMLElement;
@@ -68,9 +73,12 @@ panel.show(scene);
 
 // Each step is its own task, followed by a frame: the handler, then the style and layout of the rebuilt rows (the
 // offsetHeight read forces both inside the task), which is what the user waits for.
-async function step(run: () => void): Promise<void> {
+async function step(name: string, run: () => void, into: OutlinerStep[]): Promise<void> {
+  const start = performance.now();
   run();
+  const handled = performance.now() - start;
   void document.body.offsetHeight;
+  into.push({ name, handlerMs: handled, ms: performance.now() - start });
   await frame();
 }
 
@@ -91,8 +99,8 @@ const menuItem = (label: string): HTMLElement => {
 
 const api: MsFixture = {
   ready: frame(),
-  renderer: 'dom',
-  floatRenderTargets: false,
+  renderer: probe.renderer,
+  floatRenderTargets: probe.floatRenderTargets,
   width: 0,
   height: 0,
   samplesDone: 0,
@@ -102,12 +110,14 @@ const api: MsFixture = {
     meshes: scene.doc.meshes.length,
     rows: () => root.querySelectorAll('[role="treeitem"]').length,
     async rebuildAll() {
-      await step(typeSearch('part 1'));
-      await step(typeSearch('part 12-3'));
-      await step(typeSearch(''));
-      await step(() => menuItem('Collapse all').click());
-      await step(() => menuItem('Expand all').click());
-      await step(() => panel.show(scene));
+      const steps: OutlinerStep[] = [];
+      await step('search part 1', typeSearch('part 1'), steps);
+      await step('search part 12-3', typeSearch('part 12-3'), steps);
+      await step('search cleared', typeSearch(''), steps);
+      await step('Collapse all', () => menuItem('Collapse all').click(), steps);
+      await step('Expand all', () => menuItem('Expand all').click(), steps);
+      await step('model refresh', () => panel.show(scene), steps);
+      return steps;
     },
   },
 };

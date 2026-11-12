@@ -50,6 +50,45 @@ function labelNodes(name: string, row: OutlinerRow): (Node | string)[] {
   return parts;
 }
 
+interface RowParts {
+  readonly chevronDown: HTMLElement;
+  readonly chevronRight: HTMLElement;
+  readonly spacer: HTMLElement;
+  readonly nameNode: HTMLElement;
+  readonly nameMesh: HTMLElement;
+  readonly eyeOn: HTMLElement;
+  readonly eyeOff: HTMLElement;
+  readonly lockOn: HTMLElement;
+  readonly lockOff: HTMLElement;
+}
+
+// The pieces of a row, built once: a rebuild lists up to 500 rows, and cloning them is several times cheaper than
+// creating each icon and button again.
+function rowParts(): RowParts {
+  const small = (name: Parameters<typeof iconButton>[0], pressed?: boolean, extra?: string): HTMLButtonElement => {
+    const button = iconButton(name, 'x', { small: true, ...(pressed === undefined ? {} : { pressed }) });
+    if (extra) button.classList.add(extra);
+    button.tabIndex = -1;
+    return button;
+  };
+  const named = (iconName: 'folder' | 'cube'): HTMLElement =>
+    el('button', { className: 'name', attributes: { type: 'button', title: 'Select (F2 renames)', tabindex: '-1' } }, [
+      icon(iconName, { size: 14 }),
+      el('span'),
+    ]);
+  return {
+    chevronDown: small('chevron-down'),
+    chevronRight: small('chevron-right'),
+    spacer: el('span', { className: 'row-spacer', attributes: { 'aria-hidden': 'true' } }),
+    nameNode: named('folder'),
+    nameMesh: named('cube'),
+    eyeOn: small('eye', false, 'row-eye'),
+    eyeOff: small('eye-off', true, 'row-eye'),
+    lockOn: small('lock', true, 'row-lock'),
+    lockOff: small('unlock', false, 'row-lock'),
+  };
+}
+
 // The outliner: the nodes (groups) and meshes (elements) of the open model as a tree with select, rename, hide, lock,
 // collapse and search, and the look's lights. Names come from the file or the user and are set as text only. One tab stop
 // on the tree (arrow keys move through it); the row's buttons are reachable from the row that has it.
@@ -60,8 +99,11 @@ export class ScenePanel {
   private current: string | null = null;
   private lights: { readonly key: string | null; readonly rim: string | null } = { key: null, rim: null };
   private readonly items = new Map<string, HTMLLIElement>();
-  private readonly eyes = new Map<string, HTMLButtonElement>();
   private lastEye: HTMLButtonElement | null = null;
+  private marked: string | null = null;
+  private cued: string[] = [];
+  private readonly parts = rowParts();
+  private readonly skeletons = new Map<string, HTMLLIElement>();
   private visibleRows: readonly OutlinerRow[] = [];
   private readonly search: HTMLInputElement;
   private readonly matches: HTMLParagraphElement;
@@ -146,26 +188,31 @@ export class ScenePanel {
   /** Marks the selected row without rebuilding the list. */
   select(selection: Selection['current']): void {
     this.selected = selection;
-    for (const [key, item] of this.items) {
-      const on = selection !== null && key === `${selection.kind}:${selection.index}`;
-      item.setAttribute('aria-selected', String(on));
-      const name = item.querySelector('[data-row]');
-      if (on) name?.setAttribute('aria-current', 'true');
-      else name?.removeAttribute('aria-current');
-    }
-    if (selection && this.items.has(`${selection.kind}:${selection.index}`)) {
-      this.setCurrent(`${selection.kind}:${selection.index}`);
-    }
+    const key = selection ? `${selection.kind}:${selection.index}` : null;
+    if (this.marked !== key) this.mark(this.marked, false);
+    this.mark(key, true);
+    this.marked = key;
+    if (key && this.items.has(key)) this.setCurrent(key);
     this.paintCue(selection);
+  }
+
+  private mark(key: string | null, on: boolean): void {
+    const item = key ? this.items.get(key) : undefined;
+    if (!item) return;
+    item.setAttribute('aria-selected', String(on));
+    const name = item.querySelector('[data-row]');
+    if (on) name?.setAttribute('aria-current', 'true');
+    else name?.removeAttribute('aria-current');
   }
 
   // The groups above the selection read as marked while they are closed; a pick in the 3D view moves the mark without a rebuild.
   private paintCue(selection: SelectionTarget | null): void {
-    const above = new Set(this.groupsAbove(selection));
-    for (const [key, item] of this.items) {
-      const [kind, index] = key.split(':');
-      item.firstElementChild?.classList.toggle('has-selection', kind === 'node' && above.has(Number(index)));
+    const above = this.groupsAbove(selection).map((index) => `node:${index}`);
+    for (const key of this.cued) {
+      if (!above.includes(key)) this.items.get(key)?.firstElementChild?.classList.remove('has-selection');
     }
+    for (const key of above) this.items.get(key)?.firstElementChild?.classList.add('has-selection');
+    this.cued = above;
   }
 
   private groupsAbove(selection: SelectionTarget | null): number[] {
@@ -187,7 +234,9 @@ export class ScenePanel {
   toggleSelected(): void {
     const target = this.selected;
     const model = this.model;
-    const eye = target ? this.eyes.get(`${target.kind}:${target.index}`) : undefined;
+    const eye = target
+      ? this.items.get(`${target.kind}:${target.index}`)?.querySelector<HTMLElement>('.row-eye')
+      : undefined;
     if (eye) eye.click();
     else if (target && model) {
       // The row is not listed (inside a closed group, or filtered out): the selection still decides.
@@ -251,7 +300,8 @@ export class ScenePanel {
     const active = document.activeElement;
     const focused = active instanceof HTMLElement && this.list.contains(active) ? active.dataset['focus'] : undefined;
     this.items.clear();
-    this.eyes.clear();
+    this.marked = null;
+    this.cued = [];
     this.lastEye = null;
     this.visibleRows = [];
     if (!model) {
@@ -270,7 +320,17 @@ export class ScenePanel {
     const tree = el('ul', { className: 'tree', attributes: { role: 'tree', 'aria-label': 'Nodes and elements' } });
     for (const row of rows) tree.append(this.row(row, model));
     tree.addEventListener('keydown', (event) => this.onKey(event));
+    tree.addEventListener('click', (event) => this.onClick(event));
+    tree.addEventListener('dblclick', (event) => {
+      const at = this.rowAt(event.target);
+      if (at && event.target instanceof Element && event.target.closest('button.name')) {
+        this.startRename(at.kind, at.index);
+      }
+    });
     tree.addEventListener('focusin', (event) => {
+      if (event.target instanceof HTMLButtonElement && event.target.classList.contains('row-eye')) {
+        this.lastEye = event.target;
+      }
       const item = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>('[role="treeitem"]') : null;
       if (item?.dataset['key']) this.setCurrent(item.dataset['key']);
     });
@@ -324,90 +384,102 @@ export class ScenePanel {
     if (focused) this.lightsBox.querySelector<HTMLElement>(`[data-focus="${focused}"]`)?.focus();
   }
 
+  // A row is a clone of a skeleton (one per kind, state of the chevron, eye and lock) filled in with its names and keys,
+  // wired by the tree's own listeners: a rebuild lists up to 500 rows, and a closure and a built icon per button cost
+  // more than the browser's clone.
+  private skeleton(kind: 'node' | 'mesh', row: OutlinerRow, visible: boolean, locked: boolean): HTMLLIElement {
+    const id = `${kind}${row.hasChildren ? (row.expanded ? 'o' : 'c') : 'l'}${visible ? 1 : 0}${locked ? 1 : 0}`;
+    let found = this.skeletons.get(id);
+    if (!found) {
+      const { parts } = this;
+      const lead = row.hasChildren ? (row.expanded ? parts.chevronDown : parts.chevronRight) : parts.spacer;
+      const line = el('div', { className: 'outliner-row' }, [
+        lead.cloneNode(true),
+        (kind === 'node' ? parts.nameNode : parts.nameMesh).cloneNode(true),
+        (visible ? parts.eyeOn : parts.eyeOff).cloneNode(true),
+        (locked ? parts.lockOn : parts.lockOff).cloneNode(true),
+      ]);
+      found = el('li', { attributes: { role: 'treeitem', 'aria-selected': 'false', tabindex: '-1' } }, [line]);
+      this.skeletons.set(id, found);
+    }
+    return found.cloneNode(true) as HTMLLIElement;
+  }
+
   private row(row: OutlinerRow, model: ScenePanelModel): HTMLLIElement {
     const { kind, index } = row;
     const key = `${kind}:${index}`;
     const name = displayName(model.doc, model.names, kind, index);
     const visible = (kind === 'node' ? model.nodeVisible : model.meshVisible)[index] === true;
     const locked = (kind === 'node' ? model.lockedNodes : model.lockedMeshes)[index] === true;
-
-    const lead = row.hasChildren
-      ? iconButton(row.expanded ? 'chevron-down' : 'chevron-right', `${row.expanded ? 'Collapse' : 'Expand'} ${name}`, {
-          small: true,
-        })
-      : el('span', { className: 'row-spacer', attributes: { 'aria-hidden': 'true' } });
-    if (lead instanceof HTMLButtonElement) {
+    const item = this.skeleton(kind, row, visible, locked);
+    const line = item.firstElementChild as HTMLElement;
+    const [lead, select, eye, lock] = line.children as unknown as [HTMLElement, HTMLElement, HTMLElement, HTMLElement];
+    if (row.ancestorOfSelected) line.classList.add('has-selection');
+    if (row.hasChildren) {
+      const label = `${row.expanded ? 'Collapse' : 'Expand'} ${name}`;
+      lead.setAttribute('aria-label', label);
+      lead.title = this.search.value.trim() !== '' ? 'Clear the search to open or close groups' : label;
       lead.setAttribute('data-focus', `chev:${key}`);
-      if (this.search.value.trim() !== '') {
-        lead.setAttribute('aria-disabled', 'true');
-        lead.title = 'Clear the search to open or close groups';
-      }
-      lead.addEventListener('click', () => this.toggleCollapsed(index, row.expanded));
+      if (this.search.value.trim() !== '') lead.setAttribute('aria-disabled', 'true');
+      item.setAttribute('aria-expanded', String(row.expanded));
     }
-    const select = el('button', {
-      className: 'name',
-      attributes: {
-        type: 'button',
-        'data-row': key,
-        'data-focus': `name:${key}`,
-        title: 'Select (F2 renames)',
-        tabindex: '-1',
-      },
-    });
-    select.append(icon(kind === 'node' ? 'folder' : 'cube', { size: 14 }), el('span', {}, labelNodes(name, row)));
-    select.addEventListener('click', () => this.host.selectRow(kind, index));
-    select.addEventListener('dblclick', () => this.startRename(kind, index));
-    select.addEventListener('keydown', (event) => {
-      if (event.key !== 'F2') return;
-      event.preventDefault();
-      event.stopPropagation();
-      this.startRename(kind, index);
-    });
-
-    const eye = iconButton(visible ? 'eye' : 'eye-off', `Hide ${name}`, { small: true, pressed: !visible });
-    eye.classList.add('row-eye');
+    select.setAttribute('data-row', key);
+    select.setAttribute('data-focus', `name:${key}`);
+    (select.lastElementChild as HTMLElement).replaceChildren(...labelNodes(name, row));
+    eye.setAttribute('aria-label', `Hide ${name}`);
+    eye.title = `Hide ${name}`;
     eye.setAttribute('data-focus', `eye:${key}`);
-    eye.addEventListener('click', () => {
-      if (kind === 'node') this.host.setNodeVisible(index, !visible);
-      else this.host.setMeshVisible(index, !visible);
-    });
-    eye.addEventListener('focus', () => (this.lastEye = eye));
-    eye.addEventListener('click', () => (this.lastEye = eye));
-    this.eyes.set(key, eye);
-    const lock = iconButton(locked ? 'lock' : 'unlock', `Lock ${name}`, { small: true, pressed: locked });
-    lock.classList.add('row-lock');
+    lock.setAttribute('aria-label', `Lock ${name}`);
+    lock.title = `Lock ${name}`;
     lock.setAttribute('data-focus', `lock:${key}`);
-    lock.addEventListener('click', () => this.host.setLocked(kind, index, !locked));
-
-    const line = el('div', { className: row.ancestorOfSelected ? 'outliner-row has-selection' : 'outliner-row' }, [
-      lead,
-      select,
-      eye,
-      lock,
-    ]);
-    line.addEventListener('click', (event) => {
-      if (event.target instanceof Element && !event.target.closest('button, input')) this.host.selectRow(kind, index);
-    });
-    const attributes: Record<string, string> = {
-      role: 'treeitem',
-      'aria-label': name,
-      'aria-level': String(row.depth + 1),
-      'aria-selected': 'false',
-      'data-key': key,
-      'data-focus': `item:${key}`,
-      tabindex: '-1',
-    };
-    if (row.hasChildren) attributes['aria-expanded'] = String(row.expanded);
-    const item = el('li', { attributes }, [line]);
+    item.setAttribute('aria-label', name);
+    item.setAttribute('aria-level', String(row.depth + 1));
+    item.setAttribute('data-key', key);
+    item.setAttribute('data-focus', `item:${key}`);
     item.style.setProperty('--depth', String(row.depth));
-    this.markStop(item, false);
     this.items.set(key, item);
     return item;
+  }
+
+  private rowAt(target: EventTarget | null): { kind: 'node' | 'mesh'; index: number; item: HTMLElement } | null {
+    const item = target instanceof Element ? target.closest<HTMLElement>('[role="treeitem"]') : null;
+    const [kind, index] = (item?.dataset['key'] ?? '').split(':');
+    return item && (kind === 'node' || kind === 'mesh') ? { kind, index: Number(index), item } : null;
+  }
+
+  private onClick(event: MouseEvent): void {
+    const at = this.rowAt(event.target);
+    const target = event.target instanceof Element ? event.target : null;
+    if (!at || !target) return;
+    const button = target.closest('button');
+    const model = this.model;
+    if (!button) {
+      if (!target.closest('input')) this.host.selectRow(at.kind, at.index);
+    } else if (button.classList.contains('name')) {
+      this.host.selectRow(at.kind, at.index);
+    } else if (button.classList.contains('row-eye') && model) {
+      this.lastEye = button;
+      const visible = (at.kind === 'node' ? model.nodeVisible : model.meshVisible)[at.index] === true;
+      if (at.kind === 'node') this.host.setNodeVisible(at.index, !visible);
+      else this.host.setMeshVisible(at.index, !visible);
+    } else if (button.classList.contains('row-lock') && model) {
+      const locked = (at.kind === 'node' ? model.lockedNodes : model.lockedMeshes)[at.index] === true;
+      this.host.setLocked(at.kind, at.index, !locked);
+    } else if (button.dataset['focus']?.startsWith('chev:')) {
+      this.toggleCollapsed(at.index, at.item.getAttribute('aria-expanded') === 'true');
+    }
   }
 
   // Arrow keys on a row: Up and Down move, Home and End jump, Right opens or enters, Left closes or goes to the group,
   // Enter and Space select, F2 renames. A key pressed on one of the row's own buttons stays with that button.
   private onKey(event: KeyboardEvent): void {
+    if (event.key === 'F2' && event.target instanceof Element && event.target.closest('button.name')) {
+      const at = this.rowAt(event.target);
+      event.preventDefault();
+      event.stopPropagation();
+      if (at) this.startRename(at.kind, at.index);
+      return;
+    }
     const item = event.target instanceof HTMLElement ? event.target.closest<HTMLLIElement>('[role="treeitem"]') : null;
     if (!item || event.target !== item) return;
     const rows = this.visibleRows;

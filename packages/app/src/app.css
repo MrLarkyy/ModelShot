@@ -1558,6 +1558,9 @@ legend {
 
 .tree > li {
   position: relative;
+  /* A list of hundreds of rows lays out only the ones near the scroll position (the rows are all one line high). */
+  content-visibility: auto;
+  contain-intrinsic-size: auto var(--ed-row-h);
 }
 
 .outliner-tools {
