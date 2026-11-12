@@ -163,7 +163,7 @@ export class Inspector {
       if (again && controlKind(again) === kind) again.focus();
     };
     set('object', buildObjectTab(this.model, this.host, this.host.sections));
-    set('material', buildMaterialTab(this.model, this.host));
+    set('material', buildMaterialTab(this.model, this.host, this.host.sections));
     set(
       'light',
       this.model

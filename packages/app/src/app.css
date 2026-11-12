@@ -1283,6 +1283,35 @@ kbd {
   padding: var(--ms-space-1) 0 var(--ms-space-3);
 }
 
+.texture-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ms-space-3);
+}
+
+.texture-thumb {
+  flex: none;
+  background: var(--ed-field);
+  border: 1px solid var(--ed-line);
+  image-rendering: pixelated;
+}
+
+.element-list {
+  display: grid;
+  gap: var(--ms-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.element-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ms-space-2);
+}
+
 .xyz-field {
   display: grid;
   gap: var(--ms-space-1);

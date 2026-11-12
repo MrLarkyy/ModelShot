@@ -251,6 +251,8 @@ export class App {
         seek: (time) => this.tools?.timeline.seek(time),
         sections: this.sectionState,
         setTextureFilter: (index, filter) => this.setTextureFilter(index, filter),
+        selectRow: (kind, index) => this.selection.set({ kind, index }),
+        showTab: (tab) => this.inspector.select(tab, true),
         tabChanged: (tab) => this.layoutStore.update({ tab }),
       },
       this.layoutStore.state.tab,
