@@ -2,6 +2,7 @@ import type { PathTracer } from '@modelshot/pathtracer';
 import type { SceneCamera, SceneDocument } from '@modelshot/scene';
 import { loadExport } from '../loadExport';
 import { RENDER_SEED, MAX_SUPERSAMPLE_CHOICE } from '../render/RenderSettings';
+import { samplesNote } from '../render/samplesNote';
 import { el, labelled, uniqueId } from '../ui/dom';
 import { downloadBlob } from './downloadBlob';
 import {
@@ -288,6 +289,7 @@ export class ExportDialog {
         labelled('Width (px)', width),
         labelled('Height (px)', height),
         labelled('Samples', samples),
+        el('p', { className: 'hint', text: samplesNote() }),
         labelled('Supersampling', supersample),
         fpsField,
         framesField,

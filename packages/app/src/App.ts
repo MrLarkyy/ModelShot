@@ -49,6 +49,7 @@ import { bindDisclosure } from './ui/bindDisclosure';
 import { byId } from './ui/dom';
 import { Notices } from './ui/Notices';
 import { bindTopBar } from './ui/TopBar';
+import type { RenderTiming } from './render/estimateRenderMs';
 import { progressText, resultText } from './render/renderInfo';
 import { Viewer } from './viewer/Viewer';
 import { ViewportChips } from './viewport/ViewportChips';
@@ -120,6 +121,8 @@ export class App {
   private readonly forgetDialog = byId('forget-dialog', HTMLDialogElement);
   private renderStartedAt = 0;
   private renderClock: ReturnType<typeof setInterval> | null = null;
+  private lastRender: RenderTiming | null = null;
+  private renderSupersample = 1;
   private renderDoneSamples = 0;
   /** The sample count of the run on show: the settings may change while it runs. */
   private renderTarget = 0;
@@ -199,6 +202,7 @@ export class App {
         onResize: (size) => {
           const previous = this.cssSize;
           this.cssSize = size;
+          queueMicrotask(() => this.syncRenderContext());
           this.tools?.resize(size);
           const same =
             previous?.cssWidth === size.cssWidth &&
@@ -276,11 +280,16 @@ export class App {
       frameModel: () => this.viewer?.frameModel(),
       resetView: () => this.viewer?.resetView(),
     });
-    this.renderPanel = new RenderPanel(this.inspector.render, this.renderValues, (values) => {
-      this.renderValues = values;
-      this.syncRenderMeta();
-      this.scheduleSave();
-    });
+    this.renderPanel = new RenderPanel(
+      this.inspector.render,
+      this.renderValues,
+      (values) => {
+        this.renderValues = values;
+        this.syncRenderMeta();
+        this.scheduleSave();
+      },
+      this.sectionState,
+    );
     new ViewportChips(
       byId('camera-presets', HTMLElement),
       byId('overlay-menu-button', HTMLButtonElement),
@@ -995,6 +1004,15 @@ export class App {
   private syncRenderMeta(): void {
     const samples = this.renderValues.samples;
     this.renderMeta.textContent = `· ${samples} sample${samples === 1 ? '' : 's'}`;
+    this.syncRenderContext();
+  }
+
+  // The Output section: a render is as large as the preview's backing store (the parity test holds them equal).
+  private syncRenderContext(): void {
+    const canvas = byId('preview', HTMLCanvasElement);
+    this.renderPanel.setContext(
+      this.open && canvas.width > 0 ? { width: canvas.width, height: canvas.height, last: this.lastRender } : null,
+    );
   }
 
   private render(): void {
@@ -1009,6 +1027,7 @@ export class App {
     if (this.renderIdle.contains(document.activeElement)) byId('cancel-button', HTMLButtonElement).focus();
     this.renderIdle.hidden = true;
     this.renderTarget = this.renderValues.samples;
+    this.renderSupersample = this.renderValues.supersample;
     this.progress.value = 0;
     this.renderStartedAt = performance.now();
     this.renderDoneSamples = 0;
@@ -1052,6 +1071,12 @@ export class App {
     this.resultCanvas.dataset['renders'] = String(Number(this.resultCanvas.dataset['renders'] ?? 0) + 1);
     this.resultCanvas.hidden = false;
     const elapsed = performance.now() - this.renderStartedAt;
+    this.lastRender = {
+      samples: this.renderTarget,
+      pixels: this.resultCanvas.width * this.resultCanvas.height * this.renderSupersample ** 2,
+      ms: elapsed,
+    };
+    this.syncRenderContext();
     this.renderIdleBar();
     this.renderInfo.hidden = false;
     this.renderInfo.textContent = resultText(

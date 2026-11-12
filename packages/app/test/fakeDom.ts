@@ -58,6 +58,7 @@ export class FakeElement {
   setAttribute(name: string, value: string): void {
     this.attributes.set(name, value);
     if (name === 'class') this.className = value;
+    if (name === 'value') this.value = value;
   }
   getAttribute(name: string): string | null {
     return this.attributes.get(name) ?? null;
