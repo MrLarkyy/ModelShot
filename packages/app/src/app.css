@@ -1385,8 +1385,10 @@ kbd {
 
 .value-grid dd {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--ms-space-2);
+  min-width: 0;
   font-size: var(--ms-size-label);
 }
 
@@ -1399,16 +1401,21 @@ kbd {
 }
 
 .swatch.off {
-  flex-wrap: wrap;
   background: transparent;
   border-style: dashed;
-  min-width: 0;
 }
 
+/* The dial with its two angles beside it; in a narrow inspector the angles go under the dial. */
 .light-aim {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--ms-space-3);
+  gap: var(--ms-space-2) var(--ms-space-3);
+}
+
+.light-aim > dl {
+  flex: 1 1 8rem;
+  min-width: 0;
 }
 
 .light-dial {
@@ -1419,22 +1426,15 @@ kbd {
   fill: none;
   stroke: var(--ed-line-strong);
 }
-/* The dial with its two angles beside it; in a narrow inspector the angles go under the dial. */
 
 .dial-dot {
-  flex-wrap: wrap;
   fill: var(--ed-sun);
 }
 
 .texture-row {
   display: flex;
   align-items: center;
-  gap: var(--ms-space-2) var(--ms-space-3);
-}
-
-.light-aim > dl {
-  flex: 1 1 8rem;
-  min-width: 0;
+  gap: var(--ms-space-3);
 }
 
 .texture-thumb {
