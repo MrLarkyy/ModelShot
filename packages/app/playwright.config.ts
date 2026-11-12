@@ -17,9 +17,10 @@ export default defineConfig({
   testDir: 'e2e',
   outputDir: 'test-results',
   snapshotPathTemplate: '{testDir}/../goldens/{arg}{ext}',
-  // The baked lighting of a pose takes 1-2 minutes on a runner (SwiftShader): the timeline pose test waits for it
-  // twice before its render, and timed out at 120 s in CI run 43209537341 (MS-97), so a test gets 6 minutes.
-  timeout: 360_000,
+  timeout: 120_000,
+  // A hang or a slow runner ends the shard with every finished test reported and the artefact uploaded, before the
+  // 20-minute job limit cancels the job and drops both (the harness does the same, 17 minutes).
+  globalTimeout: ci ? 17 * 60_000 : 0,
   workers: 1,
   // Every test opens its own page and shares no state, so this only lets CI's `--shard` (ci.yml, job app) split a
   // file; with one worker nothing runs at once and a shard still runs its tests in file order.
