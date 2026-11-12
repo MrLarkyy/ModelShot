@@ -5,6 +5,7 @@ import { sectionBudgets, writeSectionMeasured, type BenchSection } from '../src/
 import { budgetReport, checkBudgets, loadBudgets, type BudgetGroup, type Measured } from '../src/budgets';
 import { BUNDLE_TARGETS, measureBundle } from '../src/bundleSize';
 import { openFixture } from '../src/expectGolden';
+import type { OutlinerStep } from '../fixtures/src/fixtureApi';
 import { traceMainThread } from '../src/mainThreadTrace';
 import { median } from '../src/measure';
 
@@ -160,6 +161,27 @@ test.describe('bench sections', () => {
     test.setTimeout(sectionTimeouts.loads);
     logRunner(testInfo);
 
+    // The app's outliner over a 2000-node model (MS-106): the longest one task blocked while the list was rebuilt by
+    // search keystrokes, Collapse all, Expand all and a model refresh, each with the style and layout of its rows.
+    // First in the section, on the test's untouched page: in a renderer process that has just held the 200 000-triangle
+    // fixtures below, every rebuild step takes about twice as long (26-31 ms a task against 13-18 ms; a new page opened
+    // after them measures 13-15 ms again), which is a measure of what those fixtures left behind, not of the outliner.
+    await openFixture(page, '/outliner.html');
+    expect(await page.evaluate(() => window.__msFixture?.outliner?.nodes)).toBe(2000);
+    let outlinerSteps: OutlinerStep[] = [];
+    const outlinerTrace = await traceMainThread(page, async () => {
+      outlinerSteps = await page.evaluate(async () => {
+        const outliner = window.__msFixture?.outliner;
+        if (!outliner) throw new Error('outliner controls missing');
+        return outliner.rebuildAll();
+      });
+    });
+    console.log(
+      `[bench] outliner rebuilds of 2000 nodes: ${outlinerTrace.tasks} tasks, max blocking per task ` +
+        `${outlinerTrace.maxBlocking.toFixed(1)} ms (CPU ${outlinerTrace.maxCpu.toFixed(1)} ms); ` +
+        outlinerSteps.map((s) => `${s.name} ${s.handlerMs.toFixed(1)}+${(s.ms - s.handlerMs).toFixed(1)}`).join(', '),
+    );
+
     // Load and first frame of a scene at the loader's limits with render order: decode, upload, the exact key's
     // de-indexed geometry, one frame.
     await openFixture(page, '/rt.html?scene=empty&size=512');
@@ -220,7 +242,10 @@ test.describe('bench sections', () => {
           'rt-load-first-frame-200k-world': worldLoadMs,
           'pt-load-200k': ptLoadMs,
         },
-        mainThreadBlockMs: { 'pt-setscene-200k': ptSetTrace.maxBlocking },
+        mainThreadBlockMs: {
+          'pt-setscene-200k': ptSetTrace.maxBlocking,
+          'outliner-rebuild-2000': outlinerTrace.maxBlocking,
+        },
       },
       testInfo,
     );

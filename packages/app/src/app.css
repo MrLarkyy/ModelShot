@@ -12,6 +12,7 @@ body {
 :root {
   --outliner-w: 260px;
   --inspector-w: 320px;
+  --rail-w: 56px;
   --timeline-h: 132px;
 
   /* Editor aliases of the brand tokens: components read these, never a raw colour (docs/app.md, Visual system). */
@@ -35,6 +36,7 @@ body {
   --ed-hover: color-mix(in srgb, var(--ms-color-paper) 5%, transparent);
   --ed-press: color-mix(in srgb, var(--ms-color-paper) 9%, transparent);
   --ed-accent-soft: color-mix(in srgb, var(--ms-color-shot-blue) 18%, transparent);
+  --ed-accent-soft-hover: color-mix(in srgb, var(--ms-color-shot-blue) 30%, transparent);
   --ed-flash-soft: color-mix(in srgb, var(--ms-color-flash) 12%, transparent);
   --ed-row-h: 30px;
   --ed-field-h: 30px;
@@ -422,6 +424,8 @@ button:disabled {
 
 .segmented {
   display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
   margin: 0;
   padding: 2px;
   gap: 2px;
@@ -1251,46 +1255,272 @@ kbd {
   width: 100%;
 }
 
-.axis-field {
+.section {
+  border-top: 1px solid var(--ed-line);
+}
+
+.section-head {
+  width: 100%;
+  justify-content: flex-start;
+  min-height: var(--ed-row-h);
+  padding: 0 var(--ms-space-1);
+  border: 0;
+  border-radius: var(--ed-radius-field);
+  color: var(--ed-text-2);
+  font: var(--ms-weight-bold) var(--ms-size-label) var(--ms-font-body);
+  text-align: left;
+}
+
+.section-head:hover:not(:disabled) {
+  color: var(--ed-text);
+}
+
+.section-chevron {
+  display: inline-flex;
+  color: var(--ed-text-3);
+}
+
+.section-body {
+  display: grid;
+  /* One column no wider than the section: a wide row wraps or shrinks instead of pushing its neighbours out. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--ms-space-2);
+  padding: var(--ms-space-1) 0 var(--ms-space-3);
+}
+
+.colour-input {
+  width: 44px;
+  height: var(--ed-field-h);
+  padding: 2px;
+  background: var(--ed-field);
+  border: 1px solid var(--ed-line);
+  border-radius: var(--ed-radius-field);
+}
+
+/* A slider row is one line at every inspector width: label, range, value. A long label wraps inside its column. */
+.field:has(> .slider-value) {
+  display: grid;
+  grid-template-columns: minmax(2.5rem, 5rem) minmax(3rem, 1fr) 3rem;
+}
+
+.field:has(> .slider-value) > :is(label, input, span) {
+  min-width: 0;
+}
+
+.field > .slider-value {
+  color: var(--ed-text-2);
+  font-size: var(--ms-size-caption);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.look-head {
   display: flex;
   align-items: center;
-  gap: 7px;
+  justify-content: space-between;
+  margin-bottom: var(--ms-space-2);
+}
+
+.look-head .hint {
+  margin: 0;
+}
+
+.look-cards {
+  display: grid;
+  gap: var(--ms-space-2);
+}
+
+.look-cards .look-card {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 14px;
+  gap: var(--ms-space-3);
+  justify-content: stretch;
+  height: auto;
+  padding: var(--ms-space-2);
+  text-align: left;
+  font-weight: var(--ms-weight-medium);
+}
+
+.look-cards .look-card[aria-checked='true'] {
+  background: var(--ed-accent-soft);
+  border-color: var(--ed-accent-hi);
+}
+
+.look-swatch {
+  height: 40px;
+  border: 1px solid var(--ed-line-strong);
+  border-radius: var(--ed-radius-field);
+}
+
+.look-card-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.look-card-name {
+  font-weight: var(--ms-weight-bold);
+}
+
+.look-card-text .hint {
+  margin: 0;
+}
+
+.look-card-check {
+  display: inline-flex;
+  color: var(--ed-accent-hi);
+}
+
+.value-grid {
+  grid-template-columns: minmax(5rem, max-content) minmax(0, 1fr);
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.value-grid dt {
+  color: var(--ed-text-2);
+  font: var(--ms-weight-medium) var(--ms-size-caption) var(--ms-font-body);
+}
+
+.value-grid dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ms-space-2);
+  min-width: 0;
+  font-size: var(--ms-size-label);
+}
+
+.swatch {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--ed-line-strong);
+  border-radius: var(--ed-radius-field);
+}
+
+.swatch.off {
+  background: transparent;
+  border-style: dashed;
+}
+
+/* The dial with its two angles beside it; in a narrow inspector the angles go under the dial. */
+.light-aim {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ms-space-2) var(--ms-space-3);
+}
+
+.light-aim > dl {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+.light-dial {
+  flex: none;
+}
+
+.dial-ring {
+  fill: none;
+  stroke: var(--ed-line-strong);
+}
+
+.dial-dot {
+  fill: var(--ed-sun);
+}
+
+.texture-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ms-space-3);
+}
+
+.texture-thumb {
+  flex: none;
+  background: var(--ed-field);
+  border: 1px solid var(--ed-line);
+  image-rendering: pixelated;
+}
+
+.element-list {
+  display: grid;
+  gap: var(--ms-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.element-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ms-space-2);
+}
+
+.xyz-field {
+  display: grid;
+  gap: var(--ms-space-1);
+}
+
+.xyz-label {
+  color: var(--ed-text-2);
+  font-size: var(--ms-size-caption);
+}
+
+.xyz {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ms-space-1);
+}
+
+.xyz-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--ms-space-1);
+  min-width: 0;
   height: var(--ed-field-h);
-  padding: 0 var(--ms-space-2);
+  padding: 0 var(--ms-space-1) 0 var(--ms-space-2);
   background: var(--ed-field);
   border: 1px solid var(--ed-line);
   border-radius: var(--ed-radius-field);
   font: var(--ms-weight-medium) var(--ms-size-caption) var(--ms-font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
-.axis-field:hover {
+.xyz-cell:hover {
   border-color: var(--ed-line-strong);
 }
 
-.axis-field:focus-within {
+.xyz-cell:focus-within {
   border-color: var(--ed-accent-hi);
 }
 
-.axis-field i {
+.xyz-axis {
+  flex: none;
   width: 10px;
-  font-style: normal;
   font-weight: var(--ms-weight-bold);
   font-size: var(--ms-size-overline);
+  cursor: ew-resize;
+  touch-action: none;
+  user-select: none;
 }
 
-.axis-field.x i {
+.xyz-axis.axis-x {
   color: var(--ed-ax);
 }
 
-.axis-field.y i {
+.xyz-axis.axis-y {
   color: var(--ed-ay);
 }
 
-.axis-field.z i {
+.xyz-axis.axis-z {
   color: var(--ed-az);
 }
 
-.axis-field input[type='number'] {
+.xyz-cell .xyz-input {
   flex: 1;
   width: 100%;
   min-width: 0;
@@ -1298,6 +1528,21 @@ kbd {
   padding: 0;
   background: transparent;
   border: 0;
+  font: inherit;
+  text-overflow: ellipsis;
+}
+
+.xyz-cell .xyz-input[aria-invalid='true'] {
+  color: var(--ed-flash);
+}
+
+.xyz-cell:has(.xyz-input[aria-invalid='true']) {
+  border-color: var(--ed-flash);
+}
+
+.xyz-hint {
+  color: var(--ed-flash);
+  font-size: var(--ms-size-caption);
 }
 
 .toggle-row {
@@ -1330,34 +1575,89 @@ legend {
 
 .tree {
   margin: 0;
-  padding-left: var(--ms-space-4);
+  padding: 0;
   list-style: none;
 }
 
-#scene-panel > .tree {
-  padding-left: 0;
+.tree > li {
+  position: relative;
+  /* A list of hundreds of rows lays out only the ones near the scroll position (the rows are all one line high). */
+  content-visibility: auto;
+  contain-intrinsic-size: auto var(--ed-row-h);
 }
 
-.outliner-row {
+/* A row clips what it paints at its own box (content-visibility), so a control in a row draws its ring inside itself. */
+.tree > li :focus-visible {
+  outline-offset: calc(-1 * var(--ms-focus-width));
+}
+
+.outliner-tools {
   display: flex;
   align-items: center;
   gap: var(--ms-space-1);
 }
 
-.outliner-row .name {
+.outliner-tools input[type='search'] {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  display: block;
-  line-height: calc(var(--ed-row-h) - 2px);
-  text-align: left;
+}
+
+.outliner-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: calc(var(--depth, 0) * 16px);
+  border-radius: var(--ed-radius-field);
+}
+
+.outliner-row:hover {
+  background: var(--ed-hover);
+}
+
+/* One guide line per level, drawn behind the row's indent. */
+.outliner-row::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: calc(var(--depth, 0) * 16px);
+  content: '';
+  background-image: repeating-linear-gradient(90deg, var(--ed-line-strong) 0 1px, transparent 1px 16px);
+  background-position: 11px 0;
+  pointer-events: none;
+}
+
+.outliner-row .row-spacer {
+  flex: none;
+  width: 26px;
+}
+
+.outliner-row .name {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--ms-space-2);
+  min-width: 0;
   min-height: var(--ed-row-h);
   padding: 0 var(--ms-space-2);
   border-color: transparent;
+  justify-content: flex-start;
   font-weight: var(--ms-weight-medium);
   color: var(--ed-text-2);
+  text-align: left;
+}
+
+.outliner-row .name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outliner-row .name mark {
+  background: var(--ed-accent-soft);
+  color: var(--ed-text);
+  border-radius: 2px;
 }
 
 .outliner-row .name[aria-current='true'] {
@@ -1366,20 +1666,55 @@ legend {
   box-shadow: inset 2px 0 0 var(--ed-accent-hi);
 }
 
-.outliner-row .lock {
-  min-width: 26px;
-  min-height: 26px;
-  padding: 0 var(--ms-space-2);
-  border-color: transparent;
+.outliner-row.has-selection .name:not([aria-current='true']) {
+  color: var(--ed-text);
 }
 
-.outliner-row .lock:not([aria-pressed='true']) {
+.outliner-row .row-eye,
+.outliner-row .row-lock {
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  border-color: transparent;
   color: var(--ed-text-3);
+  opacity: 0;
+}
+
+/* Hidden and locked rows keep their buttons in view; the others show them on hover, on focus and on the open row. */
+.outliner-row:hover .row-eye,
+.outliner-row:hover .row-lock,
+.outliner-row:focus-within .row-eye,
+.outliner-row:focus-within .row-lock,
+[role='treeitem'][aria-selected='true'] .row-eye,
+[role='treeitem'][aria-selected='true'] .row-lock,
+.outliner-row .row-eye[aria-pressed='true'],
+.outliner-row .row-lock[aria-pressed='true'] {
+  opacity: 1;
+}
+
+.outliner-row .row-eye[aria-pressed='true'],
+.outliner-row .row-lock[aria-pressed='true'] {
+  color: var(--ed-accent-hi);
 }
 
 .outliner-row input[type='text'] {
   flex: 1;
   min-width: 0;
+}
+
+.outliner-lights {
+  margin-top: var(--ms-space-3);
+}
+
+.outliner-lights .light-row {
+  display: flex;
+  width: 100%;
+  justify-content: flex-start;
+  gap: var(--ms-space-2);
+}
+
+.outliner-footer {
+  margin-top: var(--ms-space-3);
 }
 
 .button-row {
@@ -1389,25 +1724,69 @@ legend {
   margin: var(--ms-space-2) 0;
 }
 
-[role='tablist'] {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ms-space-1);
-  margin-bottom: var(--ms-space-3);
-  border-bottom: 1px solid var(--ed-line);
+.rail-layout {
+  display: grid;
+  grid-template-columns: var(--rail-w) minmax(0, 1fr);
+  column-gap: var(--ms-space-3);
+  align-items: start;
 }
 
-[role='tab'] {
+.rail-content {
+  min-width: 0;
+}
+
+[role='tablist'][aria-orientation='vertical'] {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ms-space-1);
+}
+
+[role='tablist'][aria-orientation='vertical'] [role='tab'] {
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  min-height: 48px;
+  padding: var(--ms-space-2) 0;
   border-color: transparent;
   color: var(--ed-text-2);
-  border-radius: var(--ed-radius-ui) var(--ed-radius-ui) 0 0;
-  padding: 0 var(--ms-space-3);
+  font-size: var(--ms-size-overline);
 }
 
-[role='tab'][aria-selected='true'] {
-  background: var(--ed-raised);
-  color: var(--ed-text);
-  box-shadow: inset 0 -2px 0 var(--ed-accent-hi);
+/* The selected tab is keyed on aria-selected only: focus never changes how it looks. */
+[role='tablist'][aria-orientation='vertical'] [role='tab'][aria-selected='true'] {
+  background: var(--ed-accent-soft);
+  color: var(--ed-accent-hi);
+  box-shadow: inset 2px 0 0 var(--ed-accent-hi);
+}
+
+[role='tablist'][aria-orientation='vertical'] [role='tab'][aria-selected='true']:hover {
+  background: var(--ed-accent-soft-hover);
+}
+
+.inspector-title {
+  display: flex;
+  align-items: center;
+  gap: var(--ms-space-2);
+  min-height: var(--ed-control-h);
+  margin-bottom: var(--ms-space-2);
+}
+
+.inspector-title h2 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.type-tag {
+  flex: none;
+  padding: 1px var(--ms-space-2);
+  color: var(--ed-text-2);
+  border: 1px solid var(--ed-line-strong);
+  border-radius: var(--ed-radius-field);
+  font-size: var(--ms-size-overline);
 }
 
 [role='tabpanel'] {
@@ -1562,6 +1941,7 @@ progress {
 
   button.on,
   button[aria-pressed='true'],
+  .look-card[aria-checked='true'],
   .bar-toggle[aria-expanded='true'],
   .segment input:checked + span,
   .outliner-row .name[aria-current='true'] {
@@ -1571,14 +1951,20 @@ progress {
 
   button.on:focus-visible,
   button[aria-pressed='true']:focus-visible,
+  .look-card[aria-checked='true']:focus-visible,
   .bar-toggle[aria-expanded='true']:focus-visible,
   .outliner-row .name[aria-current='true']:focus-visible {
     outline: var(--ed-ring);
     outline-offset: var(--ed-ring-offset);
   }
 
-  [role='tab'][aria-selected='true'] {
-    border-bottom: 3px solid Highlight;
+  /* A row clips what it paints: a pressed eye or lock and the selected name keep their ring inside themselves here too. */
+  .tree > li :is(button, input, .name[aria-current='true']):focus-visible {
+    outline-offset: calc(-1 * var(--ms-focus-width));
+  }
+
+  [role='tablist'][aria-orientation='vertical'] [role='tab'][aria-selected='true'] {
+    border-left: 3px solid Highlight;
   }
 }
 

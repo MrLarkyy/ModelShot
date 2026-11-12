@@ -1734,6 +1734,16 @@ round 7); its max was 750 ms then.
   `pt.setLarge()` is the traced call, and the bench asserts it applied 200 000 triangles in the worker
   (`pt.geometryInWorker`). Max 50 ms, fixed like the bake rows. Local SwiftShader: 14.4 ms (382 tasks; CPU 14.4 ms,
   largest GPU wait 13.1 ms in one task, a band's `texSubImage2D`), the call to applied 3238 ms.
+- `mainThreadBlockMs.outliner-rebuild-2000` (MS-106): the most one main-thread task blocked (CPU plus GPU wait, the
+  trace of the rows above) while the app's `ScenePanel` rebuilt its list over a generated model of 2000 nodes (100
+  groups of 19 sub-groups, 1900 cubes; `outliner.html`, which imports the panel and `app.css`): the search keystrokes
+  `part 1`, `part 12-3` and an empty one, Collapse all, Expand all and a model refresh, each its own task followed by
+  a frame, with a forced style and layout read of the rebuilt rows inside the task. Part of the loads section and
+  measured first in it, on the test's untouched page: in a renderer process that has just held the section's
+  200 000-triangle fixtures every rebuild step takes about twice as long (26-31 ms a task, once 46.6, against 13-18 ms
+  alone; a new page opened after them measures 13-15 ms again), which measures what those fixtures left behind and
+  not the outliner. Max 50 ms, fixed like the bake rows. Local SwiftShader, three runs in a row: 14.0, 14.2 and 13.8 ms. The app's own `app.outliner.spec.ts` checks only
+  the 500-row cap and the footer.
 - `bundleGzipBytes` embed 3200 and embed-frame 177 200 (MS-24: the element and the frame page; measured 2949 and
   161 810 B, gzip level 9, plus 10 %, rounded up to 100). Before MS-24 embed was a 115 B stub with a max of 2200.
   embed-frame 195 100 (MS-52: the frame grew with MS-54, MS-56 and MS-52's texture wrap to 177 303 B, over the 177 200;
@@ -1756,6 +1766,12 @@ round 7); its max was 750 ms then.
   storage chip, forget dialog, empty-state card and first-run hint load before a model opens. Measured on origin/main
   e19e346 76 399 B, with MS-102 81 635 B, gzip level 9; the max is the measurement plus 10 %, rounded up to 100, the rule of
   MS-23, MS-38 and MS-85. `app` 216 892 to 221 201 B, within its max.)
+- `bundleGzipBytes` `app` 237 100 and `app-entry` 94 500 (MS-104, MS-105, MS-106, 2026-11-12: the inspector rail with
+  collapsible sections, XYZ fields and the Object, Material and Light tabs, the look cards with swatches and
+  adjustments, the Render quality and camera sections, and the outliner tree all load with the first model's page, so
+  `app-entry` grows with `app`. Measured with the three tasks 232 432 B (`app`) and 92 578 B (`app-entry`), gzip level 9,
+  against the earlier maxima 223 100 and 89 800 B; each max is the measurement plus 2 %, rounded up to 100, small
+  headroom because the panels are the code the editor ships and no new dependency was added.)
 - `frameTimeMs.rt-pose-step-512` (MS-34): one playback frame of the editor on the bench scene (128 group nodes, a
   rotation channel per node): `animateScene`, the renderer's pose-only `setScene` (no decode, upload or bake) and the
   render at 512 x 512, each timed until the GPU finished; median of 11 frames after 4 (`renderPoseFrames`, installed by

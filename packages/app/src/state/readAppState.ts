@@ -6,6 +6,7 @@ import { findHandoffViolation } from '../handoff/findHandoffViolation';
 import type { PlayerArmsChoice } from '../intake/LoadMessages';
 import type { RenderSettingsValues } from '../render/RenderSettings';
 import { MAX_NAME_LENGTH } from '../editor/displayName';
+import { LOOK_ADJUST_LIMITS, isHexColour, type LookAdjust } from '../session/adjustLook';
 import type { NodeEdit } from '../session/NodeEdit';
 import { APP_STATE_VERSION, type ModelState, type SessionState } from './AppState';
 
@@ -121,6 +122,16 @@ function readCamera(value: unknown): OrbitState | null {
   return { yawDeg, pitchDeg, fovYDeg, projection, distance, orthoHeight, target: [x, y, z] };
 }
 
+function readLookAdjust(value: unknown): LookAdjust | null {
+  if (!isRecord(value)) return null;
+  const exposure = number(own(value, 'exposure'), ...LOOK_ADJUST_LIMITS.exposure);
+  const saturation = number(own(value, 'saturation'), ...LOOK_ADJUST_LIMITS.saturation);
+  const backdrop = own(value, 'backdrop');
+  if (exposure === null || saturation === null) return null;
+  if (backdrop !== null && !isHexColour(backdrop)) return null;
+  return { exposure, saturation, backdrop };
+}
+
 function readRender(value: unknown): RenderSettingsValues | null {
   if (!isRecord(value)) return null;
   const samples = integer(own(value, 'samples'), 1, 65536);
@@ -187,6 +198,8 @@ export function readModelState(value: unknown): ModelState | null {
     const lockedNodes = indices(own(value, 'lockedNodes'));
     const lockedMeshes = indices(own(value, 'lockedMeshes'));
     const nodeEdits = readNodeEdits(own(value, 'nodeEdits'));
+    const lookAdjust = readLookAdjust(own(value, 'lookAdjust'));
+    const collapsedNodes = indices(own(value, 'collapsedNodes'));
     return {
       v: APP_STATE_VERSION,
       camera,
@@ -199,6 +212,8 @@ export function readModelState(value: unknown): ModelState | null {
       ...(lockedNodes ? { lockedNodes } : {}),
       ...(lockedMeshes ? { lockedMeshes } : {}),
       ...(nodeEdits ? { nodeEdits } : {}),
+      ...(lookAdjust ? { lookAdjust } : {}),
+      ...(collapsedNodes ? { collapsedNodes } : {}),
       render,
       ...(exportSettings ? { export: exportSettings } : {}),
       savedAt,

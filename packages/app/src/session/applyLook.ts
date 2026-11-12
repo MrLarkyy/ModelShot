@@ -2,7 +2,8 @@ import { checkLookPreset, type LookPreset } from '@modelshot/looks';
 
 export interface LookTarget {
   /** `bake: false`: the caller bakes the preview's light itself (sceneBakes); a tracer has none and ignores it. */
-  setLook(look: LookPreset, options?: { readonly bake?: boolean }): void;
+  setLook(look: LookPreset, options?: { readonly bake?: boolean; readonly keepBake?: boolean }): void;
+  // `keepBake`: the look change leaves the baked light as it is (a grading or backdrop change, same `lightingKey`).
 }
 
 // The one place a look reaches the preview (and with it the bake), the path tracer and, through the tracer, every
@@ -10,7 +11,7 @@ export interface LookTarget {
 export function applyLook(
   look: LookPreset,
   targets: readonly (LookTarget | null)[],
-  options: { readonly bake?: boolean } = {},
+  options: { readonly bake?: boolean; readonly keepBake?: boolean } = {},
 ): LookPreset {
   const checked = checkLookPreset(look);
   for (const target of targets) target?.setLook(checked, options);

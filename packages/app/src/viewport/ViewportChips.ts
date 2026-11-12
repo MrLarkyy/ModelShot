@@ -16,6 +16,7 @@ const OVERLAY_LABELS: Readonly<Record<OverlayId, string>> = {
 // live in the layout store.
 export class ViewportChips {
   private readonly boxes = new Map<OverlayId, HTMLInputElement>();
+  private readonly buttons = new Map<CameraPresetId, HTMLButtonElement>();
 
   constructor(
     private readonly presets: HTMLElement,
@@ -31,6 +32,7 @@ export class ViewportChips {
           attributes: { type: 'button', 'aria-label': `${preset.label} view` },
         });
         button.addEventListener('click', () => apply(preset.id));
+        this.buttons.set(preset.id, button);
         return button;
       }),
     );
@@ -46,6 +48,11 @@ export class ViewportChips {
     bindDisclosure(menuButton, menu);
     store.onChange(() => this.sync());
     this.sync();
+  }
+
+  /** Marks the chip of the preset the camera stands at (null: none), so the chips and the Camera section agree. */
+  mark(active: CameraPresetId | null): void {
+    for (const [id, button] of this.buttons) button.setAttribute('aria-pressed', String(id === active));
   }
 
   private sync(): void {

@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Locator, Page } from '@playwright/test';
 import {
   expect,
@@ -14,6 +17,7 @@ import {
   expectLit,
 } from './appTest';
 
+const HERE = dirname(fileURLToPath(import.meta.url));
 const NESTED = fixture('bbmodel', 'nested-groups.bbmodel');
 const CUBE = fixture('bbmodel', 'single-cube.bbmodel');
 
@@ -80,9 +84,8 @@ test('rename, hide, lock and search work from the outliner and survive a reload'
   const lock = page.getByRole('button', { name: 'Lock Pelvis' });
   await lock.click();
   await expect(page.getByRole('button', { name: 'Lock Pelvis' })).toHaveAttribute('aria-pressed', 'true');
-  const hide = page.getByRole('checkbox', { name: 'Visible: Pelvis' });
-  await hide.uncheck();
-  await expect(page.getByRole('checkbox', { name: 'Visible: Pelvis' })).not.toBeChecked();
+  await page.getByRole('button', { name: 'Hide Pelvis' }).click();
+  await expect(page.getByRole('button', { name: 'Hide Pelvis' })).toHaveAttribute('aria-pressed', 'true');
 
   const all = await page.locator('#scene-panel [data-row]').count();
   await page.getByRole('searchbox', { name: 'Search the outliner' }).fill('pelv');
@@ -104,16 +107,16 @@ test('rename, hide, lock and search work from the outliner and survive a reload'
 
 test('the keyboard focus stays on a row control after it changes the outliner', async ({ page }) => {
   await openNested(page);
-  const box = page.locator('#scene-panel input[type="checkbox"]').first();
-  await box.focus();
+  const eye = page.locator('#scene-panel .row-eye').first();
+  await eye.focus();
   await page.keyboard.press('Space');
-  await expect(page.locator('#scene-panel input[type="checkbox"]').first()).not.toBeChecked();
-  await expect(page.locator('#scene-panel input[type="checkbox"]').first()).toBeFocused();
-  const lock = page.locator('#scene-panel button.lock').first();
+  await expect(page.locator('#scene-panel .row-eye').first()).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#scene-panel .row-eye').first()).toBeFocused();
+  const lock = page.locator('#scene-panel .row-lock').first();
   await lock.focus();
   await page.keyboard.press('Enter');
-  await expect(page.locator('#scene-panel button.lock').first()).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#scene-panel button.lock').first()).toBeFocused();
+  await expect(page.locator('#scene-panel .row-lock').first()).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#scene-panel .row-lock').first()).toBeFocused();
 });
 
 test('the gizmo moves the node, Undo and Redo step through it, and it is remembered', async ({ page }) => {
@@ -250,7 +253,7 @@ test('changes queued before an open apply to their model first, then the open ap
   await openNested(page);
   // Change A (hide mesh 0) is held while it sets its scene; the node edit B queues behind it, then the cube opens.
   await page.evaluate(() => window.__msApp!.holdNextScene());
-  await page.locator('#scene-panel [data-focus="box:mesh:0"]').click();
+  await page.locator('#scene-panel [data-focus="eye:mesh:0"]').click();
   await expect.poll(() => page.evaluate(() => window.__msApp!.sceneHeld())).toBe(true);
   await page.evaluate(() => {
     void window.__msApp!.commitNodeEdit({ node: 0, translation: [1, 0, 0], rotation: [0, 0, 0] });
@@ -263,7 +266,7 @@ test('changes queued before an open apply to their model first, then the open ap
   await page.evaluate(() => window.__msApp!.releaseScene());
   await expect(page.getByRole('status')).toContainText('Opened single-cube.bbmodel', { timeout: 30_000 });
   await expect(page.getByRole('alert')).toHaveCount(0);
-  await expect(page.locator('#scene-panel [data-focus="box:mesh:0"]')).toBeChecked();
+  await expect(page.locator('#scene-panel [data-focus="eye:mesh:0"]')).toHaveAttribute('aria-pressed', 'false');
   // The nested model keeps both changes (its record also hides what the file hides); the cube's record has none.
   await waitForStored(page, (record) => {
     const hidden = record['hiddenMeshes'] as number[] | undefined;
@@ -289,13 +292,524 @@ test('a look picked while a model without a saved look opens is kept and lit', a
   await waitForStored(page, (record) => record['look'] === 'marketplace');
 });
 
-test('the Light tab lists the look lights read-only and adding is disabled', async ({ page }) => {
+test('the Light tab lists the look lights read-only with no placeholder control', async ({ page }) => {
   await openNested(page);
   await page.getByRole('button', { name: 'Key light' }).click();
   await expect(page.getByRole('tab', { name: 'Light' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#tabpanel-light')).toContainText('Rim light');
-  await expect(page.locator('#tabpanel-light').getByRole('button', { name: 'Add light' })).toBeDisabled();
+  await expect(page.locator('#tabpanel-light')).toContainText('Lights come from the Studio look');
+  await expect(page.locator('#tabpanel-light').getByRole('button', { name: 'Add light' })).toHaveCount(0);
+  await expect(page.locator('#tabpanel-light').getByRole('group')).toHaveCount(0);
   await page.getByRole('button', { name: 'Add', exact: true }).click();
   await expect(page.getByRole('button', { name: /Add light \(coming/ })).toBeDisabled();
   await openTab(page, 'Object');
+});
+
+// What a shown tab lays out past its own right edge, where the inspector cuts it off: a row, a value, a part of one.
+const cutOff = (page: Page, tab: 'light' | 'look' | 'render'): Promise<string[]> =>
+  page.locator(`#tabpanel-${tab}`).evaluate((root) => {
+    const edge = root.getBoundingClientRect().right + 0.5;
+    return [...root.querySelectorAll('*')]
+      .filter((n) => n.getClientRects().length > 0 && n.getBoundingClientRect().right > edge)
+      .map((n) => `${n.tagName} ${n.textContent}`);
+  });
+
+for (const width of [1440, 1024] as const) {
+  test(`the Light tab cuts off no value at ${width} px, down to the narrowest inspector`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openNested(page);
+    const panel = page.locator('#tabpanel-light');
+    const separator = page.getByRole('separator', { name: 'Resize the inspector' });
+    // Studio lights the key alone; Rim has the longest rows (a lit rim with "Albedo share").
+    for (const look of ['Studio', 'Rim']) {
+      await openTab(page, 'Look');
+      await page.getByRole('radio', { name: look, exact: true }).click();
+      await openTab(page, 'Light');
+      await expect(panel.locator('dd', { hasText: /^#[0-9A-F]{6}$/ }).first()).toBeVisible();
+      if (look === 'Studio') await expect(panel.locator('dd', { hasText: /^Off$/ }).first()).toBeVisible();
+      expect(await cutOff(page, 'light'), `${look} at the stored width`).toEqual([]);
+      for (const key of ['Home', 'End']) {
+        await separator.focus();
+        await page.keyboard.press(key);
+        expect(await cutOff(page, 'light'), `${look} at ${await separator.getAttribute('aria-valuenow')} px`).toEqual(
+          [],
+        );
+      }
+    }
+  });
+}
+
+test('the inspector rail never wraps and its selected tab looks the same focused or not', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openApp(page);
+  const separator = page.getByRole('separator', { name: 'Resize the inspector' });
+  const tabs = page.getByRole('tab');
+  await expect(tabs).toHaveCount(5);
+  for (const key of ['Home', 'End', 'Home']) {
+    await separator.focus();
+    await page.keyboard.press(key);
+    const tops = await tabs.evaluateAll((nodes) => nodes.map((n) => Math.round(n.getBoundingClientRect().top)));
+    expect(tops, `rail at ${await separator.getAttribute('aria-valuenow')} px`).toEqual(
+      [...tops].sort((a, b) => a - b),
+    );
+    const lefts = await tabs.evaluateAll((nodes) => nodes.map((n) => Math.round(n.getBoundingClientRect().left)));
+    expect(new Set(lefts).size, 'one column').toBe(1);
+    expect(await page.getByRole('tablist').evaluate((n) => n.getAttribute('aria-orientation'))).toBe('vertical');
+  }
+  const selected = page.getByRole('tab', { name: 'Object', exact: true });
+  const style = (): Promise<string> =>
+    selected.evaluate((n) => {
+      const s = getComputedStyle(n);
+      return [s.backgroundColor, s.color, s.boxShadow].join('|');
+    });
+  await page.mouse.move(0, 0);
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  const unfocused = await style();
+  await selected.focus();
+  expect(await style()).toBe(unfocused);
+});
+
+test('Arrow keys move between the inspector tabs and Home and End go to the ends', async ({ page }) => {
+  await openApp(page);
+  const object = page.getByRole('tab', { name: 'Object', exact: true });
+  await object.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('tab', { name: 'Material', exact: true })).toBeFocused();
+  await expect(page.getByRole('tab', { name: 'Material', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('tab', { name: 'Light', exact: true })).toBeFocused();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.getByRole('tab', { name: 'Material', exact: true })).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(page.getByRole('tab', { name: 'Render', exact: true })).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(object).toBeFocused();
+});
+
+test('ArrowUp in a position field commits once and one Undo restores it', async ({ page }) => {
+  await openNested(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  const panel = page.locator('#tabpanel-object');
+  await expect(panel.getByLabel('Position X')).toHaveValue('0');
+  await panel.getByLabel('Position X').focus();
+  await page.keyboard.press('ArrowUp');
+  await expect(panel.getByLabel('Position X')).toHaveValue('0.1');
+  await expect(panel.getByLabel('Position X')).toBeFocused();
+  await page.keyboard.press('Shift+ArrowUp');
+  await expect(panel.getByLabel('Position X')).toHaveValue('1.1');
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(panel.getByLabel('Position X')).toHaveValue('0.1');
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(panel.getByLabel('Position X')).toHaveValue('0');
+});
+
+test('a position that is not a number or out of range reverts and says so', async ({ page }) => {
+  await openNested(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  const x = page.locator('#tabpanel-object').getByLabel('Position X');
+  await x.fill('abc');
+  await x.press('Enter');
+  await expect(x).toHaveValue('0');
+  await expect(x).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.locator('#tabpanel-object').getByRole('status')).toContainText('Enter a number');
+  await x.fill('1e9');
+  await x.press('Enter');
+  await expect(x).toHaveValue('0');
+  await expect(page.getByRole('button', { name: 'Undo' })).toBeDisabled();
+});
+
+test('dragging an axis letter scrubs the value and one Undo restores the start', async ({ page }) => {
+  await openNested(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  const panel = page.locator('#tabpanel-object');
+  const letter = panel.getByRole('group', { name: 'Position' }).locator('.xyz-axis').first();
+  const box = (await letter.boundingBox())!;
+  await page.mouse.move(box.x + 4, box.y + 6);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 24, box.y + 6, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(async () => Number(await panel.getByLabel('Position X').inputValue())).toBeGreaterThan(1);
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(panel.getByLabel('Position X')).toHaveValue('0');
+});
+
+test('the Object tab shows the scale from the file, read-only', async ({ page }) => {
+  await openNested(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  const scale = page.locator('#tabpanel-object').getByLabel('Scale X');
+  await expect(scale).toHaveValue('1');
+  await expect(scale).toHaveJSProperty('readOnly', true);
+  await expect(page.locator('#tabpanel-object')).toContainText('Scale is from the file');
+});
+
+test('sections open and close, and the choice is remembered across a reload', async ({ page }) => {
+  await openNested(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  const head = page.locator('#tabpanel-object').getByRole('button', { name: 'Transform', exact: true });
+  await expect(head).toHaveAttribute('aria-expanded', 'true');
+  await head.click();
+  await expect(head).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#tabpanel-object').getByLabel('Position X')).toBeHidden();
+  expect(await page.evaluate(() => localStorage.getItem('modelshot.sections.v1'))).toContain('object-transform');
+  await page.reload();
+  await expect(page.getByRole('status')).toContainText('Opened nested-groups.bbmodel', { timeout: 30_000 });
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  await expect(
+    page.locator('#tabpanel-object').getByRole('button', { name: 'Transform', exact: true }),
+  ).toHaveAttribute('aria-expanded', 'false');
+  await page.evaluate(() => localStorage.setItem('modelshot.sections.v1', '{not json'));
+  await page.reload();
+  await expect(page.getByRole('status')).toContainText('Opened nested-groups.bbmodel', { timeout: 30_000 });
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  await expect(
+    page.locator('#tabpanel-object').getByRole('button', { name: 'Transform', exact: true }),
+  ).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('a keyframe button in the Animation section moves the playhead there', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'animated.bbmodel')], 'animated.bbmodel');
+  await waitForEditor(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  const keyframes = page.locator('#tabpanel-object').getByRole('button', { name: /^Go to / });
+  await expect(keyframes.first()).toBeVisible();
+  const count = await keyframes.count();
+  const last = keyframes.nth(count - 1);
+  const label = (await last.getAttribute('aria-label'))!;
+  const time = Number(/Go to ([\d.]+) s/.exec(label)![1]);
+  await last.click();
+  await expect(page.locator('#timeline').getByRole('slider', { name: 'Playhead' })).toHaveValue(String(time), {
+    timeout: 5000,
+  });
+});
+
+test('a keyframe button hides a shown render, which no longer matches the pose', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'animated.bbmodel')], 'animated.bbmodel');
+  await waitForEditor(page);
+  await openTab(page, 'Render');
+  const samples = page.locator('#render-panel').getByLabel('Samples');
+  await samples.fill('2');
+  await samples.dispatchEvent('change');
+  await page.getByRole('button', { name: 'Render' }).click();
+  await expect(page.getByRole('status')).toContainText('Render done', { timeout: 120_000 });
+  await expect(page.locator('#result')).toBeVisible();
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  await openTab(page, 'Object');
+  await page
+    .locator('#tabpanel-object')
+    .getByRole('button', { name: /^Go to / })
+    .last()
+    .click();
+  await expect(page.locator('#result')).toBeHidden();
+});
+
+test('Undo and Redo work from a focused slider or checkbox, and a text field keeps its own', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openNested(page);
+  await openTab(page, 'Look');
+  const slider = page.getByRole('slider', { name: 'Exposure' });
+  await slider.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(0);
+  await page.keyboard.press('Control+z');
+  await expect(slider).toHaveValue('0');
+  await page.keyboard.press('Control+Shift+z');
+  await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(0);
+});
+
+test('a look slider moved with no model open snaps back and changes nothing', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openApp(page);
+  await openTab(page, 'Look');
+  const slider = page.getByRole('slider', { name: 'Exposure' });
+  await slider.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(slider).toHaveValue('0');
+  await expect(page.getByRole('button', { name: 'Reset adjustments' })).toBeDisabled();
+});
+
+test('the Material tab says what a group holds and selects an element from it', async ({ page }) => {
+  await openNested(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  await openTab(page, 'Material');
+  const panel = page.locator('#tabpanel-material');
+  await expect(panel).not.toContainText('Select an element to see its material');
+  await expect(panel.getByRole('button', { name: /^Select / }).first()).toBeVisible();
+  await panel
+    .getByRole('button', { name: /^Select / })
+    .first()
+    .click();
+  await expect(page.getByRole('tab', { name: 'Material', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(panel.getByRole('button', { name: 'Texture', exact: true })).toBeVisible();
+  await expect(panel).toContainText('Alpha mode');
+  await expect(panel).toContainText('Preview and render use the same values.');
+  await expect(panel.getByRole('button', { name: 'Change in Look' })).toBeVisible();
+  await panel.getByRole('button', { name: 'Change in Look' }).click();
+  await expect(page.getByRole('tab', { name: 'Look', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Look', exact: true })).toBeFocused();
+});
+
+test('the texture thumbnail is drawn on a canvas and the page raises no policy violation', async ({ page }) => {
+  const violations: string[] = [];
+  page.on('console', (message) => {
+    if (/Content Security Policy|Refused to/i.test(message.text())) violations.push(message.text());
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
+  await waitForEditor(page);
+  await page.locator('#scene-panel [data-row^="mesh:"]').first().click();
+  await openTab(page, 'Material');
+  const thumb = page.locator('#tabpanel-material canvas.texture-thumb').first();
+  await expect(thumb).toBeVisible();
+  await expect
+    .poll(() =>
+      thumb.evaluate((canvas) => {
+        const c = canvas as HTMLCanvasElement;
+        return c
+          .getContext('2d')!
+          .getImageData(0, 0, c.width, c.height)
+          .data.some((v) => v !== 0);
+      }),
+    )
+    .toBe(true);
+  expect(violations).toEqual([]);
+});
+
+test('an element named like markup is shown as text in the title row and the Material tab', async ({ page }) => {
+  await openNested(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  const name = page.locator('#tabpanel-object').getByLabel('Name', { exact: true });
+  await name.fill('<img src=x onerror=window.__pwned=1>');
+  await name.press('Enter');
+  await expect(page.locator('.inspector-title h2')).toHaveText('<img src=x onerror=window.__pwned=1>');
+  expect(await page.evaluate(() => (window as unknown as Record<string, unknown>)['__pwned'])).toBeUndefined();
+  expect(await page.locator('.inspector-title img').count()).toBe(0);
+});
+
+const LOOK_IDS = ['studio', 'marketplace', 'rim', 'softbox'] as const;
+
+test('the Look tab shows a card per look, and a card and the L key mark the same one', async ({ page }) => {
+  await openNested(page);
+  await openTab(page, 'Look');
+  const cards = page.getByRole('radiogroup', { name: 'Look preset' }).getByRole('radio');
+  await expect(cards).toHaveCount(LOOK_IDS.length);
+  await expect(cards.first().locator('.look-swatch')).toBeVisible();
+  expect(
+    await cards
+      .first()
+      .locator('.look-swatch')
+      .evaluate((n) => getComputedStyle(n).backgroundImage),
+  ).toContain('gradient');
+  await page.getByRole('radio', { name: 'Marketplace' }).click();
+  await expect(page.getByRole('radio', { name: 'Marketplace' })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('radio', { name: 'Studio' })).toHaveAttribute('aria-checked', 'false');
+  await expect(page.getByRole('radio', { name: 'Marketplace' }).locator('svg')).toHaveCount(1);
+  await page.locator('#preview').focus();
+  await page.keyboard.press('l');
+  await expect(page.getByRole('radio', { name: 'Rim' })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('radio', { name: 'Marketplace' })).toHaveAttribute('aria-checked', 'false');
+  // Arrow keys move the choice and the focus together.
+  await page.getByRole('radio', { name: 'Rim' }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('radio', { name: 'Softbox' })).toBeFocused();
+  await expect(page.getByRole('radio', { name: 'Softbox' })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('radio', { name: 'Softbox' })).toHaveAttribute('tabindex', '0');
+});
+
+test('the Edges rows of the Material tab are the active look own values, for every look', async ({ page }) => {
+  const presets = (id: string): { name: string; edges: { width: number; sharpAngleDeg: number } } =>
+    JSON.parse(readFileSync(join(HERE, '..', '..', 'looks', 'src', 'presets', `${id}.json`), 'utf8')) as {
+      name: string;
+      edges: { width: number; sharpAngleDeg: number };
+    };
+  await openNested(page);
+  await page.locator('#scene-panel [data-row^="mesh:"]').first().click();
+  for (const id of LOOK_IDS) {
+    const preset = presets(id);
+    await openTab(page, 'Look');
+    await page.getByRole('radio', { name: preset.name, exact: true }).click();
+    await openTab(page, 'Material');
+    const edges = page.locator('#tabpanel-material').locator('#section-material-edges');
+    await expect(edges).toContainText(preset.edges.width.toFixed(2));
+    await expect(edges).toContainText(`${preset.edges.sharpAngleDeg}°`);
+    await expect(edges).toContainText(`From the ${preset.name} look.`);
+  }
+  // One label and value style on every tab: the Edges rows are set like the Light tab's rows, never in the mono face.
+  const face = (selector: string): Promise<string> =>
+    page
+      .locator(selector)
+      .first()
+      .evaluate((n) => {
+        const s = getComputedStyle(n);
+        return [s.fontFamily, s.fontSize, s.fontWeight, s.color].join('|');
+      });
+  for (const cell of ['dt', 'dd']) {
+    const edgesFace = await face(`#section-material-edges ${cell}`);
+    expect(edgesFace).not.toMatch(/mono/i);
+    expect(edgesFace).toBe(await face(`#tabpanel-light ${cell}`));
+  }
+});
+
+test('exposure moves with one Undo step per drag, changes the preview and starts no bake', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openNested(page);
+  await expectLit(page, 120_000);
+  await openTab(page, 'Look');
+  const slider = page.getByRole('slider', { name: 'Exposure' });
+  await expect(slider).toHaveValue('0');
+  const before = await previewImage(page);
+  const box = (await slider.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 2, box.y + box.height / 2, { steps: 8 });
+  await expect(page.locator('#model-state')).toHaveAttribute('data-state', 'lit');
+  await page.mouse.up();
+  await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(2);
+  await expect.poll(async () => (await previewImage(page)).data.equals(before.data)).toBe(false);
+  await expect(page.locator('#model-state')).toHaveAttribute('data-state', 'lit');
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(slider).toHaveValue('0');
+  await page.getByRole('button', { name: 'Redo' }).click();
+  await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(2);
+  await page.getByRole('button', { name: 'Reset adjustments' }).click();
+  await expect(slider).toHaveValue('0');
+  await expect(page.getByRole('button', { name: 'Reset adjustments' })).toBeDisabled();
+});
+
+test('a backdrop colour is a flat colour behind the model and a look card drops it', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openNested(page);
+  await expectLit(page, 120_000);
+  await openTab(page, 'Look');
+  const before = await previewImage(page);
+  await page.locator('#backdrop-colour').fill('#ff0000');
+  await expect(page.getByRole('radio', { name: 'Colour', exact: true })).toBeChecked();
+  await expect.poll(async () => (await previewImage(page)).data.equals(before.data)).toBe(false);
+  await page.getByRole('radio', { name: 'Scene', exact: true }).check({ force: true });
+  await expect(page.getByRole('radio', { name: 'Scene', exact: true })).toBeChecked();
+  await page.locator('#backdrop-colour').fill('#00ff00');
+  await page.getByRole('radio', { name: 'Rim' }).click();
+  await expect(page.getByRole('radio', { name: 'Scene', exact: true })).toBeChecked();
+  await expect(page.getByRole('button', { name: 'Reset adjustments' })).toBeDisabled();
+});
+
+test('the Render tab offers sample chips, the output size and the estimate only after a render', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 600 });
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
+  await waitForEditor(page);
+  await openTab(page, 'Render');
+  const panel = page.locator('#render-panel');
+  const chip = (count: string): Locator => panel.getByRole('button', { name: `${count} per pixel` });
+  await expect(chip('256')).toHaveAttribute('aria-pressed', 'true');
+  await chip('64').click();
+  await expect(chip('64')).toHaveAttribute('aria-pressed', 'true');
+  await expect(chip('256')).toHaveAttribute('aria-pressed', 'false');
+  await expect(panel.getByLabel('Samples', { exact: true })).toHaveValue('64');
+  await expect(page.locator('#render-meta')).toContainText('64 samples');
+  await expect(panel).toContainText('Render uses 256 samples by default for one still');
+  await expect(panel).toContainText('Export uses 64 per frame because clips render many frames');
+  await expect(panel.locator('#section-render-output')).toContainText(/\d+ × \d+ px, the size of the 3D view/);
+  await expect(panel.locator('#section-render-output')).toContainText('No estimate before the first render.');
+  await panel.getByLabel('Samples', { exact: true }).fill('4');
+  await panel.getByLabel('Samples', { exact: true }).dispatchEvent('change');
+  await expect(chip('64')).toHaveAttribute('aria-pressed', 'false');
+  await page.getByRole('button', { name: 'Render' }).click();
+  await expect(page.locator('#result')).toHaveAttribute('data-renders', '1', { timeout: 180_000 });
+  await expect(panel.locator('#section-render-output')).toContainText('estimated from your last render');
+  await page.getByRole('radio', { name: 'Supersampling 2×' }).check({ force: true });
+  await expect(panel.locator('#section-render-output')).toContainText('traced at');
+  await page.getByRole('button', { name: 'Export…' }).click();
+  await expect(page.getByRole('dialog', { name: 'Export' })).toContainText('Export uses 64 per frame');
+});
+
+test('a slider row is one line of label, range and value, with the same columns in Look and Render', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openNested(page);
+  const separator = page.getByRole('separator', { name: 'Resize the inspector' });
+  // Each part's left, right and middle line, then the row's, measured from the row's own left and top.
+  const columns = (name: string): Promise<number[][]> =>
+    page.getByRole('slider', { name }).evaluate((input) => {
+      const row = input.parentElement as HTMLElement;
+      const origin = row.getBoundingClientRect();
+      return [...row.children, row].map((n) => {
+        const r = n.getBoundingClientRect();
+        return [r.left - origin.left, r.right - origin.left, (r.top + r.bottom) / 2 - origin.top].map(
+          (v) => Math.round(v * 2) / 2,
+        );
+      });
+    });
+  for (const key of [null, 'Home', 'End']) {
+    if (key) {
+      await separator.focus();
+      await page.keyboard.press(key);
+    }
+    const at = `inspector at ${await separator.getAttribute('aria-valuenow')} px`;
+    await openTab(page, 'Render');
+    expect(await cutOff(page, 'render'), `Render tab, ${at}`).toEqual([]);
+    const fov = await columns('Field of view');
+    const [label, range, value, row] = fov as [number[], number[], number[], number[]];
+    expect(Math.abs(label[2]! - range[2]!), `label and slider on one line, ${at}`).toBeLessThanOrEqual(1);
+    expect(Math.abs(value[2]! - range[2]!), `value and slider on one line, ${at}`).toBeLessThanOrEqual(1);
+    expect(range[0], `slider after the label, ${at}`).toBeGreaterThanOrEqual(label[1]!);
+    expect(value[0], `value after the slider, ${at}`).toBeGreaterThanOrEqual(range[1]!);
+    expect(value[1], `value ends with the row, ${at}`).toBe(row[1]);
+    expect(range[1]! - range[0]!, `a slider wide enough to drag, ${at}`).toBeGreaterThanOrEqual(48);
+    await openTab(page, 'Look');
+    expect(await cutOff(page, 'look'), `Look tab, ${at}`).toEqual([]);
+    for (const other of ['Exposure', 'Saturation']) {
+      const cells = await columns(other);
+      expect(
+        cells.slice(1).map((c) => c.slice(0, 2)),
+        `${other} columns, ${at}`,
+      ).toEqual(fov.slice(1).map((c) => c.slice(0, 2)));
+      expect(Math.abs(cells[0]![2]! - cells[1]![2]!), `${other} on one line, ${at}`).toBeLessThanOrEqual(1);
+    }
+  }
+  // The widest values still fit their column.
+  await page.getByRole('slider', { name: 'Exposure' }).fill('-6');
+  await page.getByRole('slider', { name: 'Saturation' }).fill('2');
+  const fits = await page
+    .locator('#tabpanel-look .slider-value')
+    .evaluateAll((values) => values.map((v) => `${v.textContent}: ${v.scrollWidth <= v.clientWidth}`));
+  expect(fits).toEqual(['-6.0 EV: true', '200 %: true']);
+});
+
+test('the preset chips and the Camera section mark the same preset, an orbit clears both', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openNested(page);
+  await openTab(page, 'Render');
+  const chips = page.locator('#camera-presets');
+  const section = page.locator('#render-panel, #camera-panel');
+  const sectionPreset = (label: string): Locator =>
+    page.locator('#camera-panel').getByRole('button', { name: `${label} camera` });
+  await expect(chips.getByRole('button', { name: 'Three-quarter view' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(sectionPreset('Three-quarter')).toHaveAttribute('aria-pressed', 'true');
+  await chips.getByRole('button', { name: 'Front view' }).click();
+  await expect(chips.getByRole('button', { name: 'Front view' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(sectionPreset('Front')).toHaveAttribute('aria-pressed', 'true');
+  await expect(sectionPreset('Three-quarter')).toHaveAttribute('aria-pressed', 'false');
+  await sectionPreset('Isometric').click();
+  await expect(chips.getByRole('button', { name: 'Isometric view' })).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('#preview').focus();
+  await page.keyboard.press('o');
+  await expect(chips.getByRole('button', { name: 'Isometric view' })).toHaveAttribute('aria-pressed', 'false');
+  await expect(sectionPreset('Isometric')).toHaveAttribute('aria-pressed', 'false');
+  await chips.getByRole('button', { name: 'Side view' }).click();
+  const box = (await page.locator('#viewport').boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 10, { steps: 6 });
+  await page.mouse.up();
+  for (const label of ['Front', 'Side', 'Three-quarter', 'Isometric']) {
+    await expect(chips.getByRole('button', { name: `${label} view` })).toHaveAttribute('aria-pressed', 'false');
+    await expect(sectionPreset(label)).toHaveAttribute('aria-pressed', 'false');
+  }
+  await expect(section.first()).toBeVisible();
 });

@@ -60,6 +60,24 @@ test('axe finds no violation in any inspector tab of an animated model with a no
   expect(await violations(page), 'playing').toEqual([]);
 });
 
+test('axe finds no violation in any inspector tab at 1024 px and with the rail at its narrowest and widest', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'animated.bbmodel')], 'animated.bbmodel');
+  await waitForEditor(page);
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  for (const key of ['Home', 'End']) {
+    await page.getByRole('separator', { name: 'Resize the inspector' }).focus();
+    await page.keyboard.press(key);
+    for (const tab of ['Object', 'Material', 'Light'] as const) {
+      await openTab(page, tab);
+      expect(await violations(page), `${tab} with the inspector at ${key}`).toEqual([]);
+    }
+  }
+});
+
 test('axe finds no violation with the File, Add and Overlays menus open', async ({ page }) => {
   await openApp(page);
   await openFiles(page, [fixture('bbmodel', 'nested-groups.bbmodel')], 'nested-groups.bbmodel');
@@ -265,7 +283,7 @@ test('axe finds no violation with a toast, the File menu, the forget dialog and 
   expect(await violations(page), 'forget dialog').toEqual([]);
   await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 375, height: 812 });
-  await page.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeVisible();
   expect(await violations(page, true), 'More at 375 px').toEqual([]);
 });

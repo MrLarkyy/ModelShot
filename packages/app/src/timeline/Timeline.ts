@@ -11,6 +11,8 @@ export interface TimelineHost {
   readonly interacted: () => void;
   /** Playback started or stopped. */
   readonly playingChanged?: (playing: boolean) => void;
+  /** Another clip was chosen. */
+  readonly clipChanged?: () => void;
 }
 
 const SCRUB_STEP = 0.01;
@@ -48,6 +50,7 @@ export class Timeline {
       this.host.interacted();
       this.playback.selectClip(Number(this.clip.value));
       this.drawMarkers();
+      this.host.clipChanged?.();
     });
     this.play = el('button', { text: 'Play', attributes: { type: 'button' } });
     this.play.addEventListener('click', () => {

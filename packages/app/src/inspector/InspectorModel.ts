@@ -1,5 +1,5 @@
 import type { LookPreset } from '@modelshot/looks';
-import type { SceneDocument, SceneTextureFilter } from '@modelshot/scene';
+import type { SceneAnimation, SceneDocument, SceneTextureFilter } from '@modelshot/scene';
 import type { SelectionTarget } from '../editor/Selection';
 import type { PlayerArmsChoice } from '../intake/LoadMessages';
 import type { NodeEdit } from '../session/NodeEdit';
@@ -16,5 +16,7 @@ export interface InspectorModel {
   readonly lockedMeshes: readonly boolean[];
   readonly textureFilter: readonly SceneTextureFilter[];
   readonly player: { readonly arms: PlayerArmsChoice } | null;
+  /** The clip the timeline shows, or null without clips. */
+  readonly clip: SceneAnimation | null;
   readonly look: LookPreset;
 }

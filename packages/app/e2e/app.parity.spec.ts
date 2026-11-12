@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { compareImages } from '../../../tools/harness/src/compareImages';
 import { PT_PAIR_TOLERANCE } from '../../../tools/harness/src/ptPairTolerance';
@@ -21,12 +22,17 @@ function toPng(image: Rgba): Buffer {
   return PNG.sync.write(png);
 }
 
-test('the preview and the render of the same view agree within the path tracer pair tolerance, and a render repeats exactly', async ({
-  page,
-}) => {
+// Opens a model, runs `edit`, then compares one still of the preview with one render of the same view.
+async function expectParity(
+  page: Page,
+  model: string,
+  edit: () => Promise<void> = () => Promise.resolve(),
+): Promise<void> {
   await page.setViewportSize({ width: 1100, height: 600 });
   await openApp(page);
-  await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
+  await openFiles(page, [fixture('bbmodel', model)], model);
+  await waitForEditor(page);
+  await edit();
   await openTab(page, 'Look');
   await page.getByRole('radio', { name: 'Marketplace' }).check();
   await expectLit(page, 120_000);
@@ -58,6 +64,40 @@ test('the preview and the render of the same view agree within the path tracer p
 
   const second = await render();
   expect(second.data.equals(first.data), 'the same scene, camera and seed give the same bytes').toBe(true);
+}
+
+test('the preview and the render of the same view agree within the path tracer pair tolerance, and a render repeats exactly', async ({
+  page,
+}) => {
+  await expectParity(page, 'single-cube.bbmodel');
+});
+
+test('a position typed and stepped and a texture filter chosen through the inspector reach the preview and the render alike', async ({
+  page,
+}) => {
+  await expectParity(page, 'nested-groups.bbmodel', async () => {
+    await page.locator('#scene-panel [data-row^="node:"]').first().click();
+    await openTab(page, 'Object');
+    const x = page.locator('#tabpanel-object').getByLabel('Position X');
+    await x.fill('0.2');
+    await x.press('Enter');
+    await page.locator('#tabpanel-object').getByLabel('Position X').press('ArrowUp');
+    await expect(page.locator('#tabpanel-object').getByLabel('Position X')).toHaveValue('0.3');
+    await page.locator('#scene-panel [data-row^="mesh:"]').first().click();
+    await openTab(page, 'Material');
+    await page.locator('#tabpanel-material').getByRole('radio', { name: 'Linear' }).first().check({ force: true });
+    await expect(page.locator('#tabpanel-material').getByRole('radio', { name: 'Linear' }).first()).toBeChecked();
+  });
+});
+
+test('exposure and saturation set on the Look tab reach the preview and the render alike', async ({ page }) => {
+  await expectParity(page, 'single-cube.bbmodel', async () => {
+    await openTab(page, 'Look');
+    await page.getByRole('radio', { name: 'Marketplace' }).click();
+    await page.getByRole('slider', { name: 'Exposure' }).fill('1');
+    await page.getByRole('slider', { name: 'Saturation' }).fill('0.6');
+    await expect(page.getByRole('button', { name: 'Reset adjustments' })).toBeEnabled();
+  });
 });
 
 test('the render canvas is drawn pixelated and as large as the view', async ({ page }) => {

@@ -106,7 +106,7 @@ const HOVERED = [
   '#specimen input[type=radio]:enabled:not(.segment input)',
   '#specimen input[type=range]:enabled',
   '#specimen .slider input[type=number]:enabled',
-  '#specimen .axis-field',
+  '#specimen .xyz-cell:has(input:enabled)',
   '#specimen .segment:has(input:enabled)',
 ].join(', ');
 
@@ -242,7 +242,7 @@ test('a locked row shows the on state and a hovered active chip differs from a h
   await openApp(page);
   await openFiles(page, [fixture('bbmodel', 'nested-groups.bbmodel')], 'nested-groups.bbmodel');
   await waitForEditor(page);
-  const lock = page.locator('.outliner-row .lock').first();
+  const lock = page.locator('.outliner-row .row-lock').first();
   await lock.click();
   await expect(lock).toHaveAttribute('aria-pressed', 'true');
   await page.mouse.move(0, 0);
@@ -308,7 +308,7 @@ test('forced colours mark the selected tab, an open panel toggle and the current
   await openTab(page, 'Object');
   const tab = await page
     .getByRole('tab', { name: 'Object', exact: true })
-    .evaluate((n) => [getComputedStyle(n).borderBottomStyle, getComputedStyle(n).borderBottomWidth]);
+    .evaluate((n) => [getComputedStyle(n).borderLeftStyle, getComputedStyle(n).borderLeftWidth]);
   expect(tab).toEqual(['solid', '3px']);
   const outline = (selector: string): Promise<string[]> =>
     page

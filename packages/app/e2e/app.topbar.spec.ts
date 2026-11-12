@@ -83,7 +83,7 @@ for (const width of [768, 375]) {
     await page.evaluate((name) => {
       document.getElementById('model-name')!.textContent = name;
     }, long);
-    const more = page.getByRole('button', { name: 'More' });
+    const more = page.getByRole('button', { name: 'More', exact: true });
     await expect(more).toBeVisible();
     await expect(page.locator('#bar-overflow')).toBeHidden();
     const row = await measure(page);
@@ -252,7 +252,7 @@ test('at 375 px More is reached with Tab, opens onto its first control and Escap
   await page.setViewportSize({ width: 375, height: 812 });
   await openApp(page);
   await openFiles(page, [CUBE], 'single-cube.bbmodel');
-  const more = page.getByRole('button', { name: 'More' });
+  const more = page.getByRole('button', { name: 'More', exact: true });
   await page.getByRole('button', { name: 'File', exact: true }).focus();
   await page.keyboard.press('Tab');
   await expect(more).toBeFocused();

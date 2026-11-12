@@ -21,6 +21,7 @@ import { LOAD_TIMEOUT_MS, loadModel } from './intake/loadModel';
 import { Inspector } from './inspector/Inspector';
 import type { InspectorModel } from './inspector/InspectorModel';
 import { LayoutStore } from './layout/LayoutStore';
+import { SectionState } from './ui/sectionState';
 import { DEFAULT_LAYOUT, type PanelId } from './layout/layoutState';
 import { PanelLayout } from './layout/PanelLayout';
 import { CameraPanel } from './panels/CameraPanel';
@@ -29,6 +30,8 @@ import { RenderPanel } from './panels/RenderPanel';
 import { ScenePanel } from './panels/ScenePanel';
 import { RenderSession } from './render/RenderSession';
 import { DEFAULT_RENDER_SETTINGS, type RenderSettingsValues } from './render/RenderSettings';
+import { adjustLook, isNeutral, NO_LOOK_ADJUST, sameAdjust, type LookAdjust } from './session/adjustLook';
+import { lightHex } from './inspector/lightValues';
 import { applyLook } from './session/applyLook';
 import { changedRest } from './session/changedRest';
 import { editPose } from './session/editPose';
@@ -47,6 +50,7 @@ import { bindDisclosure } from './ui/bindDisclosure';
 import { byId } from './ui/dom';
 import { Notices } from './ui/Notices';
 import { bindTopBar } from './ui/TopBar';
+import type { RenderTiming } from './render/estimateRenderMs';
 import { progressText, resultText } from './render/renderInfo';
 import { Viewer } from './viewer/Viewer';
 import { ViewportChips } from './viewport/ViewportChips';
@@ -68,6 +72,7 @@ interface SetupState {
 interface HistoryEntry {
   readonly setup: SetupState;
   readonly look: string;
+  readonly adjust: LookAdjust;
 }
 
 interface OpenModel {
@@ -95,6 +100,7 @@ export class App {
   private readonly renderPanel: RenderPanel;
   private readonly inspector: Inspector;
   private readonly layoutStore: LayoutStore;
+  private readonly sectionState: SectionState;
   private readonly panelLayout: PanelLayout;
   private readonly selection = new Selection();
   private readonly history = new UndoStack<HistoryEntry>();
@@ -116,6 +122,8 @@ export class App {
   private readonly forgetDialog = byId('forget-dialog', HTMLDialogElement);
   private renderStartedAt = 0;
   private renderClock: ReturnType<typeof setInterval> | null = null;
+  private lastRender: RenderTiming | null = null;
+  private renderSupersample = 1;
   private renderDoneSamples = 0;
   /** The sample count of the run on show: the settings may change while it runs. */
   private renderTarget = 0;
@@ -146,6 +154,9 @@ export class App {
   private shareFile: File | null = null;
   private setupQueue: Promise<unknown> = Promise.resolve();
   private look: LookPreset = DEFAULT_LOOK;
+  private collapsedNodes: readonly number[] = [];
+  private viewportChips: ViewportChips | null = null;
+  private lookAdjust: LookAdjust = NO_LOOK_ADJUST;
   private arms: PlayerArmsChoice = 'classic';
   private renderValues: RenderSettingsValues = { ...DEFAULT_RENDER_SETTINGS };
   private exportValues: ExportSettings | null = null;
@@ -170,11 +181,15 @@ export class App {
       alertText: byId('alert', HTMLElement),
     });
     this.layoutStore = new LayoutStore(browserStorage(), (message) => this.notices.storage(message));
+    this.sectionState = new SectionState(browserStorage(), (message) => this.notices.storage(message));
     this.persistence = new StatePersistence(
       store,
       (message) => this.notices.storage(message),
       undefined,
-      () => this.layoutStore.reset(),
+      () => {
+        this.layoutStore.reset();
+        this.sectionState.reset();
+      },
     );
     this.hintStore = new HintStore(browserStorage(), (message) => this.notices.storage(message));
     this.firstRunHint = new FirstRunHint(byId('first-run-hint', HTMLElement), this.hintStore, () =>
@@ -190,6 +205,7 @@ export class App {
         onResize: (size) => {
           const previous = this.cssSize;
           this.cssSize = size;
+          queueMicrotask(() => this.syncRenderContext());
           this.tools?.resize(size);
           const same =
             previous?.cssWidth === size.cssWidth &&
@@ -230,6 +246,11 @@ export class App {
         rename: (kind, index, name) => this.rename(kind, index, name),
         selectLight: (light) => this.showLight(light),
         openFiles: () => this.openPicker(),
+        // Not an undo step and not part of the setup: opening or closing a group changes only what the outliner shows.
+        collapseChanged: (collapsed) => {
+          this.collapsedNodes = collapsed;
+          this.scheduleSave();
+        },
       },
       byId('add-menu', HTMLElement),
     );
@@ -242,30 +263,57 @@ export class App {
         setLocked: (kind, index, locked) => this.setLocked(kind, index, locked),
         setTransform: (node, translation, rotation) => this.setTransform(node, translation, rotation),
         setArms: (arms) => void this.changeArms(arms),
+        seek: (time) => {
+          this.tools?.timeline.seek(time);
+          this.invalidateRender();
+        },
+        sections: this.sectionState,
         setTextureFilter: (index, filter) => this.setTextureFilter(index, filter),
+        selectRow: (kind, index) => this.selection.set({ kind, index }),
+        showTab: (tab) => this.inspector.show(tab),
         tabChanged: (tab) => this.layoutStore.update({ tab }),
       },
       this.layoutStore.state.tab,
     );
-    this.lookPanel = new LookPanel(this.inspector.look, this.look.id, (id) => this.selectLook(id));
-    this.cameraPanel = new CameraPanel(this.inspector.camera, {
-      orbit: this.viewer?.orbit ?? new OrbitController(),
-      changed: () => this.viewer?.changed(),
-      frameModel: () => this.viewer?.frameModel(),
-      resetView: () => this.viewer?.resetView(),
-    });
-    this.renderPanel = new RenderPanel(this.inspector.render, this.renderValues, (values) => {
-      this.renderValues = values;
-      this.syncRenderMeta();
-      this.scheduleSave();
-    });
-    new ViewportChips(
+    this.lookPanel = new LookPanel(
+      this.inspector.look,
+      this.look.id,
+      (id) => this.selectLook(id),
+      {
+        preview: (adjust) => this.applyAdjust(adjust),
+        commit: (adjust) => this.commitAdjust(adjust),
+      },
+      this.sectionState,
+    );
+    this.cameraPanel = new CameraPanel(
+      this.inspector.camera,
+      {
+        orbit: this.viewer?.orbit ?? new OrbitController(),
+        changed: () => this.viewer?.changed(),
+        frameModel: () => this.viewer?.frameModel(),
+        resetView: () => this.viewer?.resetView(),
+        presetMarked: (preset) => this.viewportChips?.mark(preset),
+      },
+      this.sectionState,
+    );
+    this.renderPanel = new RenderPanel(
+      this.inspector.render,
+      this.renderValues,
+      (values) => {
+        this.renderValues = values;
+        this.syncRenderMeta();
+        this.scheduleSave();
+      },
+      this.sectionState,
+    );
+    this.viewportChips = new ViewportChips(
       byId('camera-presets', HTMLElement),
       byId('overlay-menu-button', HTMLButtonElement),
       byId('overlay-menu', HTMLElement),
       this.layoutStore,
       (id) => this.cameraPanel.applyPreset(id),
     );
+    this.cameraPanel.sync();
     this.exportDialog = new ExportDialog(byId('export-dialog', HTMLDialogElement), {
       document: () => this.viewer?.document ?? null,
       restDocument: () => this.restDoc,
@@ -456,7 +504,9 @@ export class App {
     let lockedMeshes = Array.from({ length: meshes }, () => false);
     let names: ReadonlyMap<string, string> = new Map();
     let nodeEdits: readonly NodeEdit[] = [];
+    let collapsed: readonly number[] = [];
     if (saved) {
+      collapsed = (saved.collapsedNodes ?? []).filter((index) => index < nodes);
       nodeVisible = visibilityFromHidden(nodes, saved.hiddenNodes);
       meshVisible = visibilityFromHidden(meshes, saved.hiddenMeshes);
       lockedNodes = lockedFromIndices(nodes, saved.lockedNodes ?? []);
@@ -475,6 +525,7 @@ export class App {
       lockedMeshes = this.lockedMeshes;
       names = this.names;
       nodeEdits = this.nodeEdits;
+      collapsed = this.collapsedNodes;
     }
     let filters = textureFilters(doc);
     const savedFilters = saved?.textureFilters;
@@ -510,10 +561,16 @@ export class App {
       this.timelinePanel.toggleAttribute('data-empty', (rest.animations?.length ?? 0) === 0);
       if (viewer.syncSize() && reframe) viewer.orbit.reset();
       // Taken after the wait: a look picked while the files were opening stays, unless the model has its own.
-      this.look = applyLook(savedLook ?? this.look, [viewer, this.renderSession.existingTracer()]);
+      if (savedLook) this.lookAdjust = saved?.lookAdjust ?? NO_LOOK_ADJUST;
+      this.look = applyLook(adjustLook(savedLook ?? this.basePreset(), this.lookAdjust), [
+        viewer,
+        this.renderSession.existingTracer(),
+      ]);
       if (this.open?.loaded.key !== open.loaded.key) this.selection.set(null);
       this.open = open;
       this.arms = open.arms;
+      this.collapsedNodes = collapsed;
+      this.scenePanel.setCollapsed(collapsed);
       this.base = doc;
       this.filteredBase = filteredBase;
       this.restDoc = rest;
@@ -582,6 +639,7 @@ export class App {
             : null,
         commitEdit: (edit) => this.commitNodeEdit(edit),
         interacted: () => this.invalidateRender(),
+        clipChanged: () => this.inspector.update(this.inspectorModel()),
       });
       if (this.cssSize) this.tools.resize(this.cssSize);
       this.tools.modelChanged();
@@ -607,6 +665,7 @@ export class App {
       lockedMeshes: this.lockedMeshes,
       textureFilter: this.textureFilter,
       player: open.loaded.kind === 'skin' ? { arms: this.arms } : null,
+      clip: this.base.animations?.[this.tools?.timeline.clipIndex ?? 0] ?? null,
       look: this.look,
     };
   }
@@ -632,7 +691,8 @@ export class App {
       this.selection.current,
     );
     this.inspector.update(this.inspectorModel());
-    this.lookPanel.show(this.look.id);
+    this.lookPanel.show(this.look.id, this.lookAdjust);
+    this.syncLightSwatches();
     this.cameraPanel.sync();
     this.renderPanel.show(this.renderValues);
     this.syncRenderMeta();
@@ -789,7 +849,7 @@ export class App {
       // Decided once the document is set: a scrub while it was being set leaves a clip pose to light, not this document.
       const bakes = sceneBakes({ sceneChanged, lookChanged, reposes: this.tools?.reposes ?? false });
       if (bakes.document) viewer.relight();
-      if (record) this.history.record({ setup: current, look: this.look.id });
+      if (record) this.history.record({ setup: current, look: this.look.id, adjust: this.lookAdjust });
       this.filteredBase = filtered;
       this.restDoc = rest;
       this.nodeVisible = next.nodeVisible;
@@ -825,8 +885,12 @@ export class App {
   private stepHistory(direction: 'undo' | 'redo'): Promise<unknown> {
     const run = this.setupQueue.then(async () => {
       if (!this.base || this.loading) return;
-      const now: HistoryEntry = { setup: this.setupState(), look: this.look.id };
-      const show = (entry: HistoryEntry): Promise<boolean> => this.applySetup(() => entry.setup, false, entry.look);
+      const now: HistoryEntry = { setup: this.setupState(), look: this.look.id, adjust: this.lookAdjust };
+      const show = async (entry: HistoryEntry): Promise<boolean> => {
+        const shown = await this.applySetup(() => entry.setup, false, entry.look);
+        if (shown && !sameAdjust(this.lookAdjust, entry.adjust)) this.setLookAdjust(entry.adjust);
+        return shown;
+      };
       await (direction === 'undo' ? this.history.undo(now, show) : this.history.redo(now, show));
       this.syncHistoryButtons();
     });
@@ -859,14 +923,55 @@ export class App {
     const preset = Object.hasOwn(LOOK_PRESETS, id) ? LOOK_PRESETS[id] : undefined;
     if (!preset || !this.viewer) return;
     if (record && preset.id !== this.look.id && this.base) {
-      this.history.record({ setup: this.setupState(), look: this.look.id });
+      this.history.record({ setup: this.setupState(), look: this.look.id, adjust: this.lookAdjust });
       this.syncHistoryButtons();
     }
+    // A card is the look as designed: choosing one drops the adjustment (Undo brings both back).
+    this.lookAdjust = NO_LOOK_ADJUST;
     this.look = applyLook(preset, [this.viewer, this.renderSession.existingTracer()], { bake });
-    this.lookPanel.show(this.look.id);
+    this.lookPanel.show(this.look.id, this.lookAdjust);
+    this.syncLightSwatches();
     this.inspector.update(this.inspectorModel());
     this.tools?.refresh();
     this.scheduleSave();
+  }
+
+  private syncLightSwatches(): void {
+    const { key, rim } = this.look.lights;
+    this.scenePanel.setLights({ key: lightHex(key.color), rim: lightHex(rim.color) });
+  }
+
+  private basePreset(): LookPreset {
+    return Object.hasOwn(LOOK_PRESETS, this.look.id) ? (LOOK_PRESETS[this.look.id] ?? this.look) : this.look;
+  }
+
+  // Exposure, saturation and a flat backdrop apply at draw time: the same `lightingKey`, so no bake (tested), and the
+  // same checked look reaches the preview and the tracer through `applyLook`.
+  private applyAdjust(adjust: LookAdjust): void {
+    // Without a model nothing keeps the adjustment (commit snaps the panel back), so the look must not take it either.
+    if (!this.viewer || !this.base) return;
+    this.look = applyLook(adjustLook(this.basePreset(), adjust), [this.viewer, this.renderSession.existingTracer()], {
+      keepBake: true,
+    });
+    this.tools?.refresh();
+  }
+
+  private setLookAdjust(adjust: LookAdjust): void {
+    this.lookAdjust = adjust;
+    this.applyAdjust(adjust);
+    this.lookPanel.show(this.look.id, adjust);
+    this.scheduleSave();
+  }
+
+  // One finished change is one undo step, however many previews led to it.
+  private commitAdjust(adjust: LookAdjust): void {
+    if (!this.base || sameAdjust(adjust, this.lookAdjust)) {
+      this.lookPanel.show(this.look.id, this.lookAdjust);
+      return;
+    }
+    this.history.record({ setup: this.setupState(), look: this.look.id, adjust: this.lookAdjust });
+    this.syncHistoryButtons();
+    this.setLookAdjust(adjust);
   }
 
   private nextLook(): void {
@@ -887,6 +992,7 @@ export class App {
     return {
       camera: this.requireViewer().orbit.state(),
       look: this.look.id,
+      ...(isNeutral(this.lookAdjust) ? {} : { lookAdjust: this.lookAdjust }),
       hiddenNodes: hiddenIndices(this.nodeVisible),
       hiddenMeshes: hiddenIndices(this.meshVisible),
       textureFilters: [...this.textureFilter],
@@ -895,6 +1001,7 @@ export class App {
       ...(lockedNodes.length > 0 ? { lockedNodes } : {}),
       ...(lockedMeshes.length > 0 ? { lockedMeshes } : {}),
       ...(this.nodeEdits.length > 0 ? { nodeEdits: this.nodeEdits } : {}),
+      ...(this.collapsedNodes.length > 0 ? { collapsedNodes: this.collapsedNodes } : {}),
       render: this.renderValues,
       ...(this.exportValues ? { export: this.exportValues } : {}),
     };
@@ -928,6 +1035,15 @@ export class App {
   private syncRenderMeta(): void {
     const samples = this.renderValues.samples;
     this.renderMeta.textContent = `· ${samples} sample${samples === 1 ? '' : 's'}`;
+    this.syncRenderContext();
+  }
+
+  // The Output section: a render is as large as the preview's backing store (the parity test holds them equal).
+  private syncRenderContext(): void {
+    const canvas = byId('preview', HTMLCanvasElement);
+    this.renderPanel.setContext(
+      this.open && canvas.width > 0 ? { width: canvas.width, height: canvas.height, last: this.lastRender } : null,
+    );
   }
 
   private render(): void {
@@ -942,6 +1058,7 @@ export class App {
     if (this.renderIdle.contains(document.activeElement)) byId('cancel-button', HTMLButtonElement).focus();
     this.renderIdle.hidden = true;
     this.renderTarget = this.renderValues.samples;
+    this.renderSupersample = this.renderValues.supersample;
     this.progress.value = 0;
     this.renderStartedAt = performance.now();
     this.renderDoneSamples = 0;
@@ -985,6 +1102,12 @@ export class App {
     this.resultCanvas.dataset['renders'] = String(Number(this.resultCanvas.dataset['renders'] ?? 0) + 1);
     this.resultCanvas.hidden = false;
     const elapsed = performance.now() - this.renderStartedAt;
+    this.lastRender = {
+      samples: this.renderTarget,
+      pixels: this.resultCanvas.width * this.resultCanvas.height * this.renderSupersample ** 2,
+      ms: elapsed,
+    };
+    this.syncRenderContext();
     this.renderIdleBar();
     this.renderInfo.hidden = false;
     this.renderInfo.textContent = resultText(
@@ -1217,6 +1340,10 @@ export class App {
       rotate: () => this.tools?.setGizmoMode('rotate'),
       overlays: () => this.toggleOverlays(),
       rename: () => this.scenePanel.renameSelected(),
+      search: () => {
+        if (this.layoutStore.state.collapsed.outliner) this.panelLayout.toggle('outliner');
+        this.scenePanel.focusSearch();
+      },
       outliner: panel('outliner'),
       inspector: panel('inspector'),
       timeline: panel('timeline'),

@@ -132,22 +132,22 @@ test('a tampered stored session is ignored and the app starts empty', async ({ p
 test('a scene that fails to build keeps the model, the look and the saved session', async ({ page }) => {
   await openApp(page);
   await openTab(page, 'Look');
-  const looks = page.locator('#look-panel input[type="radio"]');
+  const looks = page.locator('#look-panel [role="radio"]');
   await openFiles(page, [CUBE], 'single-cube.bbmodel');
-  const initial = (await looks.evaluateAll((inputs) => inputs.map((i) => (i as HTMLInputElement).value)))[0] ?? '';
-  const other = await looks.evaluateAll(
-    (inputs) => (inputs.find((i) => !(i as HTMLInputElement).checked) as HTMLInputElement).value,
+  const initial = (await looks.evaluateAll((cards) => cards.map((c) => c.getAttribute('data-look'))))[0] ?? '';
+  const other = await looks.evaluateAll((cards) =>
+    cards.find((c) => c.getAttribute('aria-checked') !== 'true')!.getAttribute('data-look')!,
   );
-  await page.locator(`#look-panel input[value="${other}"]`).check();
+  await page.locator(`#look-panel [data-look="${other}"]`).click();
   await waitForStored(page, (record) => record['look'] === other);
   await openFiles(page, [fixture('bbmodel', 'flat-cube.bbmodel')], 'flat-cube.bbmodel');
-  await page.locator(`#look-panel input[value="${initial}"]`).check();
+  await page.locator(`#look-panel [data-look="${initial}"]`).click();
   await waitForStored(page, (record) => record['look'] === initial);
   const before = await waitForModel(page);
   await page.evaluate(() => window.__msApp!.failNextScene());
   await page.locator('#file-input').setInputFiles([CUBE]);
   await expectAlert(page, 'single-cube.bbmodel', SCENE_ALERT_MS);
-  await expect(page.locator(`#look-panel input[value="${initial}"]`)).toBeChecked();
+  await expect(page.locator(`#look-panel [data-look="${initial}"]`)).toHaveAttribute('aria-checked', 'true');
   await expect(page.getByRole('status')).not.toContainText('Opening');
   expect(pixelAt(await previewImage(page), 0.5, 0.5)).toEqual(pixelAt(before, 0.5, 0.5));
   await page.reload();
@@ -174,9 +174,9 @@ test('a scene checkbox clicked while files load goes back to what the shown mode
     window.__msApp!.hangNextLoad();
   });
   await page.locator('#file-input').setInputFiles([CUBE]);
-  const box = page.locator('#scene-panel input[type="checkbox"]').first();
-  await expect(box).toBeChecked();
+  const box = page.locator('#scene-panel .row-eye').first();
+  await expect(box).toHaveAttribute('aria-pressed', 'false');
   await box.click();
-  await expect(box).toBeChecked();
+  await expect(box).toHaveAttribute('aria-pressed', 'false');
   await expectAlert(page, /took longer/);
 });

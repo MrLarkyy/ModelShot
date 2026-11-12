@@ -24,6 +24,7 @@ export const BENCH_SECTION_ROWS: SectionRows = {
     'frameTimeMs.rt-load-first-frame-200k-world',
     'frameTimeMs.pt-load-200k',
     'mainThreadBlockMs.pt-setscene-200k',
+    'mainThreadBlockMs.outliner-rebuild-2000',
   ],
   pathTracer: [
     'timeToSamplesMs.progressive-256-n64',

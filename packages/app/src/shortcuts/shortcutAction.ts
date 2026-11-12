@@ -17,6 +17,7 @@ export type ShortcutAction =
   | 'rotate'
   | 'overlays'
   | 'rename'
+  | 'search'
   | 'outliner'
   | 'inspector'
   | 'timeline';
@@ -57,6 +58,7 @@ export const SHORTCUTS: readonly {
   { keys: 'H', action: 'toggleSelected', label: 'Show or hide the selected node', group: 'Selection' },
   { keys: 'W', action: 'move', label: 'Move gizmo', group: 'Selection' },
   { keys: 'E', action: 'rotate', label: 'Rotate gizmo', group: 'Selection' },
+  { keys: '/', action: 'search', label: 'Search the outliner', group: 'Selection' },
   { keys: 'F2', action: 'rename', label: 'Rename the selected node', group: 'Selection' },
   { keys: 'Space', action: 'playPause', label: 'Play or pause the animation', group: 'Timeline' },
 ];
@@ -76,6 +78,7 @@ const PLAIN: Readonly<Record<string, ShortcutAction>> = {
   e: 'rotate',
   g: 'overlays',
   F2: 'rename',
+  '/': 'search',
   '[': 'outliner',
   ']': 'inspector',
   t: 'timeline',

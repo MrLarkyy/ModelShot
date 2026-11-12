@@ -210,10 +210,11 @@ export class Viewer {
    * Draws with `look` and bakes the light under it; `bake: false` leaves the bake to the caller, who bakes or relights
    * next (a scene that changes with the look), and drops a bake under way.
    */
-  setLook(look: LookPreset, options: { readonly bake?: boolean } = {}): void {
+  setLook(look: LookPreset, options: { readonly bake?: boolean; readonly keepBake?: boolean } = {}): void {
     this.look = look;
     this.renderer.setLook(look);
     this.changed();
+    if (options.keepBake) return;
     if (options.bake ?? true) void this.bake();
     else this.bakeGeneration++;
   }

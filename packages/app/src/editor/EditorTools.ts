@@ -47,6 +47,8 @@ export interface EditorToolsHost {
   readonly commitEdit: (edit: NodeEdit) => Promise<boolean>;
   /** The user acted on the preview: a render in progress or a finished one no longer matches. */
   readonly interacted: () => void;
+  /** The timeline shows another clip. */
+  readonly clipChanged?: () => void;
 }
 
 // The pieces of the editor that draw over or act on the viewport: the overlay layer, picking, the move and rotate
@@ -87,6 +89,7 @@ export class EditorTools {
     this.timeline = new Timeline(host.timeline, {
       frame: (clip, time, loop) => this.playFrame(clip, time, loop, 'frame'),
       interacted: () => host.interacted(),
+      clipChanged: () => host.clipChanged?.(),
       playingChanged: (playing) => {
         if (!playing) this.light.settled();
       },
