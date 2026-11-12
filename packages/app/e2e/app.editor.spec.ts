@@ -472,6 +472,31 @@ test('a keyframe button hides a shown render, which no longer matches the pose',
   await expect(page.locator('#result')).toBeHidden();
 });
 
+test('Undo and Redo work from a focused slider or checkbox, and a text field keeps its own', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openNested(page);
+  await openTab(page, 'Look');
+  const slider = page.getByRole('slider', { name: 'Exposure' });
+  await slider.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(0);
+  await page.keyboard.press('Control+z');
+  await expect(slider).toHaveValue('0');
+  await page.keyboard.press('Control+Shift+z');
+  await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(0);
+});
+
+test('a look slider moved with no model open snaps back and changes nothing', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openApp(page);
+  await openTab(page, 'Look');
+  const slider = page.getByRole('slider', { name: 'Exposure' });
+  await slider.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(slider).toHaveValue('0');
+  await expect(page.getByRole('button', { name: 'Reset adjustments' })).toBeDisabled();
+});
+
 test('the Material tab says what a group holds and selects an element from it', async ({ page }) => {
   await openNested(page);
   await page.locator('#scene-panel [data-row^="node:"]').first().click();

@@ -7,9 +7,11 @@ class FakeElement {
   constructor(
     readonly tagName: string,
     private readonly role: string | null = null,
+    private readonly type: string | null = null,
   ) {}
 
   getAttribute(name: string): string | null {
+    if (name === 'type') return this.type;
     return name === 'role' ? this.role : null;
   }
 }
@@ -85,6 +87,29 @@ describe('bindShortcuts', () => {
     const event = press('r', {}, new FakeElement(tag));
     expect(calls).toEqual([]);
     expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it.each(['text', 'number', 'search', 'email', 'password'])('keeps native editing in an INPUT of type %s', (type) => {
+    const { calls, press } = setup();
+    press('z', { ctrlKey: true }, new FakeElement('INPUT', null, type));
+    expect(calls).toEqual([]);
+  });
+
+  it.each(['range', 'checkbox', 'radio', 'button'])('runs Undo and the letter keys on an INPUT of type %s', (type) => {
+    const { calls, press } = setup();
+    const input = new FakeElement('INPUT', null, type);
+    const event = press('z', { ctrlKey: true }, input);
+    press('r', {}, input);
+    expect(calls).toEqual(['undo', 'render']);
+    expect(event.preventDefault).toHaveBeenCalled();
+  });
+
+  it('leaves Space to a focused checkbox or radio', () => {
+    const { calls, press } = setup();
+    for (const type of ['checkbox', 'radio']) {
+      press(' ', {}, new FakeElement('INPUT', null, type));
+    }
+    expect(calls).toEqual([]);
   });
 
   it('ignores keys in an editable element', () => {

@@ -948,7 +948,8 @@ export class App {
   // Exposure, saturation and a flat backdrop apply at draw time: the same `lightingKey`, so no bake (tested), and the
   // same checked look reaches the preview and the tracer through `applyLook`.
   private applyAdjust(adjust: LookAdjust): void {
-    if (!this.viewer) return;
+    // Without a model nothing keeps the adjustment (commit snaps the panel back), so the look must not take it either.
+    if (!this.viewer || !this.base) return;
     this.look = applyLook(adjustLook(this.basePreset(), adjust), [this.viewer, this.renderSession.existingTracer()], {
       keepBake: true,
     });

@@ -3,8 +3,17 @@ import { shortcutAction, type ShortcutAction } from './shortcutAction';
 const TYPING = new Set(['INPUT', 'SELECT', 'TEXTAREA']);
 const ACTIVATES_ON_SPACE = new Set(['BUTTON', 'A', 'SUMMARY']);
 
-function inTypingTarget(target: EventTarget | null): boolean {
+// Inputs that take no text: the shortcuts (Undo among them) keep working on a focused slider, checkbox or radio.
+const NON_TEXT_INPUTS = new Set(['range', 'checkbox', 'radio', 'button', 'submit', 'reset', 'color', 'image']);
+
+function nonTextInput(target: HTMLElement): boolean {
+  return target.tagName === 'INPUT' && NON_TEXT_INPUTS.has((target.getAttribute('type') ?? 'text').toLowerCase());
+}
+
+/** Whether keys typed at `target` belong to a field that edits text (or a list), not to a shortcut. */
+export function inTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
+  if (nonTextInput(target)) return false;
   return TYPING.has(target.tagName) || target.isContentEditable;
 }
 
@@ -12,7 +21,9 @@ function inTypingTarget(target: EventTarget | null): boolean {
 function keepsSpace(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return (
-    ACTIVATES_ON_SPACE.has(target.tagName) || ['separator', 'tab', 'slider'].includes(target.getAttribute('role') ?? '')
+    ACTIVATES_ON_SPACE.has(target.tagName) ||
+    nonTextInput(target) ||
+    ['separator', 'tab', 'slider'].includes(target.getAttribute('role') ?? '')
   );
 }
 
