@@ -4,9 +4,9 @@ import { el, uniqueId } from '../ui/dom';
 import { icon } from '../ui/icon';
 import { iconButton } from '../ui/iconButton';
 import { describeTime, readoutText } from './describeTime';
-import { keyframeTimes } from './keyframeTimes';
+import { validTimes } from './keyframeTimes';
 import { laneRows, type LaneRows } from './laneRows';
-import { setTimelineLoading } from './loadingState';
+import { setTimelineLoading } from './setTimelineLoading';
 import { BROWSER_CLOCK, Playback, type PlaybackClock } from './Playback';
 import { scrubberCommand } from './scrubberKeys';
 import { clampZoom, MAX_ZOOM, MIN_ZOOM, TimeScale } from './TimeScale';
@@ -95,46 +95,26 @@ export class Timeline {
       [],
       clock,
     );
-    const scrubId = uniqueId('scrub');
-    this.clip = el('select', { attributes: { 'aria-label': 'Clip' } });
-    this.clip.addEventListener('change', () => {
-      this.host.interacted();
-      this.playback.selectClip(Number(this.clip.value));
-      this.drawLanes();
-      this.host.clipChanged?.();
-    });
-    this.skipStart = iconButton('skip-start', 'Back to start');
-    this.skipStart.addEventListener('click', () => this.jump(0));
-    this.play = iconButton('play', 'Play', { shortcut: 'playPause' });
+    this.clip = this.clipSelect();
+    this.skipStart = this.transportButton(iconButton('skip-start', 'Back to start'), () => this.jump(0));
+    this.play = this.transportButton(iconButton('play', 'Play', { shortcut: 'playPause' }), () =>
+      this.togglePlayback(),
+    );
     this.play.classList.add('tl-play');
     this.playIcon = icon('play');
     this.pauseIcon = icon('pause');
-    this.play.addEventListener('click', () => {
-      this.host.interacted();
-      if (this.playback.playing) this.playback.pause();
-      else this.playback.play();
-    });
-    this.prevKey = iconButton('key-prev', 'Previous keyframe', { shortcut: 'prevKeyframe' });
-    this.prevKey.addEventListener('click', () => this.stepKeyframe(-1));
-    this.nextKey = iconButton('key-next', 'Next keyframe', { shortcut: 'nextKeyframe' });
-    this.nextKey.addEventListener('click', () => this.stepKeyframe(1));
-    this.loop = iconButton('loop', 'Loop', { pressed: true });
-    this.loop.addEventListener('click', () => {
-      const loop = this.loop.getAttribute('aria-pressed') !== 'true';
-      this.loop.setAttribute('aria-pressed', String(loop));
-      this.playback.setLoop(loop);
-    });
-    this.zoomOut = iconButton('zoom-out', 'Zoom out');
-    this.zoomOut.addEventListener('click', () => this.setZoom(this.zoom / ZOOM_STEP));
-    this.zoomIn = iconButton('zoom-in', 'Zoom in');
-    this.zoomIn.addEventListener('click', () => this.setZoom(this.zoom * ZOOM_STEP));
-    this.scrub = el('input', {
-      id: scrubId,
-      className: 'tl-scrub',
-      attributes: { type: 'range', min: '0', max: '0', step: 'any', value: '0', 'aria-label': 'Playhead' },
-    });
-    this.scrub.addEventListener('input', () => this.moveTo(Number(this.scrub.value)));
-    this.scrub.addEventListener('keydown', (event) => this.onScrubKey(event));
+    this.prevKey = this.transportButton(iconButton('key-prev', 'Previous keyframe', { shortcut: 'prevKeyframe' }), () =>
+      this.stepKeyframe(-1),
+    );
+    this.nextKey = this.transportButton(iconButton('key-next', 'Next keyframe', { shortcut: 'nextKeyframe' }), () =>
+      this.stepKeyframe(1),
+    );
+    this.loop = this.transportButton(iconButton('loop', 'Loop', { pressed: true }), () => this.toggleLoop());
+    this.zoomOut = this.transportButton(iconButton('zoom-out', 'Zoom out'), () => this.setZoom(this.zoom / ZOOM_STEP));
+    this.zoomOut.classList.add('tl-zoom');
+    this.zoomIn = this.transportButton(iconButton('zoom-in', 'Zoom in'), () => this.setZoom(this.zoom * ZOOM_STEP));
+    this.zoomIn.classList.add('tl-zoom');
+    this.scrub = this.scrubber();
     this.readout = el('span', { className: 'time-readout', attributes: { 'aria-hidden': 'true' } });
     this.count = el('span', { className: 'hint keyframe-count' });
     this.empty = el('p', { className: 'hint', text: 'This model has no animations.' });
@@ -149,41 +129,82 @@ export class Timeline {
     this.names = el('div', { className: 'tl-names' }, [el('div', { className: 'tl-corner' })]);
     this.names.addEventListener('keydown', (event) => this.onNamesKey(event));
     this.body = el('div', { className: 'tl-body' }, [this.names, this.track]);
-    this.body.addEventListener(
-      'wheel',
-      (event) => {
-        if (!event.ctrlKey) return;
-        event.preventDefault();
-        this.setZoom(this.zoom * (event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP));
-      },
-      { passive: false },
-    );
-    const skeleton = el(
-      'div',
-      { className: 'tl-skeleton', attributes: { 'aria-hidden': 'true' } },
-      Array.from({ length: SKELETON_ROWS }, () => el('div', { className: 'tl-skeleton-row' })),
-    );
-    root.replaceChildren(
-      el('div', { className: 'tl-bar' }, [
-        this.skipStart,
-        this.play,
-        this.prevKey,
-        this.nextKey,
-        this.loop,
-        this.clip,
-        this.readout,
-        this.count,
-        el('span', { className: 'tl-spacer' }),
-        this.zoomOut,
-        this.zoomIn,
-      ]),
-      this.body,
-      skeleton,
-    );
+    this.body.addEventListener('wheel', (event) => this.onWheel(event), { passive: false });
+    root.replaceChildren(this.transportBar(), this.body, this.skeleton());
     this.resizeObserver =
       typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.scheduleResize());
     this.resizeObserver?.observe(this.body);
     this.sync();
+  }
+
+  private transportButton(button: HTMLButtonElement, onClick: () => void): HTMLButtonElement {
+    button.addEventListener('click', onClick);
+    return button;
+  }
+
+  private clipSelect(): HTMLSelectElement {
+    const select = el('select', { attributes: { 'aria-label': 'Clip' } });
+    select.addEventListener('change', () => {
+      this.host.interacted();
+      this.playback.selectClip(Number(select.value));
+      this.drawLanes();
+      this.host.clipChanged?.();
+    });
+    return select;
+  }
+
+  private scrubber(): HTMLInputElement {
+    const input = el('input', {
+      id: uniqueId('scrub'),
+      className: 'tl-scrub',
+      attributes: { type: 'range', min: '0', max: '0', step: 'any', value: '0', 'aria-label': 'Playhead' },
+    });
+    input.addEventListener('input', () => this.moveTo(Number(input.value)));
+    input.addEventListener('keydown', (event) => this.onScrubKey(event));
+    return input;
+  }
+
+  private transportBar(): HTMLElement {
+    return el('div', { className: 'tl-bar' }, [
+      this.skipStart,
+      this.play,
+      this.prevKey,
+      this.nextKey,
+      this.loop,
+      this.clip,
+      this.readout,
+      this.count,
+      el('span', { className: 'tl-spacer' }),
+      this.zoomOut,
+      this.zoomIn,
+    ]);
+  }
+
+  // Aria-hidden lanes standing in for the real ones while a model opens.
+  private skeleton(): HTMLElement {
+    return el(
+      'div',
+      { className: 'tl-skeleton', attributes: { 'aria-hidden': 'true' } },
+      Array.from({ length: SKELETON_ROWS }, () => el('div', { className: 'tl-skeleton-row' })),
+    );
+  }
+
+  private togglePlayback(): void {
+    this.host.interacted();
+    if (this.playback.playing) this.playback.pause();
+    else this.playback.play();
+  }
+
+  private toggleLoop(): void {
+    const loop = this.loop.getAttribute('aria-pressed') !== 'true';
+    this.loop.setAttribute('aria-pressed', String(loop));
+    this.playback.setLoop(loop);
+  }
+
+  private onWheel(event: WheelEvent): void {
+    if (!event.ctrlKey) return;
+    event.preventDefault();
+    this.setZoom(this.zoom * (event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP));
   }
 
   get playing(): boolean {
@@ -406,52 +427,28 @@ export class Timeline {
     this.track.style.width = `${this.scale.width}px`;
     this.zoomOut.disabled = !animation || this.zoom <= MIN_ZOOM;
     this.zoomIn.disabled = !animation || this.zoom >= MAX_ZOOM;
-    this.ruler.replaceChildren(
-      ...this.scale.ticks().map((tick) => {
-        const label = el('span', { className: 'tl-tick', text: tick.label });
-        label.style.left = `${tick.x}px`;
-        return label;
-      }),
-    );
+    this.ruler.replaceChildren(...this.rulerTicks());
+    this.keyTimes = animation
+      ? validTimes(
+          animation.channels.flatMap((c) => c.keyframes.map((k) => k.time)),
+          animation.length,
+        )
+      : [];
+    this.count.textContent = animation
+      ? `${this.keyTimes.length} keyframe${this.keyTimes.length === 1 ? '' : 's'}`
+      : '';
+    const drawn: LaneRows = animation
+      ? laneRows(animation, this.host.document(), this.host.names?.(), this.scale.secondsPerPx)
+      : { rows: [], more: 0 };
     this.parts.clear();
     this.highlighted = null;
     const names: HTMLElement[] = [el('div', { className: 'tl-corner' })];
     const lanes: HTMLElement[] = [];
-    let drawn: LaneRows = { rows: [], more: 0 };
-    if (animation) {
-      drawn = laneRows(animation, this.host.document(), this.host.names?.(), this.scale.secondsPerPx);
-      this.keyTimes = keyframeTimes(animation).times;
-      const { count } = keyframeTimes(animation);
-      this.count.textContent = `${count} keyframe${count === 1 ? '' : 's'}`;
-    } else {
-      this.keyTimes = [];
-      this.count.textContent = '';
-    }
     for (const row of drawn.rows) {
-      const name = el('button', { className: 'tl-name', attributes: { type: 'button' } }, [
-        el('span', { text: row.name }),
-      ]);
-      name.title = row.name;
-      name.tabIndex = -1;
-      name.addEventListener('click', () => this.host.selectNode(row.node));
-      const lane = el('div', { className: 'tl-lane' });
-      lane.addEventListener('click', (event) => {
-        this.host.selectNode(row.node);
-        const time = event.target instanceof HTMLElement ? event.target.dataset['time'] : undefined;
-        if (time !== undefined) this.moveTo(Number(time));
-      });
-      lane.append(
-        ...row.markers.map((marker) => {
-          const diamond = el('span', { className: 'kf', attributes: { 'aria-hidden': 'true' } });
-          diamond.style.left = `${this.scale.timeToX(marker.time)}px`;
-          diamond.title = marker.title;
-          diamond.dataset['time'] = String(marker.time);
-          return diamond;
-        }),
-      );
-      this.parts.set(row.node, { name, lane });
-      names.push(name);
-      lanes.push(lane);
+      const parts = this.laneElements(row);
+      this.parts.set(row.node, parts);
+      names.push(parts.name);
+      lanes.push(parts.lane);
     }
     if (drawn.more > 0) {
       names.push(el('div', { className: 'tl-name more', text: `+${drawn.more} more nodes` }));
@@ -461,7 +458,43 @@ export class Timeline {
     this.lanes.replaceChildren(...lanes);
     this.shownX = Number.NaN;
     this.selectionChanged();
+    // After the selection: a model opens with none, and the first lane name is the tab stop then.
+    this.rove();
     this.sync();
+  }
+
+  private rulerTicks(): HTMLElement[] {
+    return this.scale.ticks().map((tick) => {
+      const label = el('span', { className: 'tl-tick', text: tick.label });
+      label.style.left = `${tick.x}px`;
+      return label;
+    });
+  }
+
+  // The name button and the lane of one node; names are text, never markup.
+  private laneElements(row: LaneRows['rows'][number]): LaneParts {
+    const name = el('button', { className: 'tl-name', attributes: { type: 'button' } }, [
+      el('span', { text: row.name }),
+    ]);
+    name.title = row.name;
+    name.tabIndex = -1;
+    name.addEventListener('click', () => this.host.selectNode(row.node));
+    const lane = el('div', { className: 'tl-lane' });
+    lane.addEventListener('click', (event) => {
+      this.host.selectNode(row.node);
+      const time = event.target instanceof HTMLElement ? event.target.dataset['time'] : undefined;
+      if (time !== undefined) this.moveTo(Number(time));
+    });
+    lane.append(
+      ...row.markers.map((marker) => {
+        const diamond = el('span', { className: 'kf', attributes: { 'aria-hidden': 'true' } });
+        diamond.style.left = `${this.scale.timeToX(marker.time)}px`;
+        diamond.title = marker.title;
+        diamond.dataset['time'] = String(marker.time);
+        return diamond;
+      }),
+    );
+    return { name, lane };
   }
 
   // One frame of playback: the playhead, the readout and the scrubber value; never the lanes.

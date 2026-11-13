@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { clampZoom, FRAME_RATE, MAX_ZOOM, THUMB_INSET_PX, TimeScale } from '../src/timeline/TimeScale';
+import { FRAME_RATE } from '../src/timeline/scrubberKeyList';
+import { clampZoom, MAX_ZOOM, THUMB_INSET_PX, TimeScale } from '../src/timeline/TimeScale';
 
 describe('TimeScale', () => {
   it('maps the clip onto the track between the thumb insets and back', () => {

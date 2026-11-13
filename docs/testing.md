@@ -1772,6 +1772,12 @@ round 7); its max was 750 ms then.
   `app-entry` grows with `app`. Measured with the three tasks 232 432 B (`app`) and 92 578 B (`app-entry`), gzip level 9,
   against the earlier maxima 223 100 and 89 800 B; each max is the measurement plus 2 %, rounded up to 100, small
   headroom because the panels are the code the editor ships and no new dependency was added.)
+- `bundleGzipBytes` `app` 247 200 and `app-entry` 98 800 (MS-107, MS-108, MS-109, 2026-11-13: the timeline with node lanes, ruler
+  and transport (the Timeline itself is a lazy chunk, counted in `app` only), the view bar, tool rail and info chips, the
+  shortcut table with its keycaps and tooltips on the top bar, nine more icons and the stylesheet of all of them; the
+  shortcut dialog is a lazy chunk. Measured with the three tasks 242 269 B (`app`) and 96 849 B (`app-entry`), gzip level
+  9, against 232 432 and 92 578 B before; each max is the measurement plus 2 %, rounded up to 100, the rule of MS-104. No
+  new dependency.)
 - `frameTimeMs.rt-pose-step-512` (MS-34): one playback frame of the editor on the bench scene (128 group nodes, a
   rotation channel per node): `animateScene`, the renderer's pose-only `setScene` (no decode, upload or bake) and the
   render at 512 x 512, each timed until the GPU finished; median of 11 frames after 4 (`renderPoseFrames`, installed by

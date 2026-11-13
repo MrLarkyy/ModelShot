@@ -235,4 +235,30 @@ describe('Timeline', () => {
     timeline.show([walk]);
     expect(button('Play').disabled).toBe(false);
   });
+
+  it('makes the first lane name the one tab stop when a model opens with no selection, and the arrows rove', () => {
+    const { root, timeline } = setup();
+    timeline.show([walk]);
+    const names = root.byClass('tl-name');
+    const column = root.byClass('tl-names')[0];
+    expect(names.map((name) => name.tabIndex)).toEqual([0, -1]);
+    column?.fire('keydown', { key: 'ArrowDown', target: names[0] });
+    expect(names.map((name) => name.tabIndex)).toEqual([-1, 0]);
+    column?.fire('keydown', { key: 'Home', target: names[1] });
+    expect(names.map((name) => name.tabIndex)).toEqual([0, -1]);
+  });
+
+  it('steps to the last keyframe of a clip with more times than the diamond cap', () => {
+    const { timeline } = setup();
+    const keyframes = Array.from({ length: 2500 }, (_, i) => key(i / 100));
+    timeline.show([
+      { name: 'long', loop: 'loop', length: 30, channels: [{ node: 0, property: 'rotation', keyframes }] },
+    ]);
+    timeline.seek(24.5);
+    timeline.stepKeyframe(1);
+    expect(timeline.time).toBeCloseTo(24.51, 9);
+    timeline.seek(30);
+    timeline.stepKeyframe(-1);
+    expect(timeline.time).toBeCloseTo(24.99, 9);
+  });
 });

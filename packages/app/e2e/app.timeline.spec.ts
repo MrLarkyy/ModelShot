@@ -522,3 +522,71 @@ test('forced colours keep the diamonds, the playhead and the selected lane visib
   expect(seen.outline).toBe('solid');
   expect(parseFloat(seen.outlineWidth)).toBeGreaterThan(0);
 });
+
+test('a collapsed timeline stays collapsed while a file loads, a failed open keeps the render and clears the busy state', async ({
+  page,
+}) => {
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'single-cube.bbmodel')], 'single-cube.bbmodel');
+  await waitForEditor(page);
+  await openTab(page, 'Render');
+  const samples = page.locator('#render-panel').getByLabel('Samples');
+  await samples.fill('4');
+  await samples.dispatchEvent('change');
+  await page.getByRole('button', { name: 'Render', exact: true }).click();
+  await expect(page.locator('#result')).toHaveAttribute('data-renders', '1', { timeout: 120_000 });
+  await expect(page.locator('#result')).toBeVisible();
+  const height = async (): Promise<number> => (await timeline(page).boundingBox())!.height;
+  const bar = await height();
+  const view = await page.locator('#viewport').boundingBox();
+  await page.evaluate(() => {
+    window.__msApp!.setWatchdogMs(4000);
+    window.__msApp!.hangNextLoad();
+  });
+  await page.locator('#file-input').setInputFiles([ANIMATED]);
+  await expect(timeline(page)).toHaveAttribute('aria-busy', 'true');
+  expect(await height(), 'the bar keeps its height during the load').toBe(bar);
+  expect(await page.locator('#viewport').boundingBox()).toEqual(view);
+  await expect(page.getByRole('alert')).toContainText('took longer', { timeout: 30_000 });
+  await expect(timeline(page)).not.toHaveAttribute('aria-busy');
+  await expect(timeline(page)).not.toHaveAttribute('data-loading');
+  expect(await height()).toBe(bar);
+  await expect(page.locator('#result')).toBeVisible();
+});
+
+test('the transport bar fits a 375 px timeline and every lane name can be reached by Tab', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 700 });
+  await openAnimated(page);
+  const fits = await timeline(page)
+    .locator('.tl-bar')
+    .evaluate((bar) => ({ scroll: bar.scrollWidth, client: bar.clientWidth }));
+  expect(fits.scroll).toBeLessThanOrEqual(fits.client);
+  await timeline(page).getByRole('button', { name: 'Loop' }).focus();
+  const reached: string[] = [];
+  for (let i = 0; i < 6; i++) {
+    await page.keyboard.press('Tab');
+    reached.push(await page.evaluate(() => document.activeElement?.getAttribute('title') ?? ''));
+  }
+  expect(reached).toContain('body');
+});
+
+test('forced colours keep the loading skeleton visible', async ({ page }) => {
+  await page.emulateMedia({ forcedColors: 'active' });
+  await openApp(page);
+  await openFiles(page, [ANIMATED], 'animated.bbmodel');
+  await waitForEditor(page);
+  await page.evaluate(() => {
+    const panel = document.getElementById('timeline')!;
+    panel.setAttribute('data-loading', '');
+    panel.setAttribute('aria-busy', 'true');
+  });
+  const row = timeline(page).locator('.tl-skeleton-row').first();
+  await expect(row).toBeVisible();
+  const border = await row.evaluate((node) => {
+    const style = getComputedStyle(node);
+    return { width: style.borderTopWidth, style: style.borderTopStyle, colour: style.borderTopColor };
+  });
+  expect(border.style).toBe('solid');
+  expect(parseFloat(border.width)).toBeGreaterThan(0);
+  expect(border.colour).not.toBe('rgba(0, 0, 0, 0)');
+});

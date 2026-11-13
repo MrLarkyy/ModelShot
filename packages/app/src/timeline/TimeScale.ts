@@ -1,5 +1,4 @@
-/** Frames per second of the keyframe-step grid: the scene format has no frame rate, 24 is Blockbench's default. */
-export const FRAME_RATE = 24;
+import { FRAME_RATE } from './scrubberKeyList';
 
 /** Half the width of the scrubber's thumb in px: its centre cannot leave the track by more than this. */
 export const THUMB_INSET_PX = 6;
