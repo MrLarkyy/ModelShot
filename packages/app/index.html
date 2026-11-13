@@ -21,12 +21,12 @@
         <button id="file-menu-button" type="button" aria-expanded="false" aria-controls="file-menu">File</button>
         <div id="file-menu" class="menu-list" hidden>
           <button id="open-button" type="button" aria-keyshortcuts="Control+O Meta+O">
-            Open…<kbd aria-hidden="true">Ctrl+O</kbd>
+            Open…<kbd aria-hidden="true" data-shortcut="open">Ctrl+O</kbd>
           </button>
           <button id="menu-export-button" type="button" aria-keyshortcuts="Control+E Meta+E" disabled>
-            Export…<kbd aria-hidden="true">Ctrl+E</kbd>
+            Export…<kbd aria-hidden="true" data-shortcut="export">Ctrl+E</kbd>
           </button>
-          <button id="help-button" type="button">Shortcuts<kbd aria-hidden="true">?</kbd></button>
+          <button id="help-button" type="button">Shortcuts<kbd aria-hidden="true" data-shortcut="help">?</kbd></button>
           <hr class="menu-separator" />
           <button id="forget-button" class="destructive" type="button">Forget local data</button>
           <p class="menu-foot">
@@ -151,7 +151,7 @@
                 <p class="empty-local">Your file stays in this browser tab and is never uploaded.</p>
                 <p class="empty-drop">Drop files here to open them.</p>
                 <button id="empty-open" class="primary" type="button" aria-keyshortcuts="Control+O Meta+O">
-                  Open…<kbd aria-hidden="true">Ctrl+O</kbd>
+                  Open…<kbd aria-hidden="true" data-shortcut="open">Ctrl+O</kbd>
                 </button>
                 <ul class="entry-cards">
                   <li>
