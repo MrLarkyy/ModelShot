@@ -435,3 +435,90 @@ for (const width of [1440, 1024]) {
     expect((await timeline(page).locator('.tl-bar').boundingBox())!.width).toBeLessThanOrEqual(width);
   });
 }
+
+test('a model with more than 500 animated nodes shows 500 lanes and a "+N more nodes" row, names as text', async ({
+  page,
+}) => {
+  const source = JSON.parse(await readFile(ANIMATED, 'utf8')) as Record<string, unknown>;
+  const count = 510;
+  const ids = Array.from({ length: count }, (_, i) => `0b0d1e5a-0000-4000-8000-${String(i).padStart(12, '0')}`);
+  const outliner = ids.map((uuid, i) => ({
+    name: i === 0 ? '<img src=x onerror=alert(1)>' : `n${i}`,
+    origin: [0, 0, 0],
+    rotation: [0, 0, 0],
+    uuid,
+    export: true,
+    isOpen: true,
+    visibility: true,
+    autouv: 0,
+    children: i === 0 ? ['c-trunk', 'c-skull'] : [],
+  }));
+  const animators = Object.fromEntries(
+    ids.map((uuid, i) => [
+      uuid,
+      {
+        name: `n${i}`,
+        type: 'bone',
+        keyframes: [
+          {
+            channel: 'rotation',
+            data_points: [{ x: 1, y: 0, z: 0 }],
+            uuid: `k-${i}`,
+            time: 0.5,
+            color: -1,
+            interpolation: 'linear',
+          },
+        ],
+      },
+    ]),
+  );
+  const model = {
+    ...source,
+    outliner,
+    animations: [{ uuid: 'a-many', name: 'many', loop: 'loop', length: 1, animators }],
+  };
+  await openApp(page);
+  await chooseMadeFiles(page, [{ name: 'many.bbmodel', text: JSON.stringify(model) }]);
+  await waitForEditor(page);
+  await expect(timeline(page).locator('.tl-lane:not(.more)')).toHaveCount(500);
+  await expect(timeline(page).locator('.tl-name.more')).toHaveText('+10 more nodes');
+  await expect(timeline(page).locator('.tl-name').first()).toHaveText('<img src=x onerror=alert(1)>');
+  expect(await timeline(page).locator('img').count()).toBe(0);
+});
+
+test('forced colours keep the diamonds, the playhead and the selected lane visible', async ({ page }) => {
+  await page.emulateMedia({ forcedColors: 'active' });
+  await openAnimated(page);
+  await timeline(page).locator('.tl-name').first().click();
+  await playhead(page).fill('0.5');
+  const seen = await page.evaluate(() => {
+    const probe = (colour: string): string => {
+      const element = document.createElement('i');
+      element.style.color = colour;
+      document.body.append(element);
+      const value = getComputedStyle(element).color;
+      element.remove();
+      return value;
+    };
+    const kf = getComputedStyle(document.querySelector('#timeline .kf')!);
+    const line = getComputedStyle(document.querySelector('#timeline .tl-playhead')!);
+    const lane = getComputedStyle(document.querySelector('#timeline .tl-lane.sel')!);
+    return {
+      diamond: kf.backgroundColor,
+      diamondBorder: kf.borderTopColor,
+      line: line.borderLeftColor,
+      lineWidth: line.borderLeftWidth,
+      outline: lane.outlineStyle,
+      outlineWidth: lane.outlineWidth,
+      highlight: probe('Highlight'),
+      text: probe('CanvasText'),
+    };
+  });
+  expect(seen.diamond).not.toBe('rgba(0, 0, 0, 0)');
+  expect(seen.diamond).toBe(seen.highlight);
+  expect(seen.diamondBorder).toBe(seen.text);
+  expect(seen.line).toBe(seen.text);
+  expect(parseFloat(seen.lineWidth)).toBeGreaterThan(0);
+  expect(seen.outline).toBe('solid');
+  expect(parseFloat(seen.outlineWidth)).toBeGreaterThan(0);
+});
