@@ -4,6 +4,7 @@ import { CAMERA_PRESETS, type CameraPresetId } from '../panels/cameraPresets';
 import { bindDisclosure } from '../ui/bindDisclosure';
 import { el } from '../ui/dom';
 import { icon } from '../ui/icon';
+import { applyShortcutHint } from '../shortcuts/shortcutHint';
 import { iconButton } from '../ui/iconButton';
 
 const OVERLAY_LABELS: Readonly<Record<OverlayId, string>> = {
@@ -39,6 +40,7 @@ export class ViewportChips {
             'data-short': preset.short,
           },
         });
+        applyShortcutHint(button, preset.id, `${preset.label} view`);
         button.addEventListener('click', () => apply(preset.id));
         this.buttons.set(preset.id, button);
         return button;

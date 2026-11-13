@@ -82,7 +82,6 @@ export class EditorTools {
   private committing = false;
   /** The viewer refused the last pose (a document was being set): the playhead may stand where the preview does not. */
   private poseRefused = false;
-  private bakeStartedAt: number | null = null;
   private shownCameraInfo = '';
 
   constructor(private readonly host: EditorToolsHost) {
@@ -164,14 +163,12 @@ export class EditorTools {
 
   /** The viewer started a bake of the document it shows (`ViewerOptions.onBakeStarted`). */
   bakeStarted(): void {
-    this.bakeStartedAt = performance.now();
     this.light.bakeStarted();
   }
 
-  /** The bake settled: the stats chip tells how long it took. */
-  bakeSettled(): void {
-    if (this.bakeStartedAt !== null) this.stats.setBakeMs(performance.now() - this.bakeStartedAt);
-    this.bakeStartedAt = null;
+  /** The last light bake took `ms`: the stats chip tells it. */
+  setBakeMs(ms: number): void {
+    this.stats.setBakeMs(ms);
   }
 
   /**

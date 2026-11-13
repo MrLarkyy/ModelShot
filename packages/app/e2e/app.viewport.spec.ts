@@ -1,7 +1,10 @@
 import type { Page } from '@playwright/test';
-import { expect, fixture, openApp, openFiles, test, waitForEditor, waitForModel } from './appTest';
+import { expect, expectLit, fixture, openApp, openFiles, test, waitForEditor, waitForModel } from './appTest';
 
 const NESTED = fixture('bbmodel', 'nested-groups.bbmodel');
+
+// The one-time hint row is part of the view's layout: every spec here has it on show.
+test.use({ firstRunHint: true });
 
 async function openNested(page: Page): Promise<void> {
   await openApp(page);
@@ -35,6 +38,7 @@ async function viewBoxes(page: Page): Promise<Box[]> {
       ...rect('rail', '#tool-rail'),
       ...rect('view bar', '#viewport-chips'),
       ...rect('info chips', '.view-info'),
+      ...rect('hint row', '#first-run-hint'),
       ...rect('render bar', '.render-bar'),
       ...(axis ? [{ name: 'axis gizmo', ...axis }] : []),
     ];
@@ -43,6 +47,13 @@ async function viewBoxes(page: Page): Promise<Box[]> {
 
 const apart = (a: Box, b: Box): boolean =>
   a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y;
+
+// Two animation frames: what was set before is drawn after (a frame count, not a time).
+const drawn = (page: Page): Promise<void> =>
+  page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+
+const touching = (boxes: Box[]): string[] =>
+  boxes.flatMap((a, i) => boxes.slice(i + 1).flatMap((b) => (apart(a, b) ? [] : [`${a.name} and ${b.name}`])));
 
 test('the preset buttons, the number keys and the camera section agree, and Frame model keeps the angles', async ({
   page,
@@ -83,6 +94,8 @@ test('the Move and Rotate buttons and the W and E keys are one control', async (
 });
 
 test('the stats chip shows fps, triangles and the bake time, and its on state survives a reload', async ({ page }) => {
+  // Two bakes, each allowed 120 s on a loaded machine.
+  test.setTimeout(300_000);
   await openNested(page);
   await expect(page.locator('#stats')).toBeHidden();
   await page.getByRole('button', { name: 'Overlays' }).click();
@@ -92,14 +105,24 @@ test('the stats chip shows fps, triangles and the bake time, and its on state su
   await expect(stats).toBeVisible();
   await expect(stats).toContainText('fps');
   await expect(stats).toContainText('triangles');
-  await expect(stats).toContainText('bake');
+  // The first model's bake ran before the editor tools loaded: its time is a number, not "bake -".
+  await expectLit(page, 120_000);
+  await expect(stats).toHaveText(/bake \d+ ms/);
   await expect(page.locator('#view-camera')).toContainText('Perspective');
-  await expect.poll(async () => (await page.evaluate(() => localStorage.length)) + 1).toBeGreaterThan(0);
-  await page.waitForTimeout(800);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const saved = localStorage.getItem('modelshot.layout.v1');
+        return saved === null ? false : (JSON.parse(saved) as { overlays: { stats: boolean } }).overlays.stats;
+      }),
+    )
+    .toBe(true);
   await page.reload();
   await page.waitForFunction(() => window.__msApp !== undefined);
   await waitForEditor(page);
   await expect(page.locator('#stats')).toBeVisible();
+  await expectLit(page, 120_000);
+  await expect(page.locator('#stats')).toHaveText(/bake \d+ ms/);
 });
 
 for (const [width, height] of [
@@ -114,15 +137,18 @@ for (const [width, height] of [
     await page.getByRole('checkbox', { name: 'Statistics' }).check();
     await page.keyboard.press('Escape');
     await expect(page.locator('#stats')).toBeVisible();
-    await expect.poll(async () => (await viewBoxes(page)).some((box) => box.name === 'axis gizmo')).toBe(true);
-    await page.waitForTimeout(300);
+    // The axis gizmo is placed from measured boxes after the first frame: wait for that, not for a time.
+    await expect
+      .poll(async () => {
+        const found = await viewBoxes(page);
+        return found.some((box) => box.name === 'axis gizmo') ? touching(found) : ['no axis gizmo yet'];
+      })
+      .toEqual([]);
     const boxes = await viewBoxes(page);
     expect(boxes.map((box) => box.name)).toEqual(
-      expect.arrayContaining(['rail', 'view bar', 'info chips', 'render bar', 'axis gizmo']),
+      expect.arrayContaining(['rail', 'view bar', 'info chips', 'hint row', 'render bar', 'axis gizmo']),
     );
-    for (const [i, a] of boxes.entries()) {
-      for (const b of boxes.slice(i + 1)) expect(apart(a, b), `${a.name} and ${b.name}`).toBe(true);
-    }
+    expect(touching(boxes)).toEqual([]);
     for (const selector of ['#viewport-chips', '#tool-rail']) {
       const rows = await page.locator(`${selector} button`).evaluateAll((buttons) =>
         buttons.map((button) => {
@@ -148,6 +174,7 @@ test('the key light stays inside the view for every camera angle, and its name s
 }) => {
   await openNested(page);
   const view = (await page.locator('#viewport').boundingBox())!;
+  const anchor = (): Promise<string> => page.evaluate(() => JSON.stringify(window.__msApp!.keyLightAt()));
   for (const [yaw, pitch] of [
     [180, 0],
     [210, 20],
@@ -162,9 +189,10 @@ test('the key light stays inside the view for every camera angle, and its name s
       },
       [yaw, pitch],
     );
-    await page.waitForTimeout(150);
-    const at = await page.evaluate(() => window.__msApp!.keyLightAt());
-    if (!at) continue;
+    // The overlay draws with the next frame; two animation frames on, the helper stands where the camera put it.
+    await drawn(page);
+    const at = JSON.parse(await anchor()) as { x: number; y: number };
+    expect(at, `${yaw}/${pitch}`).not.toBeNull();
     expect(at.x, `${yaw}/${pitch}`).toBeGreaterThanOrEqual(16);
     expect(at.x).toBeLessThanOrEqual(view.width - 16);
     expect(at.y).toBeGreaterThanOrEqual(16);
@@ -174,7 +202,7 @@ test('the key light stays inside the view for every camera angle, and its name s
     const hook = window.__msApp!;
     hook.orbit.setState({ ...hook.state(), yawDeg: 210, pitchDeg: 20 });
   });
-  await page.waitForTimeout(150);
+  await drawn(page);
   const at = await page.evaluate(() => window.__msApp!.keyLightAt());
   expect(at).not.toBeNull();
   await page.mouse.move(view.x + at!.x, view.y + at!.y);

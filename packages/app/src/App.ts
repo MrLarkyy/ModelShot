@@ -42,14 +42,14 @@ import { textureFilters, withTextureFilters } from './session/withTextureFilters
 import { setNodeEdit, withNodeEdits } from './session/withNodeEdits';
 import { withVisibility } from './session/withVisibility';
 import { bindShortcuts } from './shortcuts/bindShortcuts';
-import { HelpDialog } from './shortcuts/HelpDialog';
+import type { HelpDialog } from './shortcuts/HelpDialog';
 import type { ModelState } from './state/AppState';
 import type { AppStateStore } from './state/appStateDb';
 import { StatePersistence } from './state/StatePersistence';
 import { bindDisclosure } from './ui/bindDisclosure';
 import { byId } from './ui/dom';
 import { Notices } from './ui/Notices';
-import { setTimelineLoading } from './timeline/loadingState';
+import { setTimelineLoading } from './timeline/setTimelineLoading';
 import { bindTopBar } from './ui/TopBar';
 import type { RenderTiming } from './render/estimateRenderMs';
 import { progressText, resultText } from './render/renderInfo';
@@ -96,7 +96,8 @@ export class App {
   private readonly persistence: StatePersistence;
   private readonly renderSession: RenderSession;
   private readonly exportDialog: ExportDialog;
-  private readonly helpDialog: HelpDialog;
+  /** The shortcut dialog loads when it is first asked for: the empty app does not carry its list. */
+  private helpDialog: Promise<HelpDialog> | null = null;
   private readonly scenePanel: ScenePanel;
   private readonly lookPanel: LookPanel;
   private readonly cameraPanel: CameraPanel;
@@ -161,6 +162,9 @@ export class App {
   private viewportChips: ViewportChips | null = null;
   private readonly toolRail: ToolRail;
   private overlayLayout: ResizeObserver | null = null;
+  /** The last bake's start and duration, kept here because the first bake runs before the editor tools load. */
+  private bakeStartedAt: number | null = null;
+  private lastBakeMs: number | null = null;
   private lookAdjust: LookAdjust = NO_LOOK_ADJUST;
   private arms: PlayerArmsChoice = 'classic';
   private renderValues: RenderSettingsValues = { ...DEFAULT_RENDER_SETTINGS };
@@ -222,11 +226,12 @@ export class App {
         onFrame: (camera) => this.tools?.frame(camera),
         onBakeStarted: () => {
           this.notices.lighting('busy');
+          this.bakeStartedAt = performance.now();
           this.tools?.bakeStarted();
         },
         onBakeSettled: (lit, detail) => {
           this.notices.lighting(lit ? 'lit' : 'warn', lit ? undefined : detail);
-          this.tools?.bakeSettled();
+          this.noteBakeTime();
         },
         preserveDrawingBuffer: import.meta.env.MODE === 'e2e',
       });
@@ -344,7 +349,6 @@ export class App {
       begin: () => this.beginExport(),
       end: () => this.endExport(),
     });
-    this.helpDialog = new HelpDialog(byId('help-dialog', HTMLDialogElement));
     this.selection.onChange((target) => {
       this.scenePanel.select(target);
       this.inspector.update(this.inspectorModel());
@@ -668,6 +672,7 @@ export class App {
         clipChanged: () => this.inspector.update(this.inspectorModel()),
       });
       if (this.cssSize) this.tools.resize(this.cssSize);
+      if (this.lastBakeMs !== null) this.tools.setBakeMs(this.lastBakeMs);
       this.toolRail.setMode(this.tools.gizmoMode);
       this.toolRail.setEnabled(true);
       this.watchOverlayLayout();
@@ -679,6 +684,20 @@ export class App {
     } finally {
       this.toolsLoading = false;
     }
+  }
+
+  private openHelp(): void {
+    this.helpDialog ??= import('./shortcuts/HelpDialog').then(
+      ({ HelpDialog: Dialog }) => new Dialog(byId('help-dialog', HTMLDialogElement)),
+    );
+    void this.helpDialog.then((dialog) => dialog.open());
+  }
+
+  private noteBakeTime(): void {
+    if (this.bakeStartedAt === null) return;
+    this.lastBakeMs = performance.now() - this.bakeStartedAt;
+    this.bakeStartedAt = null;
+    this.tools?.setBakeMs(this.lastBakeMs);
   }
 
   // The axis gizmo stands in the view's bottom-left corner, moved off the tool rail and the render bar; both are
@@ -1346,8 +1365,8 @@ export class App {
       }
     });
     byId('cancel-button', HTMLButtonElement).addEventListener('click', () => this.renderSession.cancel());
-    byId('help-button', HTMLButtonElement).addEventListener('click', () => this.helpDialog.open());
-    byId('help-open', HTMLButtonElement).addEventListener('click', () => this.helpDialog.open());
+    byId('help-button', HTMLButtonElement).addEventListener('click', () => this.openHelp());
+    byId('help-open', HTMLButtonElement).addEventListener('click', () => this.openHelp());
     byId('forget-button', HTMLButtonElement).addEventListener('click', () => this.askForget());
     byId('forget-cancel', HTMLButtonElement).addEventListener('click', () => this.forgetDialog.close());
     byId('forget-confirm', HTMLButtonElement).addEventListener('click', () => {
@@ -1393,7 +1412,7 @@ export class App {
       isometric: () => this.cameraPanel.applyPreset('isometric'),
       nextLook: () => this.nextLook(),
       toggleSelected: () => this.scenePanel.toggleSelected(),
-      help: () => this.helpDialog.open(),
+      help: () => this.openHelp(),
       undo: () => this.undo(),
       redo: () => this.redo(),
       playPause: () => this.tools?.togglePlay(),
