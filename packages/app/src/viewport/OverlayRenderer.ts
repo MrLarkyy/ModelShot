@@ -7,14 +7,28 @@ import {
   type SceneDocument,
   type Vec3,
 } from '@modelshot/scene';
+import { AXIS_BOX_PX, type AxisInsets } from './axisPlacement';
 import { gizmoHandles, type GizmoHandle } from './gizmoDrag';
 import { gizmoFrame, type GizmoFrame } from './gizmoFrame';
+import { lightGlyph, type LightGlyph } from './lightGlyph';
 import { BOX_EDGES, MAX_OUTLINE_BOXES, enclosingBox, placedBoxes, subtreeMeshes } from './meshBoxes';
 import type { OverlayScene } from './OverlayScene';
 import { Projector, type ScreenPoint } from './Projector';
 
 const TIMING_WINDOW = 60;
 const MAX_GRID_LINES = 40;
+/** Longest arrow of the axis gizmo and where its letters stand, from the box centre: both inside the 56 px box. */
+const AXIS_ARROW_PX = 19;
+const AXIS_LABEL_PX = 22;
+/** How near a pointer must be to the key light's helper to name it. */
+const HELPER_HIT_PX = 12;
+
+export interface HelperHit {
+  readonly id: 'key-light';
+  readonly label: string;
+  readonly x: number;
+  readonly y: number;
+}
 const AXIS_COLOURS = ['--ms-color-flash', '--ms-color-sun', '--ms-color-blue-mid'] as const;
 
 const EMPTY: OverlayScene = {
@@ -40,6 +54,9 @@ export class OverlayRenderer {
   private cachedBounds: { doc: SceneDocument; bounds: SceneBounds | null } | null = null;
   private readonly timings: number[] = [];
   private readonly colours = new Map<string, string>();
+  private insets: AxisInsets = { left: 12, bottom: 12 };
+  private lastAxisBounds: { x: number; y: number; width: number; height: number } | null = null;
+  private lastGlyph: LightGlyph | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const context = canvas.getContext('2d');
@@ -61,6 +78,43 @@ export class OverlayRenderer {
 
   get currentCamera(): SceneCamera | null {
     return this.camera;
+  }
+
+  /** The axis gizmo's box in CSS px of the view, or null while it is not drawn. */
+  get axisBounds(): { x: number; y: number; width: number; height: number } | null {
+    return this.lastAxisBounds;
+  }
+
+  /** Where the key light's helper is drawn (CSS px of the view), or null while it is not. */
+  get helperAnchor(): { x: number; y: number } | null {
+    return this.lastGlyph ? { x: this.lastGlyph.anchor.x, y: this.lastGlyph.anchor.y } : null;
+  }
+
+  /** Where the axis gizmo stands: its box's distance from the view's left and bottom edges. */
+  setInsets(insets: AxisInsets): void {
+    this.insets = insets;
+    this.redraw();
+  }
+
+  /** The light helper under a point of the view (CSS px), or null. */
+  helperAt(x: number, y: number): HelperHit | null {
+    const glyph = this.lastGlyph;
+    if (!glyph) return null;
+    const points = [glyph.marker, glyph.ring, glyph.head, glyph.anchor, ...(glyph.shaft ?? [])].filter(
+      (p): p is NonNullable<typeof p> => p !== null,
+    );
+    const near = points.some((p) => Math.hypot(p.x - x, p.y - y) <= HELPER_HIT_PX) || this.nearShaft(glyph, x, y);
+    return near ? { id: 'key-light', label: 'Key light', x: glyph.anchor.x, y: glyph.anchor.y } : null;
+  }
+
+  private nearShaft(glyph: LightGlyph, x: number, y: number): boolean {
+    if (!glyph.shaft) return false;
+    const [a, b] = glyph.shaft;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const length2 = dx * dx + dy * dy;
+    const t = length2 === 0 ? 0 : Math.min(1, Math.max(0, ((x - a.x) * dx + (y - a.y) * dy) / length2));
+    return Math.hypot(a.x + dx * t - x, a.y + dy * t - y) <= HELPER_HIT_PX;
   }
 
   /** Median of the last draws in milliseconds. */
@@ -119,6 +173,8 @@ export class OverlayRenderer {
     c.clearRect(0, 0, cssWidth, cssHeight);
     this.lastHandles = [];
     this.lastFrame = null;
+    this.lastGlyph = null;
+    this.lastAxisBounds = null;
     let projector: Projector;
     try {
       projector = new Projector(camera, cssWidth, cssHeight);
@@ -134,7 +190,7 @@ export class OverlayRenderer {
     if (doc && bounds && overlays.grid) this.grid(projector, bounds);
     if (doc && this.scene.selection) this.outline(projector, doc);
     if (doc && bounds && overlays.gizmos) {
-      if (this.scene.keyDirection) this.keyLight(projector, bounds, this.scene.keyDirection);
+      if (this.scene.keyDirection) this.keyLight(projector, bounds, this.scene.keyDirection, cssWidth, cssHeight);
       if (this.scene.gizmo) this.transformGizmo(projector, doc, this.scene.gizmo);
     }
     if (overlays.axis) this.axes(camera, cssHeight);
@@ -198,7 +254,7 @@ export class OverlayRenderer {
     c.lineWidth = this.hairline();
   }
 
-  private keyLight(projector: Projector, bounds: SceneBounds, direction: Vec3): void {
+  private keyLight(projector: Projector, bounds: SceneBounds, direction: Vec3, width: number, height: number): void {
     const { context: c } = this;
     const at = (distance: number): Vec3 => [
       bounds.center[0] + direction[0] * bounds.radius * distance,
@@ -208,16 +264,28 @@ export class OverlayRenderer {
     const a = projector.project(at(1.8));
     const b = projector.project(at(1.1));
     if (!a || !b) return;
-    c.beginPath();
-    this.line(a, b);
-    const angle = Math.atan2(b.y - a.y, b.x - a.x);
-    for (const turn of [2.6, -2.6]) {
-      c.moveTo(b.x, b.y);
-      c.lineTo(b.x + Math.cos(angle + turn) * 8, b.y + Math.sin(angle + turn) * 8);
-    }
-    c.moveTo(a.x + 5, a.y);
-    c.arc(a.x, a.y, 5, 0, Math.PI * 2);
+    const glyph = lightGlyph(a, b, width, height);
+    if (!glyph) return;
+    this.lastGlyph = glyph;
     c.strokeStyle = this.colour('--ms-color-sun');
+    c.beginPath();
+    if (glyph.shaft && glyph.head) {
+      const [from, to] = glyph.shaft;
+      this.line(from, to);
+      const angle = Math.atan2(to.y - from.y, to.x - from.x);
+      for (const turn of [2.6, -2.6]) {
+        c.moveTo(glyph.head.x, glyph.head.y);
+        c.lineTo(glyph.head.x + Math.cos(angle + turn) * 8, glyph.head.y + Math.sin(angle + turn) * 8);
+      }
+    }
+    if (glyph.ring) {
+      c.moveTo(glyph.ring.x + 5, glyph.ring.y);
+      c.arc(glyph.ring.x, glyph.ring.y, 5, 0, Math.PI * 2);
+    }
+    if (glyph.marker) {
+      c.moveTo(glyph.marker.x + 5, glyph.marker.y);
+      c.arc(glyph.marker.x, glyph.marker.y, 5, 0, Math.PI * 2);
+    }
     c.stroke();
   }
 
@@ -241,8 +309,16 @@ export class OverlayRenderer {
   private axes(camera: SceneCamera, height: number): void {
     const { context: c } = this;
     const { right, up } = cameraBasis(camera);
-    const cx = 44;
-    const cy = height - 44;
+    const half = AXIS_BOX_PX / 2;
+    const cx = this.insets.left + half;
+    const cy = height - this.insets.bottom - half;
+    this.lastAxisBounds = { x: this.insets.left, y: cy - half, width: AXIS_BOX_PX, height: AXIS_BOX_PX };
+    c.beginPath();
+    c.arc(cx, cy, half, 0, Math.PI * 2);
+    c.globalAlpha = 0.55;
+    c.fillStyle = this.colour('--ms-color-ground');
+    c.fill();
+    c.globalAlpha = 1;
     c.font = `600 11px ${this.colour('--ms-font-mono')}`;
     c.textAlign = 'center';
     c.textBaseline = 'middle';
@@ -253,16 +329,16 @@ export class OverlayRenderer {
     ];
     axes.forEach(([axis, label], index) => {
       const colour = this.colour(AXIS_COLOURS[index] ?? AXIS_COLOURS[0]);
-      const dx = (axis[0] * right[0] + axis[1] * right[1] + axis[2] * right[2]) * 26;
-      const dy = -(axis[0] * up[0] + axis[1] * up[1] + axis[2] * up[2]) * 26;
+      const ux = axis[0] * right[0] + axis[1] * right[1] + axis[2] * right[2];
+      const uy = -(axis[0] * up[0] + axis[1] * up[1] + axis[2] * up[2]);
       c.beginPath();
       c.moveTo(cx, cy);
-      c.lineTo(cx + dx, cy + dy);
+      c.lineTo(cx + ux * AXIS_ARROW_PX, cy + uy * AXIS_ARROW_PX);
       c.strokeStyle = colour;
       c.lineWidth = 2 * this.hairline();
       c.stroke();
       c.fillStyle = colour;
-      c.fillText(label, cx + dx * 1.3, cy + dy * 1.3);
+      c.fillText(label, cx + ux * AXIS_LABEL_PX, cy + uy * AXIS_LABEL_PX);
     });
     c.lineWidth = this.hairline();
   }

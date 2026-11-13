@@ -3,6 +3,8 @@ import { OVERLAY_IDS, type OverlayId } from '../layout/layoutState';
 import { CAMERA_PRESETS, type CameraPresetId } from '../panels/cameraPresets';
 import { bindDisclosure } from '../ui/bindDisclosure';
 import { el } from '../ui/dom';
+import { icon } from '../ui/icon';
+import { iconButton } from '../ui/iconButton';
 
 const OVERLAY_LABELS: Readonly<Record<OverlayId, string>> = {
   grid: 'Grid floor',
@@ -12,7 +14,7 @@ const OVERLAY_LABELS: Readonly<Record<OverlayId, string>> = {
   gizmos: 'Light and transform gizmos',
 };
 
-// The buttons over the viewport: camera presets, and the menu that switches each overlay on or off. The overlay choices
+// The view bar over the viewport: camera presets (a short label on a narrow view), Frame model, and the menu that switches each overlay on or off. The overlay choices
 // live in the layout store.
 export class ViewportChips {
   private readonly boxes = new Map<OverlayId, HTMLInputElement>();
@@ -24,18 +26,28 @@ export class ViewportChips {
     menu: HTMLElement,
     private readonly store: LayoutStore,
     apply: (id: CameraPresetId) => void,
+    frame: () => void,
   ) {
     presets.replaceChildren(
       ...CAMERA_PRESETS.map((preset) => {
-        const button = el('button', {
-          text: preset.label,
-          attributes: { type: 'button', 'aria-label': `${preset.label} view` },
-        });
+        const button = el(
+          'button',
+          { attributes: { type: 'button', 'aria-label': `${preset.label} view`, title: `${preset.label} view` } },
+          [
+            el('span', { className: 'bar-long', text: preset.label }),
+            el('span', { className: 'bar-short', text: preset.short, attributes: { 'aria-hidden': 'true' } }),
+          ],
+        );
         button.addEventListener('click', () => apply(preset.id));
         this.buttons.set(preset.id, button);
         return button;
       }),
     );
+    const frameButton = iconButton('frame', 'Frame model');
+    frameButton.addEventListener('click', frame);
+    presets.after(frameButton);
+    menuButton.setAttribute('aria-label', 'Overlays');
+    menuButton.replaceChildren(icon('eye'), el('span', { className: 'bar-label', text: 'Overlays' }));
     const rows = OVERLAY_IDS.map((id) => {
       const box = el('input', { attributes: { type: 'checkbox' } });
       box.addEventListener('change', () =>

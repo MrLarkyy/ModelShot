@@ -850,25 +850,87 @@ input.tl-scrub[type='range']:focus-visible::-moz-range-thumb {
   margin: 0;
 }
 
-.chips-top {
-  top: var(--ms-space-2);
-  right: var(--ms-space-2);
-  align-items: flex-start;
-  justify-content: flex-end;
-}
-
 .chips .chips {
   position: static;
+}
+
+/* The tool rail at the top left, the view bar and the info chips in one column at the top right: none shares a row or
+   a corner with another, and the column stops short of the rail. */
+.tool-rail {
+  top: var(--ms-space-2);
+  left: var(--ms-space-2);
+  flex-direction: column;
+  flex-wrap: nowrap;
+}
+
+.view-top {
+  position: absolute;
+  z-index: 2;
+  top: var(--ms-space-2);
+  right: var(--ms-space-2);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--ms-space-1);
+  max-width: calc(100% - 68px);
+  pointer-events: none;
+}
+
+.view-top .chips {
+  position: static;
+  pointer-events: auto;
+}
+
+.view-bar {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.view-info {
+  flex-direction: column;
+  align-items: flex-end;
+  pointer-events: none;
+}
+
+.chip-text {
+  margin: 0;
+  padding: var(--ms-space-1) var(--ms-space-2);
+  background: var(--ed-panel);
+  color: var(--ed-text-2);
+  border: 1px solid var(--ed-line-strong);
+  border-radius: var(--ed-radius-ui);
+  font: var(--ms-weight-medium) var(--ms-size-caption) var(--ms-font-mono);
+}
+
+.chip-text:empty {
+  display: none;
+}
+
+.bar-short {
+  display: none;
+}
+
+.helper-label {
+  position: absolute;
+  z-index: 3;
+  margin: 0;
+  padding: var(--ms-space-1) var(--ms-space-2);
+  background: var(--ed-raised);
+  color: var(--ed-text);
+  border: 1px solid var(--ed-line-strong);
+  border-radius: var(--ed-radius-ui);
+  font: var(--ms-weight-medium) var(--ms-size-caption) var(--ms-font-body);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.helper-label[hidden] {
+  display: none;
 }
 
 .menu-list-right {
   left: auto;
   right: 0;
-}
-
-.chips-bottom {
-  bottom: var(--ms-space-2);
-  right: var(--ms-space-2);
 }
 
 .chips button {
@@ -1010,6 +1072,16 @@ input.tl-scrub[type='range']:focus-visible::-moz-range-thumb {
 }
 
 @media (max-width: 599px) {
+  /* The view bar is one row: short preset labels and an icon for Overlays. */
+  .bar-long,
+  .bar-label {
+    display: none;
+  }
+
+  .bar-short {
+    display: inline;
+  }
+
   .timeline {
     --tl-names-w: 120px;
   }
@@ -1040,15 +1112,15 @@ input.tl-scrub[type='range']:focus-visible::-moz-range-thumb {
 }
 
 .viewport[data-empty] #preview,
-.viewport[data-empty] #viewport-chips,
-.viewport[data-empty] #stats {
+.viewport[data-empty] .view-top,
+.viewport[data-empty] .tool-rail {
   visibility: hidden;
 }
 
 .first-run-hint {
   position: absolute;
   z-index: 2;
-  top: 3.25rem;
+  top: 8.5rem;
   right: var(--ms-space-2);
   left: var(--ms-space-2);
   display: flex;
@@ -2072,6 +2144,18 @@ progress {
 }
 
 @media (max-width: 1023px) {
+  /* Touch targets: every control of the view bar and the tool rail is 44 px. */
+  .view-bar button,
+  .tool-rail button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .view-bar button.icon-button:has(> .icon:only-child),
+  .tool-rail button.icon-button:has(> .icon:only-child) {
+    width: 44px;
+  }
+
   .work {
     grid-template-columns: minmax(0, 1fr);
   }

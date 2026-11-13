@@ -54,6 +54,8 @@ import { bindTopBar } from './ui/TopBar';
 import type { RenderTiming } from './render/estimateRenderMs';
 import { progressText, resultText } from './render/renderInfo';
 import { Viewer } from './viewer/Viewer';
+import { placeAxisBox, type PlacedBox } from './viewport/axisPlacement';
+import { ToolRail } from './viewport/ToolRail';
 import { ViewportChips } from './viewport/ViewportChips';
 
 const MAX_WARNING_NOTES = 3;
@@ -157,6 +159,8 @@ export class App {
   private look: LookPreset = DEFAULT_LOOK;
   private collapsedNodes: readonly number[] = [];
   private viewportChips: ViewportChips | null = null;
+  private readonly toolRail: ToolRail;
+  private overlayLayout: ResizeObserver | null = null;
   private lookAdjust: LookAdjust = NO_LOOK_ADJUST;
   private arms: PlayerArmsChoice = 'classic';
   private renderValues: RenderSettingsValues = { ...DEFAULT_RENDER_SETTINGS };
@@ -220,7 +224,10 @@ export class App {
           this.notices.lighting('busy');
           this.tools?.bakeStarted();
         },
-        onBakeSettled: (lit, detail) => this.notices.lighting(lit ? 'lit' : 'warn', lit ? undefined : detail),
+        onBakeSettled: (lit, detail) => {
+          this.notices.lighting(lit ? 'lit' : 'warn', lit ? undefined : detail);
+          this.tools?.bakeSettled();
+        },
         preserveDrawingBuffer: import.meta.env.MODE === 'e2e',
       });
     } catch (error) {
@@ -313,7 +320,9 @@ export class App {
       byId('overlay-menu', HTMLElement),
       this.layoutStore,
       (id) => this.cameraPanel.applyPreset(id),
+      () => this.viewer?.frameModel(),
     );
+    this.toolRail = new ToolRail(byId('tool-rail', HTMLElement), (mode) => this.tools?.setGizmoMode(mode));
     this.cameraPanel.sync();
     this.exportDialog = new ExportDialog(byId('export-dialog', HTMLDialogElement), {
       document: () => this.viewer?.document ?? null,
@@ -641,6 +650,9 @@ export class App {
         overlay: byId('overlay', HTMLCanvasElement),
         timeline: byId('timeline', HTMLElement),
         stats: byId('stats', HTMLElement),
+        cameraInfo: byId('view-camera', HTMLElement),
+        helperLabel: byId('helper-label', HTMLElement),
+        gizmoModeChanged: (mode) => this.toolRail.setMode(mode),
         names: () => this.names,
         state: () =>
           this.restDoc
@@ -656,6 +668,9 @@ export class App {
         clipChanged: () => this.inspector.update(this.inspectorModel()),
       });
       if (this.cssSize) this.tools.resize(this.cssSize);
+      this.toolRail.setMode(this.tools.gizmoMode);
+      this.toolRail.setEnabled(true);
+      this.watchOverlayLayout();
       this.tools.modelChanged();
       document.body.dataset['editor'] = 'ready';
     } catch (error) {
@@ -664,6 +679,34 @@ export class App {
     } finally {
       this.toolsLoading = false;
     }
+  }
+
+  // The axis gizmo stands in the view's bottom-left corner, moved off the tool rail and the render bar; both are
+  // measured, so a bar that grows or wraps moves it.
+  private watchOverlayLayout(): void {
+    if (this.overlayLayout || typeof ResizeObserver === 'undefined') return;
+    const place = (): void => this.layoutOverlay();
+    this.overlayLayout = new ResizeObserver(place);
+    for (const target of [this.stageView, byId('tool-rail', HTMLElement), document.querySelector('.render-bar')]) {
+      if (target) this.overlayLayout.observe(target);
+    }
+    place();
+  }
+
+  private layoutOverlay(): void {
+    const view = this.stageView.getBoundingClientRect();
+    const obstacles: PlacedBox[] = [];
+    for (const element of [byId('tool-rail', HTMLElement), document.querySelector('.render-bar')]) {
+      if (!element || element.getClientRects().length === 0) continue;
+      const rect = element.getBoundingClientRect();
+      obstacles.push({
+        left: rect.left - view.left,
+        right: rect.right - view.left,
+        top: rect.top - view.top,
+        bottom: rect.bottom - view.top,
+      });
+    }
+    this.tools?.overlay.setInsets(placeAxisBox(view.width, view.height, obstacles));
   }
 
   private inspectorModel(): InspectorModel | null {

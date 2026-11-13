@@ -38,6 +38,12 @@ export interface EditorToolsHost {
   readonly overlay: HTMLCanvasElement;
   readonly timeline: HTMLElement;
   readonly stats: HTMLElement;
+  /** Where the projection and field of view are told, as text. */
+  readonly cameraInfo?: HTMLElement;
+  /** The label shown beside a light helper under the pointer. */
+  readonly helperLabel?: HTMLElement;
+  /** The gizmo mode changed (a key or a button chose it). */
+  readonly gizmoModeChanged?: (mode: GizmoMode) => void;
   /** The user's names of nodes and elements (lane labels). */
   readonly names?: () => ReadonlyMap<string, string>;
   /** The model on show, or null while there is none. */
@@ -76,6 +82,8 @@ export class EditorTools {
   private committing = false;
   /** The viewer refused the last pose (a document was being set): the playhead may stand where the preview does not. */
   private poseRefused = false;
+  private bakeStartedAt: number | null = null;
+  private shownCameraInfo = '';
 
   constructor(private readonly host: EditorToolsHost) {
     this.overlay = new OverlayRenderer(host.overlay);
@@ -105,7 +113,9 @@ export class EditorTools {
     viewport.addEventListener('pointermove', this.onMove);
     viewport.addEventListener('pointerup', this.onUp);
     viewport.addEventListener('pointercancel', this.onCancel);
+    viewport.addEventListener('pointerleave', this.onLeave);
     this.cleanups.push(
+      () => viewport.removeEventListener('pointerleave', this.onLeave),
       () => viewport.removeEventListener('pointerdown', this.onDown, true),
       () => viewport.removeEventListener('pointermove', this.onMove),
       () => viewport.removeEventListener('pointerup', this.onUp),
@@ -124,6 +134,7 @@ export class EditorTools {
 
   setGizmoMode(mode: GizmoMode): void {
     this.mode = mode;
+    this.host.gizmoModeChanged?.(mode);
     this.refresh();
   }
 
@@ -134,6 +145,7 @@ export class EditorTools {
   /** The renderer drew a frame with `camera`. */
   frame(camera: SceneCamera): void {
     this.overlay.draw(camera);
+    this.showCameraInfo(camera);
     this.stats.frame(performance.now(), this.host.viewer.document, this.overlay.medianDrawMs);
   }
 
@@ -152,7 +164,14 @@ export class EditorTools {
 
   /** The viewer started a bake of the document it shows (`ViewerOptions.onBakeStarted`). */
   bakeStarted(): void {
+    this.bakeStartedAt = performance.now();
     this.light.bakeStarted();
+  }
+
+  /** The bake settled: the stats chip tells how long it took. */
+  bakeSettled(): void {
+    if (this.bakeStartedAt !== null) this.stats.setBakeMs(performance.now() - this.bakeStartedAt);
+    this.bakeStartedAt = null;
   }
 
   /**
@@ -317,6 +336,7 @@ export class EditorTools {
 
   private readonly onMove = (event: PointerEvent): void => {
     const drag = this.drag;
+    if (!drag) this.hover(event);
     const state = this.host.state();
     const projector = this.overlay.projector;
     const frame = this.overlay.frame;
@@ -375,6 +395,10 @@ export class EditorTools {
     this.pick(point);
   };
 
+  private readonly onLeave = (): void => {
+    if (this.host.helperLabel) this.host.helperLabel.hidden = true;
+  };
+
   private readonly onCancel = (): void => {
     this.press = null;
     if (this.drag) {
@@ -390,6 +414,31 @@ export class EditorTools {
       time: this.timeline.time,
       loop: this.timeline.looping ? 'loop' : 'hold',
     }).document;
+  }
+
+  private showCameraInfo(camera: SceneCamera): void {
+    const info = this.host.cameraInfo;
+    if (!info) return;
+    const text =
+      camera.projection.kind === 'perspective'
+        ? `Perspective · ${Math.round(camera.projection.fovYDeg)}° FOV`
+        : 'Orthographic';
+    if (text === this.shownCameraInfo) return;
+    this.shownCameraInfo = text;
+    info.textContent = text;
+  }
+
+  // A light helper under the pointer is named in DOM text beside it, never drawn on the canvas.
+  private hover(event: PointerEvent): void {
+    const label = this.host.helperLabel;
+    if (!label) return;
+    const point = this.local(event);
+    const hit = this.overlay.helperAt(point.x, point.y);
+    label.hidden = hit === null;
+    if (!hit) return;
+    label.textContent = hit.label;
+    label.style.left = `${Math.round(hit.x + 12)}px`;
+    label.style.top = `${Math.round(hit.y + 12)}px`;
   }
 
   private pick(point: { x: number; y: number }): void {
