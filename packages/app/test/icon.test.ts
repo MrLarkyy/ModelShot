@@ -47,6 +47,15 @@ describe('icon', () => {
         'keyframe',
         'folder',
         'check',
+        'pause',
+        'skip-start',
+        'key-prev',
+        'key-next',
+        'move',
+        'rotate',
+        'help',
+        'zoom-in',
+        'zoom-out',
       ].sort(),
     );
   });
