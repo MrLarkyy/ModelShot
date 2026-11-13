@@ -690,7 +690,16 @@ export class App {
     this.helpDialog ??= import('./shortcuts/HelpDialog').then(
       ({ HelpDialog: Dialog }) => new Dialog(byId('help-dialog', HTMLDialogElement)),
     );
-    void this.helpDialog.then((dialog) => dialog.open());
+    this.helpDialog.then(
+      (dialog) => dialog.open(),
+      (error: unknown) => {
+        // Not kept: the next open tries again.
+        this.helpDialog = null;
+        this.notices.status(
+          `The shortcut list could not load: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      },
+    );
   }
 
   private noteBakeTime(): void {

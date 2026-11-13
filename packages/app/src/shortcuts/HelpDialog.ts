@@ -67,7 +67,7 @@ export class HelpDialog {
       attributes: {
         type: 'search',
         'aria-label': 'Search shortcuts',
-        placeholder: 'Search shortcuts',
+        placeholder: 'Search',
         autocomplete: 'off',
       },
     });
