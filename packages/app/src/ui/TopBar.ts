@@ -12,6 +12,7 @@ const ICON_BUTTONS: readonly (readonly [id: string, name: IconName])[] = [
   ['inspector-toggle', 'panel-right'],
   ['timeline-toggle', 'panel-bottom'],
   ['bar-more-button', 'more'],
+  ['help-open', 'help'],
   ['alert-close', 'close'],
   ['storage-close', 'close'],
 ];
@@ -27,6 +28,8 @@ const HINTED: readonly (readonly [id: string, action: ShortcutAction])[] = [
   ['export-button', 'export'],
   ['menu-export-button', 'export'],
   ['open-button', 'open'],
+  ['empty-open', 'open'],
+  ['help-open', 'help'],
 ];
 
 /** The shortcut keys of the menu items and the buttons, read from the shortcut list. */

@@ -813,6 +813,7 @@ input.tl-scrub[type='range']:focus-visible::-moz-range-thumb {
 
 .viewport {
   position: relative;
+  container-type: inline-size;
   min-height: 12rem;
   background: var(--ms-color-drop-ground);
   overflow: hidden;
@@ -881,9 +882,11 @@ input.tl-scrub[type='range']:focus-visible::-moz-range-thumb {
   pointer-events: auto;
 }
 
+/* One row when it fits, and a second one rather than a bar over the rail when the view is squeezed between wide panels. */
 .view-bar {
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
 }
 
 .view-info {
@@ -903,10 +906,6 @@ input.tl-scrub[type='range']:focus-visible::-moz-range-thumb {
 }
 
 .chip-text:empty {
-  display: none;
-}
-
-.bar-short {
   display: none;
 }
 
@@ -1072,16 +1071,6 @@ input.tl-scrub[type='range']:focus-visible::-moz-range-thumb {
 }
 
 @media (max-width: 599px) {
-  /* The view bar is one row: short preset labels and an icon for Overlays. */
-  .bar-long,
-  .bar-label {
-    display: none;
-  }
-
-  .bar-short {
-    display: inline;
-  }
-
   .timeline {
     --tl-names-w: 120px;
   }
@@ -1520,6 +1509,24 @@ kbd {
   font: var(--ms-weight-medium) var(--ms-size-overline) var(--ms-font-mono);
   color: var(--ed-text-3);
   border: 1px solid var(--ed-line-strong);
+  border-radius: var(--ed-radius-key);
+}
+
+.keycaps {
+  display: inline-flex;
+  gap: var(--ms-space-1);
+}
+
+.keycap {
+  min-width: 1.5rem;
+  padding: 2px 6px;
+  font: var(--ms-weight-medium) var(--ms-size-caption) var(--ms-font-mono);
+  line-height: 1.2;
+  text-align: center;
+  color: var(--ed-text);
+  background: var(--ed-field);
+  border: 1px solid var(--ed-line-strong);
+  border-bottom-width: 2px;
   border-radius: var(--ed-radius-key);
 }
 
@@ -2086,6 +2093,108 @@ dialog {
 dialog::backdrop {
   background: var(--ms-color-ink);
   opacity: 0.6;
+}
+
+/* The shortcut list fits any view: the header stays, the body scrolls, and two columns come with room. */
+#help-dialog {
+  max-width: 56rem;
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+}
+
+#help-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.help-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--ms-space-3);
+  padding: var(--ms-space-3) var(--ms-space-4);
+  border-bottom: 1px solid var(--ed-line);
+}
+
+.help-head h2 {
+  flex: none;
+}
+
+.help-search {
+  flex: 1;
+  min-width: 0;
+}
+
+.help-body {
+  min-height: 0;
+  padding: var(--ms-space-3) var(--ms-space-4) var(--ms-space-4);
+  overflow-y: auto;
+}
+
+.help-group h3:first-child {
+  margin-top: var(--ms-space-3);
+}
+
+.help-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.help-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ms-space-3);
+  padding: var(--ms-space-1) 0;
+  border-bottom: 1px solid var(--ed-line);
+}
+
+.help-row[hidden],
+.help-group[hidden] {
+  display: none;
+}
+
+.help-keys {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ms-space-1) var(--ms-space-2);
+}
+
+.help-or {
+  color: var(--ed-text-3);
+  font-size: var(--ms-size-caption);
+}
+
+/* A narrow view: short preset labels (drawn from data-short, the button keeps its full name) and an icon for Overlays. */
+@container (max-width: 600px) {
+  .view-bar button[data-short] {
+    font-size: 0;
+  }
+
+  .view-bar button[data-short]::after {
+    content: attr(data-short);
+    font-size: var(--ms-size-caption);
+  }
+
+  .bar-label {
+    display: none;
+  }
+}
+
+@media (min-width: 900px) {
+  .help-body {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 var(--ms-space-5);
+    align-content: start;
+  }
+
+  .help-none {
+    grid-column: 1 / -1;
+  }
 }
 
 dl {

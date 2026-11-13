@@ -1347,6 +1347,7 @@ export class App {
     });
     byId('cancel-button', HTMLButtonElement).addEventListener('click', () => this.renderSession.cancel());
     byId('help-button', HTMLButtonElement).addEventListener('click', () => this.helpDialog.open());
+    byId('help-open', HTMLButtonElement).addEventListener('click', () => this.helpDialog.open());
     byId('forget-button', HTMLButtonElement).addEventListener('click', () => this.askForget());
     byId('forget-cancel', HTMLButtonElement).addEventListener('click', () => this.forgetDialog.close());
     byId('forget-confirm', HTMLButtonElement).addEventListener('click', () => {

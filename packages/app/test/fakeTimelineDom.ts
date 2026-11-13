@@ -66,7 +66,11 @@ export class TimelineElement {
   fire(type: string, event: Record<string, unknown> = {}): void {
     for (const listener of this.listeners.get(type) ?? []) listener({ preventDefault: () => undefined, ...event });
   }
+  isConnected = true;
   focus(): void {}
+  getClientRects(): unknown[] {
+    return [];
+  }
   removeEventListener(): void {}
   getBoundingClientRect(): { left: number; top: number } {
     return { left: 0, top: 0 };

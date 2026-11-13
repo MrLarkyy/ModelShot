@@ -336,3 +336,65 @@ test.describe('first run hint', () => {
     expect(await violations(page, true)).toEqual([]);
   });
 });
+
+test('axe finds no violation with lanes, a selected lane, the filtered help dialog and the Overlays menu at 375 px', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'animated.bbmodel')], 'animated.bbmodel');
+  await waitForEditor(page);
+  expect(await violations(page), 'lanes').toEqual([]);
+  await page.locator('#timeline .tl-name').nth(1).click();
+  await expect(page.locator('#timeline .tl-lane').nth(1)).toHaveClass(/sel/);
+  expect(await violations(page), 'selected lane').toEqual([]);
+  const overlays = page.locator('#overlay-menu-button');
+  await overlays.click();
+  await expect(overlays).toHaveAttribute('aria-expanded', 'true');
+  expect(await violations(page, true), 'Overlays menu').toEqual([]);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('?');
+  await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeVisible();
+  await page.getByRole('searchbox', { name: 'Search shortcuts' }).fill('view');
+  expect(await violations(page), 'filtered help').toEqual([]);
+});
+
+test('Tab reaches the tool rail, the view bar and the timeline, with a visible focus', async ({ page }) => {
+  await openApp(page);
+  await openFiles(page, [fixture('bbmodel', 'animated.bbmodel')], 'animated.bbmodel');
+  await waitForEditor(page);
+  const reached = new Set<string>();
+  await page.locator('.skip-link').focus();
+  for (let i = 0; i < 140 && reached.size < 99; i++) {
+    await page.keyboard.press('Tab');
+    const focus = await page.evaluate(() => {
+      const element = document.activeElement as HTMLElement | null;
+      if (!element || element === document.body) return null;
+      const style = getComputedStyle(element);
+      return {
+        name: element.getAttribute('aria-label') ?? element.textContent?.trim() ?? '',
+        ring: style.outlineStyle !== 'none' || style.boxShadow !== 'none',
+        inBars: !!element.closest('.view-bar, .tool-rail, .tl-bar'),
+      };
+    });
+    if (!focus) continue;
+    if (focus.inBars) expect(focus.ring, `focus ring on ${focus.name}`).toBe(true);
+    reached.add(focus.name);
+  }
+  for (const name of [
+    'Move',
+    'Rotate',
+    'Front view',
+    'Frame model',
+    'Overlays',
+    'Play',
+    'Next keyframe',
+    'Loop',
+    'Playhead',
+  ]) {
+    expect(
+      [...reached].some((key) => key === name),
+      `${name} is reachable by Tab`,
+    ).toBe(true);
+  }
+});
