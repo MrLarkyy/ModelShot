@@ -89,7 +89,7 @@ in the middle, the inspector on the right and the timeline below.
   portrait view too.
 - **Timeline** (`#timeline`, lazy with the editor tools): a 44 px transport bar (back to start, Play or Pause, previous
   and next keyframe, Loop `aria-pressed`, the clip choice "Name · 2.00 s", the readout "0.50 / 1.00 s", the keyframe
-  count, zoom out and in; Ctrl+wheel zooms 1 to 16 times) over a body with one lane per animated node (a names column of
+  count (hidden below 1024 px), zoom out and in (the readout and the zoom buttons are hidden below 600 px); Ctrl+wheel zooms 1 to 16 times) over a body with one lane per animated node (a names column of
   buttons, 200 px, 120 px below 600 px; a track with a ruler on 1, 2, 5 step ticks no closer than 64 px, a keyframe
   diamond per time with its values in the tooltip, and the playhead line). The native range input is the scrubber (name
   "Playhead", `aria-valuetext` "0.50 s of 1.00 s") placed on the ruler row, so the thumb and the line share one
@@ -99,8 +99,9 @@ in the middle, the inspector on the right and the timeline below.
   the outliner, inspector and lane follow one selection; clicking a diamond also seeks to it. Keyframes are shown, not
   edited (the model is read-only). Arrows on the focused scrubber step one frame (1/24 s, Shift ten), PageUp and PageDown
   the keyframes; `,` and `.` do the same anywhere.
-- **Loading**: from the start of an open until its clips are shown the panel is `aria-busy` and shows three skeleton lanes
-  (`data-loading`, no animation); a refused or failed open, or one without clips, ends it at once.
+- **Loading**: from the start of an open until its clips are shown the panel is `aria-busy` (`data-loading`); an open panel
+  shows three skeleton lanes (no animation), a collapsed one stays collapsed, so the view never resizes and a finished
+  render is kept. A refused or failed open, or one without clips, ends it at once.
 - **View bar, tool rail and chips**: over the view, nothing shares a row or a corner. At the top right a one-row view bar
   (Front, Side, Three-quarter, Isometric as F, S, ¾, Iso below 600 px; Frame model; the Overlays menu, an icon alone below
   600 px) with the projection and field of view as text and the stats chip under it; at the top left the tool rail
