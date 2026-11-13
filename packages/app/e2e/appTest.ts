@@ -57,6 +57,8 @@ export async function openApp(page: Page, path = '/app/'): Promise<void> {
   await page.goto(path);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('ModelShot');
   await page.waitForFunction(() => window.__msApp !== undefined);
+  // The stylesheet is a separate request: a page measured or captured before it applies is unstyled under load.
+  await page.waitForFunction(() => getComputedStyle(document.body).display === 'grid');
 }
 
 /** Shows an inspector tab; the choice is kept per browser, so a later test step finds the same tab. */

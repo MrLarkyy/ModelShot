@@ -30,6 +30,15 @@ export const ICON_NAMES = [
   'keyframe',
   'folder',
   'check',
+  'pause',
+  'skip-start',
+  'key-prev',
+  'key-next',
+  'move',
+  'rotate',
+  'help',
+  'zoom-in',
+  'zoom-out',
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];
@@ -86,6 +95,15 @@ const SHAPES: Record<IconName, readonly Shape[]> = {
   render: [{ rect: [2, 3, 12, 9, 1.5] }, path('M6.5 6v3.5l3-1.75zM5 14h6')],
   keyframe: [path('M8 2.5l5 5.5-5 5.5L3 8z')],
   check: [path('M3 8.5l3.2 3.2L13 4.8')],
+  pause: [path('M5.5 3.5v9M10.5 3.5v9')],
+  'skip-start': [path('M3.5 3v10'), path('M12.5 3.5v9L6 8z')],
+  'key-prev': [path('M3 3v10'), path('M10 4.5L6.5 8l3.5 3.5'), path('M13 4.5L9.5 8l3.5 3.5')],
+  'key-next': [path('M13 3v10'), path('M6 4.5L9.5 8 6 11.5'), path('M3 4.5L6.5 8 3 11.5')],
+  move: [path('M8 1.8v12.4M1.8 8h12.4'), path('M6 3.8L8 1.8l2 2M6 12.2l2 2 2-2M3.8 6L1.8 8l2 2M12.2 6l2 2-2 2')],
+  rotate: [path('M13 8a5 5 0 1 1-1.8-3.8'), path('M13 2.5v2.8h-2.8')],
+  help: [circle(8, 8, 6), path('M6.2 6.3a1.9 1.9 0 1 1 2.9 1.6C8.4 8.4 8 8.8 8 9.6'), path('M8 11.6v.1')],
+  'zoom-in': [circle(7, 7, 4.5), path('M10.5 10.5L14 14M5 7h4M7 5v4')],
+  'zoom-out': [circle(7, 7, 4.5), path('M10.5 10.5L14 14M5 7h4')],
   folder: [path('M2 4.5a1 1 0 0 1 1-1h3l1.5 1.5H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z')],
 };
 

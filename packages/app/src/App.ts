@@ -42,17 +42,20 @@ import { textureFilters, withTextureFilters } from './session/withTextureFilters
 import { setNodeEdit, withNodeEdits } from './session/withNodeEdits';
 import { withVisibility } from './session/withVisibility';
 import { bindShortcuts } from './shortcuts/bindShortcuts';
-import { HelpDialog } from './shortcuts/HelpDialog';
+import type { HelpDialog } from './shortcuts/HelpDialog';
 import type { ModelState } from './state/AppState';
 import type { AppStateStore } from './state/appStateDb';
 import { StatePersistence } from './state/StatePersistence';
 import { bindDisclosure } from './ui/bindDisclosure';
 import { byId } from './ui/dom';
 import { Notices } from './ui/Notices';
+import { setTimelineLoading } from './timeline/setTimelineLoading';
 import { bindTopBar } from './ui/TopBar';
 import type { RenderTiming } from './render/estimateRenderMs';
 import { progressText, resultText } from './render/renderInfo';
 import { Viewer } from './viewer/Viewer';
+import { placeAxisBox, type PlacedBox } from './viewport/axisPlacement';
+import { ToolRail } from './viewport/ToolRail';
 import { ViewportChips } from './viewport/ViewportChips';
 
 const MAX_WARNING_NOTES = 3;
@@ -93,7 +96,8 @@ export class App {
   private readonly persistence: StatePersistence;
   private readonly renderSession: RenderSession;
   private readonly exportDialog: ExportDialog;
-  private readonly helpDialog: HelpDialog;
+  /** The shortcut dialog loads when it is first asked for: the empty app does not carry its list. */
+  private helpDialog: Promise<HelpDialog> | null = null;
   private readonly scenePanel: ScenePanel;
   private readonly lookPanel: LookPanel;
   private readonly cameraPanel: CameraPanel;
@@ -156,6 +160,11 @@ export class App {
   private look: LookPreset = DEFAULT_LOOK;
   private collapsedNodes: readonly number[] = [];
   private viewportChips: ViewportChips | null = null;
+  private readonly toolRail: ToolRail;
+  private overlayLayout: ResizeObserver | null = null;
+  /** The last bake's start and duration, kept here because the first bake runs before the editor tools load. */
+  private bakeStartedAt: number | null = null;
+  private lastBakeMs: number | null = null;
   private lookAdjust: LookAdjust = NO_LOOK_ADJUST;
   private arms: PlayerArmsChoice = 'classic';
   private renderValues: RenderSettingsValues = { ...DEFAULT_RENDER_SETTINGS };
@@ -217,9 +226,13 @@ export class App {
         onFrame: (camera) => this.tools?.frame(camera),
         onBakeStarted: () => {
           this.notices.lighting('busy');
+          this.bakeStartedAt = performance.now();
           this.tools?.bakeStarted();
         },
-        onBakeSettled: (lit, detail) => this.notices.lighting(lit ? 'lit' : 'warn', lit ? undefined : detail),
+        onBakeSettled: (lit, detail) => {
+          this.notices.lighting(lit ? 'lit' : 'warn', lit ? undefined : detail);
+          this.noteBakeTime();
+        },
         preserveDrawingBuffer: import.meta.env.MODE === 'e2e',
       });
     } catch (error) {
@@ -312,7 +325,9 @@ export class App {
       byId('overlay-menu', HTMLElement),
       this.layoutStore,
       (id) => this.cameraPanel.applyPreset(id),
+      () => this.viewer?.frameModel(),
     );
+    this.toolRail = new ToolRail(byId('tool-rail', HTMLElement), (mode) => this.tools?.setGizmoMode(mode));
     this.cameraPanel.sync();
     this.exportDialog = new ExportDialog(byId('export-dialog', HTMLDialogElement), {
       document: () => this.viewer?.document ?? null,
@@ -334,7 +349,6 @@ export class App {
       begin: () => this.beginExport(),
       end: () => this.endExport(),
     });
-    this.helpDialog = new HelpDialog(byId('help-dialog', HTMLDialogElement));
     this.selection.onChange((target) => {
       this.scenePanel.select(target);
       this.inspector.update(this.inspectorModel());
@@ -370,6 +384,8 @@ export class App {
       return;
     }
     this.loading = true;
+    setTimelineLoading(this.timelinePanel, true);
+    let opened = false;
     let name = 'the files';
     try {
       const request = groupFiles(files);
@@ -388,6 +404,7 @@ export class App {
         this.notices.status(this.open ? `Still showing ${this.open.loaded.name}.` : '');
         return;
       }
+      opened = true;
       void this.persistence.saveSession(files, loaded.key);
       this.scheduleSave();
     } catch (error) {
@@ -398,7 +415,14 @@ export class App {
       this.notices.status(this.open ? `Still showing ${this.open.loaded.name}.` : '');
     } finally {
       this.loading = false;
+      // A shown model's clips end the busy state when the timeline lists them; a refused or failed open ends it here.
+      if (!opened) this.endTimelineLoading();
     }
+  }
+
+  private endTimelineLoading(): void {
+    setTimelineLoading(this.timelinePanel, false);
+    this.timelinePanel.toggleAttribute('data-empty', (this.restDoc?.animations?.length ?? 0) === 0);
   }
 
   /** The parts the e2e build exposes to its tests. */
@@ -559,6 +583,8 @@ export class App {
       // takes the view's new size at once: a camera framed or restored below is fitted to the aspect known then, and a
       // view resized after it would show a restored camera at another zoom.
       this.timelinePanel.toggleAttribute('data-empty', (rest.animations?.length ?? 0) === 0);
+      // With clips the skeleton stays until the timeline lists them; without, there is nothing to wait for.
+      if ((rest.animations?.length ?? 0) === 0) setTimelineLoading(this.timelinePanel, false);
       if (viewer.syncSize() && reframe) viewer.orbit.reset();
       // Taken after the wait: a look picked while the files were opening stays, unless the model has its own.
       if (savedLook) this.lookAdjust = saved?.lookAdjust ?? NO_LOOK_ADJUST;
@@ -628,6 +654,10 @@ export class App {
         overlay: byId('overlay', HTMLCanvasElement),
         timeline: byId('timeline', HTMLElement),
         stats: byId('stats', HTMLElement),
+        cameraInfo: byId('view-camera', HTMLElement),
+        helperLabel: byId('helper-label', HTMLElement),
+        gizmoModeChanged: (mode) => this.toolRail.setMode(mode),
+        names: () => this.names,
         state: () =>
           this.restDoc
             ? {
@@ -642,13 +672,69 @@ export class App {
         clipChanged: () => this.inspector.update(this.inspectorModel()),
       });
       if (this.cssSize) this.tools.resize(this.cssSize);
+      if (this.lastBakeMs !== null) this.tools.setBakeMs(this.lastBakeMs);
+      this.toolRail.setMode(this.tools.gizmoMode);
+      this.toolRail.setEnabled(true);
+      this.watchOverlayLayout();
       this.tools.modelChanged();
       document.body.dataset['editor'] = 'ready';
     } catch (error) {
+      this.endTimelineLoading();
       this.notices.status(`The editor tools could not load: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       this.toolsLoading = false;
     }
+  }
+
+  private openHelp(): void {
+    this.helpDialog ??= import('./shortcuts/HelpDialog').then(
+      ({ HelpDialog: Dialog }) => new Dialog(byId('help-dialog', HTMLDialogElement)),
+    );
+    this.helpDialog.then(
+      (dialog) => dialog.open(),
+      (error: unknown) => {
+        // Not kept: the next open tries again.
+        this.helpDialog = null;
+        this.notices.status(
+          `The shortcut list could not load: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      },
+    );
+  }
+
+  private noteBakeTime(): void {
+    if (this.bakeStartedAt === null) return;
+    this.lastBakeMs = performance.now() - this.bakeStartedAt;
+    this.bakeStartedAt = null;
+    this.tools?.setBakeMs(this.lastBakeMs);
+  }
+
+  // The axis gizmo stands in the view's bottom-left corner, moved off the tool rail and the render bar; both are
+  // measured, so a bar that grows or wraps moves it.
+  private watchOverlayLayout(): void {
+    if (this.overlayLayout || typeof ResizeObserver === 'undefined') return;
+    const place = (): void => this.layoutOverlay();
+    this.overlayLayout = new ResizeObserver(place);
+    for (const target of [this.stageView, byId('tool-rail', HTMLElement), document.querySelector('.render-bar')]) {
+      if (target) this.overlayLayout.observe(target);
+    }
+    place();
+  }
+
+  private layoutOverlay(): void {
+    const view = this.stageView.getBoundingClientRect();
+    const obstacles: PlacedBox[] = [];
+    for (const element of [byId('tool-rail', HTMLElement), document.querySelector('.render-bar')]) {
+      if (!element || element.getClientRects().length === 0) continue;
+      const rect = element.getBoundingClientRect();
+      obstacles.push({
+        left: rect.left - view.left,
+        right: rect.right - view.left,
+        top: rect.top - view.top,
+        bottom: rect.bottom - view.top,
+      });
+    }
+    this.tools?.overlay.setInsets(placeAxisBox(view.width, view.height, obstacles));
   }
 
   private inspectorModel(): InspectorModel | null {
@@ -857,8 +943,10 @@ export class App {
       this.textureFilter = next.textureFilter;
       this.lockedNodes = next.lockedNodes;
       this.lockedMeshes = next.lockedMeshes;
+      const renamed = this.names !== next.names;
       this.names = next.names;
       this.nodeEdits = next.nodeEdits;
+      if (renamed) this.tools?.timeline.namesChanged();
       if (lookChanged && look !== undefined) this.selectLook(look, false, bakes.look);
       this.syncHistoryButtons();
       this.showPanels();
@@ -1286,7 +1374,8 @@ export class App {
       }
     });
     byId('cancel-button', HTMLButtonElement).addEventListener('click', () => this.renderSession.cancel());
-    byId('help-button', HTMLButtonElement).addEventListener('click', () => this.helpDialog.open());
+    byId('help-button', HTMLButtonElement).addEventListener('click', () => this.openHelp());
+    byId('help-open', HTMLButtonElement).addEventListener('click', () => this.openHelp());
     byId('forget-button', HTMLButtonElement).addEventListener('click', () => this.askForget());
     byId('forget-cancel', HTMLButtonElement).addEventListener('click', () => this.forgetDialog.close());
     byId('forget-confirm', HTMLButtonElement).addEventListener('click', () => {
@@ -1332,7 +1421,7 @@ export class App {
       isometric: () => this.cameraPanel.applyPreset('isometric'),
       nextLook: () => this.nextLook(),
       toggleSelected: () => this.scenePanel.toggleSelected(),
-      help: () => this.helpDialog.open(),
+      help: () => this.openHelp(),
       undo: () => this.undo(),
       redo: () => this.redo(),
       playPause: () => this.tools?.togglePlay(),
@@ -1347,6 +1436,8 @@ export class App {
       outliner: panel('outliner'),
       inspector: panel('inspector'),
       timeline: panel('timeline'),
+      prevKeyframe: () => this.tools?.timeline.stepKeyframe(-1),
+      nextKeyframe: () => this.tools?.timeline.stepKeyframe(1),
     });
     const flush = (): void => void this.persistence.flush();
     window.addEventListener('pagehide', flush);

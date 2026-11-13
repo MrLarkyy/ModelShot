@@ -15,7 +15,19 @@ export function documentStats(doc: SceneDocument): { triangles: number; meshes: 
   return { triangles, meshes };
 }
 
-// The corner readout of the viewport: frames per second, triangles, meshes and the overlay's own drawing time. Plain text
+/** The chip's text: "60 fps · 1,234 triangles · 3 meshes · overlay 0.4 ms · bake 120 ms" (no bake yet: "bake -"). */
+export function statsText(
+  fps: number,
+  counts: { triangles: number; meshes: number },
+  overlayMs: number,
+  bakeMs: number | null,
+): string {
+  const bake = bakeMs === null ? '-' : `${Math.round(bakeMs)} ms`;
+  return `${fps} fps · ${counts.triangles.toLocaleString('en')} triangles · ${counts.meshes} meshes · overlay ${overlayMs.toFixed(1)} ms · bake ${bake}`;
+}
+
+// The readout under the view bar: frames per second, triangles, meshes, the overlay's own drawing time and how long the
+// last light bake took. Plain text
 // in a paragraph that is not a live region, refreshed twice a second.
 export class StatsOverlay {
   private frames = 0;
@@ -24,8 +36,14 @@ export class StatsOverlay {
   private last = 0;
   private counts: { triangles: number; meshes: number } | null = null;
   private countsFor: SceneDocument | null = null;
+  private bakeMs: number | null = null;
 
   constructor(private readonly root: HTMLElement) {}
+
+  /** The last bake settled after `ms` milliseconds. */
+  setBakeMs(ms: number): void {
+    this.bakeMs = ms;
+  }
 
   frame(now: number, doc: SceneDocument | null, overlayMs: number): void {
     if (this.root.hidden) return;
@@ -40,9 +58,6 @@ export class StatsOverlay {
       this.countsFor = doc;
       this.counts = documentStats(doc);
     }
-    const counts = this.counts;
-    this.root.textContent = counts
-      ? `${this.fps} fps · ${counts.triangles.toLocaleString('en')} triangles · ${counts.meshes} meshes · overlay ${overlayMs.toFixed(1)} ms`
-      : '';
+    this.root.textContent = this.counts ? statsText(this.fps, this.counts, overlayMs, this.bakeMs) : '';
   }
 }

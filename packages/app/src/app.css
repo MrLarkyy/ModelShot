@@ -559,35 +559,46 @@ button:disabled {
 }
 
 .timeline {
+  --tl-names-w: 200px;
+  --tl-row-h: 28px;
+  --tl-thumb-w: 12px;
   grid-row: 4;
+  display: flex;
+  flex-direction: column;
   height: var(--timeline-h);
+  padding: 0;
+  overflow: hidden;
   border-top: 1px solid var(--ed-line);
 }
 
-.timeline-controls {
+.tl-bar {
   display: flex;
-  flex-wrap: wrap;
+  flex: none;
   align-items: center;
-  gap: var(--ms-space-2) var(--ms-space-3);
+  gap: var(--ms-space-1);
+  height: 44px;
+  padding-inline: var(--ms-space-3);
+  border-bottom: 1px solid var(--ed-line);
 }
 
-.timeline-controls input[type='range'] {
+.tl-bar select {
+  flex: 0 1 16rem;
+  min-width: 6rem;
+  margin-left: var(--ms-space-2);
+}
+
+.tl-bar .time-readout {
+  margin-left: var(--ms-space-2);
+  white-space: nowrap;
+}
+
+.tl-bar .keyframe-count {
+  margin: 0 0 0 var(--ms-space-2);
+  white-space: nowrap;
+}
+
+.tl-spacer {
   flex: 1;
-  min-width: 8rem;
-}
-
-.timeline-controls .field {
-  margin: 0;
-}
-
-.timeline-controls .field > span {
-  min-width: 0;
-}
-
-/* Wide enough for a clip name, also while the list is empty. */
-.timeline-controls select {
-  min-width: 8rem;
-  max-width: 16rem;
 }
 
 .time-readout {
@@ -595,20 +606,203 @@ button:disabled {
   color: var(--ed-text-2);
 }
 
-.markers {
-  position: relative;
-  height: 14px;
-  margin: var(--ms-space-2) 0 var(--ms-space-1);
+.tl-body {
+  display: grid;
+  flex: 1;
+  grid-template-columns: var(--tl-names-w) max-content;
+  align-content: start;
+  min-height: 0;
+  overflow: auto;
+}
+
+.tl-names {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  background: var(--ed-panel);
+  border-right: 1px solid var(--ed-line);
+}
+
+.tl-corner {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  height: var(--tl-row-h);
+  background: var(--ed-panel);
   border-bottom: 1px solid var(--ed-line);
 }
 
-.marker {
+button.tl-name,
+.tl-name {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: var(--tl-row-h);
+  min-height: 0;
+  padding: 0 var(--ms-space-3);
+  justify-content: flex-start;
+  font: var(--ms-weight-medium) var(--ms-size-caption) var(--ms-font-body);
+  color: var(--ed-text-2);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--ed-line);
+  border-radius: 0;
+}
+
+.tl-name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tl-name.more {
+  color: var(--ed-text-3);
+}
+
+button.tl-name:focus-visible {
+  outline-offset: calc(-1 * var(--ms-focus-width));
+}
+
+.tl-name.sel,
+.tl-lane.sel {
+  background: var(--ed-accent-soft);
+}
+
+.tl-name.sel {
+  color: var(--ed-text);
+}
+
+.tl-track {
+  position: relative;
+}
+
+.tl-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: var(--tl-row-h);
+  background: var(--ed-panel);
+  border-bottom: 1px solid var(--ed-line);
+}
+
+.tl-ruler {
   position: absolute;
-  bottom: 0;
-  width: 2px;
+  inset: 0;
+  font: var(--ms-weight-medium) 10.5px var(--ms-font-mono);
+  color: var(--ed-text-3);
+}
+
+.tl-tick {
+  position: absolute;
+  top: 8px;
+  padding-left: 4px;
+  border-left: 1px solid var(--ed-line-strong);
+  line-height: 14px;
+}
+
+input.tl-scrub[type='range'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  appearance: none;
+  cursor: ew-resize;
+}
+
+input.tl-scrub[type='range']::-webkit-slider-runnable-track {
+  height: var(--tl-row-h);
+  background: transparent;
+}
+
+input.tl-scrub[type='range']::-moz-range-track {
+  height: var(--tl-row-h);
+  background: transparent;
+}
+
+input.tl-scrub[type='range']::-webkit-slider-thumb {
+  width: var(--tl-thumb-w);
+  height: 20px;
+  margin-top: 4px;
+  background: var(--ed-accent-hi);
+  border: 0;
+  border-radius: 3px;
+  appearance: none;
+}
+
+input.tl-scrub[type='range']::-moz-range-thumb {
+  width: var(--tl-thumb-w);
+  height: 20px;
+  background: var(--ed-accent-hi);
+  border: 0;
+  border-radius: 3px;
+}
+
+input.tl-scrub[type='range']:focus-visible {
+  outline: none;
+}
+
+input.tl-scrub[type='range']:focus-visible::-webkit-slider-thumb {
+  outline: var(--ed-ring);
+  outline-offset: var(--ed-ring-offset);
+}
+
+input.tl-scrub[type='range']:focus-visible::-moz-range-thumb {
+  outline: var(--ed-ring);
+  outline-offset: var(--ed-ring-offset);
+}
+
+.tl-lane {
+  position: relative;
+  height: var(--tl-row-h);
+  border-bottom: 1px solid var(--ed-line);
+}
+
+.kf {
+  position: absolute;
+  top: 9px;
+  width: 10px;
   height: 10px;
+  margin-left: -5px;
+  background: var(--ed-sun);
+  border-radius: 2px;
+  transform: rotate(45deg);
+}
+
+.tl-playhead {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  border-left: 2px solid var(--ed-accent-hi);
   margin-left: -1px;
-  background: var(--ms-color-sun);
+  pointer-events: none;
+}
+
+.tl-skeleton {
+  display: none;
+}
+
+.tl-skeleton-row {
+  height: var(--tl-row-h);
+  margin: var(--ms-space-2) var(--ms-space-3) 0;
+  background: var(--ed-hover);
+  border: 1px solid var(--ed-line);
+  border-radius: var(--ed-radius-key);
+}
+
+.timeline[data-loading]:not([data-empty]) > :not(.tl-skeleton) {
+  display: none;
+}
+
+.timeline[data-loading]:not([data-empty]) > .tl-skeleton {
+  display: block;
+  flex: 1;
 }
 
 .stage {
@@ -620,6 +814,7 @@ button:disabled {
 
 .viewport {
   position: relative;
+  container-type: inline-size;
   min-height: 12rem;
   background: var(--ms-color-drop-ground);
   overflow: hidden;
@@ -657,25 +852,94 @@ button:disabled {
   margin: 0;
 }
 
-.chips-top {
+.chips .chips {
+  position: static;
+}
+
+/* The tool rail at the top left, the view bar and the info chips in one column at the top right: none shares a row or
+   a corner with another, and the column stops short of the rail. */
+.tool-rail {
+  top: var(--ms-space-2);
+  left: var(--ms-space-2);
+  flex-direction: column;
+  flex-wrap: nowrap;
+}
+
+.view-top {
+  position: absolute;
+  z-index: 2;
   top: var(--ms-space-2);
   right: var(--ms-space-2);
-  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--ms-space-1);
+  max-width: calc(100% - 68px);
+  pointer-events: none;
+}
+
+.view-top .chips {
+  position: static;
+  pointer-events: auto;
+}
+
+/* One row when it fits, and a second one rather than a bar over the rail when the view is squeezed between wide panels. */
+.view-top .first-run-hint {
+  align-self: stretch;
+  pointer-events: auto;
+}
+
+.view-top .first-run-hint[hidden] {
+  display: none;
+}
+
+.view-bar {
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
 }
 
-.chips .chips {
-  position: static;
+.view-top .view-info {
+  flex-direction: column;
+  align-items: flex-end;
+  pointer-events: none;
+}
+
+.chip-text {
+  margin: 0;
+  padding: var(--ms-space-1) var(--ms-space-2);
+  background: var(--ed-panel);
+  color: var(--ed-text-2);
+  border: 1px solid var(--ed-line-strong);
+  border-radius: var(--ed-radius-ui);
+  font: var(--ms-weight-medium) var(--ms-size-caption) var(--ms-font-mono);
+}
+
+.chip-text:empty {
+  display: none;
+}
+
+.helper-label {
+  position: absolute;
+  z-index: 3;
+  margin: 0;
+  padding: var(--ms-space-1) var(--ms-space-2);
+  background: var(--ed-raised);
+  color: var(--ed-text);
+  border: 1px solid var(--ed-line-strong);
+  border-radius: var(--ed-radius-ui);
+  font: var(--ms-weight-medium) var(--ms-size-caption) var(--ms-font-body);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.helper-label[hidden] {
+  display: none;
 }
 
 .menu-list-right {
   left: auto;
   right: 0;
-}
-
-.chips-bottom {
-  bottom: var(--ms-space-2);
-  right: var(--ms-space-2);
 }
 
 .chips button {
@@ -817,6 +1081,20 @@ button:disabled {
 }
 
 @media (max-width: 599px) {
+  .timeline {
+    --tl-names-w: 120px;
+  }
+
+  .tl-bar .time-readout,
+  .tl-bar .tl-spacer,
+  .tl-bar .tl-zoom {
+    display: none;
+  }
+
+  .tl-bar select {
+    min-width: 4.5rem;
+  }
+
   .entry-cards {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -838,17 +1116,12 @@ button:disabled {
 }
 
 .viewport[data-empty] #preview,
-.viewport[data-empty] #viewport-chips,
-.viewport[data-empty] #stats {
+.viewport[data-empty] .view-top,
+.viewport[data-empty] .tool-rail {
   visibility: hidden;
 }
 
 .first-run-hint {
-  position: absolute;
-  z-index: 2;
-  top: 3.25rem;
-  right: var(--ms-space-2);
-  left: var(--ms-space-2);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -874,21 +1147,27 @@ button:disabled {
    a control high (and its top border) before the button is there too: a bar that grew when the tools load would resize
    the view after the model is shown. */
 .timeline[data-empty] {
-  display: flex;
+  flex-direction: row;
   align-items: center;
   gap: var(--ms-space-3);
   height: auto;
   min-height: calc(var(--ed-control-h) + 2 * var(--ms-space-2) + 1px);
   padding-block: var(--ms-space-2);
+  padding-inline: var(--ms-space-3);
 }
 
 body:has(.timeline[data-empty]) #timeline-separator {
   display: none;
 }
 
-.timeline[data-empty] .timeline-controls > :not(button),
-.timeline[data-empty] .markers,
-.timeline[data-empty] .keyframe-count {
+.timeline[data-empty] .tl-bar {
+  height: auto;
+  padding: 0;
+  border: 0;
+}
+
+.timeline[data-empty] .tl-bar > :not(.tl-play),
+.timeline[data-empty] .tl-body {
   display: none;
 }
 
@@ -1240,6 +1519,24 @@ kbd {
   font: var(--ms-weight-medium) var(--ms-size-overline) var(--ms-font-mono);
   color: var(--ed-text-3);
   border: 1px solid var(--ed-line-strong);
+  border-radius: var(--ed-radius-key);
+}
+
+.keycaps {
+  display: inline-flex;
+  gap: var(--ms-space-1);
+}
+
+.keycap {
+  min-width: 1.5rem;
+  padding: 2px 6px;
+  font: var(--ms-weight-medium) var(--ms-size-caption) var(--ms-font-mono);
+  line-height: 1.2;
+  text-align: center;
+  color: var(--ed-text);
+  background: var(--ed-field);
+  border: 1px solid var(--ed-line-strong);
+  border-bottom-width: 2px;
   border-radius: var(--ed-radius-key);
 }
 
@@ -1808,6 +2105,108 @@ dialog::backdrop {
   opacity: 0.6;
 }
 
+/* The shortcut list fits any view: the header stays, the body scrolls, and two columns come with room. */
+#help-dialog {
+  max-width: 56rem;
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+}
+
+#help-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.help-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--ms-space-3);
+  padding: var(--ms-space-3) var(--ms-space-4);
+  border-bottom: 1px solid var(--ed-line);
+}
+
+.help-head h2 {
+  flex: none;
+}
+
+.help-search {
+  flex: 1;
+  min-width: 0;
+}
+
+.help-body {
+  min-height: 0;
+  padding: var(--ms-space-3) var(--ms-space-4) var(--ms-space-4);
+  overflow-y: auto;
+}
+
+.help-group h3:first-child {
+  margin-top: var(--ms-space-3);
+}
+
+.help-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.help-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ms-space-3);
+  padding: var(--ms-space-1) 0;
+  border-bottom: 1px solid var(--ed-line);
+}
+
+.help-row[hidden],
+.help-group[hidden] {
+  display: none;
+}
+
+.help-keys {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ms-space-1) var(--ms-space-2);
+}
+
+.help-or {
+  color: var(--ed-text-3);
+  font-size: var(--ms-size-caption);
+}
+
+/* A narrow view: short preset labels (drawn from data-short, the button keeps its full name) and an icon for Overlays. */
+@container (max-width: 600px) {
+  .view-bar button[data-short] {
+    font-size: 0;
+  }
+
+  .view-bar button[data-short]::after {
+    content: attr(data-short);
+    font-size: var(--ms-size-caption);
+  }
+
+  .bar-label {
+    display: none;
+  }
+}
+
+@media (min-width: 900px) {
+  .help-body {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 var(--ms-space-5);
+    align-content: start;
+  }
+
+  .help-none {
+    grid-column: 1 / -1;
+  }
+}
+
 dl {
   display: grid;
   grid-template-columns: max-content 1fr;
@@ -1864,6 +2263,18 @@ progress {
 }
 
 @media (max-width: 1023px) {
+  /* Touch targets: every control of the view bar and the tool rail is 44 px. */
+  .view-bar button,
+  .tool-rail button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .view-bar button.icon-button:has(> .icon:only-child),
+  .tool-rail button.icon-button:has(> .icon:only-child) {
+    width: 44px;
+  }
+
   .work {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1893,14 +2304,9 @@ progress {
     left: auto;
   }
 
-  /* The keyframe markers and their count go; "This model has no animations." stays. */
-  .markers,
+  /* The keyframe count goes; the clip, the transport and the lanes stay. */
   .timeline .keyframe-count {
     display: none;
-  }
-
-  .timeline {
-    padding-block: var(--ms-space-2);
   }
 }
 
@@ -1969,6 +2375,34 @@ progress {
 }
 
 @media (forced-colors: active) {
+  .kf {
+    forced-color-adjust: none;
+    background: Highlight;
+    border: 1px solid CanvasText;
+  }
+
+  .tl-playhead {
+    border-left-color: CanvasText;
+  }
+
+  .tl-skeleton-row {
+    border-color: CanvasText;
+  }
+
+  input.tl-scrub[type='range']::-webkit-slider-thumb {
+    background: CanvasText;
+  }
+
+  input.tl-scrub[type='range']::-moz-range-thumb {
+    background: CanvasText;
+  }
+
+  .tl-name.sel,
+  .tl-lane.sel {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
   /* The ring is a system colour in every state: a state rule above would otherwise keep its author colour here. */
   .model-state,
   .model-state[data-state='lit'],

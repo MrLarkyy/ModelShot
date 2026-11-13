@@ -10,22 +10,29 @@ export interface KeyframeMarkers {
   readonly count: number;
 }
 
-/** The distinct keyframe times of every channel of `animation` inside its length, merged where closer than `minGap` seconds. */
-export function keyframeTimes(animation: SceneAnimation, minGap = 0): KeyframeMarkers {
+/** The finite times in `[0, length]`, distinct and ascending. */
+export function validTimes(times: Iterable<number>, length: number): number[] {
   const seen = new Set<number>();
-  for (const channel of animation.channels) {
-    for (const keyframe of channel.keyframes) {
-      if (Number.isFinite(keyframe.time) && keyframe.time >= 0 && keyframe.time <= animation.length) {
-        seen.add(keyframe.time);
-      }
-    }
-  }
-  const sorted = [...seen].sort((a, b) => a - b);
+  for (const time of times) if (Number.isFinite(time) && time >= 0 && time <= length) seen.add(time);
+  return [...seen].sort((a, b) => a - b);
+}
+
+/** Ascending `sorted` times with those closer than `minGap` to the one before dropped, at most `limit`. */
+export function mergeTimes(sorted: readonly number[], minGap: number, limit = MAX_KEYFRAME_MARKERS): number[] {
   const times: number[] = [];
   for (const time of sorted) {
+    if (times.length >= limit) break;
     const last = times.at(-1);
     if (last === undefined || time - last >= minGap) times.push(time);
-    if (times.length >= MAX_KEYFRAME_MARKERS) break;
   }
-  return { times, count: sorted.length };
+  return times;
+}
+
+/** The distinct keyframe times of every channel of `animation` inside its length, merged where closer than `minGap` seconds. */
+export function keyframeTimes(animation: SceneAnimation, minGap = 0): KeyframeMarkers {
+  const sorted = validTimes(
+    animation.channels.flatMap((channel) => channel.keyframes.map((keyframe) => keyframe.time)),
+    animation.length,
+  );
+  return { times: mergeTimes(sorted, minGap), count: sorted.length };
 }

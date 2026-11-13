@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindShortcuts } from '../src/shortcuts/bindShortcuts';
-import type { ShortcutAction } from '../src/shortcuts/shortcutAction';
+import { SHORTCUT_ACTIONS, type ShortcutAction } from '../src/shortcuts/shortcutAction';
 
 class FakeElement {
   isContentEditable = false;
@@ -27,29 +27,7 @@ function setup(dialogOpen = false) {
     querySelector: () => (dialogOpen ? {} : null),
   } as unknown as Document;
   const calls: ShortcutAction[] = [];
-  const actions = [
-    'open',
-    'render',
-    'export',
-    'cancel',
-    'front',
-    'side',
-    'three-quarter',
-    'isometric',
-    'nextLook',
-    'toggleSelected',
-    'help',
-    'undo',
-    'redo',
-    'playPause',
-    'move',
-    'rotate',
-    'overlays',
-    'rename',
-    'outliner',
-    'inspector',
-    'timeline',
-  ] as const;
+  const actions = SHORTCUT_ACTIONS;
   const handlers = Object.fromEntries(actions.map((a) => [a, () => calls.push(a)])) as unknown as Record<
     ShortcutAction,
     () => void

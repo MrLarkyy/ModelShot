@@ -33,6 +33,17 @@ describe('iconButton', () => {
     expect(make('eye', 'Visible', { pressed: false }).getAttribute('aria-pressed')).toBe('false');
   });
 
+  it('a shortcut goes into the tooltip and aria-keyshortcuts, the name stays the label', () => {
+    stubSvgDocument();
+    const button = make('undo', 'Undo', { shortcut: 'undo' });
+    expect(button.getAttribute('aria-label')).toBe('Undo');
+    expect(button.title).toBe('Undo (Ctrl+Z / Cmd+Z)');
+    expect(button.getAttribute('aria-keyshortcuts')).toBe('Control+Z Meta+Z');
+    const redo = make('redo', 'Redo', { shortcut: 'redo' });
+    expect(redo.getAttribute('aria-keyshortcuts')).toBe('Control+Shift+Z Meta+Shift+Z Control+Y');
+    expect(make('eye', 'Visible').getAttribute('aria-keyshortcuts')).toBeNull();
+  });
+
   it('refuses an empty label', () => {
     stubSvgDocument();
     expect(() => iconButton('eye', ' ')).toThrow(/needs a label/);

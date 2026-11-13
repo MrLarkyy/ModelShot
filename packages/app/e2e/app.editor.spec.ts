@@ -66,7 +66,8 @@ test('a click in the view selects the mesh under it, an orbit drag selects nothi
   await expect(selected(page)).toHaveCount(1);
   // A click on empty ground clears the selection.
   const box = await page.locator('#viewport').boundingBox();
-  await page.mouse.click((box?.x ?? 0) + 8, (box?.y ?? 0) + 60);
+  // Left edge, mid height: the tool rail holds the top left corner.
+  await page.mouse.click((box?.x ?? 0) + 8, (box?.y ?? 0) + (box?.height ?? 0) / 2);
   await expect(selected(page)).toHaveCount(0);
 });
 

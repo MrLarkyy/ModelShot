@@ -21,12 +21,12 @@
         <button id="file-menu-button" type="button" aria-expanded="false" aria-controls="file-menu">File</button>
         <div id="file-menu" class="menu-list" hidden>
           <button id="open-button" type="button" aria-keyshortcuts="Control+O Meta+O">
-            Open…<kbd aria-hidden="true">Ctrl+O</kbd>
+            Open…<kbd aria-hidden="true" data-shortcut="open">Ctrl+O</kbd>
           </button>
           <button id="menu-export-button" type="button" aria-keyshortcuts="Control+E Meta+E" disabled>
-            Export…<kbd aria-hidden="true">Ctrl+E</kbd>
+            Export…<kbd aria-hidden="true" data-shortcut="export">Ctrl+E</kbd>
           </button>
-          <button id="help-button" type="button">Shortcuts<kbd aria-hidden="true">?</kbd></button>
+          <button id="help-button" type="button">Shortcuts<kbd aria-hidden="true" data-shortcut="help">?</kbd></button>
           <hr class="menu-separator" />
           <button id="forget-button" class="destructive" type="button">Forget local data</button>
           <p class="menu-foot">
@@ -91,6 +91,7 @@
         <span id="model-state" class="model-state" aria-live="polite" data-state="none"></span>
       </p>
       <div class="bar-end">
+        <button id="help-open" class="icon-button" type="button" aria-label="Help" title="Help"></button>
         <button id="share-button" type="button" hidden>Share</button>
         <button id="export-button" class="primary" type="button" disabled>Export…</button>
       </div>
@@ -128,17 +129,28 @@
           <canvas id="preview" class="layer" aria-label="3D view of the model"></canvas>
           <canvas id="overlay" class="layer overlay" aria-hidden="true"></canvas>
           <canvas id="result" class="layer result" aria-label="Rendered image" hidden></canvas>
-          <div id="viewport-chips" class="chips chips-top">
-            <div id="camera-presets" class="chips" role="group" aria-label="Camera presets"></div>
-            <div class="menu">
-              <button id="overlay-menu-button" type="button" aria-expanded="false" aria-controls="overlay-menu">
-                Overlays
-              </button>
-              <div id="overlay-menu" class="menu-list menu-list-right" hidden></div>
+          <div id="tool-rail" class="chips tool-rail" role="group" aria-label="Gizmo mode"></div>
+          <div class="view-top">
+            <div id="viewport-chips" class="chips view-bar">
+              <div id="camera-presets" class="chips" role="group" aria-label="Camera presets"></div>
+              <div class="menu">
+                <button
+                  id="overlay-menu-button"
+                  type="button"
+                  aria-expanded="false"
+                  aria-controls="overlay-menu"
+                ></button>
+                <div id="overlay-menu" class="menu-list menu-list-right" hidden></div>
+              </div>
+              <span data-slot="render" hidden></span>
             </div>
+            <div class="chips view-info">
+              <p id="view-camera" class="chip-text"></p>
+              <p id="stats" class="chips stats" hidden></p>
+            </div>
+            <div id="first-run-hint" class="first-run-hint" role="region" aria-label="Shortcut hints" hidden></div>
           </div>
-          <p id="stats" class="chips chips-bottom stats" hidden></p>
-          <div id="first-run-hint" class="first-run-hint" role="region" aria-label="Shortcut hints" hidden></div>
+          <p id="helper-label" class="helper-label" aria-hidden="true" hidden></p>
           <div id="drop-overlay" class="drop-overlay" hidden>Drop to open</div>
           <div class="viewport-dock">
             <section id="empty" class="empty" aria-labelledby="empty-title">
@@ -151,7 +163,7 @@
                 <p class="empty-local">Your file stays in this browser tab and is never uploaded.</p>
                 <p class="empty-drop">Drop files here to open them.</p>
                 <button id="empty-open" class="primary" type="button" aria-keyshortcuts="Control+O Meta+O">
-                  Open…<kbd aria-hidden="true">Ctrl+O</kbd>
+                  Open…<kbd aria-hidden="true" data-shortcut="open">Ctrl+O</kbd>
                 </button>
                 <ul class="entry-cards">
                   <li>
@@ -232,6 +244,11 @@
     ></div>
     <section id="timeline" class="panel timeline" aria-label="Timeline" data-empty>
       <p class="hint">Animations of the open model play here.</p>
+      <div class="tl-skeleton" aria-hidden="true">
+        <div class="tl-skeleton-row"></div>
+        <div class="tl-skeleton-row"></div>
+        <div class="tl-skeleton-row"></div>
+      </div>
     </section>
     <dialog id="export-dialog" aria-labelledby="export-title"></dialog>
     <dialog id="forget-dialog" aria-labelledby="forget-title" aria-describedby="forget-body">

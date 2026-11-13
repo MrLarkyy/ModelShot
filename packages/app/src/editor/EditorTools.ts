@@ -19,6 +19,8 @@ import type { Selection } from './Selection';
 /** A pointer that moves less than this between press and release is a click, not an orbit. */
 export const CLICK_SLOP_PX = 4;
 const HANDLE_TOLERANCE_PX = 10;
+/** What sits over the view without being the view: a press on it selects nothing and starts no drag. */
+const NOT_THE_VIEW = '.chips, .first-run-hint, .render-bar, .toasts, .helper-label';
 /** A pose that stays this long is lit again; frames of a playing clip or a drag never are. */
 export const RELIGHT_DELAY_MS = 200;
 
@@ -38,6 +40,14 @@ export interface EditorToolsHost {
   readonly overlay: HTMLCanvasElement;
   readonly timeline: HTMLElement;
   readonly stats: HTMLElement;
+  /** Where the projection and field of view are told, as text. */
+  readonly cameraInfo?: HTMLElement;
+  /** The label shown beside a light helper under the pointer. */
+  readonly helperLabel?: HTMLElement;
+  /** The gizmo mode changed (a key or a button chose it). */
+  readonly gizmoModeChanged?: (mode: GizmoMode) => void;
+  /** The user's names of nodes and elements (lane labels). */
+  readonly names?: () => ReadonlyMap<string, string>;
   /** The model on show, or null while there is none. */
   readonly state: () => EditorState | null;
   /**
@@ -74,6 +84,7 @@ export class EditorTools {
   private committing = false;
   /** The viewer refused the last pose (a document was being set): the playhead may stand where the preview does not. */
   private poseRefused = false;
+  private shownCameraInfo = '';
 
   constructor(private readonly host: EditorToolsHost) {
     this.overlay = new OverlayRenderer(host.overlay);
@@ -90,6 +101,10 @@ export class EditorTools {
       frame: (clip, time, loop) => this.playFrame(clip, time, loop, 'frame'),
       interacted: () => host.interacted(),
       clipChanged: () => host.clipChanged?.(),
+      document: () => host.viewer.document,
+      ...(host.names ? { names: host.names } : {}),
+      selectedNode: () => this.selectedNode(),
+      selectNode: (index) => host.selection.set({ kind: 'node', index }),
       playingChanged: (playing) => {
         if (!playing) this.light.settled();
       },
@@ -99,12 +114,17 @@ export class EditorTools {
     viewport.addEventListener('pointermove', this.onMove);
     viewport.addEventListener('pointerup', this.onUp);
     viewport.addEventListener('pointercancel', this.onCancel);
+    viewport.addEventListener('pointerleave', this.onLeave);
     this.cleanups.push(
+      () => viewport.removeEventListener('pointerleave', this.onLeave),
       () => viewport.removeEventListener('pointerdown', this.onDown, true),
       () => viewport.removeEventListener('pointermove', this.onMove),
       () => viewport.removeEventListener('pointerup', this.onUp),
       () => viewport.removeEventListener('pointercancel', this.onCancel),
-      host.selection.onChange(() => this.refresh()),
+      host.selection.onChange(() => {
+        this.refresh();
+        this.timeline.selectionChanged();
+      }),
       host.layout.onChange(() => this.refresh()),
     );
   }
@@ -115,6 +135,7 @@ export class EditorTools {
 
   setGizmoMode(mode: GizmoMode): void {
     this.mode = mode;
+    this.host.gizmoModeChanged?.(mode);
     this.refresh();
   }
 
@@ -125,6 +146,7 @@ export class EditorTools {
   /** The renderer drew a frame with `camera`. */
   frame(camera: SceneCamera): void {
     this.overlay.draw(camera);
+    this.showCameraInfo(camera);
     this.stats.frame(performance.now(), this.host.viewer.document, this.overlay.medianDrawMs);
   }
 
@@ -144,6 +166,11 @@ export class EditorTools {
   /** The viewer started a bake of the document it shows (`ViewerOptions.onBakeStarted`). */
   bakeStarted(): void {
     this.light.bakeStarted();
+  }
+
+  /** The last light bake took `ms`: the stats chip tells it. */
+  setBakeMs(ms: number): void {
+    this.stats.setBakeMs(ms);
   }
 
   /**
@@ -180,14 +207,22 @@ export class EditorTools {
     this.timeline.pause();
   }
 
-  /** The node the gizmo stands on: the selected node, or the node of the selected element; null when locked or none. */
+  /** The node of the selection (the owner of a selected element), locked or not; null without a selection. */
+  selectedNode(): number | null {
+    const target = this.host.selection.current;
+    const doc = this.host.viewer.document;
+    if (!target || !doc) return null;
+    const node = target.kind === 'node' ? target.index : (doc.meshes[target.index]?.node ?? -1);
+    return node >= 0 && node < doc.nodes.length ? node : null;
+  }
+
+  /** The node of the selection with the gizmo on it: the selected node, or the node of the selected element; null when locked or none. */
   gizmoNode(): number | null {
     const state = this.host.state();
     const target = this.host.selection.current;
     const doc = this.host.viewer.document;
-    if (!state || !target || !doc) return null;
-    const node = target.kind === 'node' ? target.index : (doc.meshes[target.index]?.node ?? -1);
-    if (node < 0 || node >= doc.nodes.length) return null;
+    const node = this.selectedNode();
+    if (!state || !target || !doc || node === null) return null;
     const locked =
       target.kind === 'node' ? isNodeLocked(doc, state.lock, node) : isMeshLocked(doc, state.lock, target.index);
     return locked ? null : node;
@@ -214,7 +249,7 @@ export class EditorTools {
   dispose(): void {
     for (const cleanup of this.cleanups) cleanup();
     // The pause settles the pose and arms a relight: the debt is dropped after it.
-    this.timeline.pause();
+    this.timeline.dispose();
     this.light.dispose();
   }
 
@@ -273,7 +308,7 @@ export class EditorTools {
   private readonly onDown = (event: PointerEvent): void => {
     if (event.button !== 0 || event.shiftKey || !event.isPrimary) return;
     // The buttons and menus over the view are not the view: a click on them selects nothing.
-    if (event.target instanceof Element && event.target.closest('.chips')) return;
+    if (event.target instanceof Element && event.target.closest(NOT_THE_VIEW)) return;
     const point = this.local(event);
     this.press = { x: point.x, y: point.y, id: event.pointerId };
     const node = this.gizmoNode();
@@ -300,6 +335,7 @@ export class EditorTools {
 
   private readonly onMove = (event: PointerEvent): void => {
     const drag = this.drag;
+    if (!drag) this.hover(event);
     const state = this.host.state();
     const projector = this.overlay.projector;
     const frame = this.overlay.frame;
@@ -358,6 +394,10 @@ export class EditorTools {
     this.pick(point);
   };
 
+  private readonly onLeave = (): void => {
+    if (this.host.helperLabel) this.host.helperLabel.hidden = true;
+  };
+
   private readonly onCancel = (): void => {
     this.press = null;
     if (this.drag) {
@@ -373,6 +413,31 @@ export class EditorTools {
       time: this.timeline.time,
       loop: this.timeline.looping ? 'loop' : 'hold',
     }).document;
+  }
+
+  private showCameraInfo(camera: SceneCamera): void {
+    const info = this.host.cameraInfo;
+    if (!info) return;
+    const text =
+      camera.projection.kind === 'perspective'
+        ? `Perspective · ${Math.round(camera.projection.fovYDeg)}° FOV`
+        : 'Orthographic';
+    if (text === this.shownCameraInfo) return;
+    this.shownCameraInfo = text;
+    info.textContent = text;
+  }
+
+  // A light helper under the pointer is named in DOM text beside it, never drawn on the canvas.
+  private hover(event: PointerEvent): void {
+    const label = this.host.helperLabel;
+    if (!label) return;
+    const point = this.local(event);
+    const hit = this.overlay.helperAt(point.x, point.y);
+    label.hidden = hit === null;
+    if (!hit) return;
+    label.textContent = hit.label;
+    label.style.left = `${Math.round(hit.x + 12)}px`;
+    label.style.top = `${Math.round(hit.y + 12)}px`;
   }
 
   private pick(point: { x: number; y: number }): void {

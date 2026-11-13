@@ -67,7 +67,7 @@ in the middle, the inspector on the right and the timeline below.
 
 - **Top bar**: one row at every width. In order: the logo, the File menu, Undo and Redo (icon buttons), the panel
   toggles (Outliner, Inspector, Timeline: icon buttons with `aria-expanded`), the Preview / Path traced switch, the
-  model name with a status dot, Share (secondary; where the browser can share files it keeps its place and only
+  model name with a status dot, Help (the "?" icon button), Share (secondary; where the browser can share files it keeps its place and only
   disappears, so Export never moves) and Export, the only primary of the bar. There is no Render label in the bar.
   Preview shows the live view; Path traced shows the finished render (it starts one when there is none). Below 900 px
   the history, panel and mode groups sit behind a More button (`aria-expanded`; it follows the File menu in the page
@@ -87,7 +87,35 @@ in the middle, the inspector on the right and the timeline below.
   full size as the model is shown (not when the editor tools list the clips), and the viewer takes the view's new size
   at once (`Viewer.syncSize`) before the camera is framed or restored, so a reload brings back the saved view in a
   portrait view too.
-- **First-run row**: `#first-run-hint` (a region "Shortcut hints") over the view, below the chips: keys from
+- **Timeline** (`#timeline`, lazy with the editor tools): a 44 px transport bar (back to start, Play or Pause, previous
+  and next keyframe, Loop `aria-pressed`, the clip choice "Name · 2.00 s", the readout "0.50 / 1.00 s", the keyframe
+  count (hidden below 1024 px), zoom out and in (the readout and the zoom buttons are hidden below 600 px); Ctrl+wheel zooms 1 to 16 times) over a body with one lane per animated node (a names column of
+  buttons, 200 px, 120 px below 600 px; a track with a ruler on 1, 2, 5 step ticks no closer than 64 px, a keyframe
+  diamond per time with its values in the tooltip, and the playhead line). The native range input is the scrubber (name
+  "Playhead", `aria-valuetext` "0.50 s of 1.00 s") placed on the ruler row, so the thumb and the line share one
+  mapping (`TimeScale`). A frame of playback moves only the playhead line, the readout and the scrubber value; the lanes
+  are rebuilt for a clip, a zoom, a width, a rename or a model (`laneRows`: at most 500 lanes and a "+N more nodes" row,
+  2000 diamonds in all, names as text, times outside the clip dropped). Choosing a lane or its name selects that node, and
+  the outliner, inspector and lane follow one selection; clicking a diamond also seeks to it. Keyframes are shown, not
+  edited (the model is read-only). Arrows on the focused scrubber step one frame (1/24 s, Shift ten), PageUp and PageDown
+  the keyframes; `,` and `.` do the same anywhere.
+- **Loading**: from the start of an open until its clips are shown the panel is `aria-busy` (`data-loading`); an open panel
+  shows three skeleton lanes (no animation), a collapsed one stays collapsed, so the view never resizes and a finished
+  render is kept. A refused or failed open, or one without clips, ends it at once.
+- **View bar, tool rail and chips**: over the view, nothing shares a row or a corner. At the top right a one-row view bar
+  (Front, Side, Three-quarter, Isometric as F, S, ¾, Iso below 600 px; Frame model; the Overlays menu, an icon alone below
+  600 px) with the projection and field of view as text and the stats chip under it; at the top left the tool rail
+  (`role="group"` "Gizmo mode": Move W and Rotate E with `aria-pressed`, one code path with the keys); below 1024 px every
+  control of the bar and the rail is 44 px. The stats chip (Overlays, Statistics; kept in the local state) tells fps,
+  triangles, meshes, the overlay's draw time and how long the last light bake took. The axis gizmo is a 56 px box in the
+  bottom-left corner of the overlay canvas, moved off the rail and the render bar by their measured boxes
+  (`placeAxisBox`); the key light's helper is clipped into the view inset by 16 px (an edge marker when it is wholly
+  outside) and named "Key light" on hover in DOM text (`.helper-label`).
+- **Help**: the "?" button (`#help-open`) at the end of the top bar, the File menu's Shortcuts row and the `?` key open the
+  shortcut dialog: a header with the search field (first control, focused), a Close button, and a body that scrolls
+  inside `100dvh - 32px` in one column, two from 900 px; keycaps for every key, groups that filter with the search. Esc
+  or Close returns the focus to the control that opened it, or to the "?" button when that is hidden.
+- **First-run row**: `#first-run-hint` (a region "Shortcut hints") over the view, below the view bar and the chips: keys from
   `SHORTCUTS`, drag to orbit and scroll to zoom. Dismissing it moves the focus to the 3D view.
 - **Model dot**: next to the model name, `#model-state` is a dot with a shape per state, not colour alone (filled
   circle lit, dashed ring lighting, filled square unbaked) and a tooltip, driven by the viewer's `onBakeStarted` and
@@ -224,29 +252,50 @@ in the middle, the inspector on the right and the timeline below.
 
 ## Shortcuts
 
-Ignored while typing in a field or with a dialog open; they never use the orbit keys (arrows, + - = \_ 0 Home O I). The
-list in the app (`?`, grouped File, View, Selection, Timeline) is built from `SHORTCUTS` in
-`shortcuts/shortcutAction.ts`.
+One table in `shortcuts/shortcutAction.ts` (`SHORTCUTS`, each entry with its `bindings`) drives the key handling
+(`shortcutAction`), the help dialog, the keycaps, the tooltips (`title` and `aria-keyshortcuts`, also on the Render
+and Export buttons, History and the panel toggles), the File menu keys and this table; `shortcutDocs.test.ts` fails
+when the table and the registry differ. The keys are ignored while typing in a field or with a dialog open, and never
+use the orbit keys. The table lists the document-wide shortcuts first, then the keys of the focused 3D view
+(`shortcuts/orbitKeys.ts`, pinned against the renderer's `orbitKeyAction`) and of the focused timeline scrubber
+(`timeline/scrubberKeys.ts`). Space on a focused button, link, tab, separator or the scrubber keeps its own meaning.
 
-| Key                      | Action                                                               |
-| ------------------------ | -------------------------------------------------------------------- |
-| Ctrl/Cmd+O               | open files                                                           |
-| Ctrl/Cmd+E               | export                                                               |
-| Ctrl/Cmd+Z               | undo                                                                 |
-| Ctrl/Cmd+Shift+Z, Ctrl+Y | redo                                                                 |
-| R                        | render                                                               |
-| Esc                      | stop the render, close dialogs, menus and drawers                    |
-| 1, 2, 3, 4               | front, side, three-quarter, iso                                      |
-| L                        | next look (the Look tab's cards mark it; `aria-checked` follows)     |
-| G                        | all overlays off, or back on                                         |
-| [ and ]                  | outliner and inspector                                               |
-| /                        | search the outliner (not while typing in a field)                    |
-| T                        | timeline                                                             |
-| ?                        | the shortcut list                                                    |
-| H                        | show or hide the selected node                                       |
-| W and E                  | move and rotate gizmo                                                |
-| F2                       | rename the selected node                                             |
-| Space                    | play or pause (a focused button, link, tab or separator keeps Space) |
+| Key                                 | Action                             |
+| ----------------------------------- | ---------------------------------- |
+| Ctrl+O / Cmd+O                      | Open files                         |
+| Ctrl+E / Cmd+E                      | Export                             |
+| Ctrl+Z / Cmd+Z                      | Undo                               |
+| Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y | Redo                               |
+| R                                   | Render                             |
+| Esc                                 | Stop the render                    |
+| 1                                   | Front view                         |
+| 2                                   | Side view                          |
+| 3                                   | Three-quarter view                 |
+| 4                                   | Isometric view                     |
+| L                                   | Next look                          |
+| G                                   | Show or hide the grid and gizmos   |
+| [                                   | Show or hide the outliner          |
+| ]                                   | Show or hide the inspector         |
+| T                                   | Show or hide the timeline          |
+| ?                                   | This list                          |
+| H                                   | Show or hide the selected node     |
+| W                                   | Move gizmo                         |
+| E                                   | Rotate gizmo                       |
+| /                                   | Search the outliner                |
+| F2                                  | Rename the selected node           |
+| Space                               | Play or pause the animation        |
+| ,                                   | Previous keyframe                  |
+| .                                   | Next keyframe                      |
+| Arrows                              | Orbit (in the 3D view)             |
+| Shift+Arrows                        | Pan                                |
+| + / -                               | Zoom                               |
+| 0 / Home                            | Reset the view                     |
+| O                                   | Perspective or orthographic        |
+| I                                   | Isometric view                     |
+| ← / →                               | One frame (1/24 s) back or forward |
+| Shift+← / Shift+→                   | 10 frames back or forward          |
+| PageUp / PageDown                   | Previous or next keyframe          |
+| Home / End                          | Start or end of the clip           |
 
 ## Local state v1
 
@@ -349,7 +398,7 @@ its own box), errors in
 `role="alert"` until dismissed or the next open, arms change or render (the Dismiss button sits beside it, not inside;
 the pinned graphics-driver alert, a context that cannot be restored or a linear program that fails to link during the
 fallback switch, where drawing goes on with nearest filtering, survives those and goes only when dismissed), one `role="status"` line, the render progress as
-a `progress` with `aria-valuetext`, the forget dialog with its focus back on File, native controls and dialogs, tabs (a vertical rail), the outliner tree, radio cards, collapsible sections and separators with their ARIA
+a `progress` with `aria-valuetext`, the forget dialog with its focus back on File, the shortcut dialog (search first, Esc back to its opener), the timeline scrubber (name, value text, frame and keyframe keys) and lanes (one tab stop, arrows between them, `aria-current` on the selected one), the tool rail as a named group of toggle buttons, native controls and dialogs, tabs (a vertical rail), the outliner tree, radio cards, collapsible sections and separators with their ARIA
 patterns, the overlay canvas `aria-hidden`, colours only from the brand tokens ([brand.md](brand.md)). In forced
 colours the native checkbox, radio and select return and every active state (`.on`, pressed, the checked segment, the
 selected tab, the current outliner row) gets a system-colour outline or bar. Axis letters keep 4.5:1 on the field surface; an XYZ field with an invalid value is `aria-invalid` and its hint is a polite status. Every panel is reachable by keyboard; the
@@ -359,7 +408,7 @@ shortcut list is the cheat sheet.
 
 Vitest in `packages/app/test`; Playwright in `packages/app/e2e` (`pnpm --filter @modelshot/app run test:browser`):
 flow, formats, camera, persistence, hostile files, offline, network, handoff, accessibility and preview/render parity,
-and the editor: `app.editor.spec.ts` (picking, gizmo, undo, names and locks, the inspector tabs, looks, render and camera), `app.outliner.spec.ts` (the tree, collapse, search, keyboard, the 2000-row rebuild), `app.timeline.spec.ts`,
+and the editor: `app.editor.spec.ts` (picking, gizmo, undo, names and locks, the inspector tabs, looks, render and camera), `app.outliner.spec.ts` (the tree, collapse, search, keyboard, the 2000-row rebuild), `app.timeline.spec.ts` (clips, lanes and diamonds, the ruler, transport by mouse and keyboard, frame and keyframe steps, the playhead line meeting the scrubber thumb and the readout, lane, outliner and inspector selection, the loading skeleton, a failed open, a 384-keyframe clip that plays without rebuilding a lane, screenshots at 1440 and 1024 px), `app.viewport.spec.ts` (presets, tool rail against W and E, the stats chip across a reload, no overlap and one-row bars at 375, 768 and 1440 px, the key light inside the view, the hover label), `app.help.spec.ts` (the dialog inside the viewport and scrolling at 900x600 and 375x667, search, focus return, keycaps in tooltips),
 `app.topbar.spec.ts` (one row from 1440 to 900 px, More below, one primary, the File menu from the keyboard, the forget
 dialog, a message or the longest error covers no view control, render bar button or first-run row from 375 to 1440 px, a
 cut-off message scrolls under the wheel and the camera stays), `app.render.spec.ts` (render start, Stop and Esc, numbers, result line, the view keeps its size),
