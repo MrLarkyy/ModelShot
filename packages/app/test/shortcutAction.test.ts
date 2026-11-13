@@ -38,6 +38,8 @@ describe('shortcutAction', () => {
     [key('['), 'outliner'],
     [key(']'), 'inspector'],
     [key('t'), 'timeline'],
+    [key(','), 'prevKeyframe'],
+    [key('.'), 'nextKeyframe'],
     [key('Z', { ctrlKey: true, shiftKey: true }), 'redo'],
     [key('Z', { metaKey: true, shiftKey: true }), 'redo'],
   ])('maps %o to %s', (event, action) => {
@@ -54,7 +56,27 @@ describe('shortcutAction', () => {
   });
 
   it('never takes a key the viewport uses for its orbit controls', () => {
-    for (const k of ['r', 'Escape', '1', '2', '3', '4', 'l', 'h', '?', ' ', 'w', 'e', 'g', 'F2', '[', ']', 't']) {
+    for (const k of [
+      'r',
+      'Escape',
+      '1',
+      '2',
+      '3',
+      '4',
+      'l',
+      'h',
+      '?',
+      ' ',
+      'w',
+      'e',
+      'g',
+      'F2',
+      '[',
+      ']',
+      't',
+      ',',
+      '.',
+    ]) {
       expect(orbitKeyAction(k, false), k).toBeNull();
       expect(orbitKeyAction(k, true), k).toBeNull();
     }
@@ -105,5 +127,6 @@ describe('shortcutAction', () => {
     expect(keys['redo']).toBe('Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y');
     expect(keys['playPause']).toBe('Space');
     expect(keys['cancel']).toBe('Esc');
+    expect(keys['nextKeyframe']).toBe('.');
   });
 });

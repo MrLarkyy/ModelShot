@@ -13,6 +13,8 @@ export const SHORTCUT_ACTIONS = [
   'undo',
   'redo',
   'playPause',
+  'prevKeyframe',
+  'nextKeyframe',
   'move',
   'rotate',
   'overlays',
@@ -100,6 +102,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
   entry('search', 'Selection', 'Search the outliner', { key: '/' }),
   entry('rename', 'Selection', 'Rename the selected node', { key: 'F2' }),
   entry('playPause', 'Timeline', 'Play or pause the animation', { key: ' ' }),
+  entry('prevKeyframe', 'Timeline', 'Previous keyframe', { key: ',' }),
+  entry('nextKeyframe', 'Timeline', 'Next keyframe', { key: '.' }),
 ];
 
 function matches(binding: KeyBinding, key: string, event: KeyLike): boolean {

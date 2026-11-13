@@ -55,7 +55,7 @@ test('below 1024 px the panels are drawers over a usable view', async ({ page },
   await expect(page.locator('#timeline')).toContainText('This model has no animations.');
   await expect(page.locator('#timeline').getByRole('button', { name: 'Play' })).toBeDisabled();
   await expect(page.locator('#timeline select')).toBeHidden();
-  const controls = await box(page, '.timeline-controls');
+  const controls = await box(page, '.tl-bar');
   expect(controls.x).toBeGreaterThanOrEqual(0);
   expect(controls.x + controls.width).toBeLessThanOrEqual(900);
   expect((await box(page, '#timeline')).height, 'the timeline is one row').toBeLessThan(60);
@@ -93,7 +93,7 @@ test('below 1024 px an animated model keeps a readable clip choice inside the pa
   expect(clip.width).toBeGreaterThanOrEqual(100);
   await expect(page.locator('#timeline').getByRole('button', { name: 'Play' })).toBeEnabled();
   await expect(page.locator('#timeline')).not.toContainText('This model has no animations.');
-  const controls = await box(page, '.timeline-controls');
+  const controls = await box(page, '.tl-bar');
   expect(controls.x).toBeGreaterThanOrEqual(0);
   expect(controls.x + controls.width).toBeLessThanOrEqual(900);
 });

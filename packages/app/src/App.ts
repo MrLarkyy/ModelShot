@@ -49,6 +49,7 @@ import { StatePersistence } from './state/StatePersistence';
 import { bindDisclosure } from './ui/bindDisclosure';
 import { byId } from './ui/dom';
 import { Notices } from './ui/Notices';
+import { setTimelineLoading } from './timeline/loadingState';
 import { bindTopBar } from './ui/TopBar';
 import type { RenderTiming } from './render/estimateRenderMs';
 import { progressText, resultText } from './render/renderInfo';
@@ -370,6 +371,8 @@ export class App {
       return;
     }
     this.loading = true;
+    setTimelineLoading(this.timelinePanel, true);
+    let opened = false;
     let name = 'the files';
     try {
       const request = groupFiles(files);
@@ -388,6 +391,7 @@ export class App {
         this.notices.status(this.open ? `Still showing ${this.open.loaded.name}.` : '');
         return;
       }
+      opened = true;
       void this.persistence.saveSession(files, loaded.key);
       this.scheduleSave();
     } catch (error) {
@@ -398,7 +402,14 @@ export class App {
       this.notices.status(this.open ? `Still showing ${this.open.loaded.name}.` : '');
     } finally {
       this.loading = false;
+      // A shown model's clips end the busy state when the timeline lists them; a refused or failed open ends it here.
+      if (!opened) this.endTimelineLoading();
     }
+  }
+
+  private endTimelineLoading(): void {
+    setTimelineLoading(this.timelinePanel, false);
+    this.timelinePanel.toggleAttribute('data-empty', (this.restDoc?.animations?.length ?? 0) === 0);
   }
 
   /** The parts the e2e build exposes to its tests. */
@@ -559,6 +570,8 @@ export class App {
       // takes the view's new size at once: a camera framed or restored below is fitted to the aspect known then, and a
       // view resized after it would show a restored camera at another zoom.
       this.timelinePanel.toggleAttribute('data-empty', (rest.animations?.length ?? 0) === 0);
+      // With clips the skeleton stays until the timeline lists them; without, there is nothing to wait for.
+      if ((rest.animations?.length ?? 0) === 0) setTimelineLoading(this.timelinePanel, false);
       if (viewer.syncSize() && reframe) viewer.orbit.reset();
       // Taken after the wait: a look picked while the files were opening stays, unless the model has its own.
       if (savedLook) this.lookAdjust = saved?.lookAdjust ?? NO_LOOK_ADJUST;
@@ -628,6 +641,7 @@ export class App {
         overlay: byId('overlay', HTMLCanvasElement),
         timeline: byId('timeline', HTMLElement),
         stats: byId('stats', HTMLElement),
+        names: () => this.names,
         state: () =>
           this.restDoc
             ? {
@@ -645,6 +659,7 @@ export class App {
       this.tools.modelChanged();
       document.body.dataset['editor'] = 'ready';
     } catch (error) {
+      this.endTimelineLoading();
       this.notices.status(`The editor tools could not load: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       this.toolsLoading = false;
@@ -857,8 +872,10 @@ export class App {
       this.textureFilter = next.textureFilter;
       this.lockedNodes = next.lockedNodes;
       this.lockedMeshes = next.lockedMeshes;
+      const renamed = this.names !== next.names;
       this.names = next.names;
       this.nodeEdits = next.nodeEdits;
+      if (renamed) this.tools?.timeline.namesChanged();
       if (lookChanged && look !== undefined) this.selectLook(look, false, bakes.look);
       this.syncHistoryButtons();
       this.showPanels();
@@ -1347,6 +1364,8 @@ export class App {
       outliner: panel('outliner'),
       inspector: panel('inspector'),
       timeline: panel('timeline'),
+      prevKeyframe: () => this.tools?.timeline.stepKeyframe(-1),
+      nextKeyframe: () => this.tools?.timeline.stepKeyframe(1),
     });
     const flush = (): void => void this.persistence.flush();
     window.addEventListener('pagehide', flush);

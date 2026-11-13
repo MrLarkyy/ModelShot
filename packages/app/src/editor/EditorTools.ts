@@ -38,6 +38,8 @@ export interface EditorToolsHost {
   readonly overlay: HTMLCanvasElement;
   readonly timeline: HTMLElement;
   readonly stats: HTMLElement;
+  /** The user's names of nodes and elements (lane labels). */
+  readonly names?: () => ReadonlyMap<string, string>;
   /** The model on show, or null while there is none. */
   readonly state: () => EditorState | null;
   /**
@@ -90,6 +92,10 @@ export class EditorTools {
       frame: (clip, time, loop) => this.playFrame(clip, time, loop, 'frame'),
       interacted: () => host.interacted(),
       clipChanged: () => host.clipChanged?.(),
+      document: () => host.viewer.document,
+      ...(host.names ? { names: host.names } : {}),
+      selectedNode: () => this.selectedNode(),
+      selectNode: (index) => host.selection.set({ kind: 'node', index }),
       playingChanged: (playing) => {
         if (!playing) this.light.settled();
       },
@@ -104,7 +110,10 @@ export class EditorTools {
       () => viewport.removeEventListener('pointermove', this.onMove),
       () => viewport.removeEventListener('pointerup', this.onUp),
       () => viewport.removeEventListener('pointercancel', this.onCancel),
-      host.selection.onChange(() => this.refresh()),
+      host.selection.onChange(() => {
+        this.refresh();
+        this.timeline.selectionChanged();
+      }),
       host.layout.onChange(() => this.refresh()),
     );
   }
@@ -180,14 +189,22 @@ export class EditorTools {
     this.timeline.pause();
   }
 
-  /** The node the gizmo stands on: the selected node, or the node of the selected element; null when locked or none. */
+  /** The node of the selection (the owner of a selected element), locked or not; null without a selection. */
+  selectedNode(): number | null {
+    const target = this.host.selection.current;
+    const doc = this.host.viewer.document;
+    if (!target || !doc) return null;
+    const node = target.kind === 'node' ? target.index : (doc.meshes[target.index]?.node ?? -1);
+    return node >= 0 && node < doc.nodes.length ? node : null;
+  }
+
+  /** The node of the selection with the gizmo on it: the selected node, or the node of the selected element; null when locked or none. */
   gizmoNode(): number | null {
     const state = this.host.state();
     const target = this.host.selection.current;
     const doc = this.host.viewer.document;
-    if (!state || !target || !doc) return null;
-    const node = target.kind === 'node' ? target.index : (doc.meshes[target.index]?.node ?? -1);
-    if (node < 0 || node >= doc.nodes.length) return null;
+    const node = this.selectedNode();
+    if (!state || !target || !doc || node === null) return null;
     const locked =
       target.kind === 'node' ? isNodeLocked(doc, state.lock, node) : isMeshLocked(doc, state.lock, target.index);
     return locked ? null : node;
@@ -214,7 +231,7 @@ export class EditorTools {
   dispose(): void {
     for (const cleanup of this.cleanups) cleanup();
     // The pause settles the pose and arms a relight: the debt is dropped after it.
-    this.timeline.pause();
+    this.timeline.dispose();
     this.light.dispose();
   }
 

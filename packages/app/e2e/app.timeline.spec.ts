@@ -9,6 +9,7 @@ import {
   openApp,
   openFiles,
   openTab,
+  chooseMadeFiles,
   previewImage,
   renderImage,
   storedModels,
@@ -30,22 +31,32 @@ async function openAnimated(page: Page): Promise<void> {
   await waitForEditor(page);
 }
 
-test('the timeline lists the clips and draws one marker per keyframe time of the first clip', async ({ page }) => {
+test('the timeline lists the clips and draws a diamond per keyframe time of each node of the first clip', async ({
+  page,
+}) => {
   await openAnimated(page);
   const clips = timeline(page).getByRole('combobox', { name: 'Clip' });
   await expect(clips.locator('option')).toHaveCount(4);
-  // The first clip, "bob", has keyframes at 0, 0.5 and 1 s: the markers come from the file.
-  await expect(timeline(page).locator('.marker')).toHaveCount(3);
+  await expect(clips.locator('option').first()).toContainText(' · 1.00 s');
+  // The first clip, "bob", has keyframes at 0, 0.5 and 1 s: the diamonds come from the file.
+  const lanes = timeline(page).locator('.tl-lane');
+  expect(await lanes.count()).toBeGreaterThan(0);
+  await expect(timeline(page).locator('.tl-name')).toHaveCount(await lanes.count());
+  const times = await timeline(page)
+    .locator('.kf')
+    .evaluateAll((nodes) => [...new Set(nodes.map((n) => (n as HTMLElement).dataset['time']))].sort());
+  expect(times).toEqual(['0', '0.5', '1']);
   await expect(timeline(page)).toContainText('3 keyframes');
   const model = JSON.parse(await readFile(ANIMATED, 'utf8')) as {
     animations: { animators: Record<string, { keyframes?: { time: number }[] }> }[];
   };
-  const times = new Set(
+  const fileTimes = new Set(
     Object.values(model.animations[0]?.animators ?? {}).flatMap((a) => (a.keyframes ?? []).map((k) => k.time)),
   );
-  await expect(timeline(page)).toContainText(`${times.size} keyframes`);
+  await expect(timeline(page)).toContainText(`${fileTimes.size} keyframes`);
   await clips.selectOption({ index: 3 });
   await expect(timeline(page)).toContainText('6 keyframes');
+  await expect(timeline(page).locator('.tl-ruler .tl-tick').first()).toHaveText(/^0(.0+)?s$/);
 });
 
 test('nothing plays by itself; Play advances the playhead and Pause stops it', async ({ page }) => {
@@ -146,8 +157,8 @@ test('opening Export pauses the playback', async ({ page }) => {
   await expect(timeline(page).getByRole('button', { name: 'Pause' })).toBeVisible();
   await page.getByRole('button', { name: 'Export…' }).click();
   await expect(page.getByRole('dialog', { name: 'Export' })).toBeVisible();
-  await expect(timeline(page).locator('button', { hasText: 'Play' })).toHaveCount(1);
-  await expect(timeline(page).locator('button', { hasText: 'Pause' })).toHaveCount(0);
+  await expect(timeline(page).getByRole('button', { name: 'Play' })).toHaveCount(1);
+  await expect(timeline(page).getByRole('button', { name: 'Pause' })).toHaveCount(0);
 });
 
 test('scrubbing during a render cancels it', async ({ page }) => {
@@ -253,3 +264,174 @@ test('a pose that stays is lit for that pose: preview and render at 0.5 s agree 
   const relights = seen.filter((text, i) => lighting(text) && !lighting(seen[i - 1])).length;
   expect(relights, `relights in ${JSON.stringify(seen)}`).toBe(1);
 });
+
+const centreX = async (locator: ReturnType<Page['locator']>): Promise<number> => {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error('not laid out');
+  return box.x + box.width / 2;
+};
+
+test('one lane per animated node, named and in node order, with ruler ticks and a playhead line', async ({ page }) => {
+  await openAnimated(page);
+  await expect(timeline(page).locator('.tl-name')).toHaveText(['body', 'head']);
+  await expect(timeline(page).locator('.tl-lane')).toHaveCount(2);
+  await expect(timeline(page).locator('.tl-lane').first().locator('.kf')).toHaveCount(3);
+  expect(await timeline(page).locator('.tl-tick').count()).toBeGreaterThan(2);
+  await expect(timeline(page).locator('.tl-playhead')).toBeVisible();
+});
+
+test('transport by mouse and keyboard: keyframe steps, frame steps, clip switch and Loop', async ({ page }) => {
+  await openAnimated(page);
+  const value = async (): Promise<number> => Number(await playhead(page).inputValue());
+  await timeline(page).getByRole('button', { name: 'Next keyframe' }).click();
+  expect(await value()).toBe(0.5);
+  await page.keyboard.press('.');
+  expect(await value()).toBe(1);
+  await page.keyboard.press(',');
+  expect(await value()).toBe(0.5);
+  await timeline(page).getByRole('button', { name: 'Back to start' }).click();
+  expect(await value()).toBe(0);
+  await playhead(page).focus();
+  await page.keyboard.press('ArrowRight');
+  expect(await value()).toBeCloseTo(1 / 24, 6);
+  await page.keyboard.press('Shift+ArrowRight');
+  expect(await value()).toBeCloseTo(11 / 24, 6);
+  await page.keyboard.press('PageDown');
+  expect(await value()).toBe(0.5);
+  await page.keyboard.press('Home');
+  expect(await value()).toBe(0);
+  await expect(playhead(page)).toBeFocused();
+  const loop = timeline(page).getByRole('button', { name: 'Loop' });
+  await expect(loop).toHaveAttribute('aria-pressed', 'true');
+  await loop.click();
+  await expect(loop).toHaveAttribute('aria-pressed', 'false');
+  await timeline(page).getByRole('combobox', { name: 'Clip' }).selectOption({ index: 1 });
+  expect(await value()).toBe(0);
+  await expect(timeline(page).getByRole('combobox', { name: 'Clip' })).toHaveValue('1');
+});
+
+test('Space on the focused scrubber does not play, and the playhead line meets the scrubber thumb and readout', async ({
+  page,
+}) => {
+  await openAnimated(page);
+  await playhead(page).focus();
+  await page.keyboard.press(' ');
+  await expect(timeline(page).getByRole('button', { name: 'Play' })).toBeVisible();
+  for (const time of [0.25, 0.5]) {
+    await playhead(page).fill(String(time));
+    await expect(timeline(page).locator('.time-readout')).toHaveText(`${time.toFixed(2)} / 1.00 s`);
+    const line = await centreX(timeline(page).locator('.tl-playhead'));
+    const scrub = (await playhead(page).boundingBox())!;
+    const thumb = scrub.x + 6 + time * (scrub.width - 12);
+    expect(Math.abs(line - thumb), `playhead line at ${time} s`).toBeLessThanOrEqual(1);
+  }
+});
+
+test('a lane, the outliner and the inspector follow one selection', async ({ page }) => {
+  await openAnimated(page);
+  const second = timeline(page).locator('.tl-name').nth(1);
+  await second.click();
+  await expect(second).toHaveAttribute('aria-current', 'true');
+  await expect(timeline(page).locator('.tl-lane').nth(1)).toHaveClass(/sel/);
+  await expect(page.locator('#scene-panel [data-row][aria-current="true"]')).toContainText('head');
+  await expect(page.locator('#tabpanel-object').getByLabel('Name')).toHaveValue('head');
+  const body = page.locator('#scene-panel [role="treeitem"]', { has: page.locator('[data-row]', { hasText: 'body' }) });
+  await body.first().locator('[data-row]').click();
+  await expect(timeline(page).locator('.tl-name').first()).toHaveAttribute('aria-current', 'true');
+  await expect(second).not.toHaveAttribute('aria-current', 'true');
+});
+
+test('the panel is never bare between the start of an open and the lanes', async ({ page }) => {
+  await page.addInitScript(() => {
+    const seen: string[] = [];
+    (window as unknown as { snapshots: string[] }).snapshots = seen;
+    let started = false;
+    let done = false;
+    new MutationObserver(() => {
+      const panel = document.getElementById('timeline');
+      if (!panel || done) return;
+      const loading = panel.hasAttribute('data-loading');
+      const lanes = panel.querySelector('.tl-lane') !== null;
+      if (loading) started = true;
+      if (started && lanes) done = true;
+      if (started && !done) seen.push(loading || lanes ? 'ok' : 'bare');
+    }).observe(document, { subtree: true, childList: true, attributes: true });
+  });
+  await openAnimated(page);
+  const snapshots = await page.evaluate(() => (window as unknown as { snapshots: string[] }).snapshots);
+  expect(snapshots.length).toBeGreaterThan(0);
+  expect(snapshots.filter((state) => state === 'bare')).toEqual([]);
+  await expect(timeline(page)).not.toHaveAttribute('aria-busy');
+  await expect(timeline(page)).not.toHaveAttribute('data-loading');
+});
+
+test('an open that fails ends the busy state', async ({ page }) => {
+  await openApp(page);
+  await chooseMadeFiles(page, [{ name: 'bad.bbmodel', text: 'not json at all' }]);
+  await expect(page.getByRole('alert')).toContainText('bad.bbmodel');
+  await expect(timeline(page)).not.toHaveAttribute('aria-busy');
+  await expect(timeline(page)).not.toHaveAttribute('data-loading');
+});
+
+test('a clip with 384 keyframes plays without rebuilding a lane, and a frame costs about a millisecond', async ({
+  page,
+}) => {
+  const source = JSON.parse(await readFile(ANIMATED, 'utf8')) as Record<string, unknown>;
+  const ids = Array.from({ length: 8 }, (_, i) => `0b0d1e5a-0000-4000-8000-0000000001${String(i).padStart(2, '0')}`);
+  const outliner = ids.map((uuid, i) => ({
+    name: `bone${i}`,
+    origin: [0, 0, 0],
+    rotation: [0, 0, 0],
+    uuid,
+    export: true,
+    isOpen: true,
+    visibility: true,
+    autouv: 0,
+    children: i === 0 ? ['c-trunk', 'c-skull'] : [],
+  }));
+  const keyframes = (channel: string) =>
+    Array.from({ length: 16 }, (_, k) => ({
+      channel,
+      data_points: [{ x: k, y: 0, z: 0 }],
+      uuid: `k-${channel}-${k}`,
+      time: (k * 2) / 16,
+      color: -1,
+      interpolation: 'linear',
+    }));
+  const animators = Object.fromEntries(
+    ids.map((uuid, i) => [
+      uuid,
+      { name: `bone${i}`, type: 'bone', keyframes: ['position', 'rotation', 'scale'].flatMap(keyframes) },
+    ]),
+  );
+  const model = {
+    ...source,
+    outliner,
+    animations: [{ uuid: 'a-big', name: 'big', loop: 'loop', length: 2, animators }],
+  };
+  await openApp(page);
+  await chooseMadeFiles(page, [{ name: 'big.bbmodel', text: JSON.stringify(model) }]);
+  await waitForEditor(page);
+  await expect(timeline(page).locator('.tl-lane')).toHaveCount(8);
+  await expect(timeline(page)).toContainText('16 keyframes');
+  const before = (await page.evaluate(() => window.__msApp!.timelineStats()))!;
+  await timeline(page).getByRole('button', { name: 'Play' }).click();
+  await expect.poll(async () => Number(await playhead(page).inputValue())).toBeGreaterThan(1);
+  await timeline(page).getByRole('button', { name: 'Pause' }).click();
+  const after = (await page.evaluate(() => window.__msApp!.timelineStats()))!;
+  expect(after.laneBuilds).toBe(before.laneBuilds);
+  expect(after.medianSyncMs).toBeLessThanOrEqual(1);
+});
+
+for (const width of [1440, 1024]) {
+  test(`the timeline at ${width} px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 800 });
+    await openAnimated(page);
+    await timeline(page).locator('.tl-name').first().click();
+    await playhead(page).fill('0.5');
+    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`timeline-${width}.png`) });
+    const box = (await timeline(page).boundingBox())!;
+    expect(box.x + box.width).toBeLessThanOrEqual(width);
+    expect((await timeline(page).locator('.tl-bar').boundingBox())!.width).toBeLessThanOrEqual(width);
+  });
+}

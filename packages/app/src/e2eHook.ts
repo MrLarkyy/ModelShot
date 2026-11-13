@@ -35,6 +35,8 @@ export interface MsAppHook {
   loseContext(): boolean;
   /** Median milliseconds of the overlay's last draws; null before the editor tools loaded. */
   overlayMedianMs(): number | null;
+  /** How many times the timeline built its lanes and the median ms of its frame updates; null before the editor tools loaded. */
+  timelineStats(): { laneBuilds: number; medianSyncMs: number } | null;
   /** Pixels of the overlay layer that are not transparent. */
   overlayPixels(): number;
   /** The gizmo handles in CSS pixels of the viewport: the end points of each handle's first segment. */
@@ -100,6 +102,10 @@ export function installE2eHook(app: App): void {
       internals.renderSession.tracer = () => new Promise<never>(() => undefined);
     },
     overlayMedianMs: () => internals.editorTools()?.overlay.medianDrawMs ?? null,
+    timelineStats: () => {
+      const timeline = internals.editorTools()?.timeline;
+      return timeline ? { laneBuilds: timeline.laneBuilds, medianSyncMs: timeline.medianSyncMs } : null;
+    },
     overlayPixels: () => {
       const overlay = document.getElementById('overlay') as HTMLCanvasElement;
       const data = overlay.getContext('2d')?.getImageData(0, 0, overlay.width, overlay.height).data;

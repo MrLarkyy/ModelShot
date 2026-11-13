@@ -9,6 +9,7 @@ import { sceneBakes } from '../src/session/sceneBakes';
 import { setNodeEdit, withNodeEdits } from '../src/session/withNodeEdits';
 import type { Viewer } from '../src/viewer/Viewer';
 import { boxMesh, doc, node } from './editorDocs';
+import { TimelineElement } from './fakeTimelineDom';
 
 type Listener = (event: object) => void;
 
@@ -203,7 +204,7 @@ function setup(rest: SceneDocument = animated, options: { refuseEdits?: boolean;
     layout,
     viewport: viewport as unknown as HTMLElement,
     overlay: element() as HTMLCanvasElement,
-    timeline: element(),
+    timeline: new TimelineElement() as unknown as HTMLElement,
     stats: element(),
     state: () => state,
     // App.commitNodeEdit: a queued setup change, or one the scene refuses.
@@ -302,7 +303,11 @@ let frames: (() => void)[] = [];
 beforeEach(() => {
   vi.useFakeTimers();
   frames = [];
-  vi.stubGlobal('document', { createElement: () => new FakeElement(), documentElement: {} });
+  vi.stubGlobal('document', {
+    createElement: () => new TimelineElement(),
+    createElementNS: () => new TimelineElement('svg'),
+    documentElement: {},
+  });
   vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => '' }));
   vi.stubGlobal('Element', class {});
   vi.stubGlobal('requestAnimationFrame', (callback: () => void) => frames.push(callback));
