@@ -30,14 +30,15 @@ export class ViewportChips {
   ) {
     presets.replaceChildren(
       ...CAMERA_PRESETS.map((preset) => {
-        const button = el(
-          'button',
-          { attributes: { type: 'button', 'aria-label': `${preset.label} view`, title: `${preset.label} view` } },
-          [
-            el('span', { className: 'bar-long', text: preset.label }),
-            el('span', { className: 'bar-short', text: preset.short, attributes: { 'aria-hidden': 'true' } }),
-          ],
-        );
+        const button = el('button', {
+          text: preset.label,
+          attributes: {
+            type: 'button',
+            'aria-label': `${preset.label} view`,
+            title: `${preset.label} view`,
+            'data-short': preset.short,
+          },
+        });
         button.addEventListener('click', () => apply(preset.id));
         this.buttons.set(preset.id, button);
         return button;
