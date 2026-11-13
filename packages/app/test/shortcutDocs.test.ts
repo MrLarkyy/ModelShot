@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { ORBIT_KEYS } from '../src/shortcuts/orbitKeys';
 import { SHORTCUTS } from '../src/shortcuts/shortcutAction';
-import { SCRUBBER_KEYS } from '../src/timeline/scrubberKeys';
+import { SCRUBBER_KEYS } from '../src/timeline/scrubberKeyList';
 
 // The Shortcuts table of docs/app.md: one row per entry, in the order of the lists the app is built from.
 async function docRows(): Promise<[string, string][]> {

@@ -1,8 +1,9 @@
 import { el } from '../ui/dom';
 import { iconButton } from '../ui/iconButton';
-import { SCRUBBER_KEYS } from '../timeline/scrubberKeys';
+import { SCRUBBER_KEYS } from '../timeline/scrubberKeyList';
 import { keycaps, keyNames } from './keycaps';
-import { ORBIT_KEYS, parseKeys, type ListedKeys } from './orbitKeys';
+import { parseKeys, type ListedKeys } from './listedKeys';
+import { ORBIT_KEYS } from './orbitKeys';
 import { SHORTCUTS, type ShortcutGroup } from './shortcutAction';
 
 const GROUPS: readonly ShortcutGroup[] = ['File', 'View', 'Selection', 'Timeline'];

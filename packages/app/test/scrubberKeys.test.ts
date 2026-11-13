@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { SCRUBBER_KEYS, scrubberCommand } from '../src/timeline/scrubberKeys';
+import { SCRUBBER_KEYS } from '../src/timeline/scrubberKeyList';
+import { scrubberCommand } from '../src/timeline/scrubberKeys';
 
 describe('scrubberCommand', () => {
   it.each([

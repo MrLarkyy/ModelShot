@@ -1,4 +1,4 @@
-import { FRAME_RATE } from './TimeScale';
+import { SHIFT_FRAMES } from './scrubberKeyList';
 
 export type ScrubberCommand =
   | { readonly kind: 'frames'; readonly frames: number }
@@ -13,17 +13,6 @@ export interface ScrubberKeyLike {
   readonly metaKey?: boolean;
   readonly altKey?: boolean;
 }
-
-/** Frames one Shift+arrow moves. */
-export const SHIFT_FRAMES = 10;
-
-/** The keys of the focused scrubber, for the help dialog: one row each. */
-export const SCRUBBER_KEYS: readonly { readonly keys: string; readonly label: string }[] = [
-  { keys: '← / →', label: `One frame (1/${FRAME_RATE} s) back or forward` },
-  { keys: 'Shift+← / →', label: `${SHIFT_FRAMES} frames back or forward` },
-  { keys: 'PageUp / PageDown', label: 'Previous or next keyframe' },
-  { keys: 'Home / End', label: 'Start or end of the clip' },
-];
 
 /** What a key press on the focused scrubber does, or null for a key it leaves alone. */
 export function scrubberCommand(event: ScrubberKeyLike): ScrubberCommand | null {

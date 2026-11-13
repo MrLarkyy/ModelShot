@@ -98,4 +98,16 @@ describe('HelpDialog', () => {
     expect(dialog.open).toBe(false);
     expect(focused).toEqual(['help']);
   });
+
+  it('reads ten frames forward as Shift plus the arrow, in both alternatives', () => {
+    const { dialog } = setup();
+    const row = dialog
+      .all((e) => e.getAttribute('data-list') === 'scrubber')
+      .find((r) => r.text().includes('10 frames'));
+    const presses = row?.byClass('keycaps').map((caps) => caps.byClass('keycap').map((cap) => cap.textContent));
+    expect(presses).toEqual([
+      ['Shift', '←'],
+      ['Shift', '→'],
+    ]);
+  });
 });

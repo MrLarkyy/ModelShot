@@ -292,7 +292,7 @@ use the orbit keys. The table lists the document-wide shortcuts first, then the 
 | O                                   | Perspective or orthographic        |
 | I                                   | Isometric view                     |
 | ← / →                               | One frame (1/24 s) back or forward |
-| Shift+← / →                         | 10 frames back or forward          |
+| Shift+← / Shift+→                   | 10 frames back or forward          |
 | PageUp / PageDown                   | Previous or next keyframe          |
 | Home / End                          | Start or end of the clip           |
 

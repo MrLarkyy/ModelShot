@@ -92,7 +92,19 @@ test('every icon button with a shortcut shows its keys in the tooltip and in ari
     })),
   );
   const names = found.map((b) => b.name);
-  for (const wanted of ['Undo', 'Redo', 'Outliner', 'Inspector', 'Timeline', 'Move', 'Rotate', 'Help', 'Play']) {
+  for (const wanted of [
+    'Undo',
+    'Redo',
+    'Outliner',
+    'Inspector',
+    'Timeline',
+    'Move',
+    'Rotate',
+    'Help',
+    'Play',
+    'Front view',
+    'Isometric view',
+  ]) {
     expect(
       names.some((name) => name.startsWith(wanted)),
       wanted,

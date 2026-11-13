@@ -1,6 +1,7 @@
 import { orbitKeyAction } from '@modelshot/renderer-rt';
 import { describe, expect, it } from 'vitest';
-import { ORBIT_KEYS, parseKeys } from '../src/shortcuts/orbitKeys';
+import { parseKeys } from '../src/shortcuts/listedKeys';
+import { ORBIT_KEYS } from '../src/shortcuts/orbitKeys';
 import { shortcutAction } from '../src/shortcuts/shortcutAction';
 
 describe('ORBIT_KEYS', () => {
