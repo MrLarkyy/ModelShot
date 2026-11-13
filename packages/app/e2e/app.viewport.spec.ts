@@ -131,12 +131,16 @@ for (const [width, height] of [
   [1440, 900],
 ] as const) {
   test(`no view control overlaps another and the bars stay one row at ${width} px`, async ({ page }, testInfo) => {
+    test.setTimeout(300_000);
     await page.setViewportSize({ width, height });
     await openNested(page);
     await page.getByRole('button', { name: 'Overlays' }).click();
     await page.getByRole('checkbox', { name: 'Statistics' }).check();
     await page.keyboard.press('Escape');
     await expect(page.locator('#stats')).toBeVisible();
+    // The chip says "bake -" only while a bake is pending: the screenshot is taken once it has a number.
+    await expectLit(page, 120_000);
+    await expect(page.locator('#stats')).toHaveText(/bake \d+ ms/);
     // The axis gizmo is placed from measured boxes after the first frame: wait for that, not for a time.
     await expect
       .poll(async () => {
@@ -210,4 +214,16 @@ test('the key light stays inside the view for every camera angle, and its name s
   await expect(page.locator('#helper-label')).toHaveText('Key light');
   await page.mouse.move(view.x + view.width / 2, view.y + view.height - 20);
   await expect(page.locator('#helper-label')).toBeHidden();
+});
+
+test('a press on the hint row or the render bar neither selects nor clears the selection', async ({ page }) => {
+  await openNested(page);
+  const selected = page.locator('#scene-panel [aria-current="true"]');
+  await page.locator('#scene-panel [data-row^="node:"]').first().click();
+  await expect(selected).toHaveCount(1);
+  await page.locator('#first-run-hint').getByRole('button', { name: 'Dismiss shortcut hints' }).click();
+  await expect(selected).toHaveCount(1);
+  const bar = (await page.locator('.render-bar').boundingBox())!;
+  await page.mouse.click(bar.x + bar.width / 2, bar.y + 3);
+  await expect(selected).toHaveCount(1);
 });

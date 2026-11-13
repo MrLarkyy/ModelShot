@@ -19,6 +19,8 @@ import type { Selection } from './Selection';
 /** A pointer that moves less than this between press and release is a click, not an orbit. */
 export const CLICK_SLOP_PX = 4;
 const HANDLE_TOLERANCE_PX = 10;
+/** What sits over the view without being the view: a press on it selects nothing and starts no drag. */
+const NOT_THE_VIEW = '.chips, .first-run-hint, .render-bar, .toasts, .helper-label';
 /** A pose that stays this long is lit again; frames of a playing clip or a drag never are. */
 export const RELIGHT_DELAY_MS = 200;
 
@@ -306,7 +308,7 @@ export class EditorTools {
   private readonly onDown = (event: PointerEvent): void => {
     if (event.button !== 0 || event.shiftKey || !event.isPrimary) return;
     // The buttons and menus over the view are not the view: a click on them selects nothing.
-    if (event.target instanceof Element && event.target.closest('.chips')) return;
+    if (event.target instanceof Element && event.target.closest(NOT_THE_VIEW)) return;
     const point = this.local(event);
     this.press = { x: point.x, y: point.y, id: event.pointerId };
     const node = this.gizmoNode();
