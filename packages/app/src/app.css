@@ -601,10 +601,6 @@ button:disabled {
   flex: 1;
 }
 
-button.icon-button[aria-pressed='true'] {
-  color: var(--ed-text);
-}
-
 .time-readout {
   font: var(--ms-weight-medium) var(--ms-size-caption) var(--ms-font-mono);
   color: var(--ed-text-2);
