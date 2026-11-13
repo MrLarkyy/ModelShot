@@ -889,7 +889,7 @@ input.tl-scrub[type='range']:focus-visible::-moz-range-thumb {
   justify-content: flex-end;
 }
 
-.view-info {
+.view-top .view-info {
   flex-direction: column;
   align-items: flex-end;
   pointer-events: none;
