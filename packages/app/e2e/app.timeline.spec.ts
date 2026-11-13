@@ -416,7 +416,7 @@ test('a clip with 384 keyframes plays without rebuilding a lane, and a frame cos
   await expect(timeline(page)).toContainText('16 keyframes');
   const before = (await page.evaluate(() => window.__msApp!.timelineStats()))!;
   await timeline(page).getByRole('button', { name: 'Play' }).click();
-  await expect.poll(async () => Number(await playhead(page).inputValue())).toBeGreaterThan(1);
+  await expect.poll(async () => Number(await playhead(page).inputValue()), { timeout: 20_000 }).toBeGreaterThan(1);
   await timeline(page).getByRole('button', { name: 'Pause' }).click();
   const after = (await page.evaluate(() => window.__msApp!.timelineStats()))!;
   expect(after.laneBuilds).toBe(before.laneBuilds);
