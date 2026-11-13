@@ -115,3 +115,14 @@ test('every icon button with a shortcut shows its keys in the tooltip and in ari
     expect(button.title, button.name).toMatch(/\(.+\)$/);
   }
 });
+
+test('a help dialog chunk that fails to load is reported, and the next open retries', async ({ page }) => {
+  await openApp(page);
+  await page.route('**/HelpDialog*.js', (route) => route.abort());
+  await page.keyboard.press('?');
+  await expect(page.getByRole('status')).toContainText('The shortcut list could not load');
+  await expect(dialog(page)).toBeHidden();
+  await page.unroute('**/HelpDialog*.js');
+  await page.keyboard.press('?');
+  await expect(dialog(page)).toBeVisible();
+});
